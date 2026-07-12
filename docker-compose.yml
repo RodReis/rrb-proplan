@@ -40,19 +40,21 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
       FRONTEND_URL: http://localhost:5180
+      API_PORT: "3311"
+      API_URL: http://localhost:3311
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
     ports:
-      - "3000:3000"
+      - "3311:3311"
 
   web:
     build: ./apps/web
     depends_on:
       - api
     environment:
-      VITE_API_URL: http://localhost:3000
+      VITE_API_URL: http://localhost:3311
     ports:
       - "5180:5180"
 

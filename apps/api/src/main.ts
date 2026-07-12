@@ -9,6 +9,6 @@ async function bootstrap() {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5180',
     credentials: true,
   });
-  await app.listen(3000);
+  await app.listen(Number(process.env.API_PORT) || 3311);
 }
 bootstrap();

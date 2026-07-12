@@ -12,7 +12,7 @@ export class GithubOauthClient {
   authorizeUrl(state: string): string {
     const params = new URLSearchParams({
       client_id: process.env.GITHUB_CLIENT_ID ?? '',
-      redirect_uri: 'http://localhost:3000/auth/github/callback',
+      redirect_uri: `${process.env.API_URL ?? 'http://localhost:3311'}/auth/github/callback`,
       scope: 'repo read:user',
       state,
     });

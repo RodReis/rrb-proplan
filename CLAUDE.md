@@ -11,7 +11,7 @@
 - **Idioma**: documentação, specs, commits e comunicação sempre em português (pt-BR); código e identificadores em inglês.
 - **Sem hardcode e sem mock** — dado local de desenvolvimento entra via seed (`prisma/seed.ts`), criado na primeira fatia que precisar.
 - **Ambiente 100% local até o fim do MVP** (docker-compose; sem deploy em nuvem).
-- **Portas**: web `5180` (strictPort — se ocupada, falha em vez de trocar), API `3000`.
+- **Portas**: web `5180` (strictPort — se ocupada, falha em vez de trocar), API `3311` (era 3000; remapeada por colisão com outros stacks locais — configurável via `API_PORT`). Postgres host `5433`, Redis host `6380` (host bindings remapeados; rede interna do compose segue 5432/6379).
 
 ## O que é
 
