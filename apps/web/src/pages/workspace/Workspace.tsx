@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, Repo } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
+import { OverviewTab } from './OverviewTab';
 import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
 
 interface Props {
@@ -10,15 +11,27 @@ interface Props {
 
 export function Workspace({ project, onBack }: Props) {
   const projectId = project.managedProjectId!;
-  const [activeTab, setActiveTab] = useState('documents');
+  const [activeTab, setActiveTab] = useState('overview');
   const [syncNonce, setSyncNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [hasStatusDoc, setHasStatusDoc] = useState(false);
+
+  const refreshDocsList = useCallback(() => {
+    api
+      .documents(projectId)
+      .then((docs) =>
+        setHasStatusDoc(docs.some((d) => d.path === 'docs/STATUS.md')),
+      )
+      .catch(() => setHasStatusDoc(false));
+  }, [projectId]);
+
+  useEffect(refreshDocsList, [refreshDocsList, syncNonce]);
 
   async function handleSync() {
     setSyncing(true);
     try {
       await api.sync(projectId);
-      setSyncNonce((n) => n + 1); // sinaliza a aba para recarregar + repolar
+      setSyncNonce((n) => n + 1);
     } finally {
       setSyncing(false);
     }
@@ -58,7 +71,7 @@ export function Workspace({ project, onBack }: Props) {
 
         <nav className="mt-4 flex gap-1 overflow-x-auto">
           {WORKSPACE_TABS.map((tab) => {
-            const enabled = tab.enabledIn === CURRENT_SLICE;
+            const enabled = (tab.enabledIn ?? Infinity) <= CURRENT_SLICE;
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -82,7 +95,14 @@ export function Workspace({ project, onBack }: Props) {
         </nav>
       </header>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-auto">
+        {activeTab === 'overview' && (
+          <OverviewTab
+            projectId={projectId}
+            hasStatusDoc={hasStatusDoc}
+            onSynced={() => setSyncNonce((n) => n + 1)}
+          />
+        )}
         {activeTab === 'documents' && (
           <DocumentsTab projectId={projectId} syncNonce={syncNonce} />
         )}

@@ -67,6 +67,7 @@ export class SyncService {
 
       // Idempotência: hash igual ao último aplicado → no-op sem downloads.
       if (project.docsScopeHash === scopeHash) {
+        await this.updateCommitMeta(project.id, token, project.owner, project.name);
         await this.finish(run.id, 'noop', scopeHash, {
           added: 0,
           updated: 0,
@@ -133,6 +134,8 @@ export class SyncService {
         data: { docsScopeHash: scopeHash, lastSyncAt: new Date() },
       });
 
+      await this.updateCommitMeta(project.id, token, project.owner, project.name);
+
       await this.finish(run.id, 'success', scopeHash, {
         added: added.length,
         updated: updated.length,
@@ -149,6 +152,38 @@ export class SyncService {
       });
       // Relança para o BullMQ contabilizar a tentativa (retry com backoff).
       throw err;
+    }
+  }
+
+  /**
+   * Coleta metadados de defasagem (ADR-010): data do último commit em `docs`
+   * e do último commit do repo. Falha aqui NÃO falha o sync — os campos ficam
+   * como estavam (ou nulos) e a UI apenas omite o bloco de frescor.
+   */
+  private async updateCommitMeta(
+    projectId: string,
+    token: string,
+    owner: string,
+    name: string,
+  ): Promise<void> {
+    try {
+      const [lastDocsCommitAt, lastCodeCommitAt] = await Promise.all([
+        this.git.getLastCommitDate(token, owner, name, 'docs'),
+        this.git.getLastCommitDate(token, owner, name),
+      ]);
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: {
+          lastDocsCommitAt,
+          lastCodeCommitAt,
+          commitMetaSyncedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'erro';
+      this.logger.warn(
+        `Coleta de metadados de commit falhou (projeto ${projectId}): ${message}`,
+      );
     }
   }
 

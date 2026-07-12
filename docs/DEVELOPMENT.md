@@ -51,20 +51,30 @@ Validado ao vivo com OAuth App real (login GitHub, catálogo com 22 repos):
 
 **Nota de ambiente:** portas de host remapeadas — Postgres `5433`, Redis `6380`, API `3311` (era 3000; colisão com stacks locais). Auth via **OAuth App** (não GitHub App — Client ID `Ov23…`, não `Iv23…`). `.env.example` e CLAUDE.md atualizados.
 
-## Fatia 3 — Insight: resumo, bootstrap, config de IA e alerta de defasagem (SPEC-003, `aprovada-pi`) — `a-fazer`
+## Fatia 3 — Insight: resumo, bootstrap, config de IA e alerta de defasagem (SPEC-003, `aprovada-pi`) — `feito`
 
-Só iniciar com a Fatia 2 `feito`. Escopo ampliado em 2026-07-12 pelo PI com o ADR-010 (alerta de doc defasada) — ver adendo ao ADR-003.
+Entregue pelo Claude Code. Escopo ampliado em 2026-07-12 pelo PI com o ADR-010. Aguardando aceite runtime do PI (chamadas reais de IA + write-back no GitHub) — ver checklist abaixo.
 
-1. `a-fazer` — Prisma: models `Settings` (com `docsStalenessThresholdDays` default 90) e `Insight`; campos `lastDocsCommitAt`/`lastCodeCommitAt`/`commitMetaSyncedAt` em `Project`; migration; envs `LLM_MODEL_*`.
-2. `a-fazer` `[paralelo com 3]` — **Defasagem (ADR-010), back**: `GithubGitClient.getLastCommitDate(path?)` (Commits API, `per_page=1`); `SyncService` grava as duas datas no fim de todo run com sucesso (inclusive `noop`); falha aqui **não** falha o sync. `GET /projects/:id/freshness` no `catalog` (`stale` calculado na leitura, nunca persistido). **Testes unitários da regra de limiar** (acima/abaixo/limiar 0/datas nulas).
-3. `a-fazer` — `insight/domain`: interface `LlmClient`; `insight/infrastructure`: adapters Anthropic e OpenAI-compatível (OpenAI/OpenRouter via baseURL). Testes unitários de parsing/validação de JSON estrito.
-4. `a-fazer` — Configurações: `GET/PUT /settings` + tela (engrenagem no rail), provedores sem chave desabilitados, **campo de limiar de defasagem (padrão 90, `0` desliga)**.
-5. `a-fazer` — Job `insight` (BullMQ) disparado por `DocsSynced` com hash novo: resumo `{oQueE, ondeParou, oQueFalta[]}` persistido com provider/model/tokens; cap de tokens com truncamento por prioridade.
-6. `a-fazer` — Write-back: commit via Contents API com SHA base + tratamento de conflito (re-sync + 1 retry). Nasce em `insight/infrastructure`.
-7. `a-fazer` — Bootstrap STATUS.md: geração no formato do CONVENTION.md + endpoints de proposta/commit.
-8. `a-fazer` `[paralelo com 7]` — Web: aba Visão Geral — **faixa de frescor no topo** (neutra ou âmbar com ⚠️, sempre com as duas datas) + 3 blocos, badge IA, Regenerar com confirmação, estados gerando/erro.
-9. `a-fazer` — Web: fluxo bootstrap (CTA → editor preview → aprovar e commitar → re-sync).
-10. `a-fazer` — Critérios da SPEC-003 conferidos (incluindo os 4 novos de defasagem); atualizar este arquivo + STATUS.md; commitar tudo.
+1. `feito` — Prisma: models `Settings` (enum `LlmProvider`, `docsStalenessThresholdDays` default 90) e `Insight` (enum `InsightKind`); campos `lastDocsCommitAt`/`lastCodeCommitAt`/`commitMetaSyncedAt` em `Project`; migration `fatia_3_insight`; envs `LLM_MODEL_*`.
+2. `feito` — **Defasagem (ADR-010), back**: `GithubGitClient.getLastCommitDate(path?)`; `SyncService.updateCommitMeta` grava as duas datas no fim de todo run (inclusive `noop`), tolerante a falha; `GET /projects/:id/freshness` no `catalog` (`stale` calculado na leitura via `computeFreshness`, nunca persistido). 7 testes de limiar.
+3. `feito` — `insight/domain`: `LlmClient`, `parseSummary` (JSON estrito), `selectContext` (cap de tokens por prioridade); `insight/infrastructure`: `AnthropicClient`, `OpenAiCompatClient` (OpenAI/OpenRouter via baseURL), `LlmClientFactory`. Testes de parsing/budget.
+4. `feito` — Configurações: `GET/PUT /settings` (módulo `settings` novo) + tela (engrenagem no rail), provedores sem chave desabilitados, campo de limiar (padrão 90, `0` desliga).
+5. `feito` — Job `insight` (BullMQ) via listener de `DocsSynced` (`@OnEvent`): resumo persistido com provider/model/tokens; idempotente por `docsTreeSha`; cap de tokens com truncamento por prioridade.
+6. `feito` — Write-back: `GithubWritebackClient` (Contents API, SHA base, `WritebackConflictError` 409/422); `BootstrapService.commitStatus` re-sincroniza e faz 1 retry em conflito. Nasce em `insight/infrastructure`.
+7. `feito` — Bootstrap STATUS.md: `proposeStatus` (prompt no formato CONVENTION.md) + endpoints proposta/commit.
+8. `feito` — Web: aba Visão Geral — `FreshnessBar` no topo (neutra ou âmbar com ⚠️, sempre com as duas datas) + 3 blocos, badge IA, Regenerar com `confirm`, estados gerando/erro/vazio.
+9. `feito` — Web: `BootstrapDialog` (CTA → editor com preview markdown → aprovar e commitar → re-sync).
+10. `feito` — 42 testes verdes, builds API+web limpos, rotas mapeadas; DEVELOPMENT.md + STATUS.md atualizados. Aceite runtime pendente.
+
+### Validação pendente do PI (aceite runtime)
+
+Verificado sem custo de IA: 42 testes, build API+web, API sobe com todas as rotas de settings/insight/freshness/bootstrap. Falta o PI validar com chamadas reais:
+- Configurações: 3 provedores; sem chave desabilitado; escolha persiste.
+- Visão Geral: 3 blocos + badge IA (Anthropic default); Regenerar com confirmação; `insights.provider` reflete troca de provedor.
+- Sync sem mudança não re-chama IA (resumo já existe para o hash).
+- Bootstrap: CTA → editor → commit no GitHub (`proplan: bootstrap de STATUS.md`) → re-sync traz o STATUS.md; conflito de SHA → re-sync + aviso.
+- Defasagem: docs velhos + código recente além do limiar → faixa âmbar; baixar limiar muda o estado sem re-sync; limiar `0` some o ⚠️; repo sem commit em `docs` → sem alerta.
+- Falha do provedor → Visão Geral com erro + Tentar de novo; demais abas seguem.
 
 > **Nota de ordem**: o item 2 é independente da IA e destrava valor sozinho. Se a Fatia 3 precisar ser fatiada por tempo, entregue 1+2+4(campo de limiar)+8(faixa) primeiro — é a Visão Geral já útil, sem gastar um token.
 

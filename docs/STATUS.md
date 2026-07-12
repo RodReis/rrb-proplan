@@ -15,14 +15,13 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (prio: baixa)
 
 ## A Fazer
-- Fatia 3 — Insight: resumo de estado, bootstrap de STATUS.md, configuração de provedor de IA e alerta de documentação defasada (prio: alta) (spec: SPEC-003 aprovada-pi, ADR-010)
 - Fatia 4 — Grafo de links explícitos com react-flow + d3-force (prio: média) (spec: SPEC-004 aprovada-pi)
 - Fatia 5 — Kanban: CRUD de cards sobre STATUS.md, dnd-kit, write-back via commit + re-sync (ADR-009: sem webhook no MVP) (prio: alta) (spec: SPEC-005 aprovada-pi)
 - Fatia 6 — Abas Arquitetura, Design, Testes, Deploy e Skills & Agentes: render das fontes primárias, mermaid no viewer, parse de .claude/ e workflows (prio: média) (spec: SPEC-006 aprovada-pi)
 - Fatia 7 — Insight semântico: arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (prio: baixa) (spec: SPEC-007 aprovada-pi)
 
 ## Em Andamento
-- (vazio)
+- Fatia 3 — Insight: resumo IA (o que é/onde parou/o que falta), bootstrap de STATUS.md com write-back, config de provedor de IA e alerta de defasagem (ADR-010); entregue pelo Code (42 testes, back+front), aguardando aceite runtime do PI (desde: 2026-07-12)
 
 ## Feito
 - Definição de arquitetura, ADRs e convenção de dados (em: 2026-07-12)

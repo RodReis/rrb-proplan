@@ -84,6 +84,30 @@ export class GithubGitClient {
   }
 
   /**
+   * Data do último commit do repo, opcionalmente filtrado por `path`
+   * (ADR-010 — só metadado, nunca diff/conteúdo). null se não houver commit
+   * no path (ex.: repo sem `docs`). Usar `docs` sem barra final (SPEC-003).
+   */
+  async getLastCommitDate(
+    token: string,
+    owner: string,
+    repo: string,
+    path?: string,
+  ): Promise<Date | null> {
+    const url = new URL(`https://api.github.com/repos/${owner}/${repo}/commits`);
+    url.searchParams.set('per_page', '1');
+    if (path) url.searchParams.set('path', path);
+    const res = await this.fetchGithub(token, url.toString());
+    const commits = (await res.json()) as Array<{
+      commit: { committer?: { date?: string }; author?: { date?: string } };
+    }>;
+    if (!commits.length) return null;
+    const date =
+      commits[0].commit.committer?.date ?? commits[0].commit.author?.date;
+    return date ? new Date(date) : null;
+  }
+
+  /**
    * GET com timeout, tratamento de 401 e backoff em 403/429 respeitando
    * `x-ratelimit-reset` (ARCHITECTURE.md — resiliência).
    */

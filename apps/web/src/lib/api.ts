@@ -85,7 +85,60 @@ export const api = {
     request<DocumentContent>(
       `/projects/${projectId}/documents/content?path=${encodeURIComponent(path)}`,
     ),
+  settings: () => request<Settings>('/settings'),
+  updateSettings: (input: Partial<Pick<Settings, 'llmProvider' | 'docsStalenessThresholdDays'>>) =>
+    request<Settings>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  freshness: (projectId: string) =>
+    request<Freshness>(`/projects/${projectId}/freshness`),
+  summary: (projectId: string) =>
+    request<InsightSummary | null>(`/projects/${projectId}/insights/summary`),
+  regenerateSummary: (projectId: string) =>
+    request<InsightSummary | null>(
+      `/projects/${projectId}/insights/summary/regenerate`,
+      { method: 'POST' },
+    ),
+  proposeStatus: (projectId: string) =>
+    request<{ content: string }>(`/projects/${projectId}/bootstrap/status`, {
+      method: 'POST',
+    }),
+  commitStatus: (projectId: string, content: string) =>
+    request<{ syncRunId: string }>(
+      `/projects/${projectId}/bootstrap/status/commit`,
+      { method: 'POST', body: JSON.stringify({ content }) },
+    ),
 };
+
+export type LlmProvider = 'anthropic' | 'openai' | 'openrouter';
+
+export interface Settings {
+  llmProvider: LlmProvider;
+  docsStalenessThresholdDays: number;
+  availableProviders: LlmProvider[];
+}
+
+export interface Freshness {
+  lastDocsCommitAt: string | null;
+  lastCodeCommitAt: string | null;
+  thresholdDays: number;
+  stale: boolean;
+}
+
+export interface StateSummaryContent {
+  oQueE: string;
+  ondeParou: string;
+  oQueFalta: string[];
+}
+
+export interface InsightSummary {
+  id: string;
+  provider: string;
+  model: string;
+  content: StateSummaryContent;
+  createdAt: string;
+}
 
 /** Projeto gerenciado como retornado por GET /catalog/projects. */
 export interface Project {
