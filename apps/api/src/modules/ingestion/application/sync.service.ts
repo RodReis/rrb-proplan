@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AuthService } from '../../identity/application/auth.service';
+import { GithubAuth } from '../../identity/application/github-auth.service';
 import { LinkService } from './link.service';
 import { diffScope } from '../domain/diff';
 import { parseFrontmatter } from '../domain/frontmatter';
@@ -33,7 +33,7 @@ export class SyncService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auth: AuthService,
+    private readonly auth: GithubAuth,
     private readonly git: GithubGitClient,
     private readonly events: EventEmitter2,
     private readonly links: LinkService,
@@ -57,7 +57,7 @@ export class SyncService {
     });
 
     try {
-      const token = await this.auth.githubTokenOf(project.userId);
+      const token = await this.auth.userToken(project.userId);
       const tree = await this.git.listTree(
         token,
         project.owner,

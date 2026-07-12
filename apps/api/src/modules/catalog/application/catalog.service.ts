@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AuthService } from '../../identity/application/auth.service';
+import { GithubAuth } from '../../identity/application/github-auth.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { computeFreshness, Freshness } from '../domain/freshness';
@@ -14,7 +14,7 @@ export interface RepoWithManaged extends RepoSummary {
 export class CatalogService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auth: AuthService,
+    private readonly auth: GithubAuth,
     private readonly github: GithubClient,
     private readonly ingestion: IngestionService,
     private readonly settings: SettingsService,
@@ -40,7 +40,7 @@ export class CatalogService {
   }
 
   async listRepos(userId: string): Promise<RepoWithManaged[]> {
-    const token = await this.auth.githubTokenOf(userId);
+    const token = await this.auth.userToken(userId);
     const [repos, projects] = await Promise.all([
       this.github.listRepos(token),
       this.prisma.project.findMany({ where: { userId } }),

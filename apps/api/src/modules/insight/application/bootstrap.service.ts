@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AuthService } from '../../identity/application/auth.service';
+import { GithubAuth } from '../../identity/application/github-auth.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { selectContext } from '../domain/context-budget';
@@ -30,7 +30,7 @@ export class BootstrapService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auth: AuthService,
+    private readonly auth: GithubAuth,
     private readonly settings: SettingsService,
     private readonly llmFactory: LlmClientFactory,
     private readonly writeback: GithubWritebackClient,
@@ -73,7 +73,9 @@ export class BootstrapService {
     content: string,
   ): Promise<{ syncRunId: string }> {
     const project = await this.owned(userId, projectId);
-    const token = await this.auth.githubTokenOf(userId);
+    // Escrita → installation token (identidade proplan[bot], ADR-015). É a
+    // prova viva do critério de aceite do autor bot da SPEC-008.
+    const token = await this.auth.installationToken(projectId);
 
     for (let attempt = 0; attempt < 2; attempt++) {
       const baseSha = await this.writeback.getFileSha(
