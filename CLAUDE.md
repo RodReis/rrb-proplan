@@ -22,8 +22,13 @@ Painel de gestão visual de projetos de software. Ingere documentação (nunca c
 - **Monolito modular NestJS.** Módulos: `catalog`, `ingestion`, `insight`, `board`, `identity` (futuro). Módulos se comunicam por interfaces públicas (services exportados) — nunca importar entidades internas de outro módulo. Ver `docs/ARCHITECTURE.md`.
 - **Nunca clonar repositórios.** Toda leitura via GitHub Contents/Git Trees API, restrita a `docs/`, `README.md`, `CLAUDE.md`, `.claude/`, `.github/workflows/`.
 - **Inferência de IA sempre versionada.** Persistir com `docs_tree_sha` de entrada. Nunca chamar a Anthropic API no caminho de renderização de uma request.
-- **Repositório é fonte de verdade.** Mutações de Kanban geram commit em `docs/STATUS.md` no repo-alvo. Banco = índice/cache. Conflito: comparar SHA base; divergiu → re-sync e reaplicar.
+- **Repositório é fonte de verdade** para toda a documentação. Banco = índice/cache. Conflito de escrita em doc: comparar SHA base; divergiu → re-sync e reaplicar.
+- **Estado do trabalho vive nas GitHub Issues** (ADR-011). Coluna do Kanban = label `proplan:backlog|todo|doing`; `closed` = Feito; `closed` + `proplan:descartado` = Descartado. Issue nunca é deletada. Repo sem Issues → board somente leitura (modo degradado, sinalizado na UI).
+- **`docs/` = conteúdo humano · `.proplan/` = coisas do ProPlan** (artefato gerado + configuração). A projeção do board é `.proplan/STATUS.md` (raiz), **nunca editada à mão**; o mapeamento de documentos é `.proplan/config.yml`. Nada do ProPlan entra em `docs/` — isso mascararia o alerta de doc defasada do ADR-010 (que mede o último commit em `path=docs`, subdiretórios incluídos).
+- **O ProPlan se adapta ao repo, nunca o contrário** (ADR-014). Documento é resolvido por escada: convenção → alias conhecido → `.proplan/config.yml` → **ausente** (que é informação, não falha). **Nunca renomear, mover ou reescrever documento do repo-alvo** — em nenhuma fatia. Bootstrap é sempre proposta revisada pelo dono.
 - **Jobs assíncronos via BullMQ** (Redis). Não introduzir Kafka sem revisar ADR-004.
+
+- **Auth = GitHub App** (ADR-015, Fatia 4.5). Dois tokens: **user-to-server** para **toda leitura** (respeita a visibilidade do usuário) e **installation token** para **toda escrita** (identidade `proplan[bot]`). Ler com installation token é proibido. Catálogo lista só repos onde o App está instalado.
 
 ## Stack
 
