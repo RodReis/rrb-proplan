@@ -31,7 +31,7 @@ Referência visual: Untitled UI (layout enviado pelo dono em 2026-07-12). O que 
 
 ## Linguagem visual (tokens)
 
-- **Paleta**: neutros quentes do Untitled UI — fundo `#FCFCFD`, superfícies `#FFFFFF`, bordas `#EAECF0`, texto `#101828`/`#475467`. Uma cor de marca só (sugestão: violeta `#6941C6`) para estados ativos e CTAs.
+- **Paleta**: neutros quentes do Untitled UI — fundo `#FCFCFD`, superfícies `#FFFFFF`, bordas `#EAECF0`, texto `#101828`/`#475467`. **Marca carbono, sem cor vibrante** (decisão do PI 2026-07-12): estados ativos e CTAs usam carbono `#1D2939` (grafite escuro), com fundos sutis em cinza claro (`#F9FAFB`). Cor só aparece em sinais semânticos (âmbar IA, verde sucesso, vermelho erro).
 - **Tipografia**: Inter; títulos 18/16 semibold, corpo 14, metadados 12.
 - **Densidade**: espaçosa como o exemplo (padding 16–24px, divisores 1px em vez de cards com sombra).
 - **Estados de IA sempre distinguíveis**: qualquer conteúdo inferido leva o badge âmbar e arestas inferidas no grafo são tracejadas. Regra de produto, não só estética (ADR-002).
@@ -40,7 +40,8 @@ Referência visual: Untitled UI (layout enviado pelo dono em 2026-07-12). O que 
 
 - **Kanban**: 4 colunas fixas (`CONVENTION.md`); card mostra prioridade e data; ao mover, estado otimista + toast "commitando no repo…" até o webhook confirmar (padrão do `Changes saved` do exemplo).
 - **Grafo**: react-flow, nós = documentos (cor por tipo: convenção/livre/README), minimapa, clique abre o doc no viewer lateral.
-- **Visão Geral**: resumo IA em blocos "O que é / Onde parou / O que falta" + metadados do repo.
+- **Visão Geral**: **faixa de frescor** no topo (acima de tudo) + resumo IA em blocos "O que é / Onde parou / O que falta" + metadados do repo.
+- **Faixa de frescor** (ADR-010): faixa horizontal full-width, altura de uma linha, cantos `md`. Sempre exibe `Docs: há X · Código: há Y` (datas relativas). Dentro do limiar → fundo `surface`, texto `muted`, sem ícone — informação, não aviso. Acima do limiar → fundo âmbar 10%, borda âmbar 30%, ícone ⚠️ e "Documentação possivelmente defasada", com tooltip explicando o cálculo e onde mudar o limiar. **Nunca é vermelha** — não é erro, é um sinal; e nunca bloqueia ou esconde o conteúdo abaixo. Entrada: fade, sem slide (não competir com o stagger dos blocos).
 - **Deploy**: tabela de ambientes idêntica ao formato do `DEPLOY.md` — renderização direta, sem transformação.
 
 ## Design system (extraído do layout de referência)
@@ -49,7 +50,7 @@ Tokens formalizados como CSS variables + Tailwind config — nenhum valor hardco
 
 | Grupo | Tokens |
 |---|---|
-| Cor | `bg: #FCFCFD` · `surface: #FFFFFF` · `border: #EAECF0` · `text: #101828` · `text-muted: #475467` · `brand: #6941C6` · `warning: #F79009` (badge IA) · `success: #12B76A` · `error: #F04438` |
+| Cor | `bg: #FCFCFD` · `surface: #FFFFFF` · `surface-hover: #F9FAFB` · `border: #EAECF0` · `text: #101828` · `text-muted: #475467` · `brand: #1D2939` (carbono — ativos/CTAs) · `warning: #F79009` (badge IA) · `success: #12B76A` · `error: #F04438` |
 | Raio | `sm: 6px` (inputs, badges) · `md: 8px` (cards) · `lg: 12px` (modais, painéis) · `full` (pills de aba) |
 | Sombra | `xs` (cards em hover) · `md` (dropdown, popover) · `lg` (modal). Repouso = borda 1px, sem sombra |
 | Espaço | Escala 4px; padding de seção 16–24px |

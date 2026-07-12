@@ -4,10 +4,11 @@
 @theme {
   --color-bg: #fcfcfd;
   --color-surface: #ffffff;
+  --color-surface-hover: #f9fafb;
   --color-border: #eaecf0;
   --color-text: #101828;
   --color-text-muted: #475467;
-  --color-brand: #6941c6;
+  --color-brand: #1d2939;
   --color-warning: #f79009;
   --color-success: #12b76a;
   --color-error: #f04438;
