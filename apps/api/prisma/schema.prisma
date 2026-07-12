@@ -56,9 +56,31 @@ model Document {
   byteSize       Int      @map("byte_size")
   updatedAt      DateTime @updatedAt @map("updated_at")
   project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outLinks       DocLink[] @relation("source")
+  inLinks        DocLink[] @relation("target")
 
   @@unique([projectId, path])
   @@map("documents")
+}
+
+enum DocLinkKind {
+  explicit
+}
+
+model DocLink {
+  id               String      @id @default(uuid())
+  projectId        String      @map("project_id")
+  sourceDocumentId String      @map("source_document_id")
+  targetDocumentId String?     @map("target_document_id")
+  targetPath       String      @map("target_path")
+  kind             DocLinkKind @default(explicit)
+  anchor           String?
+  source           Document    @relation("source", fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  target           Document?   @relation("target", fields: [targetDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+  @@map("doc_links")
 }
 
 enum SyncStatus {

@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuthService } from '../../identity/application/auth.service';
+import { LinkService } from './link.service';
 import { diffScope } from '../domain/diff';
 import { parseFrontmatter } from '../domain/frontmatter';
 import { computeScopeHash } from '../domain/scope-hash';
@@ -35,6 +36,7 @@ export class SyncService {
     private readonly auth: AuthService,
     private readonly git: GithubGitClient,
     private readonly events: EventEmitter2,
+    private readonly links: LinkService,
   ) {}
 
   /**
@@ -68,6 +70,9 @@ export class SyncService {
       // Idempotência: hash igual ao último aplicado → no-op sem downloads.
       if (project.docsScopeHash === scopeHash) {
         await this.updateCommitMeta(project.id, token, project.owner, project.name);
+        // Recomputa o grafo no noop também: docs ingeridos antes da Fatia 4
+        // ainda não têm arestas; recompute é barato e idempotente.
+        await this.links.rebuildLinks(project.id);
         await this.finish(run.id, 'noop', scopeHash, {
           added: 0,
           updated: 0,
@@ -128,6 +133,9 @@ export class SyncService {
           where: { projectId: project.id, path: { in: removed } },
         });
       }
+
+      // Grafo (SPEC-004): recomputa arestas a partir do conteúdo atual dos docs.
+      await this.links.rebuildLinks(project.id);
 
       await this.prisma.project.update({
         where: { id: project.id },

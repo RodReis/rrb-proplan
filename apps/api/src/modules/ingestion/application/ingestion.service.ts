@@ -80,6 +80,42 @@ export class IngestionService {
     return doc;
   }
 
+  /** Grafo de documentos: nós (docs) + arestas (links explícitos). SPEC-004. */
+  async graph(userId: string, projectId: string) {
+    await this.assertOwner(userId, projectId);
+    const [docs, links] = await Promise.all([
+      this.prisma.document.findMany({
+        where: { projectId },
+        select: { id: true, path: true, isConventional: true },
+        orderBy: { path: 'asc' },
+      }),
+      this.prisma.docLink.findMany({
+        where: { projectId },
+        select: {
+          sourceDocumentId: true,
+          targetDocumentId: true,
+          targetPath: true,
+        },
+      }),
+    ]);
+
+    const nodes = docs.map((d) => ({
+      docId: d.id,
+      path: d.path,
+      isConventional: d.isConventional,
+      kind: nodeKind(d.path),
+    }));
+
+    const edges = links.map((l) => ({
+      source: l.sourceDocumentId,
+      target: l.targetDocumentId,
+      targetPath: l.targetPath,
+      broken: l.targetDocumentId === null,
+    }));
+
+    return { nodes, edges };
+  }
+
   /** Garante que o projeto pertence ao usuário (isolamento por dono). */
   private async assertOwner(userId: string, projectId: string): Promise<void> {
     const project = await this.prisma.project.findFirst({
@@ -88,4 +124,11 @@ export class IngestionService {
     });
     if (!project) throw new NotFoundException('Projeto não encontrado');
   }
+}
+
+/** Classifica o nó por path para a cor no grafo (DESIGN.md). */
+function nodeKind(path: string): 'readme' | 'claude' | 'doc' {
+  if (path === 'README.md') return 'readme';
+  if (path === 'CLAUDE.md') return 'claude';
+  return 'doc';
 }

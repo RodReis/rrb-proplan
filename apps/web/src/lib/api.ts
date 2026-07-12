@@ -112,7 +112,28 @@ export const api = {
       `/projects/${projectId}/bootstrap/status/commit`,
       { method: 'POST', body: JSON.stringify({ content }) },
     ),
+  graph: (projectId: string) =>
+    request<DocGraph>(`/projects/${projectId}/graph`),
 };
+
+export interface GraphNode {
+  docId: string;
+  path: string;
+  isConventional: boolean;
+  kind: 'readme' | 'claude' | 'doc';
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string | null;
+  targetPath: string;
+  broken: boolean;
+}
+
+export interface DocGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
 
 export type LlmProvider = 'anthropic' | 'openai' | 'openrouter';
 

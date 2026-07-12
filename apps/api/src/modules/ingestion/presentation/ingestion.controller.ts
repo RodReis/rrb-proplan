@@ -44,6 +44,11 @@ export class IngestionController {
     return this.ingestion.listDocuments(req.userId, projectId);
   }
 
+  @Get('graph')
+  graph(@Req() req: AuthenticatedRequest, @Param('id') projectId: string) {
+    return this.ingestion.graph(req.userId, projectId);
+  }
+
   @Get('documents/content')
   documentContent(
     @Req() req: AuthenticatedRequest,

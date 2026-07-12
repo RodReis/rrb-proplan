@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, Repo } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
+import { GraphTab } from './GraphTab';
 import { OverviewTab } from './OverviewTab';
 import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
 
@@ -105,6 +106,9 @@ export function Workspace({ project, onBack }: Props) {
         )}
         {activeTab === 'documents' && (
           <DocumentsTab projectId={projectId} syncNonce={syncNonce} />
+        )}
+        {activeTab === 'graph' && (
+          <GraphTab projectId={projectId} syncNonce={syncNonce} />
         )}
       </div>
     </div>
