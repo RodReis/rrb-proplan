@@ -21,9 +21,14 @@ import { RepoSummary } from '../infrastructure/github.client';
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 
-  @Get('repos')
-  listRepos(@Req() req: AuthenticatedRequest) {
-    return this.catalog.listRepos(req.userId);
+  @Get('installations')
+  listInstallations(@Req() req: AuthenticatedRequest) {
+    return this.catalog.listInstallations(req.userId);
+  }
+
+  @Get('install-url')
+  installUrl() {
+    return this.catalog.installUrl();
   }
 
   @Get('projects')
@@ -32,7 +37,10 @@ export class CatalogController {
   }
 
   @Post('projects')
-  addProject(@Req() req: AuthenticatedRequest, @Body() repo: RepoSummary) {
+  addProject(
+    @Req() req: AuthenticatedRequest,
+    @Body() repo: RepoSummary & { installationId: number },
+  ) {
     return this.catalog.addProject(req.userId, repo);
   }
 

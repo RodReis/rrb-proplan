@@ -29,6 +29,6 @@ import { JwtAuthGuard } from './presentation/jwt-auth.guard';
     RedisProvider,
     JwtAuthGuard,
   ],
-  exports: [AuthService, GithubAuth, JwtAuthGuard],
+  exports: [AuthService, GithubAuth, GithubInstallationsClient, JwtAuthGuard],
 })
 export class IdentityModule {}

@@ -15,7 +15,21 @@ export interface Repo {
   defaultBranch: string;
   isPrivate: boolean;
   pushedAt: string | null;
+  installationId: number;
   managedProjectId: string | null;
+}
+
+/** Um grupo do catálogo = uma instalação do App em uma conta (ADR-015). */
+export interface InstallationGroup {
+  installationId: number;
+  account: string;
+  accountType: 'User' | 'Organization';
+  repos: Repo[];
+}
+
+export interface CatalogInstallations {
+  groups: InstallationGroup[];
+  empty: boolean;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -67,7 +81,9 @@ export const api = {
   loginUrl: `${API_URL}/auth/github`,
   me: () => request<SessionUser>('/auth/me'),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
-  repos: () => request<Repo[]>('/catalog/repos'),
+  installations: () =>
+    request<CatalogInstallations>('/catalog/installations'),
+  installUrl: () => request<{ url: string }>('/catalog/install-url'),
   addProject: (repo: Repo) =>
     request<{ id: string }>('/catalog/projects', {
       method: 'POST',
@@ -172,6 +188,8 @@ export interface Project {
   description: string | null;
   defaultBranch: string;
   githubRepoId: number;
+  installationId: number | null;
+  installationStatus: 'active' | 'missing';
   docsScopeHash: string | null;
   lastSyncAt: string | null;
 }

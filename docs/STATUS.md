@@ -17,13 +17,13 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão (prio: baixa; consequência das fatias acima; sem spec)
 
 ### Não priorizado
-- Fatia 8 — Multi-tenant: RBAC, organizações, billing (prio: baixa, só se virar produto; OAuth antecipado pela Fatia 1 — ADR-007; sem spec por decisão — especulação até o PI decidir produtizar)
+- Fatia 8 — Multi-tenant: RBAC, organizações, billing (prio: baixa, só se virar produto; a base de auth já fica pronta na Fatia 4.5 — GitHub App instalável por org, rate limit por instalação, ADR-015; sem spec por decisão — especulação até o PI decidir produtizar)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (prio: baixa; autorizado no adendo ao ADR-003, exige spec própria; ressalva: dependency graph desabilitado por padrão em repo privado)
 - Defasagem por documento (badge por aba) — só se o alerta global do ADR-010 se provar útil (prio: baixa)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (prio: baixa)
 
 ## A Fazer
-- Fatia 5 — Kanban sobre **GitHub Issues** (ADR-011): coluna por label, 5 colunas (Descartado visível), projeção em `.proplan/STATUS.md`, escopo OAuth de escrita, importação manual do STATUS.md legado com aviso, migração do bootstrap da Fatia 3, dnd-kit (prio: alta) (spec: SPEC-005 **reescrita, aprovada-pi**)
+- Fatia 5 — Kanban sobre **GitHub Issues** (ADR-011): coluna por label, 5 colunas (Descartado visível), projeção em `.proplan/STATUS.md`, importação manual do STATUS.md legado com aviso, migração do bootstrap da Fatia 3, dnd-kit (prio: alta; **depende da 4.5**) (spec: SPEC-005 **reescrita, aprovada-pi**)
 - Fatia 6 — **Resolução de documentos (ADR-014)** + abas: `DocumentResolver` (convenção → alias → `.proplan/config.yml` → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção `adr/`), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (prio: **alta** — sem isso o produto só funciona em repo que segue a convenção) (spec: SPEC-006 ampliada, aprovada-pi)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (prio: baixa) (spec: SPEC-007 aprovada-pi)
 
@@ -36,3 +36,4 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Fatia 2 — Ingestion: sync de docs via Trees/Blobs, hash/diff incremental, no-op idempotente, BullMQ, 4 endpoints, workspace + aba Documentos (react-markdown), 18 testes; aceito runtime pelo PI (em: 2026-07-12)
 - Fatia 3 — Insight: resumo IA versionado por hash, bootstrap de STATUS.md com write-back+re-sync, config de provedor (Anthropic/OpenAI/OpenRouter), alerta de defasagem (ADR-010); 42 testes; aceito runtime pelo PI (em: 2026-07-12)
 - Fatia 4 — Grafo de links explícitos: extração markdown+wikilinks, resolução relativa, nó fantasma para quebrados, react-flow + d3-force; 56 testes; validado com rrb-adv (119 docs, 105 arestas); aceito runtime pelo PI (em: 2026-07-12)
+- Fatia 4.5 — Migração para GitHub App (ADR-015): dois tokens (user-to-server para leitura, installation para escrita com identidade `proplan[bot]`), JWT RS256 + cache de installation token por instalação, catálogo por instalação agrupado por conta, teste de arquitetura leitura≠escrita; 78 testes; builds limpos; **aceite runtime pendente** (PI cria o GitHub App real — ver README) (em: 2026-07-12)

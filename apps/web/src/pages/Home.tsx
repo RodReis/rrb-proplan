@@ -1,6 +1,13 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
-import { api, Repo, SessionUser } from '../lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  api,
+  CatalogInstallations,
+  InstallationGroup,
+  Project,
+  Repo,
+  SessionUser,
+} from '../lib/api';
 import { Settings } from './Settings';
 import { Workspace } from './workspace/Workspace';
 
@@ -9,56 +16,54 @@ interface Props {
   onLogout: () => void;
 }
 
-type ReposState =
+type CatalogState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; repos: Repo[] };
+  | { status: 'ready'; data: CatalogInstallations };
 
 export function Home({ user, onLogout }: Props) {
-  const [state, setState] = useState<ReposState>({ status: 'loading' });
+  const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' });
+  const [projects, setProjects] = useState<Project[]>([]);
   const [busyRepoId, setBusyRepoId] = useState<number | null>(null);
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  useEffect(() => {
-    api
-      .repos()
-      .then((repos) => setState({ status: 'ready', repos }))
-      .catch((err) => setState({ status: 'error', message: String(err) }));
+  const load = useCallback(() => {
+    setCatalog({ status: 'loading' });
+    Promise.all([api.installations(), api.projects()])
+      .then(([data, projs]) => {
+        setCatalog({ status: 'ready', data });
+        setProjects(projs);
+      })
+      .catch((err) => setCatalog({ status: 'error', message: String(err) }));
   }, []);
 
+  useEffect(() => load(), [load]);
+
   async function toggleManaged(repo: Repo) {
-    if (state.status !== 'ready') return;
+    if (catalog.status !== 'ready') return;
     setBusyRepoId(repo.githubRepoId);
     try {
-      let updated: Repo;
       if (repo.managedProjectId) {
         await api.removeProject(repo.managedProjectId);
-        updated = { ...repo, managedProjectId: null };
       } else {
-        const project = await api.addProject(repo);
-        updated = { ...repo, managedProjectId: project.id };
+        await api.addProject(repo);
       }
-      setState({
-        status: 'ready',
-        repos: state.repos.map((r) =>
-          r.githubRepoId === repo.githubRepoId ? updated : r,
-        ),
-      });
+      // Recarrega para refletir managedProjectId e o installationStatus.
+      const [data, projs] = await Promise.all([api.installations(), api.projects()]);
+      setCatalog({ status: 'ready', data });
+      setProjects(projs);
     } finally {
       setBusyRepoId(null);
     }
   }
 
-  const managed =
-    state.status === 'ready'
-      ? state.repos.filter((r) => r.managedProjectId)
-      : [];
+  async function openInstall() {
+    const { url } = await api.installUrl();
+    window.location.href = url;
+  }
 
-  const openProject =
-    openProjectId !== null
-      ? managed.find((r) => r.managedProjectId === openProjectId) ?? null
-      : null;
+  const openProject = projects.find((p) => p.id === openProjectId) ?? null;
 
   return (
     <div className="flex h-screen bg-bg">
@@ -102,17 +107,16 @@ export function Home({ user, onLogout }: Props) {
       <aside className="flex w-64 flex-col border-r border-border bg-surface">
         <div className="border-b border-border p-4">
           <div className="text-sm font-semibold">Projetos gerenciados</div>
-          <div className="text-xs text-text-muted">
-            {managed.length} de {state.status === 'ready' ? state.repos.length : '—'} repos
-          </div>
+          <div className="text-xs text-text-muted">{projects.length} projetos</div>
         </div>
         <nav className="flex-1 overflow-y-auto p-2">
-          {managed.map((repo) => {
-            const isOpen = repo.managedProjectId === openProjectId;
+          {projects.map((p) => {
+            const isOpen = p.id === openProjectId;
+            const missing = p.installationStatus === 'missing';
             return (
               <button
-                key={repo.githubRepoId}
-                onClick={() => setOpenProjectId(repo.managedProjectId)}
+                key={p.id}
+                onClick={() => setOpenProjectId(p.id)}
                 className={
                   'group relative block w-full rounded-md px-3 py-2 text-left text-sm transition-colors duration-150 ' +
                   (isOpen ? 'bg-bg' : 'hover:bg-bg')
@@ -124,16 +128,24 @@ export function Home({ user, onLogout }: Props) {
                     (isOpen ? 'h-4' : 'h-0 group-hover:h-4')
                   }
                 />
-                <div className="font-medium">{repo.name}</div>
-                <div className="truncate text-xs text-text-muted">
-                  {repo.owner}
+                <div className="flex items-center gap-1.5 font-medium">
+                  {p.name}
+                  {missing && (
+                    <span
+                      title="App removido deste repositório — escritas desabilitadas"
+                      className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning"
+                    >
+                      sem instalação
+                    </span>
+                  )}
                 </div>
+                <div className="truncate text-xs text-text-muted">{p.owner}</div>
               </button>
             );
           })}
-          {state.status === 'ready' && managed.length === 0 && (
+          {projects.length === 0 && (
             <p className="px-3 py-2 text-xs text-text-muted">
-              Nenhum projeto ainda — marque repos na lista ao lado.
+              Nenhum projeto ainda — marque repos no catálogo ao lado.
             </p>
           )}
         </nav>
@@ -145,84 +157,168 @@ export function Home({ user, onLogout }: Props) {
         </button>
       </aside>
 
-      {/* Conteúdo: workspace do projeto aberto ou catálogo de repos */}
+      {/* Conteúdo: workspace do projeto aberto ou catálogo por instalação */}
       {openProject ? (
         <main className="min-h-0 flex-1">
           <Workspace
-            key={openProject.managedProjectId}
-            project={openProject}
+            key={openProject.id}
+            project={{
+              owner: openProject.owner,
+              name: openProject.name,
+              managedProjectId: openProject.id,
+            }}
             onBack={() => setOpenProjectId(null)}
           />
         </main>
       ) : (
-      <main className="flex-1 overflow-y-auto">
-        <header className="sticky top-0 border-b border-border bg-bg/80 px-8 py-5 backdrop-blur">
-          <h1 className="text-lg font-semibold">Catálogo</h1>
-          <p className="text-sm text-text-muted">
-            Selecione os repositórios que o ProPlan deve gerenciar.
-          </p>
-        </header>
-
-        <div className="p-8">
-          {state.status === 'loading' && <SkeletonList />}
-          {state.status === 'error' && (
-            <div className="rounded-md border border-error/30 bg-error/5 p-4 text-sm text-error">
-              Falha ao listar repositórios: {state.message}
+        <main className="flex-1 overflow-y-auto">
+          <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg/80 px-8 py-5 backdrop-blur">
+            <div>
+              <h1 className="text-lg font-semibold">Catálogo</h1>
+              <p className="text-sm text-text-muted">
+                Repositórios onde o ProPlan (GitHub App) está instalado.
+              </p>
             </div>
-          )}
-          {state.status === 'ready' && (
-            <ul className="grid gap-3">
-              {state.repos.map((repo, i) => (
-                <motion.li
-                  key={repo.githubRepoId}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    duration: 0.2,
-                    delay: Math.min(i * 0.04, 0.4),
-                    ease: [0.16, 1, 0.3, 1],
-                  }}
-                  className="group flex items-center justify-between rounded-lg border border-border bg-surface p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-sm"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold">
-                        {repo.owner}/{repo.name}
-                      </span>
-                      {repo.isPrivate && (
-                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-text-muted">
-                          privado
-                        </span>
-                      )}
-                    </div>
-                    <p className="truncate text-xs text-text-muted">
-                      {repo.description ?? 'Sem descrição'}
-                      {repo.pushedAt &&
-                        ` · último push ${new Date(repo.pushedAt).toLocaleDateString('pt-BR')}`}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => void toggleManaged(repo)}
-                    disabled={busyRepoId === repo.githubRepoId}
-                    className={
-                      repo.managedProjectId
-                        ? 'ml-4 shrink-0 rounded-md border border-brand bg-brand/5 px-3 py-1.5 text-xs font-semibold text-brand transition-all duration-150 hover:bg-brand/10 disabled:opacity-50'
-                        : 'ml-4 shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-text-muted transition-all duration-150 hover:border-brand/40 hover:text-brand disabled:opacity-50'
-                    }
-                  >
-                    {busyRepoId === repo.githubRepoId
-                      ? '…'
-                      : repo.managedProjectId
-                        ? '✓ Gerenciado'
-                        : 'Gerenciar'}
-                  </button>
-                </motion.li>
+            {catalog.status === 'ready' && !catalog.data.empty && (
+              <button
+                onClick={() => void openInstall()}
+                className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-text-muted transition-all duration-150 hover:border-brand/40 hover:text-brand"
+              >
+                Instalar em mais repositórios
+              </button>
+            )}
+          </header>
+
+          <div className="space-y-8 p-8">
+            {catalog.status === 'loading' && <SkeletonList />}
+            {catalog.status === 'error' && (
+              <div className="rounded-md border border-error/30 bg-error/5 p-4 text-sm text-error">
+                Falha ao listar instalações: {catalog.message}
+              </div>
+            )}
+            {catalog.status === 'ready' && catalog.data.empty && (
+              <EmptyInstall onInstall={() => void openInstall()} />
+            )}
+            {catalog.status === 'ready' &&
+              catalog.data.groups.map((group) => (
+                <AccountGroup
+                  key={group.installationId}
+                  group={group}
+                  busyRepoId={busyRepoId}
+                  onToggle={(r) => void toggleManaged(r)}
+                  onInstall={() => void openInstall()}
+                />
               ))}
-            </ul>
-          )}
-        </div>
-      </main>
+          </div>
+        </main>
       )}
+    </div>
+  );
+}
+
+function AccountGroup({
+  group,
+  busyRepoId,
+  onToggle,
+  onInstall,
+}: {
+  group: InstallationGroup;
+  busyRepoId: number | null;
+  onToggle: (repo: Repo) => void;
+  onInstall: () => void;
+}) {
+  return (
+    <section>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-sm font-semibold">{group.account}</h2>
+        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-text-muted">
+          {group.accountType === 'Organization' ? 'organização' : 'pessoal'}
+        </span>
+      </div>
+      {group.repos.length === 0 ? (
+        <div className="rounded-md border border-border bg-surface p-4 text-sm text-text-muted">
+          Nenhum repositório acessível nesta conta —{' '}
+          <button
+            onClick={onInstall}
+            className="font-semibold text-brand underline-offset-2 hover:underline"
+          >
+            revisar seleção no GitHub
+          </button>
+          .
+        </div>
+      ) : (
+        <ul className="grid gap-3">
+          {group.repos.map((repo, i) => (
+            <motion.li
+              key={repo.githubRepoId}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.2,
+                delay: Math.min(i * 0.04, 0.4),
+                ease: [0.16, 1, 0.3, 1],
+              }}
+              className="group flex items-center justify-between rounded-lg border border-border bg-surface p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-sm"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-semibold">
+                    {repo.owner}/{repo.name}
+                  </span>
+                  {repo.isPrivate && (
+                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-text-muted">
+                      privado
+                    </span>
+                  )}
+                </div>
+                <p className="truncate text-xs text-text-muted">
+                  {repo.description ?? 'Sem descrição'}
+                  {repo.pushedAt &&
+                    ` · último push ${new Date(repo.pushedAt).toLocaleDateString('pt-BR')}`}
+                </p>
+              </div>
+              <button
+                onClick={() => onToggle(repo)}
+                disabled={busyRepoId === repo.githubRepoId}
+                className={
+                  repo.managedProjectId
+                    ? 'ml-4 shrink-0 rounded-md border border-brand bg-brand/5 px-3 py-1.5 text-xs font-semibold text-brand transition-all duration-150 hover:bg-brand/10 disabled:opacity-50'
+                    : 'ml-4 shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-text-muted transition-all duration-150 hover:border-brand/40 hover:text-brand disabled:opacity-50'
+                }
+              >
+                {busyRepoId === repo.githubRepoId
+                  ? '…'
+                  : repo.managedProjectId
+                    ? '✓ Gerenciado'
+                    : 'Gerenciar'}
+              </button>
+            </motion.li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function EmptyInstall({ onInstall }: { onInstall: () => void }) {
+  return (
+    <div className="mx-auto max-w-md rounded-xl border border-border bg-surface p-8 text-center">
+      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand/10 text-2xl">
+        📦
+      </div>
+      <h2 className="text-base font-semibold">
+        O ProPlan ainda não está instalado em nenhum repositório
+      </h2>
+      <p className="mt-2 text-sm text-text-muted">
+        Instale o GitHub App nos repositórios que você quer gerenciar. Você
+        escolhe quais — o ProPlan só enxerga esses.
+      </p>
+      <button
+        onClick={onInstall}
+        className="mt-5 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand/90"
+      >
+        Instalar no GitHub
+      </button>
     </div>
   );
 }

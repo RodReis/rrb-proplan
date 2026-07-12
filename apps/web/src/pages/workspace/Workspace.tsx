@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, Repo } from '../../lib/api';
+import { api } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
 import { GraphTab } from './GraphTab';
 import { OverviewTab } from './OverviewTab';
 import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
 
+/** Shape mínimo para abrir o workspace (repo do catálogo ou projeto gerenciado). */
+export interface WorkspaceTarget {
+  owner: string;
+  name: string;
+  managedProjectId: string | null;
+}
+
 interface Props {
-  project: Repo; // repo gerenciado (tem managedProjectId garantido)
+  project: WorkspaceTarget; // gerenciado (managedProjectId garantido não-nulo)
   onBack: () => void;
 }
 
