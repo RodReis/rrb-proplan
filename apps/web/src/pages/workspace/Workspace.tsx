@@ -5,9 +5,10 @@ import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
 
 interface Props {
   project: Repo; // repo gerenciado (tem managedProjectId garantido)
+  onBack: () => void;
 }
 
-export function Workspace({ project }: Props) {
+export function Workspace({ project, onBack }: Props) {
   const projectId = project.managedProjectId!;
   const [activeTab, setActiveTab] = useState('documents');
   const [syncNonce, setSyncNonce] = useState(0);
@@ -28,6 +29,12 @@ export function Workspace({ project }: Props) {
       <header className="border-b border-border px-8 pt-5">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
+            <button
+              onClick={onBack}
+              className="mb-1 text-xs text-text-muted transition-colors duration-150 hover:text-brand"
+            >
+              ← Catálogo
+            </button>
             <h1 className="truncate text-lg font-semibold">
               {project.owner}/{project.name}
             </h1>

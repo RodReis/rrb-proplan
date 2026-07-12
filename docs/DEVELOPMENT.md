@@ -24,9 +24,9 @@ Implementada via Cowork (exceção histórica; a partir daqui, só Claude Code).
 - [x] Monorepo, docker-compose, identity (OAuth), catalog, web shell — `feito`
 - [ ] Aceite do PI → mover para `finalizado` e STATUS.md → Feito
 
-## Fatia 2 — Ingestion (SPEC-002, `aprovada-pi`) — `feito`
+## Fatia 2 — Ingestion (SPEC-002, `aprovada-pi`) — `finalizado`
 
-Entregue pelo Claude Code. Falta aceite runtime do PI (validação com token OAuth real): ver "Validação pendente do PI" abaixo.
+Entregue pelo Claude Code e **aceito pelo PI em 2026-07-12** (validação runtime com OAuth App real).
 
 1. `feito` — Prisma: models `Document`, `SyncRun` (+ enum `SyncStatus`) + campos `docsScopeHash`/`lastSyncAt` em `Project`; migration `fatia_2_ingestion` aplicada.
 2. `feito` — BullMQ: conexão Redis (`BullModule.forRoot` no `app.module`, parse de `REDIS_URL`), fila `sync`, worker (`SyncWorker`) no processo da API; job com 3 tentativas e backoff exponencial; idempotência por hash no `SyncService`.
@@ -38,16 +38,18 @@ Entregue pelo Claude Code. Falta aceite runtime do PI (validação com token OAu
 8. `feito` — Web: `DocumentsTab` — lista + viewer (`react-markdown` + `remark-gfm`, estilo `.prose-doc`), skeleton, badge `convenção`, estados vazio/erro/sincronizando (polling do sync-run 1,5s).
 9. `feito` — Critérios de aceite conferidos abaixo; DEVELOPMENT.md + STATUS.md atualizados; entrega commitada.
 
-### Validação pendente do PI (aceite runtime)
+### Aceite runtime (2026-07-12)
 
-Os critérios que dependem de token OAuth do GitHub **não podem ser validados pelo Code** (secrets são do PI). O que foi verificado sem token: build API+web limpos, 18 testes verdes, API sobe com todos os módulos e rotas mapeadas, guard retorna 401. Falta o PI validar com `.env` real:
-- Marcar repo gerenciado → ingestão automática → docs no workspace.
-- Editar MD no GitHub + Sincronizar → viewer atualiza; sync sem mudança → no-op.
-- Arquivo > 512 KB ignorado com aviso; dois cliques em Sincronizar → sem download duplo.
-- `README.md` do próprio rrb-proplan renderiza legível (incl. tabelas).
-- Falha de rede/rate limit → run `failed` + "Tentar de novo".
+Validado ao vivo com OAuth App real (login GitHub, catálogo com 22 repos):
+- ✅ Marcar repo gerenciado → ingestão automática (run apareceu sem ação; 15 added/1 updated ao sincronizar o rrb-proplan com docs reais).
+- ✅ Sincronizar sem mudança → `noop` 0/0/0/0 (idempotência por hash; cobre também "dois cliques sem download duplo").
+- ✅ `README.md` e `docs/DESIGN.md` renderizam legíveis no viewer, com tabelas; badge `convenção` correto (docs `proplan: v1` marcados, README/CLAUDE/ARCHITECTURE não).
+- ✅ Escopo recursivo `docs/**` (incl. `docs/specs/`), sem duplicação (16 docs = 16 paths).
+- ⚠️ Critérios de borda **2 (repo vazio), 4 (>512 KB), 7 (falha de rede)** aceitos pelo PI com base na cobertura de código/testes unitários, sem teste manual dedicado.
 
-**Nota de ambiente:** portas de host do compose remapeadas para `5433` (Postgres) e `6380` (Redis) — as padrão estavam ocupadas por outro stack local. `.env.example` atualizado.
+**Bug de UX corrigido no aceite:** faltava voltar do workspace ao catálogo — adicionado botão "← Catálogo" no header.
+
+**Nota de ambiente:** portas de host remapeadas — Postgres `5433`, Redis `6380`, API `3311` (era 3000; colisão com stacks locais). Auth via **OAuth App** (não GitHub App — Client ID `Ov23…`, não `Iv23…`). `.env.example` e CLAUDE.md atualizados.
 
 ## Fatia 3 — Insight: resumo, bootstrap e config de IA (SPEC-003, `aprovada-pi`) — `a-fazer`
 

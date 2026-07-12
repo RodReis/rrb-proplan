@@ -126,7 +126,11 @@ export function Home({ user, onLogout }: Props) {
       {/* Conteúdo: workspace do projeto aberto ou catálogo de repos */}
       {openProject ? (
         <main className="min-h-0 flex-1">
-          <Workspace key={openProject.managedProjectId} project={openProject} />
+          <Workspace
+            key={openProject.managedProjectId}
+            project={openProject}
+            onBack={() => setOpenProjectId(null)}
+          />
         </main>
       ) : (
       <main className="flex-1 overflow-y-auto">

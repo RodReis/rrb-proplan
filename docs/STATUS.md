@@ -18,8 +18,9 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Fatia 7 — Insight semântico: arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (prio: baixa) (spec: SPEC-007 aprovada-pi)
 
 ## Em Andamento
-- Fatia 1 — Fundação: monorepo (apps/api, apps/web), docker-compose, login GitHub OAuth (identity mínimo), Catalog com listagem de repos + marcar projeto gerenciado (desde: 2026-07-12)
-- Fatia 2 — Ingestion: entregue pelo Code (módulo ingestion, BullMQ, Trees/Blobs, hash/diff, 4 endpoints, workspace + aba Documentos, 18 testes verdes) — aguardando aceite runtime do PI com token OAuth (desde: 2026-07-12)
+- (vazio)
 
 ## Feito
 - Definição de arquitetura, ADRs e convenção de dados (em: 2026-07-12)
+- Fatia 1 — Fundação: monorepo, docker-compose, login GitHub OAuth (OAuth App), Catalog com listagem de repos + marcar gerenciado (em: 2026-07-12)
+- Fatia 2 — Ingestion: sync de docs via Trees/Blobs, hash/diff incremental, no-op idempotente, BullMQ, 4 endpoints, workspace + aba Documentos (react-markdown), 18 testes; aceito runtime pelo PI (em: 2026-07-12)
