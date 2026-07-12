@@ -98,17 +98,20 @@ function GraphCanvas({
   const positioned = useMemo(() => {
     const nodes = simNodes.map((n) => ({ ...n }));
     const links = simLinks.map((l) => ({ ...l }));
+    // Repulsão e distância escalam com o nº de nós para grafos grandes
+    // (rrb-adv tem 100+) não ficarem sobrepostos.
+    const spread = Math.min(2, 1 + nodes.length / 100);
     const sim = forceSimulation(nodes)
-      .force('charge', forceManyBody().strength(-320))
+      .force('charge', forceManyBody().strength(-400 * spread))
       .force(
         'link',
         forceLink(links)
           .id((d: SimulationNodeDatum & { id?: string }) => d.id!)
-          .distance(120),
+          .distance(140 * spread),
       )
       .force('center', forceCenter(0, 0))
       .stop();
-    for (let i = 0; i < 300; i++) sim.tick();
+    for (let i = 0; i < 400; i++) sim.tick();
     return nodes;
   }, [simNodes, simLinks]);
 
@@ -154,7 +157,8 @@ function GraphCanvas({
         onInit={() => {
           if (!computedRef.current) {
             computedRef.current = true;
-            setTimeout(() => fitView({ padding: 0.2 }), 0);
+            // maxZoom limita o afastamento com muitos nós (texto legível).
+            setTimeout(() => fitView({ padding: 0.2, maxZoom: 1 }), 0);
           }
         }}
         minZoom={0.1}
@@ -243,8 +247,9 @@ function nodeStyle(n: SimNode, dim: boolean): React.CSSProperties {
       border: '1px dashed #F04438',
       color: '#B42318',
       borderRadius: 8,
-      fontSize: 11,
-      padding: '6px 10px',
+      fontSize: 13,
+      fontWeight: 500,
+      padding: '8px 12px',
       opacity: dim ? 0.2 : 1,
       transition: 'opacity 150ms',
     };

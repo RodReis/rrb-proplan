@@ -80,7 +80,10 @@ export class GithubGitClient {
       body.encoding === 'base64'
         ? Buffer.from(body.content, 'base64')
         : Buffer.from(body.content);
-    return { content: buf.toString('utf-8'), byteSize: buf.byteLength };
+    // Postgres text não aceita byte NUL (0x00). Documentos com NUL embutido
+    // (encoding errado / binário) quebravam o sync inteiro — removemos.
+    const content = buf.toString('utf-8').replace(/\x00/g, '');
+    return { content, byteSize: buf.byteLength };
   }
 
   /**
