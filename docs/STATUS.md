@@ -8,10 +8,14 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 
 ## Backlog
 - Fatia 8 — Multi-tenant: RBAC, organizações, billing (prio: baixa, só se virar produto; OAuth antecipado pela Fatia 1 — ADR-007; sem spec por decisão — especulação até o PI decidir produtizar)
+- Fatia 9 — ProPlan como servidor MCP: expor "onde parei / próximo card / resumo" pro Claude Code que trabalha no repo-alvo (prio: baixa, pós-MVP; sem spec)
+- Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (prio: baixa; autorizado no adendo ao ADR-003, exige spec própria; ressalva: dependency graph desabilitado por padrão em repo privado)
+- Sinais de Issues/PRs/Discussions para enriquecer o "onde parou" (prio: baixa; ganho incerto em projeto solo abandonado, que costuma não ter issue)
+- Defasagem por documento (badge por aba) — só se o alerta global do ADR-010 se provar útil (prio: baixa)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (prio: baixa)
 
 ## A Fazer
-- Fatia 3 — Insight: resumo de estado, bootstrap de STATUS.md e configuração de provedor de IA (prio: alta) (spec: SPEC-003 aprovada-pi)
+- Fatia 3 — Insight: resumo de estado, bootstrap de STATUS.md, configuração de provedor de IA e alerta de documentação defasada (prio: alta) (spec: SPEC-003 aprovada-pi, ADR-010)
 - Fatia 4 — Grafo de links explícitos com react-flow + d3-force (prio: média) (spec: SPEC-004 aprovada-pi)
 - Fatia 5 — Kanban: CRUD de cards sobre STATUS.md, dnd-kit, write-back via commit + re-sync (ADR-009: sem webhook no MVP) (prio: alta) (spec: SPEC-005 aprovada-pi)
 - Fatia 6 — Abas Arquitetura, Design, Testes, Deploy e Skills & Agentes: render das fontes primárias, mermaid no viewer, parse de .claude/ e workflows (prio: média) (spec: SPEC-006 aprovada-pi)

@@ -6,7 +6,7 @@ Este é o **contrato de dados** do ProPlan: o que cada projeto gerenciado deve t
 
 | Aba | Fonte primária | Fallback |
 |---|---|---|
-| Visão Geral | — | IA: resumo versionado (`README.md` + `CLAUDE.md` + `docs/`) |
+| Visão Geral | Metadados de commit (frescor de docs vs código — ADR-010, sem IA) | IA: resumo versionado (`README.md` + `CLAUDE.md` + `docs/`) |
 | Kanban | `docs/STATUS.md` | Bootstrap IA propõe o arquivo |
 | Grafo | Links explícitos entre MDs | Arestas semânticas inferidas, marcadas `inferred` |
 | Arquitetura | `docs/ARCHITECTURE.md` | Inferência versionada |

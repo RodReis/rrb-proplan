@@ -20,6 +20,13 @@ Formato curto: contexto → decisão → consequências. Revisar o ADR antes de 
 **Decisão**: leitura exclusivamente via GitHub Git Trees + Contents API, restrita a `docs/`, `README.md`, `CLAUDE.md`, `.claude/`, `.github/workflows/`. `.claude/` e workflows entram porque alimentam as abas Skills & Agentes e Testes por parse determinístico, sem IA.
 **Consequências**: ingestão leve e rápida; abas dependentes de código (ex.: cobertura real de testes) ficam limitadas ao que a documentação/CI declara. Limite aceito conscientemente.
 
+**Adendo (2026-07-12) — metadados de commit e manifests de dependência**: a regra proíbe ler **conteúdo de código**, não proíbe ler **metadados sobre o código**. Ficam explicitamente autorizados:
+
+1. **Commits API** — data, SHA, autor e mensagem de commit, com filtro por `path`. Nunca `diff`, nunca `patch`, nunca conteúdo de arquivo fora do escopo do ADR-003. Habilita o ADR-010.
+2. **Dependency Graph / SBOM API** (`GET /repos/{owner}/{repo}/dependency-graph/sbom`) — lista de dependências em SPDX JSON, derivada dos manifests pelo próprio GitHub. Autorizado, **não implementado no MVP**. Ressalva registrada: em repositório **privado** o Dependency Graph vem **desabilitado por padrão** — qualquer feature construída sobre ele precisa de fallback explícito ("não habilitado neste repo"), nunca falhar em silêncio. Uso previsto: aba Arquitetura ("stack detectada") e Deploy. Requer spec própria antes de codificar.
+
+O que continua proibido: clonar o repo, baixar blobs fora do escopo do ADR-003, Code Search API, varredura de `TODO`, leitura de diffs.
+
 ## ADR-004 — BullMQ em vez de Kafka
 
 **Contexto**: jobs assíncronos (sync, inferência) precisam de fila com retry. Kafka traria custo operacional (broker, particionamento, ops) sem consumidor além do próprio monolito.
@@ -50,6 +57,26 @@ Formato curto: contexto → decisão → consequências. Revisar o ADR antes de 
 **Contexto**: o PI mantém chaves de Anthropic, OpenAI e OpenRouter e quer escolher o provedor sem mexer em código (decisão de 2026-07-12, SPEC-003).
 **Decisão**: interface `LlmClient` no módulo `insight` com dois adapters HTTP — Anthropic e OpenAI-compatível (cobre OpenAI e OpenRouter, mesmo formato de API). Provedor padrão escolhido na tela de Configurações (tabela `settings`); Anthropic é o default. Modelo por provedor vem de env, não da UI. Provedor sem chave no env fica desabilitado no menu.
 **Consequências**: troca de provedor sem redeploy; custo de manter dois formatos de client e prompts que funcionem bem em ambos (JSON estrito com validação). Prompt caching da Anthropic só beneficia o provedor padrão.
+
+## ADR-010 — Alerta de documentação defasada por metadados de commit
+
+**Contexto**: a dor central do produto é retomar projeto esquecido. O maior risco nesse cenário não é *não ter* documentação — é a documentação **mentir**: o código evoluiu, o `README` não. Todo o valor do painel (Visão Geral, Arquitetura, Design) desaba silenciosamente se o doc lido tem dois anos e o código tem três meses. Hoje não existe nenhum sinal disso.
+
+**Decisão**: calcular defasagem por **metadados de commit** (autorizados no adendo ao ADR-003), no fim de cada `sync-job`, com **duas** chamadas à Commits API:
+
+- `GET /repos/{o}/{r}/commits?path=docs&per_page=1` → `lastDocsCommitAt`
+- `GET /repos/{o}/{r}/commits?per_page=1` → `lastCodeCommitAt` (último commit do repo, qualquer path)
+
+Persistidos como colunas em `Project` — não em tabela nova, não em cache. Isso mantém o cálculo fora do caminho de renderização (ADR-002) e permite ordenar o catálogo por defasagem no futuro.
+
+**Regra do alerta**: dispara ⚠️ quando `lastCodeCommitAt > lastDocsCommitAt` **e** a diferença excede um limiar. O limiar é **configurável na tela de Configurações** (mesma tabela `settings` da SPEC-003), **padrão 90 dias**. `0` desliga o alerta e a UI passa a só exibir as duas datas.
+
+**Alternativas rejeitadas**:
+- *Por documento* (1 request por doc): daria badge por aba, mas custa N requests por sync (repo com 16 docs = 16 chamadas) para um ganho marginal sobre o sinal global. Reavaliar se o alerta global se provar útil.
+- *Cache Redis sob demanda*: reintroduz chamada externa no caminho de render — contradiz o ADR-002.
+- *Autoria do último commit* ("quem detém o contexto"): irrelevante com usuário único. O sinal é a **data**, não a pessoa.
+
+**Consequências**: determinístico, sem IA, custo fixo de 2 requests por sync. O sinal é grosseiro por construção — `lastCodeCommitAt` é o último commit *de qualquer coisa*, incluindo o próprio commit de docs que o ProPlan acabou de fazer (write-back de bootstrap/Kanban), o que pode zerar a defasagem artificialmente. Mitigação aceita: commits do próprio ProPlan tocam apenas `docs/`, então mexem em `lastDocsCommitAt` e `lastCodeCommitAt` juntos — o alerta some, mas por um motivo verdadeiro (o doc *acabou* de ser atualizado). Falso negativo possível: commit de código sem nenhum commit de doc há muito tempo é o caso que o alerta pega bem; o inverso (doc atualizado, código mentiroso) ele não pega — nem deveria.
 
 ## ADR-009 — Sem webhooks enquanto o ambiente for 100% local
 

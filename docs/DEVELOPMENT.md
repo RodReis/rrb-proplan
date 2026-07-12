@@ -51,19 +51,22 @@ Validado ao vivo com OAuth App real (login GitHub, catálogo com 22 repos):
 
 **Nota de ambiente:** portas de host remapeadas — Postgres `5433`, Redis `6380`, API `3311` (era 3000; colisão com stacks locais). Auth via **OAuth App** (não GitHub App — Client ID `Ov23…`, não `Iv23…`). `.env.example` e CLAUDE.md atualizados.
 
-## Fatia 3 — Insight: resumo, bootstrap e config de IA (SPEC-003, `aprovada-pi`) — `a-fazer`
+## Fatia 3 — Insight: resumo, bootstrap, config de IA e alerta de defasagem (SPEC-003, `aprovada-pi`) — `a-fazer`
 
-Só iniciar com a Fatia 2 `feito`.
+Só iniciar com a Fatia 2 `feito`. Escopo ampliado em 2026-07-12 pelo PI com o ADR-010 (alerta de doc defasada) — ver adendo ao ADR-003.
 
-1. `a-fazer` — Prisma: models `Settings` e `Insight`; migration; envs `LLM_MODEL_*`.
-2. `a-fazer` — `insight/domain`: interface `LlmClient`; `insight/infrastructure`: adapters Anthropic e OpenAI-compatível (OpenAI/OpenRouter via baseURL). Testes unitários de parsing/validação de JSON estrito.
-3. `a-fazer` — Configurações: `GET/PUT /settings` + tela (engrenagem no rail), provedores sem chave desabilitados.
-4. `a-fazer` — Job `insight` (BullMQ) disparado por `DocsSynced` com hash novo: resumo `{oQueE, ondeParou, oQueFalta[]}` persistido com provider/model/tokens; cap de tokens com truncamento por prioridade.
-5. `a-fazer` — Write-back: commit via Contents API com SHA base + tratamento de conflito (re-sync + 1 retry). Nasce em `insight/infrastructure`.
-6. `a-fazer` — Bootstrap STATUS.md: geração no formato do CONVENTION.md + endpoints de proposta/commit.
-7. `a-fazer` `[paralelo com 6]` — Web: aba Visão Geral (3 blocos, badge IA, Regenerar com confirmação, estados gerando/erro).
-8. `a-fazer` — Web: fluxo bootstrap (CTA → editor preview → aprovar e commitar → re-sync).
-9. `a-fazer` — Critérios da SPEC-003 conferidos; atualizar este arquivo + STATUS.md; commitar tudo.
+1. `a-fazer` — Prisma: models `Settings` (com `docsStalenessThresholdDays` default 90) e `Insight`; campos `lastDocsCommitAt`/`lastCodeCommitAt`/`commitMetaSyncedAt` em `Project`; migration; envs `LLM_MODEL_*`.
+2. `a-fazer` `[paralelo com 3]` — **Defasagem (ADR-010), back**: `GithubGitClient.getLastCommitDate(path?)` (Commits API, `per_page=1`); `SyncService` grava as duas datas no fim de todo run com sucesso (inclusive `noop`); falha aqui **não** falha o sync. `GET /projects/:id/freshness` no `catalog` (`stale` calculado na leitura, nunca persistido). **Testes unitários da regra de limiar** (acima/abaixo/limiar 0/datas nulas).
+3. `a-fazer` — `insight/domain`: interface `LlmClient`; `insight/infrastructure`: adapters Anthropic e OpenAI-compatível (OpenAI/OpenRouter via baseURL). Testes unitários de parsing/validação de JSON estrito.
+4. `a-fazer` — Configurações: `GET/PUT /settings` + tela (engrenagem no rail), provedores sem chave desabilitados, **campo de limiar de defasagem (padrão 90, `0` desliga)**.
+5. `a-fazer` — Job `insight` (BullMQ) disparado por `DocsSynced` com hash novo: resumo `{oQueE, ondeParou, oQueFalta[]}` persistido com provider/model/tokens; cap de tokens com truncamento por prioridade.
+6. `a-fazer` — Write-back: commit via Contents API com SHA base + tratamento de conflito (re-sync + 1 retry). Nasce em `insight/infrastructure`.
+7. `a-fazer` — Bootstrap STATUS.md: geração no formato do CONVENTION.md + endpoints de proposta/commit.
+8. `a-fazer` `[paralelo com 7]` — Web: aba Visão Geral — **faixa de frescor no topo** (neutra ou âmbar com ⚠️, sempre com as duas datas) + 3 blocos, badge IA, Regenerar com confirmação, estados gerando/erro.
+9. `a-fazer` — Web: fluxo bootstrap (CTA → editor preview → aprovar e commitar → re-sync).
+10. `a-fazer` — Critérios da SPEC-003 conferidos (incluindo os 4 novos de defasagem); atualizar este arquivo + STATUS.md; commitar tudo.
+
+> **Nota de ordem**: o item 2 é independente da IA e destrava valor sozinho. Se a Fatia 3 precisar ser fatiada por tempo, entregue 1+2+4(campo de limiar)+8(faixa) primeiro — é a Visão Geral já útil, sem gastar um token.
 
 ## Fatia 4 — Grafo de links explícitos (SPEC-004, `aprovada-pi`) — `a-fazer`
 
