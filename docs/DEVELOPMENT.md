@@ -51,9 +51,9 @@ Validado ao vivo com OAuth App real (login GitHub, catálogo com 22 repos):
 
 **Nota de ambiente:** portas de host remapeadas — Postgres `5433`, Redis `6380`, API `3311` (era 3000; colisão com stacks locais). Auth via **OAuth App** (não GitHub App — Client ID `Ov23…`, não `Iv23…`). `.env.example` e CLAUDE.md atualizados.
 
-## Fatia 3 — Insight: resumo, bootstrap, config de IA e alerta de defasagem (SPEC-003, `aprovada-pi`) — `feito`
+## Fatia 3 — Insight: resumo, bootstrap, config de IA e alerta de defasagem (SPEC-003, `aprovada-pi`) — `finalizado`
 
-Entregue pelo Claude Code. Escopo ampliado em 2026-07-12 pelo PI com o ADR-010. Aguardando aceite runtime do PI (chamadas reais de IA + write-back no GitHub) — ver checklist abaixo.
+Entregue pelo Claude Code e **aceito pelo PI em 2026-07-12** (validação runtime com chamadas reais de IA e write-back no GitHub). Escopo ampliado com o ADR-010.
 
 1. `feito` — Prisma: models `Settings` (enum `LlmProvider`, `docsStalenessThresholdDays` default 90) e `Insight` (enum `InsightKind`); campos `lastDocsCommitAt`/`lastCodeCommitAt`/`commitMetaSyncedAt` em `Project`; migration `fatia_3_insight`; envs `LLM_MODEL_*`.
 2. `feito` — **Defasagem (ADR-010), back**: `GithubGitClient.getLastCommitDate(path?)`; `SyncService.updateCommitMeta` grava as duas datas no fim de todo run (inclusive `noop`), tolerante a falha; `GET /projects/:id/freshness` no `catalog` (`stale` calculado na leitura via `computeFreshness`, nunca persistido). 7 testes de limiar.
@@ -66,15 +66,16 @@ Entregue pelo Claude Code. Escopo ampliado em 2026-07-12 pelo PI com o ADR-010. 
 9. `feito` — Web: `BootstrapDialog` (CTA → editor com preview markdown → aprovar e commitar → re-sync).
 10. `feito` — 42 testes verdes, builds API+web limpos, rotas mapeadas; DEVELOPMENT.md + STATUS.md atualizados. Aceite runtime pendente.
 
-### Validação pendente do PI (aceite runtime)
+### Aceite runtime (2026-07-12)
 
-Verificado sem custo de IA: 42 testes, build API+web, API sobe com todas as rotas de settings/insight/freshness/bootstrap. Falta o PI validar com chamadas reais:
-- Configurações: 3 provedores; sem chave desabilitado; escolha persiste.
-- Visão Geral: 3 blocos + badge IA (Anthropic default); Regenerar com confirmação; `insights.provider` reflete troca de provedor.
-- Sync sem mudança não re-chama IA (resumo já existe para o hash).
-- Bootstrap: CTA → editor → commit no GitHub (`proplan: bootstrap de STATUS.md`) → re-sync traz o STATUS.md; conflito de SHA → re-sync + aviso.
-- Defasagem: docs velhos + código recente além do limiar → faixa âmbar; baixar limiar muda o estado sem re-sync; limiar `0` some o ⚠️; repo sem commit em `docs` → sem alerta.
-- Falha do provedor → Visão Geral com erro + Tentar de novo; demais abas seguem.
+Validado ao vivo com chamadas reais de IA (Anthropic `claude-sonnet-5`):
+- ✅ Configurações: 3 provedores, Anthropic ativo, limiar 90 — tela renderiza e persiste.
+- ✅ Visão Geral: resumo gerado (1285 in / 318 out tokens), 3 blocos coerentes, badge "inferido por IA · anthropic", faixa de frescor ("Docs: — · Código: há 2 meses" no landpage sem `docs/`).
+- ✅ Bootstrap end-to-end: proposta IA → editor → commit `docs/STATUS.md` no `RodReis/landpage` via Contents API → re-sync automático trouxe o arquivo (landpage passou a ter README + docs/STATUS.md).
+- ✅ Evento `DocsSynced` re-enfileira resumo após o commit (jobId corrigido).
+- ⚠️ Bordas aceitas pelo PI por cobertura de código/testes, sem teste manual: faixa âmbar (docs velhos), troca de provedor em `insights.provider`, falha do provedor, conflito de SHA no write-back.
+
+**Bugs corrigidos no aceite:** (1) jobId do BullMQ não pode conter `:` — o job de resumo por evento falhava; trocado para `_`. (2) front quebrava com `res.json()` em corpo vazio (retorno `null` do Nest) — `request()` agora trata corpo vazio como `null`.
 
 > **Nota de ordem**: o item 2 é independente da IA e destrava valor sozinho. Se a Fatia 3 precisar ser fatiada por tempo, entregue 1+2+4(campo de limiar)+8(faixa) primeiro — é a Visão Geral já útil, sem gastar um token.
 
