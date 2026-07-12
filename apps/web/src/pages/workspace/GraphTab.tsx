@@ -1,11 +1,13 @@
 import {
-  forceCenter,
+  forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   type SimulationNodeDatum,
 } from 'd3-force';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -13,11 +15,13 @@ import ReactFlow, {
   MiniMap,
   Node,
   ReactFlowProvider,
-  useReactFlow,
+  useEdgesState,
+  useNodesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { api, DocGraph, GraphNode } from '../../lib/api';
 import { DocViewerPanel } from './DocViewerPanel';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface Props {
   projectId: string;
@@ -30,12 +34,71 @@ const KIND_COLOR: Record<string, string> = {
   doc: '#1D2939', // carbono (brand)
 };
 
+// Referências estáveis (fora do componente) — evitam re-render do ReactFlow.
+const FIT_OPTS = { padding: 0.2, maxZoom: 1 };
+const PRO_OPTS = { hideAttribution: true };
+
+// Estilos pré-computados com referência CONSTANTE por (kind, dim).
+// Identidade nova por render re-renderizava o card sob o cursor
+// (loop mouseenter/leave = piscar) — referência fixa mata o ciclo.
+const NODE_STYLES: Record<
+  string,
+  { normal: React.CSSProperties; dim: React.CSSProperties }
+> = (() => {
+  const base: React.CSSProperties = {
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 500,
+    padding: '8px 12px',
+    transition: 'opacity 150ms',
+  };
+  const solid = (bg: string) => ({
+    normal: { ...base, background: bg, color: '#fff', border: 'none', opacity: 1 },
+    dim: { ...base, background: bg, color: '#fff', border: 'none', opacity: 0.35 },
+  });
+  const ghost = (opacity: number): React.CSSProperties => ({
+    ...base,
+    background: '#FEF3F2',
+    border: '1px dashed #F04438',
+    color: '#B42318',
+    opacity,
+  });
+  return {
+    readme: solid(KIND_COLOR.readme),
+    claude: solid(KIND_COLOR.claude),
+    doc: solid(KIND_COLOR.doc),
+    ghost: { normal: ghost(1), dim: ghost(0.35) },
+  };
+})();
+
+const EDGE_STYLES = {
+  normal: { stroke: '#D0D5DD', opacity: 1, transition: 'opacity 150ms' },
+  normalDim: { stroke: '#D0D5DD', opacity: 0.25, transition: 'opacity 150ms' },
+  broken: {
+    stroke: '#F04438',
+    strokeDasharray: '4 4',
+    opacity: 1,
+    transition: 'opacity 150ms',
+  },
+  brokenDim: {
+    stroke: '#F04438',
+    strokeDasharray: '4 4',
+    opacity: 0.25,
+    transition: 'opacity 150ms',
+  },
+} as const;
+
 interface SimNode extends SimulationNodeDatum {
   id: string;
   label: string;
-  kind: string;
-  broken: boolean;
+  kind: string; // readme | claude | doc | ghost
   path: string | null; // null para nós-fantasma (quebrados)
+}
+
+interface SimLink {
+  source: string;
+  target: string;
+  broken: boolean;
 }
 
 type State =
@@ -71,7 +134,13 @@ export function GraphTab({ projectId, syncNonce }: Props) {
 
   return (
     <ReactFlowProvider>
-      <GraphCanvas projectId={projectId} graph={state.graph} />
+      {/* key remonta o canvas quando os dados mudam — nunca trocar os nós
+          de um canvas vivo por objetos novos (perderia as medições). */}
+      <GraphCanvas
+        key={`${projectId}:${syncNonce}`}
+        projectId={projectId}
+        graph={state.graph}
+      />
     </ReactFlowProvider>
   );
 }
@@ -85,85 +154,117 @@ function GraphCanvas({
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
-  const { fitView } = useReactFlow();
-  const computedRef = useRef(false);
 
-  // Monta nós (reais + fantasmas para alvos quebrados) e arestas.
   const { simNodes, simLinks, neighbors } = useMemo(
     () => buildGraph(graph),
     [graph],
   );
 
-  // Layout de força: roda a simulação uma vez (posições estáticas depois).
-  const positioned = useMemo(() => {
+  // Metadados por id para recomputar estilos sem recriar nós.
+  const metaById = useMemo(
+    () => new Map(simNodes.map((n) => [n.id, n])),
+    [simNodes],
+  );
+
+  // Layout de força: roda UMA vez; posições ficam estáticas.
+  const initialNodes = useMemo(() => {
     const nodes = simNodes.map((n) => ({ ...n }));
     const links = simLinks.map((l) => ({ ...l }));
-    // Repulsão e distância escalam com o nº de nós para grafos grandes
-    // (rrb-adv tem 100+) não ficarem sobrepostos.
-    const spread = Math.min(2, 1 + nodes.length / 100);
     const sim = forceSimulation(nodes)
-      .force('charge', forceManyBody().strength(-400 * spread))
+      .force('charge', forceManyBody().strength(-500))
       .force(
         'link',
         forceLink(links)
           .id((d: SimulationNodeDatum & { id?: string }) => d.id!)
-          .distance(140 * spread),
+          .distance(120),
       )
-      .force('center', forceCenter(0, 0))
+      .force('collide', forceCollide(90))
+      .force('x', forceX(0).strength(0.05))
+      .force('y', forceY(0).strength(0.05))
       .stop();
     for (let i = 0; i < 400; i++) sim.tick();
-    return nodes;
-  }, [simNodes, simLinks]);
 
-  const rfNodes: Node[] = positioned.map((n) => {
-    const dim = hovered !== null && hovered !== n.id && !neighbors.get(hovered)?.has(n.id);
-    return {
+    return nodes.map<Node>((n) => ({
       id: n.id,
       position: { x: n.x ?? 0, y: n.y ?? 0 },
       data: { label: n.label },
-      style: nodeStyle(n, dim),
+      style: NODE_STYLES[n.kind]?.normal ?? NODE_STYLES.doc.normal,
       type: 'default',
-    };
-  });
+      draggable: false,
+      connectable: false,
+    }));
+  }, [simNodes, simLinks]);
 
-  const rfEdges: Edge[] = simLinks.map((l, i) => {
-    const dim =
-      hovered !== null && l.source !== hovered && l.target !== hovered;
-    return {
-      id: `e${i}`,
-      source: typeof l.source === 'string' ? l.source : (l.source as SimNode).id,
-      target: typeof l.target === 'string' ? l.target : (l.target as SimNode).id,
-      animated: false,
-      style: {
-        stroke: l.broken ? '#F04438' : '#D0D5DD',
-        strokeDasharray: l.broken ? '4 4' : undefined,
-        opacity: dim ? 0.15 : 1,
-        transition: 'opacity 150ms',
-      },
-    };
-  });
+  const initialEdges = useMemo(
+    () =>
+      simLinks.map<Edge>((l, i) => ({
+        id: `e${i}`,
+        source: l.source,
+        target: l.target,
+        animated: false,
+        style: l.broken ? EDGE_STYLES.broken : EDGE_STYLES.normal,
+      })),
+    [simLinks],
+  );
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Hover: atualiza SÓ o style preservando os nós existentes (spread mantém
+  // width/height medidos). Substituir por objetos novos zerava as medições e
+  // o ReactFlow escondia tudo (visibility:hidden) até re-medir — o "sumiço".
+  useEffect(() => {
+    setNodes((prev) =>
+      prev.map((n) => {
+        const meta = metaById.get(n.id);
+        const kind = meta && meta.kind in NODE_STYLES ? meta.kind : 'doc';
+        const dim =
+          hovered !== null &&
+          hovered !== n.id &&
+          !neighbors.get(hovered)?.has(n.id);
+        const style = dim ? NODE_STYLES[kind].dim : NODE_STYLES[kind].normal;
+        return n.style === style ? n : { ...n, style };
+      }),
+    );
+    setEdges((prev) =>
+      prev.map((e) => {
+        const broken = e.style === EDGE_STYLES.broken || e.style === EDGE_STYLES.brokenDim;
+        const dim =
+          hovered !== null && e.source !== hovered && e.target !== hovered;
+        const style = broken
+          ? dim
+            ? EDGE_STYLES.brokenDim
+            : EDGE_STYLES.broken
+          : dim
+            ? EDGE_STYLES.normalDim
+            : EDGE_STYLES.normal;
+        return e.style === style ? e : { ...e, style };
+      }),
+    );
+  }, [hovered, metaById, neighbors, setNodes, setEdges]);
 
   return (
     <div className="relative h-full">
       <ReactFlow
-        nodes={rfNodes}
-        edges={rfEdges}
-        onNodeMouseEnter={(_, node) => setHovered(node.id)}
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        onNodeMouseEnter={(_, node) =>
+          setHovered((h) => (h === node.id ? h : node.id))
+        }
         onNodeMouseLeave={() => setHovered(null)}
         onNodeClick={(_, node) => {
           const gn = graph.nodes.find((x) => x.docId === node.id);
           if (gn) setSelected(gn);
         }}
-        onInit={() => {
-          if (!computedRef.current) {
-            computedRef.current = true;
-            // maxZoom limita o afastamento com muitos nós (texto legível).
-            setTimeout(() => fitView({ padding: 0.2, maxZoom: 1 }), 0);
-          }
-        }}
+        fitView
+        fitViewOptions={FIT_OPTS}
         minZoom={0.1}
         maxZoom={2}
-        proOptions={{ hideAttribution: true }}
+        proOptions={PRO_OPTS}
       >
         <Background color="#EAECF0" gap={20} />
         <MiniMap
@@ -176,20 +277,34 @@ function GraphCanvas({
       <Legend />
 
       {selected && (
-        <DocViewerPanel
-          projectId={projectId}
-          path={selected.path}
-          onClose={() => setSelected(null)}
-        />
+        <ErrorBoundary
+          key={selected.docId}
+          fallback={(err, reset) => (
+            <aside className="absolute right-0 top-0 z-20 flex h-full w-[420px] flex-col border-l border-border bg-surface p-4 shadow-lg">
+              <button
+                onClick={() => {
+                  reset();
+                  setSelected(null);
+                }}
+                className="self-end text-text-muted hover:text-text"
+              >
+                ✕
+              </button>
+              <p className="mt-2 text-sm text-error">
+                Erro ao exibir o documento: {err.message}
+              </p>
+            </aside>
+          )}
+        >
+          <DocViewerPanel
+            projectId={projectId}
+            path={selected.path}
+            onClose={() => setSelected(null)}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );
-}
-
-interface SimLink {
-  source: string;
-  target: string;
-  broken: boolean;
 }
 
 function buildGraph(graph: DocGraph): {
@@ -201,7 +316,6 @@ function buildGraph(graph: DocGraph): {
     id: n.docId,
     label: n.path,
     kind: n.kind,
-    broken: false,
     path: n.path,
   }));
 
@@ -211,13 +325,7 @@ function buildGraph(graph: DocGraph): {
     if (e.broken && !ghostId.has(e.targetPath)) {
       const id = `ghost:${e.targetPath}`;
       ghostId.set(e.targetPath, id);
-      simNodes.push({
-        id,
-        label: e.targetPath,
-        kind: 'ghost',
-        broken: true,
-        path: null,
-      });
+      simNodes.push({ id, label: e.targetPath, kind: 'ghost', path: null });
     }
   }
 
@@ -238,33 +346,6 @@ function buildGraph(graph: DocGraph): {
   }
 
   return { simNodes, simLinks, neighbors };
-}
-
-function nodeStyle(n: SimNode, dim: boolean): React.CSSProperties {
-  if (n.broken) {
-    return {
-      background: '#FEF3F2',
-      border: '1px dashed #F04438',
-      color: '#B42318',
-      borderRadius: 8,
-      fontSize: 13,
-      fontWeight: 500,
-      padding: '8px 12px',
-      opacity: dim ? 0.2 : 1,
-      transition: 'opacity 150ms',
-    };
-  }
-  const color = KIND_COLOR[n.kind] ?? KIND_COLOR.doc;
-  return {
-    background: color,
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    fontSize: 11,
-    padding: '6px 10px',
-    opacity: dim ? 0.2 : 1,
-    transition: 'opacity 150ms',
-  };
 }
 
 function Legend() {

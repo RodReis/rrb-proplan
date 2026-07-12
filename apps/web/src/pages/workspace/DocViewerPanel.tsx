@@ -51,7 +51,8 @@ export function DocViewerPanel({ projectId, path, onClose }: Props) {
           ✕
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      {/* overscroll-contain: o fim do scroll do doc não vaza zoom pro grafo atrás */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
         {path === null && (
           <p className="text-sm text-text-muted">
             Este documento é referenciado mas não existe no repositório (link
