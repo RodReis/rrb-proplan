@@ -8,17 +8,24 @@ datasource db {
 }
 
 model User {
-  id                   String    @id @default(uuid())
-  githubId             BigInt    @unique @map("github_id")
-  login                String
-  name                 String?
-  avatarUrl            String?   @map("avatar_url")
-  encryptedGithubToken String    @map("encrypted_github_token")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
-  projects             Project[]
+  id                     String    @id @default(uuid())
+  githubId               BigInt    @unique @map("github_id")
+  login                  String
+  name                   String?
+  avatarUrl              String?   @map("avatar_url")
+  encryptedUserToken     String?   @map("encrypted_user_token")
+  encryptedRefreshToken  String?   @map("encrypted_refresh_token")
+  tokenExpiresAt         DateTime? @map("token_expires_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  projects               Project[]
 
   @@map("users")
+}
+
+enum InstallationStatus {
+  active
+  missing
 }
 
 model Project {
@@ -30,6 +37,8 @@ model Project {
   description  String?
   defaultBranch String  @map("default_branch")
   isPrivate    Boolean  @map("is_private")
+  installationId     Int?               @map("installation_id")
+  installationStatus InstallationStatus @default(active) @map("installation_status")
   docsScopeHash String? @map("docs_scope_hash")
   lastSyncAt   DateTime? @map("last_sync_at")
   lastDocsCommitAt   DateTime? @map("last_docs_commit_at")
