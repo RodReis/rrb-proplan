@@ -26,7 +26,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (res.status === 401) throw new UnauthorizedError();
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
-  return res.status === 204 ? (undefined as T) : res.json();
+  if (res.status === 204) return undefined as T;
+  // Nest serializa retorno null/undefined como corpo vazio — não quebrar no json().
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
 }
 
 export class UnauthorizedError extends Error {}

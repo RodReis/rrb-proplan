@@ -34,7 +34,7 @@ export class InsightEventListener {
       'summary',
       { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
       {
-        jobId: `${event.projectId}:${event.docsScopeHash}`,
+        jobId: `${event.projectId}_${event.docsScopeHash}`,
         attempts: 2,
         backoff: { type: 'exponential', delay: 5000 },
         removeOnComplete: 50,
