@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  githubId             BigInt    @unique @map("github_id")
+  login                String
+  name                 String?
+  avatarUrl            String?   @map("avatar_url")
+  encryptedGithubToken String    @map("encrypted_github_token")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  projects             Project[]
+
+  @@map("users")
+}
+
+model Project {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  githubRepoId BigInt   @map("github_repo_id")
+  owner        String
+  name         String
+  description  String?
+  defaultBranch String  @map("default_branch")
+  isPrivate    Boolean  @map("is_private")
+  docsScopeHash String? @map("docs_scope_hash")
+  lastSyncAt   DateTime? @map("last_sync_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents    Document[]
+  syncRuns     SyncRun[]
+
+  @@unique([userId, githubRepoId])
+  @@map("projects")
+}
+
+model Document {
+  id             String   @id @default(uuid())
+  projectId      String   @map("project_id")
+  path           String
+  blobSha        String   @map("blob_sha")
+  content        String
+  frontmatter    Json?
+  isConventional Boolean  @default(false) @map("is_conventional")
+  byteSize       Int      @map("byte_size")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, path])
+  @@map("documents")
+}
+
+enum SyncStatus {
+  queued
+  running
+  success
+  noop
+  failed
+}
+
+model SyncRun {
+  id            String     @id @default(uuid())
+  projectId     String     @map("project_id")
+  status        SyncStatus
+  docsScopeHash String?    @map("docs_scope_hash")
+  added         Int        @default(0)
+  updated       Int        @default(0)
+  removed       Int        @default(0)
+  skipped       Int        @default(0)
+  error         String?
+  startedAt     DateTime   @default(now()) @map("started_at")
+  finishedAt    DateTime?  @map("finished_at")
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, startedAt])
+  @@map("sync_runs")
+}

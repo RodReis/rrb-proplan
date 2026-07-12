@@ -1,0 +1,99 @@
+@import 'tailwindcss';
+
+/* Tokens do docs/DESIGN.md */
+@theme {
+  --color-bg: #fcfcfd;
+  --color-surface: #ffffff;
+  --color-border: #eaecf0;
+  --color-text: #101828;
+  --color-text-muted: #475467;
+  --color-brand: #6941c6;
+  --color-warning: #f79009;
+  --color-success: #12b76a;
+  --color-error: #f04438;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Focus ring universal (DESIGN.md — bordas e focus) */
+:focus-visible {
+  outline: none;
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brand) 25%, transparent);
+  transition: box-shadow 150ms var(--ease-out-expo);
+}
+
+/* Press feedback em botões (DESIGN.md — botões) */
+button:active {
+  transform: scale(0.97);
+}
+
+/* Render de markdown no viewer de Documentos (sem plugin typography) */
+.prose-doc {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-text);
+}
+.prose-doc h1 { font-size: 24px; font-weight: 600; margin: 1.2em 0 0.5em; }
+.prose-doc h2 { font-size: 19px; font-weight: 600; margin: 1.2em 0 0.5em; }
+.prose-doc h3 { font-size: 16px; font-weight: 600; margin: 1em 0 0.4em; }
+.prose-doc p,
+.prose-doc ul,
+.prose-doc ol { margin: 0.6em 0; }
+.prose-doc ul { list-style: disc; padding-left: 1.4em; }
+.prose-doc ol { list-style: decimal; padding-left: 1.4em; }
+.prose-doc a { color: var(--color-brand); text-decoration: underline; }
+.prose-doc code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.prose-doc pre {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1em;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.prose-doc pre code { background: none; border: none; padding: 0; }
+.prose-doc blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 1em;
+  color: var(--color-text-muted);
+  margin: 0.8em 0;
+}
+.prose-doc table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+  font-size: 13px;
+}
+.prose-doc th,
+.prose-doc td {
+  border: 1px solid var(--color-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.prose-doc th { background: var(--color-bg); font-weight: 600; }
+.prose-doc hr { border: none; border-top: 1px solid var(--color-border); margin: 1.5em 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
