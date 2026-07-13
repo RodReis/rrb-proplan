@@ -37,6 +37,7 @@ O ProPlan autentica por **GitHub App** (ADR-015 / SPEC-008), não OAuth App. Sã
 2. **GitHub App name**: livre (ex.: `rrb-proplan-local`). O *slug* gerado (minúsculas com hífens) vai em `GITHUB_APP_SLUG`.
 3. **Homepage URL**: `http://localhost:5180`.
 4. **Callback URL**: `http://localhost:3311/auth/github/callback`. Marque **Request user authorization (OAuth) during installation** e **Expire user authorization tokens** (habilita o refresh token).
+4b. **Setup URL (optional)**: `http://localhost:5180` (marque **Redirect on update**). Sem ela, o GitHub deixa o usuário parado na tela dele após instalar, em vez de devolvê-lo ao ProPlan.
 5. **Webhook**: **desmarque Active** (ADR-009 — ambiente 100% local, sem túnel).
 6. **Permissions → Repository**: `Contents` **Read & write**, `Issues` **Read & write**, `Metadata` **Read-only**, `Actions` **Read-only**. Nada além.
 7. **Where can this GitHub App be installed?**: *Only on this account*.
