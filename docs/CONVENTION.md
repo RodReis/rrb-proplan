@@ -22,7 +22,7 @@ Arquivo que não resolve nenhuma entidade continua existindo como **documento li
 | Aba | Nível 1 (convenção) | Nível 2 (aliases reconhecidos) | Sem fonte |
 |---|---|---|---|
 | Visão Geral | metadados de commit (ADR-010, sem IA) | — | resumo por IA (versionado) |
-| Kanban | **GitHub Issues** (label `proplan:*`; `closed` = Feito/Descartado) — ADR-011 | — | repo sem Issues → leitura de `docs/STATUS.md` (degradado) |
+| Kanban | **GitHub Issues** (label `proplan:*`; a issue só fecha no **aceite**) — ADR-011 | — | repo sem Issues → leitura de `docs/STATUS.md` (degradado) |
 | Grafo | links explícitos entre MDs | — | arestas semânticas inferidas (`inferred`) |
 | Arquitetura | `docs/ARCHITECTURE.md` | `architecture` · `arquitetura` · `arch` · `design-doc` · `docs/arch/` | IA (Fatia 7) → senão "não documentado" |
 | Decisões / ADRs | `docs/DECISIONS.md` | `adr/` · `adrs/` · `decisions/` · `decisoes/` · `docs/adr/**` (diretório = coleção) | "não documentado" |
@@ -99,7 +99,7 @@ updated: 2026-07-12
 - Integração GitHub OAuth (#41)
 
 ## Feito
-- Setup do projeto (#12, entregue em: 2026-06-20 — aguardando aceite)
+- Setup do projeto (#12 — entregue, aguardando aceite)
 
 ## Finalizado
 - Fundação: monorepo e login (#3, aceito em: 2026-06-18)
@@ -115,13 +115,15 @@ Mapeamento issue → coluna:
 | Backlog | `open` + `proplan:backlog` (ou `open` sem label `proplan:*`) | — |
 | A Fazer | `open` + `proplan:todo` | — |
 | Em Andamento | `open` + `proplan:doing` | — |
-| **Feito** | `closed`, **sem** label extra | entregue — **aguardando aceite do dono** |
+| **Feito** | **`open`** + `proplan:done` | entregue — **aguardando aceite do dono** |
 | **Finalizado** | `closed` + `proplan:finalizado` | **aceito pelo dono** |
 | **Descartado** | `closed` + `proplan:descartado` | decisão de não fazer |
 
-Issue nunca é deletada — descartar é fechar com label. `closed_at` é o `closed_at` real da issue: **fato**, não carimbo do ProPlan.
+**A issue só fecha quando o trabalho realmente acabou** — e quem fecha é o dono, aceitando. Fechar é ato deliberado, nunca efeito colateral de merge.
 
-**`closes #42` num PR cai em Feito, nunca em Finalizado.** Issue é binária no GitHub; se Finalizado fosse o simples `closed`, o merge de um PR marcaria como "aceito" um trabalho que ninguém revisou. O aceite é o dono **aplicando a label** — ato deliberado, que nenhuma automação forja.
+Issue nunca é deletada — descartar é fechar com label. `closed_at` marca o **aceite** (não a entrega).
+
+**Nunca use `closes #N` num PR de repo gerenciado**: o merge fecharia a issue e **forjaria o aceite** do dono. Use `refs #N`. Se acontecer mesmo assim, a issue cai em **Finalizado** com badge **"fechada fora do ProPlan"** — o ProPlan não inventa aceite, ele **sinaliza a ausência de evidência**.
 
 **Carimbo de aceite/descarte**: mover para Finalizado ou Descartado faz o ProPlan **comentar na issue** (`proplan: finalizado pelo PI em <data>`). `closed_at` marca a entrega; o comentário marca o aceite. Permanente, auditável, no GitHub.
 

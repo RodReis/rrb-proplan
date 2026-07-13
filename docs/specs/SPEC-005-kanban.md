@@ -17,7 +17,7 @@ Gerir o andamento do projeto movendo cards, com o **GitHub Issues** como dono do
 
 Issue tem só `open`/`closed`. As quatro colunas da convenção precisam morar em algum lugar:
 
-- **Escolhido — labels `proplan:*`**: `proplan:backlog`, `proplan:todo`, `proplan:doing`; **`closed` = Feito** (não usa label — o estado nativo já diz). Issue aberta e gerenciada **sem** label `proplan:*` cai em `Backlog` por padrão. REST puro, funciona em qualquer repo com Issues habilitada, e é reversível (apagar as labels devolve o repo ao estado original).
+- **Escolhido — labels `proplan:*`**: `proplan:backlog|todo|doing|done` (todas com a issue **`open`**) + `proplan:finalizado|descartado` (com a issue `closed`). Issue aberta e gerenciada **sem** label `proplan:*` cai em `Backlog` por padrão. REST puro, funciona em qualquer repo com Issues habilitada, e é reversível (apagar as labels devolve o repo ao estado original).
 - **Rejeitado no MVP — GitHub Projects v2**: campo `Status` nativo, ordenação manual e views prontas — mas exige GraphQL, exige um Project criado e configurado por repo, e acopla o Kanban à forma como cada projeto usa Projects. Reavaliar no MVP2, quando a ordenação manual e sub-issues entrarem em pauta.
 
 ## Escopo
@@ -30,8 +30,9 @@ Issue tem só `open`/`closed`. As quatro colunas da convenção precisam morar e
   | ação | chamada |
   |---|---|
   | mover entre colunas abertas | trocar label `proplan:*` |
-  | mover para Feito | `PATCH state=closed` (+ remover label `proplan:*`) |
-  | tirar de Feito | `PATCH state=open` + aplicar a label da coluna destino |
+  | mover para **Feito** | trocar label → `proplan:done`. **A issue continua `open`** |
+  | mover para **Finalizado** | `PATCH state=closed` + label `proplan:finalizado` (+ comentário de carimbo) |
+  | tirar de Finalizado/Descartado | `PATCH state=open` + aplicar a label da coluna destino |
   | criar card | `POST /issues` (título + label da coluna) |
   | editar título/prioridade | `PATCH /issues/{n}` (título; prioridade = label `prio:alta\|media\|baixa`) |
   | atribuir / desatribuir | `PATCH /issues/{n}` com `assignees` (**no máximo um** — ver abaixo) |
@@ -39,19 +40,24 @@ Issue tem só `open`/`closed`. As quatro colunas da convenção precisam morar e
 
 - **Identidade do card = `issue.number`.** Estável. Some a gambiarra de identificar card por `coluna + índice + hash do texto`.
 - **Granularidade: `card = fatia`** (ADR-011, decisão do PI em 2026-07-13). **Uma issue por fatia**, não por sub-item. Motivo: o `DEVELOPMENT.md` também rastreia estado (checkmarks por passo); card na granularidade do sub-item colocaria **o mesmo fato em dois lugares**. Issues respondem *"qual fatia está em qual coluna"*; o `DEVELOPMENT.md` responde *"onde estou dentro da fatia"*. Granularidades diferentes ⇒ sobreposição zero.
-- **Seis colunas** (emenda de 2026-07-13; a convenção v1 tinha quatro): Backlog · A Fazer · Em Andamento · **Feito** · **Finalizado** · **Descartado**.
+- **Seis colunas** (a convenção v1 tinha quatro). Mapeamento **corrigido em 2026-07-13** (ADR-011):
 
   | coluna | estado da issue | significado |
   |---|---|---|
-  | Feito | `closed`, **sem** label extra | entregue pelo Code — **aguardando aceite do PI** |
-  | Finalizado | `closed` + `proplan:finalizado` | **aceito pelo PI** |
-  | Descartado | `closed` + `proplan:descartado` | decisão de não fazer |
+  | Backlog · A Fazer · Em Andamento | `open` + `proplan:backlog\|todo\|doing` | — |
+  | **Feito** | **`open`** + `proplan:done` | entregue — **aguardando aceite do dono** |
+  | **Finalizado** | `closed` + `proplan:finalizado` | **aceito** |
+  | **Descartado** | `closed` + `proplan:descartado` | decisão de não fazer |
 
-  **Feito é uma fila com dono** (o PI): mostra o que está esperando aceite. Não é badge, é estágio de fluxo.
+  **A issue só fecha quando o trabalho realmente acabou.** Fechar é ato deliberado do dono, nunca efeito colateral de merge.
 
-  **`Finalizado` NÃO pode ser um estado `open`.** Issue é binária no GitHub: se Finalizado fosse `closed`, o merge de um PR com `closes #42` marcaria como *"aceito pelo PI"* um trabalho que o PI nunca viu — mentira gerada pela automação nativa do GitHub. Com o mapeamento acima, `closes #42` cai em **Feito**, que é o significado certo; o **aceite é o PI aplicando a label**, ato deliberado que nenhuma automação forja.
+  **`Feito` era `closed` na versão anterior — estava errado.** O motivo do erro era automação barata (`closes #42` fecha a issue no merge ⇒ card cai em Feito sozinho, zero código). O defeito: trabalho **entregue e não aceito** apareceria **fechado no GitHub** — e o ProPlan **não é o único leitor** (ADR-017: o GitHub MCP serve issues a agentes). Um agente perguntando *"o que está aberto?"* não veria o item pendente e concluiria que está tudo resolvido. É o **"fechamento frágil"** que o MVP2 promete detectar: o produto estava fabricando o defeito que existe para caçar.
 
-  Reabrir (de qualquer coluna fechada) = arrastar para uma coluna aberta: reabre a issue e remove a label `proplan:finalizado`/`proplan:descartado`.
+  **`closes #N` fica proibido no nosso processo** (usar `refs #N` — `CLAUDE.md`): senão o merge fecharia a issue e **forjaria o aceite**.
+
+  **Feito é uma fila com dono**: mostra o que está esperando aceite. Não é badge, é estágio de fluxo.
+
+  Reabrir (de Finalizado/Descartado) = arrastar para uma coluna aberta: reabre a issue e remove a label.
 
 - **Assignee (emenda de 2026-07-13)** — **um só**, exibido no card.
 
@@ -70,7 +76,7 @@ Issue tem só `open`/`closed`. As quatro colunas da convenção precisam morar e
 
   - Gatilho: após cada mutação confirmada **e** ao final de cada `sync-job` cujo estado de issues mudou. Debounce por projeto (janela curta) para não gerar um commit por card arrastado.
   - Mensagem: `proplan: atualiza STATUS.md (projeção das Issues)`.
-  - Cada card na projeção carrega o link e o número da issue: `- Tela de configurações (#42, prio: alta)`. Coluna Feito usa a data real de `closed_at` — **fato**, não carimbo nosso.
+  - Cada card na projeção carrega o link e o número da issue: `- Tela de configurações (#42, prio: alta)`. Finalizado/Descartado usam o `closed_at` real da issue — **fato**, não carimbo nosso. **Feito não tem data** (a issue ainda está aberta).
   - Escrita **de fora para dentro**: o ProPlan gera o arquivo inteiro a cada vez. **Não há round-trip fiel** — o arquivo é artefato de build, não documento humano. Isso elimina o requisito mais caro da spec anterior.
   - Edição manual é **sobrescrita** na próxima projeção. A UI avisa quando detecta divergência.
 
@@ -109,7 +115,8 @@ Webhooks/túnel (ADR-009); **GitHub Projects v2**; ordenação manual dentro da 
 ## Critérios de aceite
 
 - [ ] Mover card na UI aplica/troca a label `proplan:*` na issue correspondente no GitHub; recarregar o ProPlan reflete o estado vindo da API.
-- [ ] Mover para **Feito** fecha a issue no GitHub; tirar de Feito reabre e aplica a label da coluna destino.
+- [ ] Mover para **Feito** aplica `proplan:done` e a issue **continua `open`** no GitHub. Mover para **Finalizado** é o que a **fecha**.
+- [ ] **Issue `closed` sem label `proplan:*`** (fechada direto no GitHub, ou por um `closes #N` de um PR qualquer): cai em **Finalizado**, com badge **"fechada fora do ProPlan"**. Em repo comum, `closed` significa concluído — forçar um estado exótico seria impor nossa convenção (ADR-014). Mas a **ausência de evidência de aceite é sinalizada**, nunca disfarçada.
 - [ ] Criar card cria issue com título e labels corretas; editar altera título/prioridade.
 - [ ] **Assignee**: atribuir pelo popover aplica `assignees` na issue do GitHub; o avatar aparece no card; desatribuir remove e o card fica com **espaço vazio** (não placeholder).
 - [ ] Issue que veio do GitHub com **2+ assignees** mostra o primeiro + `+N`; editar pelo ProPlan **substitui** por um só.
@@ -117,7 +124,7 @@ Webhooks/túnel (ADR-009); **GitHub Projects v2**; ordenação manual dentro da 
 - [ ] **Autor não aparece em card nenhum** (é sempre `proplan[bot]`/PI — decisão explícita, não esquecimento).
 - [ ] **Descartar** move para a coluna Descartado (issue `closed` + `proplan:descartado`); a coluna é visível e colapsável; **nenhuma issue é deletada** em nenhum fluxo.
 - [ ] **Feito × Finalizado**: mover para Finalizado aplica `proplan:finalizado` numa issue já `closed`; a issue **não muda de estado no GitHub** (continua `closed`).
-- [ ] **PR com `closes #42` cai em Feito, nunca em Finalizado.** Teste explícito — é a razão de o mapeamento ser esse. Nenhuma automação pode produzir um "aceito pelo PI".
+- [ ] **Nenhuma automação produz "Finalizado".** Só a ação explícita do dono no board (ou aplicar a label à mão no GitHub) leva um card para Finalizado.
 - [ ] **Comentário de carimbo**: mover para Finalizado/Descartado posta um comentário na issue (`proplan: finalizado pelo PI em <data>`), visível no GitHub. Mover de volta **não apaga** o comentário.
 - [ ] As três colunas fechadas (Feito, Finalizado, Descartado) são mutuamente exclusivas: uma issue `closed` com `proplan:finalizado` **não** aparece em Feito nem em Descartado.
 - [ ] Arrastar um card de Descartado para A Fazer **reabre** a issue e remove a label `proplan:descartado`.

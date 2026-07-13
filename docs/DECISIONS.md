@@ -110,22 +110,34 @@ Persistidos como colunas em `Project` — não em tabela nova, não em cache. Is
 
 **Momento da virada — decidido pelo PI em 2026-07-12: antecipado para a Fatia 5.** A SPEC-005 foi reescrita sobre este ADR (Issues como fonte) antes de qualquer linha de código. Custo aceito: reconsentimento de OAuth com escopo de escrita agora, e migração do bootstrap da Fatia 3 (que gerava `STATUS.md` por IA e passa a **criar issues**). Ganho: nenhum write-path descartável é escrito, e o requisito mais caro da spec anterior — round-trip fiel byte a byte do markdown — **deixa de existir**, porque a projeção é gerada do zero a cada vez.
 
-**Onde a coluna mora** (emenda de 2026-07-13 — **6 colunas**):
+**Onde a coluna mora** (**corrigido em 2026-07-13** — ver "Erro corrigido" abaixo):
 
 | coluna | estado da issue |
 |---|---|
 | Backlog | `open` + `proplan:backlog` (ou `open` sem label `proplan:*`) |
 | A Fazer | `open` + `proplan:todo` |
 | Em Andamento | `open` + `proplan:doing` |
-| **Feito** | `closed`, **sem** label extra — *entregue pelo Code, aguardando aceite* |
-| **Finalizado** | `closed` + `proplan:finalizado` — *aceito pelo PI* |
-| Descartado | `closed` + `proplan:descartado` |
+| **Feito** | **`open`** + `proplan:done` — *entregue, aguardando aceite* |
+| **Finalizado** | `closed` + `proplan:finalizado` — *aceito pelo dono* |
+| Descartado | `closed` + `proplan:descartado` — *decisão de não fazer* |
 
-**Por que "Feito" e "Finalizado" são colunas, e não um badge**: o `DEVELOPMENT.md` já distingue `feito` (o Code entregou) de `finalizado` (o PI aceitou). "Feito" **é uma fila com dono** — trabalho parado aguardando ação do PI. Coluna existe para isso. Um board que mostra "3 fatias esperando aceite" é útil; um badge cinza escondido dentro de Feito, não.
+**A issue só fecha quando o trabalho realmente acabou.** Fechar é **ato deliberado do dono**, nunca efeito colateral de merge.
 
-**Por que Finalizado é `closed` + label, e não um estado `open`** — a pegadinha que decide a implementação: issue no GitHub é **binária**. Se `Finalizado = closed`, o merge de um PR com `closes #42` fecharia a issue e o board marcaria como **"aceito pelo PI" um trabalho que o PI nunca viu** — uma mentira gerada pelo comportamento *nativo* do GitHub. Com o mapeamento acima, `closes #42` cai em **Feito** (entregue), que é o significado correto; o **aceite é o PI aplicando a label**, um ato deliberado que **nenhuma automação consegue forjar**.
+**Por que "Feito" e "Finalizado" são colunas, e não um badge**: "Feito" **é uma fila com dono** — trabalho parado aguardando aceite. Coluna existe para isso. Um board que mostra "3 fatias esperando aceite" é útil; um badge escondido dentro de Feito, não.
 
-**Carimbo de aceite**: `closed_at` registra a **entrega**, não o **aceite** — e a data de aplicação de label não é recuperável de forma barata. Então, ao mover para **Finalizado** ou **Descartado**, o ProPlan **posta um comentário na issue** (`proplan: finalizado pelo PI em <data>` / `proplan: descartado em <data>`). Fica no GitHub, é permanente, auditável, sobrevive ao ProPlan, e é **evidência real** — não cache nosso.
+### Erro corrigido em 2026-07-13 — `Feito` era `closed`, e estava errado
+
+A versão anterior deste ADR mapeava **`Feito = closed` sem label**. O motivo era automação barata: `closes #42` no corpo do PR fecha a issue nativamente no merge ⇒ o card cairia em Feito sozinho, com estado derivado de evidência e **zero código**. **Otimizei por automação e paguei com verdade.**
+
+**O defeito**: uma fatia **entregue e não aceita** apareceria **fechada no GitHub**. E o ProPlan **não é o único leitor** — o **ADR-017** registra que o GitHub MCP serve issues a agentes. Um agente perguntando *"o que está aberto neste repo?"* **não veria** o item pendente de aceite e concluiria que está tudo resolvido. Trabalho que ninguém revisou, marcado como concluído para todo mundo que não usa o ProPlan.
+
+Isso é, literalmente, o **"fechamento frágil"** que o MVP2 se propõe a detectar. O produto estava **fabricando o defeito que existe para caçar**.
+
+**Consequência**: `closes #N` no PR passa a ser **proibido no nosso processo** (usar `refs #N` — ver `CLAUDE.md`); senão o merge fecharia a issue e **forjaria o aceite**, exatamente o que este ADR proíbe.
+
+**O que se perde, e como recuperar**: some a propriedade "estado derivado de evidência, não de auto-relato" — quem marca Feito volta a ser o executor. Recuperação, melhor que o original: **o ProPlan lê os PRs vinculados à issue** — issue com PR mergeado ⇒ Feito, derivado de evidência **sem** fechar a issue. E de brinde nasce o sinal do MVP2 no MVP1: **"card em Feito sem PR mergeado" = fechamento frágil**. Enquanto a leitura de PRs não existir, o executor aplica `proplan:done` **só depois do merge**, com o link do PR no card — auto-relato **com prova anexada e verificável**.
+
+**Carimbo**: ao mover para **Finalizado** ou **Descartado**, o ProPlan **posta um comentário na issue** (`proplan: finalizado pelo PI em <data>` / `proplan: descartado em <data>`). Fica no GitHub, permanente, auditável, sobrevive ao ProPlan — **evidência real**, não cache nosso. `closed_at` passa a marcar o **aceite** (não a entrega), o que agora é honesto.
 
 GitHub Projects v2 (campo Status nativo, ordenação manual) foi **rejeitado no MVP** — exige GraphQL e um Project configurado por repo; reavaliar no MVP2 junto com sub-issues.
 

@@ -37,7 +37,7 @@ export function DesignTab({ projectId, syncNonce, onCorrect }: Props) {
   }, [projectId, syncNonce]);
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Design" spans={payload?.spans} onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Design" spans={payload?.spans} inferred={payload?.inferred === true} onCorrect={onCorrect}>
       {payload?.inferred === true && (
         <div
           className="mb-4 flex items-center justify-between rounded-md border p-3 text-xs"
