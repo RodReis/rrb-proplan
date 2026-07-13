@@ -65,6 +65,18 @@ export class InsightEventListener {
         removeOnFail: 50,
       },
     );
+    this.logger.log(`DocsSynced → enfileira fallback (arquitetura/design) do projeto ${event.projectId}`);
+    await this.queue.add(
+      'fallback',
+      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      {
+        jobId: `${event.projectId}_fallback_${event.docsScopeHash}`,
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 50,
+        removeOnFail: 50,
+      },
+    );
   }
 }
 
@@ -84,6 +96,11 @@ export class InsightWorker extends WorkerHost {
     }
     if (job.name === 'classify') {
       await this.insight.classifyAbsent(job.data.projectId);
+      return;
+    }
+    if (job.name === 'fallback') {
+      await this.insight.generateFallback(job.data.projectId, 'architecture');
+      await this.insight.generateFallback(job.data.projectId, 'design');
       return;
     }
     await this.insight.generateSummary(job.data.projectId);

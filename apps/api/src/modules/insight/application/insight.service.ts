@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { InsightKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
@@ -23,13 +23,18 @@ import {
   parseClassify,
 } from '../domain/classify-prompt';
 import { summarizeDoc } from '../domain/summarize-doc';
+import { buildFallbackUser, FALLBACK_SYSTEM } from '../domain/fallback-prompt';
 import { LlmClientFactory } from '../infrastructure/llm-client.factory';
+
+/** Entidades com fallback inferido quando ausentes (eixo C, Fatia 7). */
+type FallbackEntity = 'architecture' | 'design';
 
 /** Teto de tokens de entrada por resumo (cap de custo — SPEC-003). */
 const MAX_INPUT_TOKENS = 12_000;
 const MAX_OUTPUT_TOKENS = 1024;
 const MAX_EDGES_OUTPUT_TOKENS = 2048;
 const MAX_CLASSIFY_OUTPUT_TOKENS = 2048;
+const MAX_FALLBACK_OUTPUT_TOKENS = 2048;
 /** Confidence fixa para classificação nível 3 — o prompt não pede score numérico. */
 const CLASSIFY_CONFIDENCE = 0.7;
 
@@ -308,6 +313,76 @@ export class InsightService {
     if (!marker) return [];
     const hits = (marker.content as unknown as { hits?: ClassifyHit[] })?.hits ?? [];
     return hits.find((h) => h.entity === entity)?.spans ?? [];
+  }
+
+  /**
+   * Gera uma visão markdown inferida de Arquitetura ou Design quando o
+   * projeto genuinamente não tem esse documento (nem convenção/alias/config,
+   * nem classificação nível 3 achou um doc — ver ResolutionService.resolutionOf).
+   * Markdown livre, sem parse estrito: o texto do LLM é o próprio conteúdo
+   * persistido. Idempotente por docsTreeSha via kind `${entity}_fallback`.
+   * Chamado só pelo worker (ADR-002).
+   */
+  async generateFallback(projectId: string, entity: FallbackEntity): Promise<void> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+    if (!project?.docsScopeHash) return;
+    const hash = project.docsScopeHash;
+    const kind = `${entity}_fallback` as InsightKind;
+
+    const marker = await this.prisma.insight.findFirst({
+      where: { projectId, kind, docsTreeSha: hash },
+    });
+    if (marker) return; // idempotente por hash
+
+    const r = await this.resolution.resolutionOf(projectId, entity);
+    if (r.source !== 'absent') return; // já tem doc real ou já inferida (nível 3)
+
+    const docs = await this.prisma.document.findMany({
+      where: { projectId },
+      select: { path: true, content: true },
+    });
+    if (docs.length === 0) return;
+
+    const context = selectContext(docs, MAX_INPUT_TOKENS);
+    const provider = await this.settings.providerOf(project.userId);
+    const client = this.llmFactory.create(provider);
+    const req = {
+      system: FALLBACK_SYSTEM,
+      user: buildFallbackUser(context, entity),
+      maxTokens: MAX_FALLBACK_OUTPUT_TOKENS,
+    };
+
+    let res;
+    try {
+      res = await client.complete(req);
+    } catch (err) {
+      this.logger.warn(`Fallback de ${entity} falhou (tentativa 1): ${err instanceof Error ? err.message : err}`);
+      res = await client.complete(req); // 1 retry só em erro de chamada — não há parse
+    }
+
+    await this.prisma.insight.create({
+      data: {
+        projectId,
+        kind,
+        docsTreeSha: hash,
+        provider: client.provider,
+        model: res.model,
+        inputTokens: res.inputTokens,
+        outputTokens: res.outputTokens,
+        content: { markdown: res.text } as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  /** Fallback inferido mais recente de `entity` no projeto (ou null). Consumido pelo board. */
+  async latestFallback(userId: string, projectId: string, entity: FallbackEntity) {
+    await this.assertOwner(userId, projectId);
+    return this.prisma.insight.findFirst({
+      where: { projectId, kind: `${entity}_fallback` as InsightKind },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   /** Chama o LLM e valida o JSON de classificação; 1 retry em JSON inválido. */
