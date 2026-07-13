@@ -165,6 +165,8 @@ export class IngestionService {
           sourceDocumentId: true,
           targetDocumentId: true,
           targetPath: true,
+          kind: true,
+          reason: true,
         },
       }),
     ]);
@@ -181,6 +183,8 @@ export class IngestionService {
       target: l.targetDocumentId,
       targetPath: l.targetPath,
       broken: l.targetDocumentId === null,
+      kind: l.kind,
+      reason: l.reason ?? null,
     }));
 
     return { nodes, edges };

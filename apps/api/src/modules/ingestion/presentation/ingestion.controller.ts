@@ -1,5 +1,8 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
@@ -49,6 +52,21 @@ export class IngestionController {
   @Get('graph')
   graph(@Req() req: AuthenticatedRequest, @Param('id') projectId: string) {
     return this.ingestion.graph(req.userId, projectId);
+  }
+
+  /** Suprime uma aresta inferida (some do grafo; não volta na próxima regeneração). */
+  @Delete('graph/edges')
+  @HttpCode(202)
+  async suppressEdge(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') projectId: string,
+    @Body() body: { sourcePath: string; targetPath: string },
+  ) {
+    await this.assertOwner(req.userId, projectId);
+    if (!body?.sourcePath || !body?.targetPath) {
+      throw new BadRequestException('sourcePath e targetPath obrigatórios');
+    }
+    await this.ingestion.suppressEdge(projectId, body.sourcePath, body.targetPath);
   }
 
   @Get('documents/content')
