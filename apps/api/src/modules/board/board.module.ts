@@ -7,6 +7,7 @@ import { SharedModule } from '../../shared/shared.module';
 import { BoardService } from './application/board.service';
 import { BoardMutationService } from './application/board-mutation.service';
 import { BoardImportService } from './application/board-import.service';
+import { MappingService } from './application/mapping.service';
 import { MutationApplierService } from './application/mutation-applier.service';
 import { ProjectionService } from './application/projection.service';
 import { TabsService } from './application/tabs.service';
@@ -33,6 +34,7 @@ import { TabsController } from './presentation/tabs.controller';
     MutationApplierService,
     ProjectionService,
     TabsService,
+    MappingService,
     GithubIssuesClient,
     BoardWorker,
     BoardSyncListener,
