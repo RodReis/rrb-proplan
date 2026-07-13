@@ -254,6 +254,23 @@ Entregue pelo Claude Code (design + plano em `docs/superpowers/`, execução sub
 
 O que só o aceite prova (os testes mockam `listTree`): a janela de consistência eventual **real** do GitHub. Se o teto de ~7,5s (3 tentativas: 1s+2s+4,5s) não bastar no p99, o passo 1 vai exigir 2º sync às vezes → sinal de subir o teto (`TREE_PROPAGATION_BACKOFF_MS`).
 
+### Aceite runtime executado (2026-07-13, `RodReis/construtor-erp`)
+
+Validado ao vivo contra a consistência eventual **real** do GitHub (repo só com README; arch/design em nível 4 com fallback). Os três write-backs geraram `SyncRun` com expectativa e resultaram em **`success +1`, nunca `noop`**:
+
+| caso | call site | `expect_path` | `expect_blob_sha` | resultado |
+|---|---|---|---|---|
+| promote Design | `promote` | `docs/DESIGN.md` | `9e92a5f` | success +1 ✅ |
+| promote Arquitetura | `promote` | `docs/ARCHITECTURE.md` | `cac0e88` | success +1 ✅ |
+| mapeamento Decisões→ARCHITECTURE | `putMapping` | `.proplan/config.yml` | `681d12e` | success +1 ✅ |
+
+- **Ambos os call sites** (`promote` e `putMapping`) cobertos — o fix não é só do promote.
+- Resolução migrou na hora, sem 2º sync manual: arch/design 4/absent → 2/alias; decisions 4/absent → 1/config.
+- **Zero warns** de propagação lenta — o teto de ~7,5s cobriu a janela real do GitHub com folga.
+- Render do #16 confirmado junto: as abas mostraram badge âmbar + markdown + "Promover".
+
+O bug original (promover → `noop` → doc não ingerido até sync manual) **não reproduz**.
+
 ## Fatia 7.5 — Consumo de IA: tokens, custo e teto (SPEC-009, `aprovada-pi`) — `a-fazer` `[paralelo]`
 
 **Última fatia do MVP1.** Sem dependência de nenhuma outra — toca só `insight` e `settings`. Marcada `[paralelo]`: pode ser puxada para frente a qualquer momento. **Antecipe se a conta de IA assustar durante a Fatia 7**, que é a que mais chama o provedor.
