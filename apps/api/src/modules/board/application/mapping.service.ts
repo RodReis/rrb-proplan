@@ -88,6 +88,7 @@ export class MappingService {
     const content = serializeProplanConfig(merged);
 
     const token = await this.auth.installationToken(projectId);
+    let newBlobSha = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const baseSha = await this.writeback.getFileSha(
@@ -97,7 +98,7 @@ export class MappingService {
           CONFIG_PATH,
           project.defaultBranch,
         );
-        await this.writeback.putFile({
+        newBlobSha = await this.writeback.putFile({
           token,
           owner: project.owner,
           repo: project.name,
@@ -114,6 +115,11 @@ export class MappingService {
       }
     }
 
-    return this.ingestion.enqueueSync(projectId);
+    // Espera a Trees API refletir este commit antes de o sync decidir noop
+    // (consistência eventual — ver SyncService.listScope).
+    return this.ingestion.enqueueSync(projectId, {
+      path: CONFIG_PATH,
+      blobSha: newBlobSha,
+    });
   }
 }

@@ -98,6 +98,12 @@ describe('MappingService.putMapping', () => {
     expect(putArg.content).toContain('deploy: null'); // mesclou
     expect(putArg.baseSha).toBe('sha1');
     expect(auth.installationToken).toHaveBeenCalledWith('p1');
+    // Passa o blob SHA commitado como expectativa de propagação (consistência
+    // eventual da Trees API — ver SyncService.listScope).
+    expect(ingestion.enqueueSync).toHaveBeenCalledWith('p1', {
+      path: '.proplan/config.yml',
+      blobSha: 'sha2',
+    });
     expect(out.syncRunId).toBe('run1');
   });
 });

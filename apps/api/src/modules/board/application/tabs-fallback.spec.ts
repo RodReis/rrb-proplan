@@ -83,7 +83,12 @@ describe('TabsService.promote', () => {
     expect(putArg.path).toBe('docs/ARCHITECTURE.md');
     expect(putArg.content).toBe('# Doc revisado');
     expect(putArg.baseSha).toBeNull();
-    expect(ingestionWrite.enqueueSync).toHaveBeenCalledWith('p1');
+    // Passa o blob SHA commitado como expectativa: o sync espera a Trees API
+    // refletir esse blob antes de decidir noop (consistência eventual).
+    expect(ingestionWrite.enqueueSync).toHaveBeenCalledWith('p1', {
+      path: 'docs/ARCHITECTURE.md',
+      blobSha: 'sha2',
+    });
     expect(out.syncRunId).toBe('run1');
   });
 

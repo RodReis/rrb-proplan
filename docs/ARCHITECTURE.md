@@ -63,7 +63,7 @@ flowchart TB
 | **Redis** | Filas BullMQ (`sync`, `insight`); cache de composição de abas (invalidado por webhook) |
 | **Repo GitHub (alvo) — `docs/`** | Fonte de verdade de **todos os docs** da convenção. **Só conteúdo humano** — nada gerado pelo ProPlan entra aqui (ADR-011) |
 | **Repo GitHub (alvo) — `.proplan/`** | Tudo que é do ProPlan, commitado no repo-alvo: `.proplan/STATUS.md` (projeção do board — gerado) e `.proplan/config.yml` (mapeamento de documentos — ADR-014, confirmado pelo humano). Fora de `docs/` para não contaminar o frescor do ADR-010 |
-| **GitHub Issues (alvo)** | **Fonte de verdade do estado do trabalho** (ADR-011): coluna = label `proplan:*`; `closed` = Feito; `closed` + `proplan:descartado` = Descartado. Tabela `issues` no Postgres é cache derivado |
+| **GitHub Issues (alvo)** | **Fonte de verdade do estado do trabalho** (ADR-011): coluna = label `proplan:*`. **Feito = `open` + `proplan:done`** (entregue, aguardando aceite); **Finalizado = `closed` + `proplan:finalizado`**; Descartado = `closed` + `proplan:descartado`. **A issue só fecha no aceite.** Tabela `issues` no Postgres é cache derivado |
 
 Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb`.
 
@@ -80,6 +80,15 @@ Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb
 - **Circuit breaker** leve (opossum) nos clients GitHub e Anthropic — falha rápida e job re-agendado.
 - **Idempotência**: sync e insight-jobs idempotentes por (`project_id`, `docs_tree_sha`); reprocessar é seguro.
 - **Conflito de write-back**: commit de card usa SHA base do arquivo; 409 → re-sync, reaplicar mudança, um retry; persiste o conflito → aba mostra "conflito, resolva no repo".
+- **`noop` nunca pode vir de leitura obsoleta** (regra de 2026-07-13). A **Git Trees API do GitHub tem consistência eventual**: por alguns segundos após um commit, `listTree` ainda serve a árvore **anterior**. Todo write-back do ProPlan é seguido de um re-sync imediato (bootstrap, promote, `.proplan/config.yml`, projeção `.proplan/STATUS.md`) — e um re-sync que lê a árvore velha calcula o **mesmo hash**, grava **`noop`**, e a mudança recém-commitada **não é ingerida**.
+
+  **Por que isto é grave, e não é dívida técnica comum**: `noop` é o mecanismo com que o produto decide *"nada mudou"*. Um `noop` falso é o ProPlan **afirmando com autoridade que a documentação está igual quando ela acabou de mudar** — num produto cuja tese inteira é *"eu sei quando a doc está mentindo"*. É o produto mentindo no seu mecanismo central.
+
+  **Regra**: o write-back devolve o **SHA do arquivo commitado** (a Contents API entrega `content.sha` — o blob SHA). O `enqueueSync` recebe `{path, blobSha}` (persistido em `SyncRun.expectPath/expectBlobSha`) e o sync **só pode declarar `noop` depois de confirmar que a árvore lida já contém aquele blob naquele path**. Não contém → espera e repete (backoff curto, teto de 3 tentativas), nunca decide; estourou o teto → segue com a árvore que tem e o próximo sync natural corrige (sem perda). Implementado em `SyncService.listScope`.
+
+  **Blob SHA, não commit SHA** (divergência da 1ª redação desta regra, 2026-07-13): a spec pedia `expectCommitSha`, mas o `scope`/`listTree` do sync já trabalha com `(path, blobSha)` — validar o blob no path esperado prova a propagação **do arquivo que mudou** com a chamada que o sync já faz, sem resolver commit→tree à parte. O `listTree` usa ref name (branch) e não expõe o commit SHA da árvore servida; exigir commit SHA custaria uma request extra para provar a mesma coisa. Blob SHA é a prova mais direta e barata dentro do modelo de dados existente. **A revalidar pelo PI.**
+
+  **Proibido**: `sleep` de duração fixa antes do re-sync. Número mágico não é prova — troca uma condição de corrida por uma aposta, e falha no p99. Todos os call sites de write-back (`promote`, `putMapping`) passam a expectativa `{path, blobSha}` via `enqueueSync`; nenhum dorme.
 - **Health checks**: liveness/readiness (`@nestjs/terminus`) incluindo Postgres e Redis.
 
 ## Estrutura de pastas
