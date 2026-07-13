@@ -10,6 +10,7 @@ import { parseFrontmatter } from '../domain/frontmatter';
 import { computeScopeHash } from '../domain/scope-hash';
 import { isInScope } from '../domain/scope-filter';
 import { GithubGitClient } from '../infrastructure/github-git.client';
+import { classifyKind } from '../domain/document-kind';
 
 /** Evento de domínio: docs de um projeto foram sincronizados com hash novo. */
 export class DocsSyncedEvent {
@@ -102,6 +103,35 @@ export class SyncService {
 
       let skipped = 0;
       for (const entry of [...added, ...updated]) {
+        const kind = classifyKind(entry.path);
+
+        if (kind !== 'markdown') {
+          // Binário: só metadado, NÃO baixa os bytes (Decisão 2). content vazio,
+          // byteSize 0 — o tamanho real aparece quando o preview busca sob demanda.
+          await this.prisma.document.upsert({
+            where: { projectId_path: { projectId: project.id, path: entry.path } },
+            create: {
+              projectId: project.id,
+              path: entry.path,
+              blobSha: entry.blobSha,
+              content: '',
+              frontmatter: Prisma.JsonNull,
+              isConventional: false,
+              byteSize: 0,
+              kind,
+            },
+            update: {
+              blobSha: entry.blobSha,
+              content: '',
+              frontmatter: Prisma.JsonNull,
+              isConventional: false,
+              byteSize: 0,
+              kind,
+            },
+          });
+          continue;
+        }
+
         const blob = await this.git.getBlob(
           token,
           project.owner,
@@ -128,6 +158,7 @@ export class SyncService {
             frontmatter,
             isConventional: fm.isConventional,
             byteSize: blob.byteSize,
+            kind: 'markdown',
           },
           update: {
             blobSha: entry.blobSha,
@@ -135,6 +166,7 @@ export class SyncService {
             frontmatter,
             isConventional: fm.isConventional,
             byteSize: blob.byteSize,
+            kind: 'markdown',
           },
         });
       }
