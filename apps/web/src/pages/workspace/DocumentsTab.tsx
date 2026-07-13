@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   api,
+  DocKind,
   DocumentContent,
   DocumentSummary,
   SyncRun,
@@ -101,7 +102,11 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
           </div>
         )}
         {selected ? (
-          <DocumentViewer projectId={projectId} path={selected} />
+          <DocumentViewer
+            projectId={projectId}
+            path={selected}
+            kind={state.docs.find((d) => d.path === selected)?.kind ?? 'markdown'}
+          />
         ) : (
           <p className="p-8 text-sm text-text-muted">
             Selecione um documento à esquerda.
@@ -118,6 +123,63 @@ type ViewerState =
   | { status: 'ready'; doc: DocumentContent };
 
 function DocumentViewer({
+  projectId,
+  path,
+  kind,
+}: {
+  projectId: string;
+  path: string;
+  kind: DocKind;
+}) {
+  if (kind === 'pdf')
+    return (
+      <iframe
+        src={api.rawUrl(projectId, path)}
+        title={path}
+        className="h-full w-full border-0"
+      />
+    );
+
+  if (kind === 'image')
+    return (
+      <div className="flex h-full items-center justify-center overflow-auto bg-[repeating-conic-gradient(#f3f4f6_0_25%,#fff_0_50%)] bg-[length:20px_20px] p-8">
+        <img
+          src={api.rawUrl(projectId, path)}
+          alt={path}
+          className="max-h-full max-w-full"
+        />
+      </div>
+    );
+
+  if (kind === 'html')
+    return (
+      <div className="flex h-full flex-col">
+        <div className="border-b border-border bg-warning/5 px-8 py-2 text-xs text-warning">
+          Conteúdo isolado por segurança — scripts não são executados.
+        </div>
+        <iframe
+          src={api.rawUrl(projectId, path)}
+          title={path}
+          sandbox=""
+          className="flex-1 border-0"
+        />
+      </div>
+    );
+
+  if (kind === 'office') return <DocxViewer projectId={projectId} path={path} />;
+
+  if (kind === 'binary')
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
+        <p className="text-sm font-medium">Pré-visualização não disponível</p>
+        <p className="max-w-md text-xs text-text-muted">{path}</p>
+      </div>
+    );
+
+  return <MarkdownDoc projectId={projectId} path={path} />;
+}
+
+function MarkdownDoc({
   projectId,
   path,
 }: {
@@ -155,6 +217,53 @@ function DocumentViewer({
         {state.doc.content}
       </ReactMarkdown>
     </article>
+  );
+}
+
+function DocxViewer({
+  projectId,
+  path,
+}: {
+  projectId: string;
+  path: string;
+}) {
+  const [state, setState] = useState<
+    | { status: 'loading' }
+    | { status: 'error'; message: string }
+    | { status: 'ready'; text: string }
+  >({ status: 'loading' });
+
+  useEffect(() => {
+    let active = true;
+    setState({ status: 'loading' });
+    api
+      .docxText(projectId, path)
+      .then((r) => active && setState({ status: 'ready', text: r.text }))
+      .catch(
+        (e) => active && setState({ status: 'error', message: String(e) }),
+      );
+    return () => {
+      active = false;
+    };
+  }, [projectId, path]);
+
+  if (state.status === 'loading')
+    return <div className="m-8 h-64 animate-pulse rounded-md bg-border/50" />;
+  if (state.status === 'error')
+    return (
+      <p className="m-8 text-sm text-error">
+        Falha ao ler o documento: {state.message}
+      </p>
+    );
+  return (
+    <div className="px-8 py-6">
+      <p className="mb-4 text-xs text-text-muted">
+        Texto extraído — formatação e imagens omitidas.
+      </p>
+      <pre className="whitespace-pre-wrap font-sans text-sm text-text">
+        {state.text}
+      </pre>
+    </div>
   );
 }
 

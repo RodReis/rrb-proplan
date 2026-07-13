@@ -70,12 +70,15 @@ export interface MappingRow {
   candidates: string[];
 }
 
+export type DocKind = 'markdown' | 'pdf' | 'image' | 'html' | 'office' | 'binary';
+
 export interface DocumentSummary {
   id: string;
   path: string;
   isConventional: boolean;
   byteSize: number;
   updatedAt: string;
+  kind: DocKind;
 }
 
 export interface DocumentContent extends DocumentSummary {
@@ -125,6 +128,12 @@ export const api = {
   documentContent: (projectId: string, path: string) =>
     request<DocumentContent>(
       `/projects/${projectId}/documents/content?path=${encodeURIComponent(path)}`,
+    ),
+  rawUrl: (projectId: string, path: string) =>
+    `${API_URL}/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`,
+  docxText: (projectId: string, path: string) =>
+    request<{ text: string }>(
+      `/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`,
     ),
   settings: () => request<Settings>('/settings'),
   updateSettings: (input: Partial<Pick<Settings, 'llmProvider' | 'docsStalenessThresholdDays'>>) =>
