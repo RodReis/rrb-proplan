@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
+import { ResolutionService } from '../../ingestion/application/resolution.service';
+import { ENTITIES } from '../../ingestion/domain/entity';
 import { selectContext } from '../domain/context-budget';
 import { buildSummaryUser, SUMMARY_SYSTEM } from '../domain/summary-prompt';
 import { parseSummary, StateSummary } from '../domain/summary';
@@ -13,6 +15,13 @@ import {
   parseCards,
 } from '../domain/cards-prompt';
 import { buildEdgesUser, EDGES_SYSTEM, InferredEdge, parseEdges } from '../domain/edges-prompt';
+import {
+  buildClassifyUser,
+  CLASSIFIABLE_ENTITIES,
+  CLASSIFY_SYSTEM,
+  ClassifyHit,
+  parseClassify,
+} from '../domain/classify-prompt';
 import { summarizeDoc } from '../domain/summarize-doc';
 import { LlmClientFactory } from '../infrastructure/llm-client.factory';
 
@@ -20,6 +29,9 @@ import { LlmClientFactory } from '../infrastructure/llm-client.factory';
 const MAX_INPUT_TOKENS = 12_000;
 const MAX_OUTPUT_TOKENS = 1024;
 const MAX_EDGES_OUTPUT_TOKENS = 2048;
+const MAX_CLASSIFY_OUTPUT_TOKENS = 2048;
+/** Confidence fixa para classificação nível 3 — o prompt não pede score numérico. */
+const CLASSIFY_CONFIDENCE = 0.7;
 
 @Injectable()
 export class InsightService {
@@ -30,6 +42,7 @@ export class InsightService {
     private readonly settings: SettingsService,
     private readonly llmFactory: LlmClientFactory,
     private readonly ingestion: IngestionService,
+    private readonly resolution: ResolutionService,
   ) {}
 
   /**
@@ -201,6 +214,111 @@ export class InsightService {
         content: {} as unknown as Prisma.InputJsonValue,
       },
     });
+  }
+
+  /**
+   * Classifica documentos livres contra entidades ausentes (nível 3 da escada
+   * ADR-014). Para cada entidade ausente (exceto deploy — CONVENTION.md), pergunta
+   * à IA se algum doc livre É essa entidade pelo conteúdo, com spans obrigatórios
+   * (ADR-012). Entrega a resolução ao ResolutionService — insight nunca escreve em
+   * documentResolution direto (ADR-001). Idempotente por docsTreeSha via marker
+   * `classify_marker`. Chamado só pelo worker (ADR-002).
+   */
+  async classifyAbsent(projectId: string): Promise<void> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+    if (!project?.docsScopeHash) return;
+    const hash = project.docsScopeHash;
+
+    const marker = await this.prisma.insight.findFirst({
+      where: { projectId, kind: 'classify_marker', docsTreeSha: hash },
+    });
+    if (marker) return; // idempotente por hash
+
+    const resolutions = await Promise.all(
+      ENTITIES.filter((e) => e !== 'deploy').map((e) => this.resolution.resolutionOf(projectId, e)),
+    );
+    const absentEntities = resolutions
+      .filter((r) => r.source === 'absent')
+      .map((r) => r.entity);
+    if (absentEntities.length === 0) return; // nada a classificar
+
+    const resolvedPaths = new Set(
+      resolutions
+        .filter((r) => r.source !== 'absent')
+        .flatMap((r) => (r.path ? [r.path] : r.paths)),
+    );
+
+    const docs = await this.prisma.document.findMany({
+      where: { projectId },
+      select: { path: true, content: true },
+    });
+    const freeDocs = docs.filter((d) => !resolvedPaths.has(d.path));
+
+    let hits: ClassifyHit[] = [];
+    if (freeDocs.length > 0) {
+      const context = selectContext(freeDocs, MAX_INPUT_TOKENS);
+      const excerptByPath = new Map(context.map((d) => [d.path, d.content]));
+      const docMeta = context.map((d) => ({
+        path: d.path,
+        ...summarizeDoc(excerptByPath.get(d.path) ?? ''),
+      }));
+
+      const provider = await this.settings.providerOf(project.userId);
+      const client = this.llmFactory.create(provider);
+      hits = await this.completeClassify(client, docMeta, absentEntities);
+
+      for (const hit of hits) {
+        await this.resolution.writeInferredResolution(
+          projectId,
+          hit.entity,
+          hit.path,
+          CLASSIFY_CONFIDENCE,
+        );
+      }
+    }
+
+    await this.prisma.insight.create({
+      data: {
+        projectId,
+        kind: 'classify_marker',
+        docsTreeSha: hash,
+        provider: 'anthropic',
+        model: 'classify',
+        inputTokens: 0,
+        outputTokens: 0,
+        content: { hits } as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  /** Chama o LLM e valida o JSON de classificação; 1 retry em JSON inválido. */
+  private async completeClassify(
+    client: ReturnType<LlmClientFactory['create']>,
+    docs: { path: string; title: string; headings: string[]; excerpt: string }[],
+    absentEntities: (typeof CLASSIFIABLE_ENTITIES)[number][],
+  ): Promise<ClassifyHit[]> {
+    const req = {
+      system: CLASSIFY_SYSTEM,
+      user: buildClassifyUser(docs, absentEntities),
+      maxTokens: MAX_CLASSIFY_OUTPUT_TOKENS,
+    };
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await client.complete(req);
+      try {
+        return parseClassify(res.text);
+      } catch (err) {
+        lastErr = err;
+        this.logger.warn(
+          `Classificação inválida (tentativa ${attempt + 1}): ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+    throw lastErr;
   }
 
   /** Chama o LLM e valida o JSON de arestas; 1 retry em JSON inválido. */

@@ -53,6 +53,18 @@ export class InsightEventListener {
         removeOnFail: 50,
       },
     );
+    this.logger.log(`DocsSynced → enfileira classificação do projeto ${event.projectId}`);
+    await this.queue.add(
+      'classify',
+      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      {
+        jobId: `${event.projectId}_classify_${event.docsScopeHash}`,
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 50,
+        removeOnFail: 50,
+      },
+    );
   }
 }
 
@@ -68,6 +80,10 @@ export class InsightWorker extends WorkerHost {
     this.logger.log(`Insight job ${job.id} (${job.name}) → projeto ${job.data.projectId}`);
     if (job.name === 'edges') {
       await this.insight.generateEdges(job.data.projectId);
+      return;
+    }
+    if (job.name === 'classify') {
+      await this.insight.classifyAbsent(job.data.projectId);
       return;
     }
     await this.insight.generateSummary(job.data.projectId);
