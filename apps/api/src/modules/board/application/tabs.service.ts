@@ -2,6 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, Resolution } from '../../ingestion/domain/entity';
+import { parseDecisions } from '../domain/decisions-index';
+import { parseDeploy } from '../domain/deploy-doc';
+import { parseSkills } from '../domain/skills-index';
+import { parseWorkflow, WorkflowInfo } from '../domain/workflow-parser';
 
 export interface TabSource {
   level: 1 | 2 | 4;
@@ -36,14 +40,33 @@ export class TabsService {
     const source: TabSource = {
       level: r.level, source: r.source, path: r.path, paths: r.paths, confidence: r.confidence,
     };
-    if (r.level === 4) return { source, payload: null };
+    if (r.level === 4) {
+      if (tab === 'testing') {
+        const ci = await this.ciFallback(projectId);
+        if (ci.workflows.length > 0) return { source, payload: { ci, inferred: true } };
+      }
+      return { source, payload: null };
+    }
 
     switch (tab) {
       case 'architecture':
       case 'design':
         return { source, payload: { markdown: await this.markdownOf(projectId, r.path) } };
+      case 'decisions': {
+        const docs = await this.docsOf(projectId, r.path ? [r.path] : r.paths);
+        return { source, payload: { items: parseDecisions(docs) } };
+      }
+      case 'deploy': {
+        const md = await this.markdownOf(projectId, r.path);
+        return { source, payload: { environments: parseDeploy(md) } };
+      }
+      case 'skills': {
+        const docs = await this.docsOf(projectId, r.paths.length ? r.paths : r.path ? [r.path] : []);
+        return { source, payload: parseSkills(docs) };
+      }
+      case 'testing':
+        return { source, payload: { markdown: await this.markdownOf(projectId, r.path) } };
       default:
-        // Fase 2 preenche decisions/testing/deploy/skills.
         return { source, payload: null };
     }
   }
@@ -56,5 +79,25 @@ export class TabsService {
     });
     if (!doc) throw new NotFoundException(`Documento não encontrado: ${path}`);
     return doc.content;
+  }
+
+  private async docsOf(projectId: string, paths: string[]): Promise<{ path: string; content: string }[]> {
+    if (paths.length === 0) return [];
+    const rows = await this.prisma.document.findMany({
+      where: { projectId, path: { in: paths } },
+      select: { path: true, content: true },
+    });
+    return rows;
+  }
+
+  private async ciFallback(projectId: string): Promise<{ workflows: WorkflowInfo[] }> {
+    const rows = await this.prisma.document.findMany({
+      where: { projectId, path: { startsWith: '.github/workflows/' } },
+      select: { path: true, content: true },
+    });
+    const workflows = rows
+      .map((d) => parseWorkflow(d.path, d.content))
+      .filter((w): w is WorkflowInfo => w !== null);
+    return { workflows };
   }
 }
