@@ -45,6 +45,7 @@ model Project {
   lastCodeCommitAt   DateTime? @map("last_code_commit_at")
   commitMetaSyncedAt DateTime? @map("commit_meta_synced_at")
   needsIssueImport   Boolean  @default(false) @map("needs_issue_import")
+  proplanConfigInvalid Boolean @default(false) @map("proplan_config_invalid")
   createdAt    DateTime @default(now()) @map("created_at")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents    Document[]
@@ -52,6 +53,7 @@ model Project {
   insights     Insight[]
   issues       Issue[]
   boardMutations BoardMutation[]
+  resolutions    DocumentResolution[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -93,6 +95,28 @@ model DocLink {
   @@index([projectId])
   @@index([sourceDocumentId])
   @@map("doc_links")
+}
+
+// Cache derivado da resolução de documentos (ADR-014, Fatia 6). NÃO é fonte —
+// a decisão do usuário mora em .proplan/config.yml no repo. Apagar estas linhas
+// e re-sincronizar reconstrói a resolução idêntica. `docsTreeSha` e `resolvedAt`
+// preparam o nível 3 (Fatia 7, insight): job assíncrono versionado por tree-sha
+// grava aqui com source: 'inference' — daí os campos entram já nesta migration.
+model DocumentResolution {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  entity      String   // architecture | decisions | design | testing | deploy | skills
+  level       Int      // 1 | 2 | 4
+  source      String   // convention | alias | config | absent | inference (Fatia 7)
+  path        String?
+  paths       String[]
+  confidence  Float
+  docsTreeSha String?  @map("docs_tree_sha")
+  resolvedAt  DateTime @default(now()) @map("resolved_at")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, entity])
+  @@map("document_resolutions")
 }
 
 enum SyncStatus {
