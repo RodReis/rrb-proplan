@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  PayloadTooLargeException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 /** Cap de tamanho por documento de texto (SPEC-002 notas técnicas). */
 export const MAX_BLOB_BYTES = 512 * 1024;
@@ -105,7 +109,10 @@ export class GithubGitClient {
       size: number;
     };
     const MAX_RAW = 25 * 1024 * 1024;
-    if (body.size > MAX_RAW) throw new Error(`Blob acima de 25 MB: ${body.size}`);
+    if (body.size > MAX_RAW)
+      throw new PayloadTooLargeException(
+        `Arquivo acima de 25 MB (${body.size} bytes) — pré-visualização indisponível.`,
+      );
     return body.encoding === 'base64'
       ? Buffer.from(body.content, 'base64')
       : Buffer.from(body.content);
