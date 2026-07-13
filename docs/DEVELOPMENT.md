@@ -178,19 +178,29 @@ A SPEC-005 foi **emendada** (6 colunas: Feito × Finalizado) depois da entrega d
 - **Limpeza**: as 16 issues de demo criadas no `rrb-adv` foram fechadas (eram seed, não roadmap canônico).
 - 118 testes verdes; builds limpos.
 
-## Fatia 6 — Resolução de documentos + abas (SPEC-006 **ampliada**, `aprovada-pi`) — `a-fazer`
+## Fatia 6 — Resolução de documentos + abas (SPEC-006 **ampliada**, `aprovada-pi`) — `em-andamento`
 
-Só iniciar com a Fatia 5 `feito`.
+Entregue pelo Claude Code (design + plano em `docs/superpowers/`, execução subagent-driven). **Aceite runtime pendente do PI** (login no GitHub App + conferência visual das 6 abas, do Mermaid desenhado e do commit de `.proplan/config.yml` por `rrb-proplan[bot]`).
 
 **O coração da fatia é o `DocumentResolver` (ADR-014), não as abas.** Casar documento por caminho exato funciona só neste repo; os repos reais têm `arquitetura.md`, `adr/0001-*.md`, `docs/qa/`. Escada: convenção → alias → `.proplan/config.yml` → ausente. **O ProPlan nunca renomeia, move ou reescreve doc do usuário** — ele mapeia.
 
-1. `a-fazer` — **`ingestion/domain`** (⚠️ **não** `board` — correção do ADR-014 em 2026-07-13): `DocumentResolver` + tabela de alias + parse de `.proplan/config.yml`; `DocumentResolution` no Prisma; `SyncService` resolve e **persiste** ao fim do run (nunca no render — ADR-002). **Testes unitários primeiro**, com fixture de repo de nomes esquisitos. Teste explícito de alias não-ganancioso (`docs/archive/` **não** é `arch`).
-2. `a-fazer` — Ampliar filtro de sync: `.claude/**`, `.github/workflows/*.yml`, `.proplan/config.yml` e diretórios de alias (`adr/`, `decisions/`, `docs/**`); re-sync.
-3. `a-fazer` — Parsers determinísticos: `TestingDoc`, `DeployDoc`, `SkillsIndex`, `DecisionsIndex` (arquivo **ou** coleção), workflows YAML. Testes unitários.
-4. `a-fazer` — API: `GET /tabs/:tab` (payload + `source: {level, path, confidence}`), `GET /mapping`, `PUT /mapping` (escreve `.proplan/config.yml` via write-back + re-sync).
-5. `a-fazer` — Mermaid no viewer (lazy, fallback para código em erro) — vale para Documentos e todas as abas.
-6. `a-fazer` — Web: **tela de mapeamento** (confirmar/corrigir/marcar ausente) + abas Arquitetura, **Decisões**, Design, Testes, Deploy (tabela estruturada com badges), Skills & Agentes; linha "reconhecido por nome — corrigir" nas abas de nível 2; empty states com CTA. O `board` **lê** `IngestionService.resolutionOf` — **nunca resolve nada** (fronteira do ADR-001).
-7. `a-fazer` — Critérios da SPEC-006 (incluindo o **teste que prova a fatia**: repo com nomes próprios resolve tudo em nível 2); atualizar este arquivo + STATUS.md; commitar tudo.
+1. `feito` — **`ingestion/domain`** (⚠️ **não** `board` — correção do ADR-014 em 2026-07-13): `DocumentResolver` (escada config→convenção→alias→ausente, puro) + `alias-table` não-ganancioso + `parseProplanConfig`; `DocumentResolution` no Prisma (cache derivado, `docsTreeSha`/`resolvedAt` prontos p/ nível 3 da Fatia 7); `ResolutionService.rebuild` persiste no fim de todo sync (success + noop), como `rebuildLinks`. Teste explícito `archive` ≠ `arch`. 27 testes de domínio.
+2. `feito` — Filtro de sync ampliado: `.proplan/config.yml`, `.claude/**` fino (só `skills/*/SKILL.md` e `agents/*.md`), `.github/workflows/*.yml`, diretórios/arquivos de alias na raiz (`adr/`, `AGENTS.md`, etc.). `.proplan/STATUS.md` fora (artefato gerado). Casos negativos testados.
+3. `feito` — Parsers determinísticos em `board/domain`: `parseDecisions` (arquivo **ou** coleção `adr/*.md`), `parseDeploy` (tabela de ambientes), `parseSkills` (skills+agents via gray-matter), `parseWorkflow` (fallback CI). Testes unitários.
+4. `feito` — API (módulo `board`): `GET /projects/:id/tabs/:tab` (payload + `source: {level, source, path, paths, confidence}`), `GET /tabs/mapping` (rows + `proplanConfigInvalid`), `PUT /tabs/mapping` (escreve `.proplan/config.yml` via write-back com installation token + re-sync; retry em conflito). Ownership id+userId em todas. `board` só **lê** `ResolutionService.resolutionOf` — nunca resolve (ADR-001). `mapping.service` na allowlist do teste de arquitetura do ADR-015.
+5. `feito` — Mermaid no viewer (lazy import, isolado em chunk próprio; fallback pro código cru em erro de sintaxe) — vale para Documentos e todas as abas.
+6. `feito` — Web: **tela de mapeamento** (overlay: confirmar/corrigir/marcar ausente → PUT; banner de config inválida) + abas Arquitetura, **Decisões**, Design, Testes (com fallback CI), Deploy (tabela com badges), Skills & Agentes; trilho `TabFrame` (skeleton/erro/aviso "reconhecido por nome — corrigir"/empty state); atalho "corrigir" das abas nível 2 abre a tela focada.
+7. `feito` — **Teste que prova a fatia**: 3 fixtures (`document-resolver.fixtures.spec.ts`) — repo-convenção → nível 1, repo-nomes-próprios → nível 2, repo-vazio → nível 4. Suíte back **163/163**, builds API+web limpos, API sobe com as 3 rotas. Aceite runtime abaixo.
+
+### Aceite runtime (pendente do PI)
+
+Validado automatizável pelo Claude Code:
+- ✅ 163 testes back verdes (incl. as 3 fixtures da prova + teste de arquitetura do ADR-015 estendido para `mapping.service`).
+- ✅ `tsc --noEmit` + `nest build` + `vite build` limpos.
+- ✅ API sobe com `/projects/:id/tabs/:tab` (GET), `/tabs/mapping` (GET, PUT) mapeadas.
+- ✅ Migration `fatia_6_document_resolution` aplicada; coluna `proplan_config_invalid` no banco; 3 projetos gerenciados preservados; `document_resolutions` vazia até o próximo sync (prova de que é **cache derivado**, não fonte).
+
+Pendente de conferência ao vivo com o PI (login no GitHub App): as 6 abas renderizando no rrb-proplan (nível 1, sem aviso), Mermaid do C4 **desenhado**, repo de nomes próprios em nível 2 com a linha "reconhecido por nome", mapear a Arquitetura para outro arquivo commitando `.proplan/config.yml` por `rrb-proplan[bot]`, marcar Deploy ausente sobrevivendo ao re-sync, e o critério de cache (apagar `document_resolutions` + re-sync reconstrói idêntico).
 
 ## Fatia 7 — Insight semântico (SPEC-007, `aprovada-pi`) — `a-fazer`
 

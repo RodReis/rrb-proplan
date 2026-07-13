@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-12
+updated: 2026-07-13
 ---
 # Status
 
@@ -25,7 +25,6 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (prio: baixa)
 
 ## A Fazer
-- Fatia 6 — **Resolução de documentos (ADR-014)** + abas: `DocumentResolver` (convenção → alias → `.proplan/config.yml` → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção `adr/`), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (prio: **alta** — sem isso o produto só funciona em repo que segue a convenção) (spec: SPEC-006 ampliada, aprovada-pi)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (prio: baixa) (spec: SPEC-007 aprovada-pi)
 - **Fatia 7.5 — Consumo de IA (ADR-016), última do MVP1**: ledger `LlmUsage` append-only (registra falhas, retries e descartes — a tabela `insights` de hoje **subestima** o gasto), tokens de cache separados, preço configurável com custo **congelado na chamada**, alerta + **teto rígido** de gasto mensal, tela de consumo com taxa de desperdício (prio: média; **sem dependência — pode ser antecipada se a conta de IA assustar durante a Fatia 7**) (spec: SPEC-009 aprovada-pi)
 
@@ -40,3 +39,4 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Fatia 4 — Grafo de links explícitos: extração markdown+wikilinks, resolução relativa, nó fantasma para quebrados, react-flow + d3-force; 56 testes; validado com rrb-adv (119 docs, 105 arestas); aceito runtime pelo PI (em: 2026-07-12)
 - Fatia 4.5 — Migração para GitHub App (ADR-015): dois tokens (user-to-server para leitura, installation para escrita com identidade `proplan[bot]`), JWT RS256 + cache de installation token por instalação, catálogo por instalação agrupado por conta, teste de arquitetura leitura≠escrita; 78 testes; commit real com autor `rrb-proplan[bot]` validado; aceito runtime pelo PI (em: 2026-07-13)
 - Fatia 5 — Kanban sobre GitHub Issues (ADR-011): módulo board novo, **6 colunas** por label `proplan:*` (Feito × Finalizado, emenda 2026-07-13), mutações via Issues API (installation token, bot) com comentário de carimbo ao finalizar/descartar, projeção `.proplan/STATUS.md` com debounce, importação de STATUS.md legado (prévia editável) e bootstrap de cards por IA (manual), dnd-kit com card avatar+faixa de prioridade, otimista até `applied`; write-back promovido a shared; teste de arquitetura projeção-fora-de-docs; 118 testes; validado no rrb-adv e no dogfooding do próprio rrb-proplan (roadmap importado, #11 finalizada por `rrb-proplan[bot]` com comentário, ADR-010 preservado); aceito runtime pelo PI (em: 2026-07-13)
+- Fatia 6 — **Resolução de documentos (ADR-014)** + abas: `DocumentResolver` em `ingestion` (escada convenção → alias não-ganancioso → `.proplan/config.yml` → ausente, persistida em `DocumentResolution` como cache derivado), escopo de sync ampliado (`.claude/**`, workflows, config.yml, dirs de alias), 4 parsers determinísticos (Decisões arquivo/coleção, Deploy, Skills&Agentes, CI), 6 abas + tela de mapeamento (escreve config.yml por `rrb-proplan[bot]`) + Mermaid lazy no viewer; `board` só consome `resolutionOf` (ADR-001); teste que prova a fatia (nomes próprios → nível 2); 163 testes, builds limpos; **entregue — aguardando aceite runtime do PI** (em: 2026-07-13)
