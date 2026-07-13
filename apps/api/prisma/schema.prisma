@@ -67,6 +67,7 @@ model Document {
   content        String
   frontmatter    Json?
   isConventional Boolean  @default(false) @map("is_conventional")
+  kind           String   @default("markdown")
   byteSize       Int      @map("byte_size")
   updatedAt      DateTime @updatedAt @map("updated_at")
   project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
