@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, SkillEntry, TabSource } from '../../../lib/api';
+import { api, InferencePayload, SkillEntry, TabSource } from '../../../lib/api';
 import { TabFrame } from '../TabFrame';
+
+type Payload = { skills: SkillEntry[]; agents: SkillEntry[] } & Partial<InferencePayload>;
 
 interface Props {
   projectId: string;
@@ -29,18 +31,18 @@ export function SkillsTab({ projectId, syncNonce, onCorrect }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<TabSource | null>(null);
-  const [data, setData] = useState<{ skills: SkillEntry[]; agents: SkillEntry[] }>({ skills: [], agents: [] });
+  const [payload, setPayload] = useState<Payload | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
     api
-      .tab<{ skills: SkillEntry[]; agents: SkillEntry[] }>(projectId, 'skills')
+      .tab<Payload>(projectId, 'skills')
       .then((res) => {
         if (!active) return;
         setSource(res.source);
-        setData(res.payload ?? { skills: [], agents: [] });
+        setPayload(res.payload);
       })
       .catch((err) => active && setError(String(err)))
       .finally(() => active && setLoading(false));
@@ -49,10 +51,11 @@ export function SkillsTab({ projectId, syncNonce, onCorrect }: Props) {
     };
   }, [projectId, syncNonce]);
 
+  const data = payload ?? { skills: [], agents: [] };
   const empty = data.skills.length === 0 && data.agents.length === 0;
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Skills & Agentes" onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Skills & Agentes" spans={payload?.spans} onCorrect={onCorrect}>
       {empty ? (
         <p className="text-sm text-text-muted">Nenhuma skill ou agente configurado neste repositório.</p>
       ) : (

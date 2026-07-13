@@ -7,20 +7,38 @@ describe('TabsService.getTab — architecture', () => {
       document: { findUnique: jest.fn().mockResolvedValue({ content: '# Arquitetura' }) },
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const svc = new TabsService(prisma, ingestion);
+    const insight = { latestClassifySpans: jest.fn() } as any;
+    const svc = new TabsService(prisma, ingestion, insight);
     const out = await svc.getTab('p1', 'architecture');
     expect(out.source.level).toBe(1);
     expect(out.payload).toEqual({ markdown: '# Arquitetura' });
+    expect(insight.latestClassifySpans).not.toHaveBeenCalled();
   });
 
   it('ausente → payload null', async () => {
     const resolution = { entity: 'architecture', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
     const prisma = { document: { findUnique: jest.fn() } } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const svc = new TabsService(prisma, ingestion);
+    const insight = { latestClassifySpans: jest.fn() } as any;
+    const svc = new TabsService(prisma, ingestion, insight);
     const out = await svc.getTab('p1', 'architecture');
     expect(out.source.level).toBe(4);
     expect(out.payload).toBeNull();
+  });
+
+  it('nível 3 (inference) → markdown + inferred:true + spans do InsightService', async () => {
+    const resolution = { entity: 'architecture', level: 3, source: 'inference', path: 'docs/tech.md', paths: [], confidence: 0.7 };
+    const prisma = {
+      document: { findUnique: jest.fn().mockResolvedValue({ content: '# Tech' }) },
+    } as any;
+    const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
+    const insight = { latestClassifySpans: jest.fn().mockResolvedValue(['trecho A']) } as any;
+    const svc = new TabsService(prisma, ingestion, insight);
+    const out = await svc.getTab('p1', 'architecture');
+    expect(out.source.level).toBe(3);
+    expect(out.source.source).toBe('inference');
+    expect(out.payload).toEqual({ markdown: '# Tech', inferred: true, spans: ['trecho A'] });
+    expect(insight.latestClassifySpans).toHaveBeenCalledWith('p1', 'architecture');
   });
 });
 
@@ -31,8 +49,10 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
       document: { findMany: jest.fn().mockResolvedValue([{ path: 'adr/0001-x.md', content: '# Título X' }]) },
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const out = await new TabsService(prisma, ingestion).getTab('p1', 'decisions');
+    const insight = { latestClassifySpans: jest.fn() } as any;
+    const out = await new TabsService(prisma, ingestion, insight).getTab('p1', 'decisions');
     expect((out.payload as any).items[0].title).toBe('Título X');
+    expect((out.payload as any).inferred).toBeUndefined();
   });
 
   it('testing: sem doc mas com workflows → ci inferido', async () => {
@@ -45,7 +65,8 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
       },
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const out = await new TabsService(prisma, ingestion).getTab('p1', 'testing');
+    const insight = { latestClassifySpans: jest.fn() } as any;
+    const out = await new TabsService(prisma, ingestion, insight).getTab('p1', 'testing');
     expect((out.payload as any).inferred).toBe(true);
     expect((out.payload as any).ci.workflows[0].name).toBe('CI');
     expect(out.source.level).toBe(4); // resolução ainda é ausente; payload é fallback
@@ -55,7 +76,8 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
     const resolution = { entity: 'deploy', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
     const prisma = { document: { findUnique: jest.fn(), findMany: jest.fn() } } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const out = await new TabsService(prisma, ingestion).getTab('p1', 'deploy');
+    const insight = { latestClassifySpans: jest.fn() } as any;
+    const out = await new TabsService(prisma, ingestion, insight).getTab('p1', 'deploy');
     expect(out.payload).toBeNull();
   });
 });

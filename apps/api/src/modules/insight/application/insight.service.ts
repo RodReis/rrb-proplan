@@ -4,7 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
-import { ENTITIES } from '../../ingestion/domain/entity';
+import { Entity, ENTITIES } from '../../ingestion/domain/entity';
 import { selectContext } from '../domain/context-budget';
 import { buildSummaryUser, SUMMARY_SYSTEM } from '../domain/summary-prompt';
 import { parseSummary, StateSummary } from '../domain/summary';
@@ -291,6 +291,23 @@ export class InsightService {
         content: { hits } as unknown as Prisma.InputJsonValue,
       },
     });
+  }
+
+  /**
+   * Spans do classify_marker mais recente do projeto que justificam a
+   * classificação nível 3 de `entity` (ADR-012 — inferência sempre com
+   * evidência citável). Lido pelo board via interface pública (ADR-001 — o
+   * board nunca acessa `prisma.insight` direto). `[]` se não houver marker
+   * ou nenhum hit bater a entidade.
+   */
+  async latestClassifySpans(projectId: string, entity: Entity): Promise<string[]> {
+    const marker = await this.prisma.insight.findFirst({
+      where: { projectId, kind: 'classify_marker' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!marker) return [];
+    const hits = (marker.content as unknown as { hits?: ClassifyHit[] })?.hits ?? [];
+    return hits.find((h) => h.entity === entity)?.spans ?? [];
   }
 
   /** Chama o LLM e valida o JSON de classificação; 1 retry em JSON inválido. */

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { api, DecisionItem, TabSource } from '../../../lib/api';
+import { api, DecisionItem, InferencePayload, TabSource } from '../../../lib/api';
 import { TabFrame } from '../TabFrame';
 import { DocViewerPanel } from '../DocViewerPanel';
 
+type Payload = { items: DecisionItem[] } & Partial<InferencePayload>;
 interface Props {
   projectId: string;
   syncNonce: number;
@@ -13,7 +14,7 @@ export function DecisionsTab({ projectId, syncNonce, onCorrect }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<TabSource | null>(null);
-  const [items, setItems] = useState<DecisionItem[]>([]);
+  const [payload, setPayload] = useState<Payload | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,11 +22,11 @@ export function DecisionsTab({ projectId, syncNonce, onCorrect }: Props) {
     setLoading(true);
     setError(null);
     api
-      .tab<{ items: DecisionItem[] }>(projectId, 'decisions')
+      .tab<Payload>(projectId, 'decisions')
       .then((res) => {
         if (!active) return;
         setSource(res.source);
-        setItems(res.payload?.items ?? []);
+        setPayload(res.payload);
       })
       .catch((err) => active && setError(String(err)))
       .finally(() => active && setLoading(false));
@@ -34,8 +35,10 @@ export function DecisionsTab({ projectId, syncNonce, onCorrect }: Props) {
     };
   }, [projectId, syncNonce]);
 
+  const items = payload?.items ?? [];
+
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Decisões" onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Decisões" spans={payload?.spans} onCorrect={onCorrect}>
       <ul className="space-y-2">
         {items.map((it, i) => (
           <li key={`${it.path}-${i}`}>

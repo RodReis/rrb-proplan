@@ -14,6 +14,7 @@ const SOURCE_BADGE: Record<string, string> = {
   convention: 'convenção',
   alias: 'reconhecido por nome',
   config: 'manual',
+  inference: 'inferido por IA',
   absent: 'ausente',
 };
 

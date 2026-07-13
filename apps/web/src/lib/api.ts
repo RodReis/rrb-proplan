@@ -49,10 +49,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export class UnauthorizedError extends Error {}
 
 export type Entity = 'architecture' | 'decisions' | 'design' | 'testing' | 'deploy' | 'skills';
-export type TabSourceKind = 'convention' | 'alias' | 'config' | 'absent';
+export type TabSourceKind = 'convention' | 'alias' | 'config' | 'inference' | 'absent';
 
 export interface TabSource {
-  level: 1 | 2 | 4;
+  level: 1 | 2 | 3 | 4;
   source: TabSourceKind;
   path: string | null;
   paths: string[];
@@ -61,6 +61,12 @@ export interface TabSource {
 export interface TabResponse<P = unknown> {
   source: TabSource;
   payload: P | null;
+}
+
+/** Presente no payload de uma aba quando a resolução é nível 3 (inferência de IA, ADR-014). */
+export interface InferencePayload {
+  inferred: true;
+  spans: string[];
 }
 
 /** Uma linha do mapeamento manual (Fatia 6, ADR-014): entidade + resolução atual + candidatos do repo. */

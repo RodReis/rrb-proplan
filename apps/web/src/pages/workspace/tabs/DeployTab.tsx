@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, DeployEnv, TabSource } from '../../../lib/api';
+import { api, DeployEnv, InferencePayload, TabSource } from '../../../lib/api';
 import { TabFrame } from '../TabFrame';
 
+type Payload = { environments: DeployEnv[] } & Partial<InferencePayload>;
 interface Props {
   projectId: string;
   syncNonce: number;
@@ -12,18 +13,18 @@ export function DeployTab({ projectId, syncNonce, onCorrect }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<TabSource | null>(null);
-  const [envs, setEnvs] = useState<DeployEnv[]>([]);
+  const [payload, setPayload] = useState<Payload | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
     api
-      .tab<{ environments: DeployEnv[] }>(projectId, 'deploy')
+      .tab<Payload>(projectId, 'deploy')
       .then((res) => {
         if (!active) return;
         setSource(res.source);
-        setEnvs(res.payload?.environments ?? []);
+        setPayload(res.payload);
       })
       .catch((err) => active && setError(String(err)))
       .finally(() => active && setLoading(false));
@@ -32,10 +33,11 @@ export function DeployTab({ projectId, syncNonce, onCorrect }: Props) {
     };
   }, [projectId, syncNonce]);
 
+  const envs = payload?.environments ?? [];
   const active = (s: string) => /ativo|active|produção|production/i.test(s);
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Deploy" onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Deploy" spans={payload?.spans} onCorrect={onCorrect}>
       <table className="w-full text-sm">
         <thead className="text-left text-xs text-text-muted">
           <tr>

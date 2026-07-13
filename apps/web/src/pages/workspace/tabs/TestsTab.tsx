@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { api, TabSource, WorkflowInfo } from '../../../lib/api';
+import { api, InferencePayload, TabSource, WorkflowInfo } from '../../../lib/api';
 import { MarkdownView } from '../MarkdownView';
 import { TabFrame } from '../TabFrame';
 
-type Payload = { markdown: string } | { ci: { workflows: WorkflowInfo[] }; inferred: true };
+type Payload =
+  | ({ markdown: string } & Partial<InferencePayload>)
+  | { ci: { workflows: WorkflowInfo[] }; inferred: true };
 interface Props {
   projectId: string;
   syncNonce: number;
@@ -35,10 +37,11 @@ export function TestsTab({ projectId, syncNonce, onCorrect }: Props) {
   }, [projectId, syncNonce]);
 
   const isCi = payload !== null && 'ci' in payload;
+  const spans = payload && 'markdown' in payload ? payload.spans : undefined;
 
   return (
     // fallback de CI: level=4 mas há payload — source=null evita o empty state indevido no TabFrame
-    <TabFrame loading={loading} error={error} source={isCi ? null : source} label="Testes" onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={isCi ? null : source} label="Testes" spans={spans} onCorrect={onCorrect}>
       {payload && 'markdown' in payload && <MarkdownView markdown={payload.markdown} />}
       {payload && 'ci' in payload && (
         <div>

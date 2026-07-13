@@ -148,3 +148,57 @@ describe('InsightService.classifyAbsent', () => {
     expect(prisma.insight.create).not.toHaveBeenCalled();
   });
 });
+
+describe('InsightService.latestClassifySpans', () => {
+  it('lê o classify_marker mais recente e extrai os spans do hit cuja entity bate', async () => {
+    const prisma = {
+      insight: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'marker',
+          content: {
+            hits: [
+              { entity: 'architecture', path: 'docs/tech.md', spans: ['trecho A', 'trecho B'] },
+              { entity: 'design', path: 'docs/ui.md', spans: ['trecho C'] },
+            ],
+          },
+        }),
+      },
+    } as any;
+    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any);
+
+    const spans = await svc.latestClassifySpans('p1', 'architecture');
+
+    expect(spans).toEqual(['trecho A', 'trecho B']);
+    expect(prisma.insight.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: 'p1', kind: 'classify_marker' },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  });
+
+  it('nenhum marker → []', async () => {
+    const prisma = { insight: { findFirst: jest.fn().mockResolvedValue(null) } } as any;
+    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any);
+
+    const spans = await svc.latestClassifySpans('p1', 'architecture');
+
+    expect(spans).toEqual([]);
+  });
+
+  it('marker existe mas nenhum hit bate a entity → []', async () => {
+    const prisma = {
+      insight: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'marker',
+          content: { hits: [{ entity: 'design', path: 'docs/ui.md', spans: ['trecho C'] }] },
+        }),
+      },
+    } as any;
+    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any);
+
+    const spans = await svc.latestClassifySpans('p1', 'architecture');
+
+    expect(spans).toEqual([]);
+  });
+});

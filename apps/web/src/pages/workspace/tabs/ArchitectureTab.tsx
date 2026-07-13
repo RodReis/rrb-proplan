@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { api, TabSource } from '../../../lib/api';
+import { api, InferencePayload, TabSource } from '../../../lib/api';
 import { MarkdownView } from '../MarkdownView';
 import { TabFrame } from '../TabFrame';
 
+type Payload = { markdown: string } & Partial<InferencePayload>;
 interface Props {
   projectId: string;
   syncNonce: number;
@@ -13,18 +14,18 @@ export function ArchitectureTab({ projectId, syncNonce, onCorrect }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<TabSource | null>(null);
-  const [markdown, setMarkdown] = useState('');
+  const [payload, setPayload] = useState<Payload | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
     api
-      .tab<{ markdown: string }>(projectId, 'architecture')
+      .tab<Payload>(projectId, 'architecture')
       .then((res) => {
         if (!active) return;
         setSource(res.source);
-        setMarkdown(res.payload?.markdown ?? '');
+        setPayload(res.payload);
       })
       .catch((err) => active && setError(String(err)))
       .finally(() => active && setLoading(false));
@@ -34,8 +35,8 @@ export function ArchitectureTab({ projectId, syncNonce, onCorrect }: Props) {
   }, [projectId, syncNonce]);
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Arquitetura" onCorrect={onCorrect}>
-      <MarkdownView markdown={markdown} />
+    <TabFrame loading={loading} error={error} source={source} label="Arquitetura" spans={payload?.spans} onCorrect={onCorrect}>
+      <MarkdownView markdown={payload?.markdown ?? ''} />
     </TabFrame>
   );
 }
