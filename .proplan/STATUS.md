@@ -21,7 +21,7 @@ updated: 2026-07-13
 
 ## A Fazer
 
-- Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (#12, prio: baixa)
+_(vazio)_
 
 ## Em Andamento
 
@@ -33,6 +33,7 @@ _(vazio)_
 
 ## Finalizado
 
+- Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (#12, prio: baixa, finalizado em: 2026-07-13)
 - Fatia 6 — Resolução de documentos (ADR-014) + abas: DocumentResolver (convenção → alias → .proplan/config.yml → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção adr/), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (#11, prio: baixa, finalizado em: 2026-07-13)
 
 ## Descartado
