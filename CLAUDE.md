@@ -6,6 +6,15 @@
 - **Claude Cowork (planejamento)** — especifica e mantém `docs/` e as specs em `docs/specs/`. Antes de finalizar qualquer spec, apresenta as perguntas abertas e dúvidas ao PI — spec só vira `aprovada-pi` com todas resolvidas (evitar retrabalho). **Nunca implementa código** — implementação é exclusiva do Claude Code.
 - **Claude Code (você)** — planeja, codifica, testa (código, UX e UI — pode usar as skills do impeccable), atualiza a documentação e **sempre commita todos os documentos de `docs/`** junto da entrega. Implementa a partir deste arquivo + `docs/` + spec da feature em `docs/specs/`. Pode criticar arquitetura, **não escopo**. Sem spec para a tarefa, ou spec ambígua → perguntar ao PI antes de codificar, nunca assumir. Deve apontar problemas técnicos da spec — a correção passa pelo PI.
 
+### Ciclo de vida de uma fatia (processo do trio — **não é feature do produto**)
+
+Isto é convenção **nossa**, executada à mão pelo Code via GitHub MCP. **Nada disso vira código do ProPlan** — o ADR-014 é explícito: o ProPlan se adapta ao repo, nunca impõe convenção. Se um segundo repo adotar `docs/specs/`, reavaliar.
+
+1. **Spec vira `aprovada-pi`** → o **Code** cria a issue no board: coluna **A Fazer** (`proplan:todo`), título = a fatia, corpo com link para o arquivo da spec, assignee = **PI**.
+2. **Code começa** → move para **Em Andamento** (`proplan:doing`) e se atribui.
+3. **Code entrega** → **não declara nada**. Abre PR com **`closes #N`** no corpo. O merge fecha a issue → o card cai em **Feito** sozinho. *Estado derivado de evidência (PR + CI + diff), nunca de auto-relato.* Agente que declara "terminei" sem PR produz o "fechamento frágil" que este produto existe para detectar.
+4. **PI aceita** → **só o PI** aplica `proplan:finalizado`. **Nenhuma automação pode forjar aceite** (ADR-011). O Code **nunca** move card para Finalizado.
+
 ## Regras de trabalho
 
 - **Idioma**: documentação, specs, commits e comunicação sempre em português (pt-BR); código e identificadores em inglês.

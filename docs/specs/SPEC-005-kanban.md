@@ -34,6 +34,7 @@ Issue tem só `open`/`closed`. As quatro colunas da convenção precisam morar e
   | tirar de Feito | `PATCH state=open` + aplicar a label da coluna destino |
   | criar card | `POST /issues` (título + label da coluna) |
   | editar título/prioridade | `PATCH /issues/{n}` (título; prioridade = label `prio:alta\|media\|baixa`) |
+  | atribuir / desatribuir | `PATCH /issues/{n}` com `assignees` (**no máximo um** — ver abaixo) |
   | descartar card | `PATCH state=closed` + label `proplan:descartado` — **nunca deletar issue** (a API de delete existe mas é destrutiva e irreversível; não damos esse poder ao board) |
 
 - **Identidade do card = `issue.number`.** Estável. Some a gambiarra de identificar card por `coluna + índice + hash do texto`.
@@ -51,6 +52,14 @@ Issue tem só `open`/`closed`. As quatro colunas da convenção precisam morar e
   **`Finalizado` NÃO pode ser um estado `open`.** Issue é binária no GitHub: se Finalizado fosse `closed`, o merge de um PR com `closes #42` marcaria como *"aceito pelo PI"* um trabalho que o PI nunca viu — mentira gerada pela automação nativa do GitHub. Com o mapeamento acima, `closes #42` cai em **Feito**, que é o significado certo; o **aceite é o PI aplicando a label**, ato deliberado que nenhuma automação forja.
 
   Reabrir (de qualquer coluna fechada) = arrastar para uma coluna aberta: reabre a issue e remove a label `proplan:finalizado`/`proplan:descartado`.
+
+- **Assignee (emenda de 2026-07-13)** — **um só**, exibido no card.
+
+  **Por que assignee sim e autor não**: o **autor** é sempre `proplan[bot]` ou o próprio PI — um avatar idêntico em 100% dos cards **não informa nada** e polui o card. Já o **assignee** passa a valer no momento em que existe mais de um executor — e isso está chegando: o **GitHub Copilot coding agent pode ser atribuído a uma issue**. Com PI + agente(s) trabalhando em paralelo, "quem está tocando esta fatia" vira a informação mais útil do board, e **Em Andamento** vira um mapa de alocação.
+
+  - Exibição: avatar pequeno no rodapé do card. **Sem assignee = espaço vazio**, não um placeholder cinza — ausência tem que ser *visível*, não decorada.
+  - **Múltiplos assignees continuam fora de escopo** (complexidade de UI sem caso de uso). Se a issue vier do GitHub com N assignees, o card mostra o **primeiro** e um `+N` discreto; editar pelo ProPlan **substitui** por um só.
+  - **Badge "sem dono"**: card em **Em Andamento** sem assignee ganha um badge âmbar discreto. É trabalho em curso sem responsável — a semente exata do "projeto esquecido" (regra do MVP2). Sinal barato, pega problema real.
 
 - **Carimbo de aceite/descarte via comentário na issue**: `closed_at` marca a **entrega**, não o **aceite**, e a data de aplicação de label não é recuperável barato. Ao mover para **Finalizado** ou **Descartado**, o ProPlan **posta um comentário**: `proplan: finalizado pelo PI em <data>` / `proplan: descartado em <data>`. Permanente, auditável, no GitHub — **evidência**, não cache. Mover de volta **não apaga** o comentário (o histórico é o produto).
 - **Projeção `.proplan/STATUS.md`** (raiz do repo-alvo, **fora de `docs/`** — ver "Separação `docs/` × `.proplan/`" nas notas técnicas): gerada pelo ProPlan a partir das issues e commitada. Cabeçalho obrigatório:
@@ -87,20 +96,25 @@ A SPEC-003 entregou "gerar proposta de `STATUS.md` por IA → aprovar → commit
 ### Web — aba Kanban (ativa)
 
 - dnd-kit conforme `DESIGN.md`: drag com tilt/sombra, placeholder tracejado, soltar com spring; UI otimista + borda pulsante no card até a API confirmar; toast de resultado (nunca no gesto).
-- Card exibe número da issue (`#42`), título, label de prioridade e link "abrir no GitHub".
+- Card exibe número da issue (`#42`), título, label de prioridade, **avatar do assignee** (ou espaço vazio) e link "abrir no GitHub". **Autor não é exibido** — sempre `proplan[bot]` ou o PI; informação zero.
+- **Atribuir/desatribuir** pelo popover de edição: lista de colaboradores do repo (`GET /repos/{o}/{r}/assignees`), seleção única, opção "ninguém".
 - Criar card inline no topo da coluna; editar em popover; **descartar** = mover para a coluna Descartado (confirmação).
 - **Coluna Descartado**: visível, colapsada por padrão (não polui o board), com contador. Visual distinto de Feito (cinza/riscado vs. verde) — Feito é conquista, Descartado é decisão.
 - Ordenação dentro da coluna: **determinística** (prioridade, depois `updated_at` desc). Reordenar manualmente **não entra** (Issues não tem ordem; exigiria Projects v2).
 
 ## Fora de escopo
 
-Webhooks/túnel (ADR-009); **GitHub Projects v2**; ordenação manual dentro da coluna; **sub-issues** (rejeitadas no ADR-011: o board é uma grade plana; o único ganho — barra `3/7` — o `DEVELOPMENT.md` já dá. Reavaliar no MVP2 **só se** o board plano se provar grosso) e issue types; milestones; assignees múltiplos; filtros/busca no board; WIP limits; colunas customizadas; deleção real de issue; write-path em markdown para repos sem Issues (modo degradado é read-only, por decisão).
+Webhooks/túnel (ADR-009); **GitHub Projects v2**; ordenação manual dentro da coluna; **sub-issues** (rejeitadas no ADR-011: o board é uma grade plana; o único ganho — barra `3/7` — o `DEVELOPMENT.md` já dá. Reavaliar no MVP2 **só se** o board plano se provar grosso) e issue types; milestones; **assignees múltiplos** (um só — ver emenda); **exibição do autor** (ruído: sempre `proplan[bot]` ou o PI); filtros/busca no board; WIP limits; colunas customizadas; deleção real de issue; write-path em markdown para repos sem Issues (modo degradado é read-only, por decisão).
 
 ## Critérios de aceite
 
 - [ ] Mover card na UI aplica/troca a label `proplan:*` na issue correspondente no GitHub; recarregar o ProPlan reflete o estado vindo da API.
 - [ ] Mover para **Feito** fecha a issue no GitHub; tirar de Feito reabre e aplica a label da coluna destino.
 - [ ] Criar card cria issue com título e labels corretas; editar altera título/prioridade.
+- [ ] **Assignee**: atribuir pelo popover aplica `assignees` na issue do GitHub; o avatar aparece no card; desatribuir remove e o card fica com **espaço vazio** (não placeholder).
+- [ ] Issue que veio do GitHub com **2+ assignees** mostra o primeiro + `+N`; editar pelo ProPlan **substitui** por um só.
+- [ ] **Badge "sem dono"**: card em **Em Andamento** sem assignee mostra badge âmbar; atribuir alguém faz o badge sumir.
+- [ ] **Autor não aparece em card nenhum** (é sempre `proplan[bot]`/PI — decisão explícita, não esquecimento).
 - [ ] **Descartar** move para a coluna Descartado (issue `closed` + `proplan:descartado`); a coluna é visível e colapsável; **nenhuma issue é deletada** em nenhum fluxo.
 - [ ] **Feito × Finalizado**: mover para Finalizado aplica `proplan:finalizado` numa issue já `closed`; a issue **não muda de estado no GitHub** (continua `closed`).
 - [ ] **PR com `closes #42` cai em Feito, nunca em Finalizado.** Teste explícito — é a razão de o mapeamento ser esse. Nenhuma automação pode produzir um "aceito pelo PI".
@@ -136,7 +150,7 @@ Portanto:
 - `applied` = issue confirmada no GitHub → **a borda pulsante do card para aqui**. É o fim do ciclo de vida da mutação.
 - A projeção roda em background, com **indicador global discreto** no header do board (`salvando no repo…` → some), **nunca por card**.
 - **Projeção que falha não reverte card nenhum** — o estado está nas Issues, e ele está certo. A UI mostra um aviso não-bloqueante (`não foi possível atualizar .proplan/STATUS.md — tentar de novo`) e o próximo sync reconcilia. Falha de artefato de build não pode contaminar a fonte de verdade.
-- **Prisma**: `Issue { id, projectId, number, title, state, column, priority?, htmlUrl, closedAt?, updatedAt }` — **cache derivado da API, não fonte**. `BoardMutation { id, projectId, type, payload Json, status, error?, createdAt, finishedAt? }` para auditoria e estado da fila. `Project` ganha `needsIssueImport Boolean @default(false)` (aviso de STATUS.md legado).
+- **Prisma**: `Issue { id, projectId, number, title, state, column, priority?, assigneeLogin?, assigneeAvatarUrl?, assigneeCount Int @default(0), htmlUrl, closedAt?, updatedAt }` (`assigneeCount` só para o `+N` quando a issue veio do GitHub com mais de um) — **cache derivado da API, não fonte**. `BoardMutation { id, projectId, type, payload Json, status, error?, createdAt, finishedAt? }` para auditoria e estado da fila. `Project` ganha `needsIssueImport Boolean @default(false)` (aviso de STATUS.md legado).
 - `board` consome: `GithubIssuesClient` (novo, em `board/infrastructure`), o write-back compartilhado da Fatia 3 (agora com segundo consumidor — promover a shared, conforme a nota da SPEC-003), `IngestionService.enqueueSync`, e do `identity` (ADR-015): **`GithubAuth.userToken`** para ler issues e **`GithubAuth.installationToken`** para toda escrita (issue, label, commit da projeção). Nunca o contrário.
 - **Removido**: o parser/serializador *round-trip fiel* de `STATUS.md` da spec anterior. Sobram um **gerador** (issues → markdown) e um **parser de leitura** (usado só na importação do legado e no modo degradado).
 

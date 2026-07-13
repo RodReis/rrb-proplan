@@ -205,6 +205,20 @@ mapping:
 
 **Princípio inegociável: o ProPlan nunca renomeia, move ou reescreve documento do usuário.** Ele mapeia. O repo do usuário continua exatamente como está — a adaptação é do ProPlan, não do projeto. Bootstrap de doc ausente é sempre **proposta**, revisada e aprovada.
 
+### Corolário — convenção nossa não vira feature (a regra do segundo consumidor)
+
+**Registrado em 2026-07-13.** O trio (PI · Cowork · Code) tem convenções **de processo**: `docs/specs/` com frontmatter `status: aprovada-pi`, o ciclo spec→issue→PR→aceite (ver `CLAUDE.md`). **Nada disso é feature do ProPlan.** Construir produto em cima da convenção que *nós* inventamos é **impor a nossa convenção aos repos-alvo** — exatamente o que este ADR proíbe.
+
+É a **regra do segundo consumidor**, que o projeto já aplica a código (SPEC-003: *"não criar abstração antes do segundo consumidor"* — o write-back só virou compartilhado quando a Fatia 5 precisou), agora aplicada a **escopo de produto**:
+
+> **Convenção só vira feature depois do segundo consumidor. Antes disso, é processo.**
+
+**Teste de honestidade do gatilho** — a armadilha é auto-infligida: se o segundo repo adotar `docs/specs/` **porque queremos que o ProPlan leia**, fabricamos a demanda que depois vamos atender, e "dois repos usam" vira apenas *nós copiando a nós mesmos*. A pergunta que vale:
+
+> *Aquele repo teria adotado essa convenção se o ProPlan não existisse?*
+
+Se a resposta for **não**, continua sendo **uma** convenção — com dois arquivos. Gatilho não disparado.
+
 **Refinamento da regra do ADR-011**: `.proplan/` passa a ser **"tudo que é do ProPlan"** — artefato gerado (`STATUS.md`) *e* configuração (`config.yml`). `docs/` continua sendo só o projeto. O cálculo de frescor do ADR-010 (`path=docs`) segue intacto.
 
 **Onde o resolver mora — correção de 2026-07-13.** A primeira versão deste ADR (e a SPEC-006) diziam `board/domain`. **Estava errado.** O resolver não é composição de aba nem interpretação de conteúdo — nos níveis 1, 2 e 4 ele apenas **casa caminho**, o que é propriedade do **índice de documentos**. E o nível 3 é IA, que nunca pode encostar no caminho de renderização (ADR-002).
