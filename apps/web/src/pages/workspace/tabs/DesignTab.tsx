@@ -9,9 +9,11 @@ interface Props {
   projectId: string;
   syncNonce: number;
   onCorrect: () => void;
+  /** Recarrega a aba após a promoção concluir (dono do syncNonce: Workspace). */
+  onReload: () => void;
 }
 
-export function DesignTab({ projectId, syncNonce, onCorrect }: Props) {
+export function DesignTab({ projectId, syncNonce, onCorrect, onReload }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<TabSource | null>(null);
@@ -62,7 +64,10 @@ export function DesignTab({ projectId, syncNonce, onCorrect }: Props) {
           tab="design"
           initialContent={payload?.markdown ?? ''}
           onClose={() => setPromoteOpen(false)}
-          onPromoted={() => setPromoteOpen(false)}
+          onPromoted={() => {
+            setPromoteOpen(false);
+            onReload();
+          }}
         />
       )}
     </TabFrame>

@@ -36,6 +36,16 @@ Referência visual: Untitled UI (layout enviado pelo dono em 2026-07-12). O que 
 - **Densidade**: espaçosa como o exemplo (padding 16–24px, divisores 1px em vez de cards com sombra).
 - **Estados de IA sempre distinguíveis**: qualquer conteúdo inferido leva o badge âmbar e arestas inferidas no grafo são tracejadas. Regra de produto, não só estética (ADR-002).
 
+## Operações assíncronas — regra geral (SPEC-010)
+
+Toda escrita do ProPlan no repo do usuário (`ação → commit → propagação → sync → recarregar`) leva segundos. **Silêncio nesse intervalo é bug, não detalhe.**
+
+- **Passos nomeados, em linguagem de gente**: `Commitando docs/ARCHITECTURE.md no repo…` → `Aguardando o GitHub propagar…` → `Sincronizando a documentação…` → `Pronto`. **Nunca** jargão (`202`, `docsTreeSha`, `enqueueSync`).
+- **A tela nunca fica igual e muda.** Se algo está acontecendo, aparece.
+- **Falha é um passo que falha**, com motivo e ação (`Tentar de novo` / `Resolver no repo`) — nunca um toast que some.
+- **A operação sobrevive à navegação**: o usuário sai da aba e continua vendo o progresso no **painel de Atividade** (rail). Feedback preso ao botão não basta.
+- **Estado mora no servidor**: F5 no meio volta mostrando o passo atual.
+
 ## Notas por aba
 
 - **Kanban**: 6 colunas fixas (`CONVENTION.md`): Backlog · A Fazer · Em Andamento · **Feito** · **Finalizado** · **Descartado**. **Feito é fila de aceite** — dá destaque (é ação pendente do PI, não conquista): contador em âmbar quando > 0. **Finalizado** é a conquista (verde). **Descartado** colapsada por padrão, cinza/riscado — é decisão, não fracasso.

@@ -10,7 +10,7 @@ describe('TabsService.getTab — fallback inferido (architecture/design)', () =>
       latestClassifySpans: jest.fn(),
       latestFallbackInternal: jest.fn().mockResolvedValue({ content: { markdown: '# Arquitetura inferida' } }),
     } as any;
-    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any);
+    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any);
 
     const out = await svc.getTab('p1', 'architecture');
 
@@ -27,7 +27,7 @@ describe('TabsService.getTab — fallback inferido (architecture/design)', () =>
       latestClassifySpans: jest.fn(),
       latestFallbackInternal: jest.fn().mockResolvedValue(null),
     } as any;
-    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any);
+    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any);
 
     const out = await svc.getTab('p1', 'design');
 
@@ -42,7 +42,7 @@ describe('TabsService.getTab — fallback inferido (architecture/design)', () =>
       latestClassifySpans: jest.fn(),
       latestFallbackInternal: jest.fn(),
     } as any;
-    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any);
+    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any);
 
     const out = await svc.getTab('p1', 'deploy');
 
@@ -69,12 +69,18 @@ describe('TabsService.promote', () => {
       putFile: jest.fn().mockResolvedValue('sha2'),
     } as any;
     const ingestionWrite = { enqueueSync: jest.fn().mockResolvedValue({ syncRunId: 'run1' }) } as any;
-    return { prisma, ingestion, insight, auth, writeback, ingestionWrite };
+    const activity = {
+      start: jest.fn().mockResolvedValue('op1'),
+      advance: jest.fn().mockResolvedValue(undefined),
+      attachArtifacts: jest.fn().mockResolvedValue(undefined),
+      fail: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    return { prisma, ingestion, insight, auth, writeback, ingestionWrite, activity };
   }
 
-  it('architecture: commita docs/ARCHITECTURE.md com o content do body + enqueueSync', async () => {
-    const { prisma, ingestion, insight, auth, writeback, ingestionWrite } = makeDeps();
-    const svc = new TabsService(prisma, ingestion, insight, auth, writeback, ingestionWrite);
+  it('architecture: commita docs/ARCHITECTURE.md com o content do body + enqueueSync + Operation', async () => {
+    const { prisma, ingestion, insight, auth, writeback, ingestionWrite, activity } = makeDeps();
+    const svc = new TabsService(prisma, ingestion, insight, auth, writeback, ingestionWrite, activity);
 
     const out = await svc.promote('u1', 'p1', 'architecture', '# Doc revisado');
 
@@ -89,12 +95,16 @@ describe('TabsService.promote', () => {
       path: 'docs/ARCHITECTURE.md',
       blobSha: 'sha2',
     });
-    expect(out.syncRunId).toBe('run1');
+    // Operation (SPEC-010): abre com kind promote + path, anexa o syncRunId,
+    // e devolve o operationId (o front faz polling dele).
+    expect(activity.start).toHaveBeenCalledWith('p1', 'promote', 'docs/ARCHITECTURE.md');
+    expect(activity.attachArtifacts).toHaveBeenCalledWith('op1', { syncRunId: 'run1' });
+    expect(out.operationId).toBe('op1');
   });
 
   it('design: commita docs/DESIGN.md', async () => {
-    const { prisma, ingestion, insight, auth, writeback, ingestionWrite } = makeDeps();
-    const svc = new TabsService(prisma, ingestion, insight, auth, writeback, ingestionWrite);
+    const { prisma, ingestion, insight, auth, writeback, ingestionWrite, activity } = makeDeps();
+    const svc = new TabsService(prisma, ingestion, insight, auth, writeback, ingestionWrite, activity);
 
     await svc.promote('u1', 'p1', 'design', '# Design revisado');
 
@@ -102,11 +112,22 @@ describe('TabsService.promote', () => {
     expect(putArg.path).toBe('docs/DESIGN.md');
   });
 
-  it('tab inválido (ex.: decisions) → BadRequestException', async () => {
-    const { prisma, ingestion, insight, auth, writeback, ingestionWrite } = makeDeps();
-    const svc = new TabsService(prisma, ingestion, insight, auth, writeback, ingestionWrite);
+  it('tab inválido (ex.: decisions) → BadRequestException, sem abrir Operation', async () => {
+    const { prisma, ingestion, insight, auth, writeback, ingestionWrite, activity } = makeDeps();
+    const svc = new TabsService(prisma, ingestion, insight, auth, writeback, ingestionWrite, activity);
 
     await expect(svc.promote('u1', 'p1', 'decisions' as any, 'x')).rejects.toThrow(BadRequestException);
     expect(auth.installationToken).not.toHaveBeenCalled();
+    expect(activity.start).not.toHaveBeenCalled();
+  });
+
+  it('falha no write-back → Operation marcada como failed e erro propaga', async () => {
+    const { prisma, ingestion, insight, auth, writeback, ingestionWrite, activity } = makeDeps();
+    writeback.getFileSha.mockRejectedValue(new Error('GitHub 500'));
+    const svc = new TabsService(prisma, ingestion, insight, auth, writeback, ingestionWrite, activity);
+
+    await expect(svc.promote('u1', 'p1', 'architecture', '# x')).rejects.toThrow('GitHub 500');
+    expect(activity.start).toHaveBeenCalled();
+    expect(activity.fail).toHaveBeenCalledWith('op1', 'GitHub 500');
   });
 });

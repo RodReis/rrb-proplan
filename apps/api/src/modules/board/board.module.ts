@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { IngestionModule } from '../ingestion/ingestion.module';
 import { InsightModule } from '../insight/insight.module';
+import { ActivityModule } from '../activity/activity.module';
 import { SharedModule } from '../../shared/shared.module';
 import { BoardService } from './application/board.service';
 import { BoardMutationService } from './application/board-mutation.service';
@@ -23,6 +24,7 @@ import { TabsController } from './presentation/tabs.controller';
     IdentityModule,
     IngestionModule,
     InsightModule,
+    ActivityModule,
     SharedModule,
     BullModule.registerQueue({ name: BOARD_QUEUE }),
   ],

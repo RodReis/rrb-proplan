@@ -151,6 +151,7 @@ export function Workspace({ project, onBack }: Props) {
             projectId={projectId}
             syncNonce={syncNonce}
             onCorrect={() => setMapping({ open: true, focus: 'architecture' })}
+            onReload={() => setSyncNonce((n) => n + 1)}
           />
         )}
         {activeTab === 'design' && (
@@ -158,6 +159,7 @@ export function Workspace({ project, onBack }: Props) {
             projectId={projectId}
             syncNonce={syncNonce}
             onCorrect={() => setMapping({ open: true, focus: 'design' })}
+            onReload={() => setSyncNonce((n) => n + 1)}
           />
         )}
         {activeTab === 'decisions' && (
