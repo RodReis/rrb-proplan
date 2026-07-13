@@ -1,3 +1,5 @@
+> migrado para Issues — ver .proplan/STATUS.md
+
 ---
 proplan: v1
 updated: 2026-07-12
