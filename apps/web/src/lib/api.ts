@@ -161,6 +161,11 @@ export const api = {
     ),
   graph: (projectId: string) =>
     request<DocGraph>(`/projects/${projectId}/graph`),
+  suppressEdge: (projectId: string, sourcePath: string, targetPath: string) =>
+    request<void>(`/projects/${projectId}/graph/edges`, {
+      method: 'DELETE',
+      body: JSON.stringify({ sourcePath, targetPath }),
+    }),
   tab: <P = unknown>(projectId: string, tab: Entity) =>
     request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
   mapping: (projectId: string) =>
@@ -260,6 +265,8 @@ export interface GraphEdge {
   target: string | null;
   targetPath: string;
   broken: boolean;
+  kind: 'explicit' | 'inferred';
+  reason: string | null;
 }
 
 export interface DocGraph {

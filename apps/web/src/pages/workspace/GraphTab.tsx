@@ -8,6 +8,7 @@ import {
   type SimulationNodeDatum,
 } from 'd3-force';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import ReactFlow, {
   Background,
   Controls,
@@ -20,6 +21,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { api, DocGraph, GraphNode } from '../../lib/api';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { DocViewerPanel } from './DocViewerPanel';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -86,7 +88,28 @@ const EDGE_STYLES = {
     opacity: 0.25,
     transition: 'opacity 150ms',
   },
+  inferred: {
+    stroke: 'var(--color-warning)',
+    strokeWidth: 1.5,
+    strokeDasharray: '5 3',
+    opacity: 1,
+    transition: 'opacity 150ms',
+  },
+  inferredDim: {
+    stroke: 'var(--color-warning)',
+    strokeWidth: 1.5,
+    strokeDasharray: '5 3',
+    opacity: 0.25,
+    transition: 'opacity 150ms',
+  },
 } as const;
+
+interface EdgeMeta {
+  kind: 'explicit' | 'inferred';
+  reason: string | null;
+  sourcePath: string;
+  targetPath: string;
+}
 
 interface SimNode extends SimulationNodeDatum {
   id: string;
@@ -99,6 +122,11 @@ interface SimLink {
   source: string;
   target: string;
   broken: boolean;
+  kind: 'explicit' | 'inferred';
+  reason: string | null;
+  /** path de origem/destino — necessários para api.suppressEdge (que opera por path, não docId). */
+  sourcePath: string;
+  targetPath: string;
 }
 
 type State =
@@ -154,6 +182,20 @@ function GraphCanvas({
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
+  const [showInferred, setShowInferred] = useState(true);
+  const [edgeTooltip, setEdgeTooltip] = useState<{
+    id: string;
+    reason: string | null;
+    sourcePath: string;
+    targetPath: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<{
+    id: string;
+    sourcePath: string;
+    targetPath: string;
+  } | null>(null);
 
   const { simNodes, simLinks, neighbors } = useMemo(
     () => buildGraph(graph),
@@ -197,12 +239,22 @@ function GraphCanvas({
 
   const initialEdges = useMemo(
     () =>
-      simLinks.map<Edge>((l, i) => ({
+      simLinks.map<Edge<EdgeMeta>>((l, i) => ({
         id: `e${i}`,
         source: l.source,
         target: l.target,
         animated: false,
-        style: l.broken ? EDGE_STYLES.broken : EDGE_STYLES.normal,
+        style: l.broken
+          ? EDGE_STYLES.broken
+          : l.kind === 'inferred'
+            ? EDGE_STYLES.inferred
+            : EDGE_STYLES.normal,
+        data: {
+          kind: l.kind,
+          reason: l.reason,
+          sourcePath: l.sourcePath,
+          targetPath: l.targetPath,
+        },
       })),
     [simLinks],
   );
@@ -229,25 +281,59 @@ function GraphCanvas({
     setEdges((prev) =>
       prev.map((e) => {
         const broken = e.style === EDGE_STYLES.broken || e.style === EDGE_STYLES.brokenDim;
+        const inferred = e.style === EDGE_STYLES.inferred || e.style === EDGE_STYLES.inferredDim;
         const dim =
           hovered !== null && e.source !== hovered && e.target !== hovered;
         const style = broken
           ? dim
             ? EDGE_STYLES.brokenDim
             : EDGE_STYLES.broken
-          : dim
-            ? EDGE_STYLES.normalDim
-            : EDGE_STYLES.normal;
+          : inferred
+            ? dim
+              ? EDGE_STYLES.inferredDim
+              : EDGE_STYLES.inferred
+            : dim
+              ? EDGE_STYLES.normalDim
+              : EDGE_STYLES.normal;
         return e.style === style ? e : { ...e, style };
       }),
     );
   }, [hovered, metaById, neighbors, setNodes, setEdges]);
 
+  const inferredCount = useMemo(
+    () => edges.filter((e) => e.data?.kind === 'inferred').length,
+    [edges],
+  );
+
+  // Chip/toggle só oculta do render — o estado de edges (e a contagem) segue intacto.
+  const visibleEdges = useMemo(
+    () => (showInferred ? edges : edges.filter((e) => e.data?.kind !== 'inferred')),
+    [edges, showInferred],
+  );
+
+  async function handleSuppressConfirmed() {
+    if (!confirmRemove) return;
+    const { id, sourcePath, targetPath } = confirmRemove;
+    setConfirmRemove(null);
+    const removed = edges.find((e) => e.id === id);
+    // Otimista: some da tela antes da resposta da API.
+    setEdges((prev) => prev.filter((e) => e.id !== id));
+    setEdgeTooltip(null);
+    try {
+      await api.suppressEdge(projectId, sourcePath, targetPath);
+      toast.success('Relação inferida removida.');
+    } catch (err) {
+      // Reverte: reinsere a edge removida.
+      if (removed) setEdges((prev) => [...prev, removed]);
+      toast.error(`Falha ao remover relação: ${err}`);
+    }
+  }
+
   return (
     <div className="relative h-full">
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={visibleEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodesDraggable={false}
@@ -260,6 +346,18 @@ function GraphCanvas({
           const gn = graph.nodes.find((x) => x.docId === node.id);
           if (gn) setSelected(gn);
         }}
+        onEdgeMouseEnter={(evt, edge) => {
+          if (edge.data?.kind !== 'inferred') return;
+          setEdgeTooltip({
+            id: edge.id,
+            reason: edge.data.reason,
+            sourcePath: edge.data.sourcePath,
+            targetPath: edge.data.targetPath,
+            x: evt.clientX,
+            y: evt.clientY,
+          });
+        }}
+        onEdgeMouseLeave={() => setEdgeTooltip(null)}
         fitView
         fitViewOptions={FIT_OPTS}
         minZoom={0.1}
@@ -275,6 +373,56 @@ function GraphCanvas({
       </ReactFlow>
 
       <Legend />
+
+      {inferredCount > 0 && (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-full border border-warning/40 bg-surface/90 px-3 py-1.5 text-xs font-medium text-warning backdrop-blur">
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={showInferred}
+              onChange={(e) => setShowInferred(e.target.checked)}
+              aria-label="Mostrar relações inferidas"
+            />
+            {inferredCount} inferida{inferredCount === 1 ? '' : 's'}
+          </label>
+        </div>
+      )}
+
+      {edgeTooltip && (
+        <div
+          className="pointer-events-none fixed z-30 max-w-xs rounded-md border border-warning/40 bg-surface p-2.5 text-xs shadow-lg"
+          style={{ left: edgeTooltip.x + 12, top: edgeTooltip.y + 12 }}
+        >
+          <p className="font-semibold text-warning">Relação inferida</p>
+          <p className="mt-1 text-text-muted">
+            {edgeTooltip.reason ?? 'Sem motivo registrado.'}
+          </p>
+          <button
+            type="button"
+            className="pointer-events-auto mt-2 rounded border border-error/40 px-2 py-1 text-xs font-semibold text-error hover:bg-error/10"
+            onClick={() =>
+              setConfirmRemove({
+                id: edgeTooltip.id,
+                sourcePath: edgeTooltip.sourcePath,
+                targetPath: edgeTooltip.targetPath,
+              })
+            }
+          >
+            Remover relação
+          </button>
+        </div>
+      )}
+
+      {confirmRemove && (
+        <ConfirmDialog
+          title="Remover relação inferida"
+          message={`Suprimir a relação entre "${confirmRemove.sourcePath}" e "${confirmRemove.targetPath}"? Ela não volta em um novo sync, a menos que você a restaure depois.`}
+          confirmLabel="Remover"
+          danger
+          onConfirm={() => void handleSuppressConfirmed()}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
 
       {selected && (
         <ErrorBoundary
@@ -329,10 +477,16 @@ function buildGraph(graph: DocGraph): {
     }
   }
 
+  const pathById = new Map(graph.nodes.map((n) => [n.docId, n.path]));
+
   const simLinks: SimLink[] = graph.edges.map((e) => ({
     source: e.source,
     target: e.broken ? ghostId.get(e.targetPath)! : e.target!,
     broken: e.broken,
+    kind: e.kind,
+    reason: e.reason,
+    sourcePath: pathById.get(e.source) ?? e.source,
+    targetPath: e.targetPath,
   }));
 
   const neighbors = new Map<string, Set<string>>();
@@ -354,6 +508,7 @@ function Legend() {
     { c: KIND_COLOR.claude, l: 'CLAUDE.md' },
     { c: KIND_COLOR.doc, l: 'Documento' },
     { c: '#F04438', l: 'Link quebrado', dashed: true },
+    { c: '#F79009', l: 'Relação inferida', dashed: true },
   ];
   return (
     <div className="absolute left-3 top-3 z-10 flex flex-col gap-1.5 rounded-md border border-border bg-surface/90 p-3 text-xs backdrop-blur">
@@ -362,7 +517,7 @@ function Legend() {
           <span
             className="inline-block h-3 w-3 rounded"
             style={{
-              background: it.dashed ? '#FEF3F2' : it.c,
+              background: it.dashed ? `${it.c}1A` : it.c,
               border: it.dashed ? `1px dashed ${it.c}` : 'none',
             }}
           />
