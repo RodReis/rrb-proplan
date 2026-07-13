@@ -174,6 +174,11 @@ export const api = {
     }),
   tab: <P = unknown>(projectId: string, tab: Entity) =>
     request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
+  promote: (projectId: string, tab: Entity, content: string) =>
+    request<void>(`/projects/${projectId}/tabs/${tab}/promote`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
   mapping: (projectId: string) =>
     request<{ rows: MappingRow[]; proplanConfigInvalid: boolean }>(
       `/projects/${projectId}/tabs/mapping`,
