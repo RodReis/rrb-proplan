@@ -28,16 +28,28 @@ Fechar o híbrido do ADR-002: onde a convenção não alcança, a IA completa �
 - **Fallback de Arquitetura e Design** (fecha o mapa aba→fonte do CONVENTION.md):
   - Projeto sem `ARCHITECTURE.md`/`DESIGN.md`: job gera visão inferida (markdown) a partir dos docs existentes; persistida em `Insight` (`kind: architecture_fallback | design_fallback`) com `docs_tree_sha`.
   - Aba renderiza o conteúdo com **badge âmbar "inferido por IA"** no header (DESIGN.md) + botão **"Promover a documento"**: abre editor com preview → commit `proplan: promove <ARQUIVO> inferido a documento` (write-back compartilhado da Fatia 5) → re-sync → aba passa a usar a fonte primária.
-  - Regenerar com confirmação (mesmo padrão da Visão Geral).
+  - ~~Regenerar com confirmação (mesmo padrão da Visão Geral).~~ **CORTADO em 2026-07-13** — ver "Fora de escopo".
 
 ## Fora de escopo
 
 Fallback de TESTING (já coberto por CI parse na Fatia 6) e de DEPLOY (proibido por decisão da CONVENTION.md), embeddings/busca semântica, edição de arestas explícitas (derivadas de texto — edite o doc), sugestão de arestas em tempo real durante escrita.
 
+### Botão "Regenerar" nos fallbacks — **cortado, com gatilho de volta** (decisão do PI, 2026-07-13)
+
+**O caso legítimo existe** — e é importante registrar, senão o corte parece "não serve para nada": o artefato de IA é cacheado por `docs_tree_sha` (ADR-002), logo **trocar de provedor (ADR-008) nunca reaplica** num fallback já existente. Regenerar é a **única via** de aplicar o provedor novo. Foi exatamente por isso que a Fatia 3 tem Regenerar na Visão Geral. **Cortar aqui torna o produto assimétrico** (o resumo tem, o fallback não) — custo assumido conscientemente.
+
+**Corta assim mesmo, por dois motivos que pesam mais:**
+
+1. **É um botão de gasto sem teto.** O teto rígido (ADR-016) só chega na **Fatia 7.5**. Entregar um disparador de chamada de IA real, sem cap, **justo na fatia que mais consome IA**, é torneira aberta.
+2. **Re-rolar o mesmo input até sair bom é o não-determinismo que este produto desconfia.** Fallback ruim se resolve **corrigindo o mapeamento** (`.proplan/config.yml`, ADR-014) ou **promovendo a documento** — os dois atacam a *causa*. Regenerar só joga o dado de novo.
+
+**Gatilho de volta**: implementar **depois da Fatia 7.5**, protegido pelo teto. Aí nasce dentro de um orçamento, não fora. Escopo quando voltar: `POST /projects/:id/insights/:kind/regenerate` com `force: true` (ignora o marker do hash) + `ConfirmDialog` avisando custo — mesmo padrão da SPEC-003.
+
 ## Critérios de aceite
 
 - [ ] Sync de repo com docs relacionados sem links explícitos produz arestas tracejadas âmbar com motivo no tooltip; explícitas continuam sólidas.
-- [ ] Remover aresta inferida → some; Regenerar/re-sync → **não volta** (supressão persistida, verificável em `SuppressedLink`).
+- [ ] Remover aresta inferida → some; **re-sync** → **não volta** (supressão persistida, verificável em `SuppressedLink`).
+- [ ] **Nenhuma aba de fallback expõe botão "Regenerar"** (cortado — ver Fora de escopo). Os únicos caminhos de correção são "Promover a documento" e "Corrigir mapeamento".
 - [ ] Sem mudança de docs, nenhuma nova chamada de IA para arestas (mesmo hash ⇒ mesmo resultado armazenado).
 - [ ] Projeto sem ARCHITECTURE.md mostra a aba com conteúdo inferido + badge âmbar; "Promover a documento" commita e, após re-sync, o badge some (fonte primária assumiu).
 - [ ] Saída de IA fora do schema JSON → 1 retry; persistindo → aba/grafo mostram erro amigável sem afetar dados explícitos.
