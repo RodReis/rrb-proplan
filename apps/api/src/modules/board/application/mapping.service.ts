@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GithubAuth } from '../../identity/application/github-auth.service';
-import { GithubWritebackClient } from '../../../shared/github/github-writeback.client';
+import {
+  GithubWritebackClient,
+  WritebackConflictError,
+} from '../../../shared/github/github-writeback.client';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, ENTITIES, Resolution } from '../../ingestion/domain/entity';
@@ -77,23 +80,31 @@ export class MappingService {
     const content = serializeProplanConfig(merged);
 
     const token = await this.auth.installationToken(projectId);
-    const baseSha = await this.writeback.getFileSha(
-      token,
-      project.owner,
-      project.name,
-      CONFIG_PATH,
-      project.defaultBranch,
-    );
-    await this.writeback.putFile({
-      token,
-      owner: project.owner,
-      repo: project.name,
-      path: CONFIG_PATH,
-      branch: project.defaultBranch,
-      content,
-      message: `proplan: mapeia ${entity} → ${path ?? 'ausente'} (.proplan/config.yml)`,
-      baseSha,
-    });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const baseSha = await this.writeback.getFileSha(
+          token,
+          project.owner,
+          project.name,
+          CONFIG_PATH,
+          project.defaultBranch,
+        );
+        await this.writeback.putFile({
+          token,
+          owner: project.owner,
+          repo: project.name,
+          path: CONFIG_PATH,
+          branch: project.defaultBranch,
+          content,
+          message: `proplan: mapeia ${entity} → ${path ?? 'ausente'} (.proplan/config.yml)`,
+          baseSha,
+        });
+        break;
+      } catch (err) {
+        if (err instanceof WritebackConflictError && attempt === 0) continue;
+        throw err;
+      }
+    }
 
     return this.ingestion.enqueueSync(projectId);
   }
