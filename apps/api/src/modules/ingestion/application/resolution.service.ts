@@ -39,10 +39,18 @@ export class ResolutionService {
         })
       ).map((row) => [row.entity, row]),
     );
+    // Só preserva a inference se o doc apontado ainda existir no doc-set atual —
+    // senão o doc foi deletado num sync posterior e a linha ficaria órfã (aba
+    // quebrada com 404 permanente ao tentar ler um path inexistente).
+    const pathSet = new Set(docs.map((d) => d.path));
 
     const resolutions = resolveDocuments({ docs, config });
     const rows = resolutions.map((r) => {
-      const inferred = r.source === 'absent' ? inferredByEntity.get(r.entity) : undefined;
+      const candidate = r.source === 'absent' ? inferredByEntity.get(r.entity) : undefined;
+      const inferred =
+        candidate && candidate.path !== null && pathSet.has(candidate.path)
+          ? candidate
+          : undefined;
       if (inferred) {
         return {
           projectId,

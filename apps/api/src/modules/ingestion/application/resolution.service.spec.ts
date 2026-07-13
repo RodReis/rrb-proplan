@@ -54,9 +54,12 @@ describe('ResolutionService.rebuild', () => {
     );
   });
 
-  it('entidade absent na escada + tinha linha inference → preserva nível 3 inference', async () => {
+  it('entidade absent na escada + tinha linha inference + doc ainda existe → preserva nível 3 inference', async () => {
     const { prisma, created } = makePrisma(
-      [{ path: 'docs/arquitetura.md', isConventional: false, content: '# a' }],
+      [
+        { path: 'docs/arquitetura.md', isConventional: false, content: '# a' },
+        { path: 'docs/notas-qa.md', isConventional: false, content: '# qa' },
+      ],
       [
         {
           entity: 'testing',
@@ -81,6 +84,34 @@ describe('ResolutionService.rebuild', () => {
         confidence: 0.65,
       }),
     );
+  });
+
+  it('entidade absent na escada + tinha linha inference, mas doc foi deletado → NÃO preserva, cai para absent', async () => {
+    // 'testing' segue absent na escada (nenhum doc convencional/alias no doc-set).
+    // A linha inference aponta para docs/notas.md, que NÃO está no doc-set atual
+    // (foi deletado num sync posterior) — não pode ser preservada.
+    const { prisma, created } = makePrisma(
+      [{ path: 'docs/arquitetura.md', isConventional: false, content: '# a' }],
+      [
+        {
+          entity: 'testing',
+          level: 3,
+          source: 'inference',
+          path: 'docs/notas.md',
+          paths: [],
+          confidence: 0.7,
+        },
+      ],
+    );
+    const svc = new ResolutionService(prisma);
+
+    await svc.rebuild('p1');
+
+    const testingRow = created.find((r) => r.entity === 'testing');
+    expect(testingRow).toEqual(
+      expect.objectContaining({ level: 4, source: 'absent', path: null }),
+    );
+    expect(testingRow.source).not.toBe('inference');
   });
 
   it('entidade que a escada resolve como convention/alias + tinha inference → convenção vence', async () => {
