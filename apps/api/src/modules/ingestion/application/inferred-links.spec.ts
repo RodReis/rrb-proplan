@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { IngestionService } from './ingestion.service';
 
 function makeSvc(overrides: any = {}) {
@@ -48,5 +49,27 @@ describe('IngestionService.suppressEdge', () => {
     await svc.suppressEdge('p1', 'docs/a.md', 'docs/b.md');
     expect(prisma.suppressedLink.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ projectId: 'p1', sourcePath: 'docs/a.md', targetPath: 'docs/b.md' }) }));
     expect(prisma.docLink.deleteMany).toHaveBeenCalled();
+  });
+
+  it('engole P2002 (já suprimida) mas relança outros erros', async () => {
+    const { svc: svcDup, prisma: prismaDup } = makeSvc();
+    prismaDup.suppressedLink.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('dup', {
+        code: 'P2002',
+        clientVersion: 'x',
+      }),
+    );
+    await expect(
+      svcDup.suppressEdge('p1', 'docs/a.md', 'docs/b.md'),
+    ).resolves.toBeUndefined();
+    expect(prismaDup.docLink.deleteMany).toHaveBeenCalled();
+
+    const { svc: svcDown, prisma: prismaDown } = makeSvc();
+    prismaDown.suppressedLink.create.mockRejectedValueOnce(
+      new Error('db down'),
+    );
+    await expect(
+      svcDown.suppressEdge('p1', 'docs/a.md', 'docs/b.md'),
+    ).rejects.toThrow('db down');
   });
 });

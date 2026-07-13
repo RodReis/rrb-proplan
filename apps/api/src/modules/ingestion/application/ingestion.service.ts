@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import * as mammoth from 'mammoth';
 import { GithubAuth } from '../../identity/application/github-auth.service';
@@ -234,11 +235,20 @@ export class IngestionService {
     sourcePath: string,
     targetPath: string,
   ): Promise<void> {
-    await this.prisma.suppressedLink
-      .create({ data: { projectId, sourcePath, targetPath } })
-      .catch(() => {
-        /* @@unique — já suprimida, idempotente */
+    try {
+      await this.prisma.suppressedLink.create({
+        data: { projectId, sourcePath, targetPath },
       });
+    } catch (e) {
+      // P2002 = unique constraint: já suprimida, idempotente. Qualquer outro erro sobe.
+      if (
+        !(
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        )
+      )
+        throw e;
+    }
     await this.prisma.docLink.deleteMany({
       where: {
         projectId,
