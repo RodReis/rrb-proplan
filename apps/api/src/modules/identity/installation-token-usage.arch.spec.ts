@@ -13,10 +13,12 @@ const MODULES_DIR = join(__dirname, '..');
 
 /** Arquivos de escrita autorizados a chamar installationToken. */
 const WRITE_ALLOWLIST = [
-  // Bootstrap commita .proplan/STATUS.md (write-back) — prova do autor bot.
-  join('insight', 'application', 'bootstrap.service.ts'),
   // A própria definição do método vive aqui.
   join('identity', 'application', 'github-auth.service.ts'),
+  // Board (SPEC-005): toda escrita de Kanban usa installation token (bot).
+  join('board', 'application', 'mutation-applier.service.ts'), // aplica mutações na Issues API
+  join('board', 'application', 'projection.service.ts'), // commita .proplan/STATUS.md
+  join('board', 'application', 'board-import.service.ts'), // cria issues (import/bootstrap)
 ];
 
 function tsFiles(dir: string): string[] {

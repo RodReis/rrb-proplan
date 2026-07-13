@@ -7,6 +7,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { InsightModule } from './modules/insight/insight.module';
+import { BoardModule } from './modules/board/board.module';
 import { SettingsModule } from './modules/settings/settings.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
@@ -26,6 +27,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
     SettingsModule,
     IngestionModule,
     InsightModule,
+    BoardModule,
     CatalogModule,
   ],
 })

@@ -19,6 +19,13 @@ export class DocsSyncedEvent {
 }
 export const DOCS_SYNCED = 'docs.synced';
 
+/** Emitido ao fim de todo sync (sucesso E noop). O board escuta para
+ *  sincronizar as issues junto — cobre mudanças feitas direto no GitHub. */
+export class SyncCompletedEvent {
+  constructor(readonly projectId: string) {}
+}
+export const SYNC_COMPLETED = 'sync.completed';
+
 export interface SyncResult {
   status: 'success' | 'noop' | 'failed';
   added: number;
@@ -79,6 +86,7 @@ export class SyncService {
           removed: 0,
           skipped: 0,
         });
+        this.events.emit(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
         return;
       }
 
@@ -152,6 +160,7 @@ export class SyncService {
       });
 
       this.events.emit(DOCS_SYNCED, new DocsSyncedEvent(project.id, scopeHash));
+      this.events.emit(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       await this.prisma.syncRun.update({

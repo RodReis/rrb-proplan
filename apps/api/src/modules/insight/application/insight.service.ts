@@ -1,11 +1,16 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AuthService } from '../../identity/application/auth.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { selectContext } from '../domain/context-budget';
 import { buildSummaryUser, SUMMARY_SYSTEM } from '../domain/summary-prompt';
 import { parseSummary, StateSummary } from '../domain/summary';
+import {
+  buildCardsUser,
+  CARDS_SYSTEM,
+  CardProposal,
+  parseCards,
+} from '../domain/cards-prompt';
 import { LlmClientFactory } from '../infrastructure/llm-client.factory';
 
 /** Teto de tokens de entrada por resumo (cap de custo — SPEC-003). */
@@ -18,7 +23,6 @@ export class InsightService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auth: AuthService,
     private readonly settings: SettingsService,
     private readonly llmFactory: LlmClientFactory,
   ) {}
@@ -92,6 +96,46 @@ export class InsightService {
   async regenerate(userId: string, projectId: string): Promise<void> {
     await this.assertOwner(userId, projectId);
     await this.generateSummary(projectId, { force: true });
+  }
+
+  /**
+   * Propõe um backlog inicial de cards a partir da documentação (SPEC-005,
+   * bootstrap do Kanban). Interface pública consumida pelo board — o board
+   * não sabe de LLM, só pede a proposta; a criação de issues é dele. 1 retry
+   * em JSON inválido.
+   */
+  async proposeCards(userId: string, projectId: string): Promise<CardProposal[]> {
+    await this.assertOwner(userId, projectId);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Projeto não encontrado');
+
+    const docs = await this.prisma.document.findMany({
+      where: { projectId },
+      select: { path: true, content: true },
+    });
+    if (docs.length === 0) {
+      throw new NotFoundException('Projeto sem documentação para propor cards');
+    }
+
+    const context = selectContext(docs, MAX_INPUT_TOKENS);
+    const client = this.llmFactory.create(await this.settings.providerOf(project.userId));
+    const req = { system: CARDS_SYSTEM, user: buildCardsUser(context), maxTokens: 2048 };
+
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await client.complete(req);
+      try {
+        return parseCards(res.text);
+      } catch (err) {
+        lastErr = err;
+        this.logger.warn(
+          `Proposta de cards inválida (tentativa ${attempt + 1}): ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+    throw lastErr;
   }
 
   /** Chama o LLM e valida o JSON; 1 retry em JSON inválido (SPEC-003). */
