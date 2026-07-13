@@ -375,8 +375,8 @@ function GraphCanvas({
       <Legend />
 
       {inferredCount > 0 && (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-full border border-warning/40 bg-surface/90 px-3 py-1.5 text-xs font-medium text-warning backdrop-blur">
-          <label className="flex cursor-pointer items-center gap-1.5">
+        <div className="absolute right-3 top-3 z-10 flex max-w-xs flex-col gap-2 rounded-md border border-warning/40 bg-surface/90 p-3 text-xs backdrop-blur">
+          <label className="flex cursor-pointer items-center gap-1.5 font-medium text-warning">
             <input
               type="checkbox"
               checked={showInferred}
@@ -385,6 +385,42 @@ function GraphCanvas({
             />
             {inferredCount} inferida{inferredCount === 1 ? '' : 's'}
           </label>
+
+          {/* Painel de arestas inferidas — caminho por teclado para o botão
+              remover (arestas do react-flow não são tabbable nativamente). */}
+          {showInferred && (
+            <ul className="flex flex-col gap-1.5 border-t border-border pt-2">
+              {edges
+                .filter((e) => e.data?.kind === 'inferred')
+                .map((e) => (
+                  <li
+                    key={e.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span
+                      className="truncate text-text-muted"
+                      title={`${e.data!.sourcePath} → ${e.data!.targetPath}`}
+                    >
+                      {e.data!.sourcePath} → {e.data!.targetPath}
+                    </span>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded border border-error/40 px-1.5 py-0.5 text-xs font-semibold text-error hover:bg-error/10"
+                      aria-label={`Remover relação inferida de ${e.data!.sourcePath} para ${e.data!.targetPath}`}
+                      onClick={() =>
+                        setConfirmRemove({
+                          id: e.id,
+                          sourcePath: e.data!.sourcePath,
+                          targetPath: e.data!.targetPath,
+                        })
+                      }
+                    >
+                      Remover
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -508,7 +544,7 @@ function Legend() {
     { c: KIND_COLOR.claude, l: 'CLAUDE.md' },
     { c: KIND_COLOR.doc, l: 'Documento' },
     { c: '#F04438', l: 'Link quebrado', dashed: true },
-    { c: '#F79009', l: 'Relação inferida', dashed: true },
+    { c: 'var(--color-warning)', l: 'Relação inferida', dashed: true },
   ];
   return (
     <div className="absolute left-3 top-3 z-10 flex flex-col gap-1.5 rounded-md border border-border bg-surface/90 p-3 text-xs backdrop-blur">
@@ -517,7 +553,9 @@ function Legend() {
           <span
             className="inline-block h-3 w-3 rounded"
             style={{
-              background: it.dashed ? `${it.c}1A` : it.c,
+              background: it.dashed
+                ? `color-mix(in srgb, ${it.c} 10%, transparent)`
+                : it.c,
               border: it.dashed ? `1px dashed ${it.c}` : 'none',
             }}
           />
