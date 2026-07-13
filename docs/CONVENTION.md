@@ -99,7 +99,10 @@ updated: 2026-07-12
 - Integração GitHub OAuth (#41)
 
 ## Feito
-- Setup do projeto (#12, fechado em: 2026-06-20)
+- Setup do projeto (#12, entregue em: 2026-06-20 — aguardando aceite)
+
+## Finalizado
+- Fundação: monorepo e login (#3, aceito em: 2026-06-18)
 
 ## Descartado
 - Migrar para GraphQL (#27, descartado em: 2026-07-02)
@@ -107,15 +110,22 @@ updated: 2026-07-12
 
 Mapeamento issue → coluna:
 
-| coluna | estado da issue |
-|---|---|
-| Backlog | `open` + `proplan:backlog` (ou `open` sem label `proplan:*`) |
-| A Fazer | `open` + `proplan:todo` |
-| Em Andamento | `open` + `proplan:doing` |
-| **Feito** | `closed` **sem** `proplan:descartado` |
-| **Descartado** | `closed` **com** `proplan:descartado` |
+| coluna | estado da issue | significado |
+|---|---|---|
+| Backlog | `open` + `proplan:backlog` (ou `open` sem label `proplan:*`) | — |
+| A Fazer | `open` + `proplan:todo` | — |
+| Em Andamento | `open` + `proplan:doing` | — |
+| **Feito** | `closed`, **sem** label extra | entregue — **aguardando aceite do dono** |
+| **Finalizado** | `closed` + `proplan:finalizado` | **aceito pelo dono** |
+| **Descartado** | `closed` + `proplan:descartado` | decisão de não fazer |
 
-Issue nunca é deletada — descartar é fechar com label. As datas de Feito/Descartado usam o `closed_at` real da issue: é **fato**, não carimbo do ProPlan. Commit: `proplan: atualiza STATUS.md (projeção das Issues)`.
+Issue nunca é deletada — descartar é fechar com label. `closed_at` é o `closed_at` real da issue: **fato**, não carimbo do ProPlan.
+
+**`closes #42` num PR cai em Feito, nunca em Finalizado.** Issue é binária no GitHub; se Finalizado fosse o simples `closed`, o merge de um PR marcaria como "aceito" um trabalho que ninguém revisou. O aceite é o dono **aplicando a label** — ato deliberado, que nenhuma automação forja.
+
+**Carimbo de aceite/descarte**: mover para Finalizado ou Descartado faz o ProPlan **comentar na issue** (`proplan: finalizado pelo PI em <data>`). `closed_at` marca a entrega; o comentário marca o aceite. Permanente, auditável, no GitHub.
+
+Commit da projeção: `proplan: atualiza STATUS.md (projeção das Issues)`.
 
 **Modo degradado** — repo com Issues desabilitada: o `docs/STATUS.md` (legado, formato antigo) volta a ser lido como fonte, o board fica **somente leitura** e a UI sinaliza. Nunca degrada em silêncio.
 

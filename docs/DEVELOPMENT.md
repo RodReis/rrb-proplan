@@ -6,6 +6,15 @@ updated: 2026-07-12
 
 **Dono deste arquivo: Claude Code.** Atualize o estado de cada item ao trabalhar e commite junto da entrega. O `docs/STATUS.md` (kanban de fatias) deve refletir este arquivo — atualize os dois.
 
+**Camadas — não invadir a do outro** (ADR-011, `card = fatia`, decisão do PI em 2026-07-13):
+
+| camada | responde | granularidade |
+|---|---|---|
+| **Issues / board** | *qual fatia está em qual coluna* | **uma issue por fatia** |
+| **este arquivo** | *onde estou dentro da fatia* | os N passos, com `a-fazer`/`feito` |
+
+Granularidades diferentes ⇒ **nenhum fato mora nos dois lugares**. Não criar issue por sub-item — isso duplicaria o estado que os checkmarks daqui já guardam, e é exatamente o que o ADR-011 existe para impedir.
+
 **Estados**: `a-fazer` → `em-andamento` → `feito` (entregue pelo Code, critérios da spec cumpridos) → `finalizado` (aceito pelo PI).
 
 **Regras de execução**:
@@ -158,6 +167,16 @@ Validado ao vivo no `RodReis/rrb-adv` (16 issues semeadas com as fatias pendente
 - ✅ Toast de resultado no Sincronizar (top-right, preferência do PI): sucesso com resumo, "já estava atualizado" no noop, erro persistente.
 
 **Melhoria implementada no aceite (estava no DESIGN.md, faltava):** toast do botão Sincronizar com polling do sync-run e resumo do conteúdo.
+
+### Emenda: 6ª coluna Finalizado + dogfooding no próprio repo (2026-07-13)
+
+A SPEC-005 foi **emendada** (6 colunas: Feito × Finalizado) depois da entrega de 5 colunas; a implementação foi alinhada e o `rrb-proplan` passou a gerir o próprio roadmap:
+- **Coluna Finalizado** (`closed` + `proplan:finalizado` = aceito pelo PI, distinto de Feito = entregue aguardando aceite). `closes #N` cai em Feito, nunca Finalizado (nenhuma automação forja aceite). Migration `board_finalized_column`.
+- **Comentário de carimbo**: mover para Finalizado/Descartado posta `proplan: finalizado pelo PI em <data>` na issue (evidência no GitHub). **Validado**: #11 movida para Finalizado → `closed` + `proplan:finalizado` + comentário por `rrb-proplan[bot]`.
+- **Importação do roadmap real**: `docs/STATUS.md` do rrb-proplan importado via UI (prévia editável) → issues 1:1 com as fatias (`card = fatia`, ADR-011). Bugs do parser corrigidos no caminho: CRLF (repo Windows importava 0 cards), títulos com markdown/cauda de metadados, prioridade `prio: **alta**`, placeholder `(vazio)`.
+- **UI**: colunas fechadas colapsam em faixa fina vertical; títulos em 3 linhas + tooltip; scroll contido (X no board, Y na coluna). Card Finalizado verde com ✓.
+- **Limpeza**: as 16 issues de demo criadas no `rrb-adv` foram fechadas (eram seed, não roadmap canônico).
+- 118 testes verdes; builds limpos.
 
 ## Fatia 6 — Resolução de documentos + abas (SPEC-006 **ampliada**, `aprovada-pi`) — `a-fazer`
 
