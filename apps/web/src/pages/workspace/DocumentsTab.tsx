@@ -7,6 +7,7 @@ import {
   DocumentSummary,
   SyncRun,
 } from '../../lib/api';
+import { DocTree } from './DocTree';
 
 interface Props {
   projectId: string;
@@ -90,25 +91,7 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
             Sincronizando…
           </div>
         )}
-        {state.docs.map((doc) => (
-          <button
-            key={doc.id}
-            onClick={() => setSelected(doc.path)}
-            className={
-              'group relative flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors duration-150 ' +
-              (selected === doc.path
-                ? 'bg-brand/5 text-brand'
-                : 'text-text hover:bg-bg')
-            }
-          >
-            <span className="truncate">{doc.path}</span>
-            {doc.isConventional && (
-              <span className="shrink-0 rounded-sm bg-brand/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand">
-                convenção
-              </span>
-            )}
-          </button>
-        ))}
+        <DocTree docs={state.docs} selected={selected} onSelect={setSelected} />
       </nav>
 
       <div className="flex-1 overflow-y-auto">
