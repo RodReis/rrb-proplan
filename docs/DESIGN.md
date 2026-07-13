@@ -38,7 +38,7 @@ Referência visual: Untitled UI (layout enviado pelo dono em 2026-07-12). O que 
 
 ## Notas por aba
 
-- **Kanban**: 4 colunas fixas (`CONVENTION.md`); card mostra prioridade e data; ao mover, estado otimista + toast "commitando no repo…" até o webhook confirmar (padrão do `Changes saved` do exemplo).
+- **Kanban**: 5 colunas fixas (`CONVENTION.md`): Backlog · A Fazer · Em Andamento · Feito · **Descartado** (colapsada por padrão, com contador; visual cinza/riscado — Feito é conquista, Descartado é decisão). Card mostra `#número` da issue, título, prioridade e link "abrir no GitHub". Ao mover: estado otimista + borda pulsante até a Issues API confirmar (ADR-011) — toast só no resultado, nunca no gesto. Sem `STATUS.md` importado: banner de importação no topo do board.
 - **Grafo**: react-flow, nós = documentos (cor por tipo: convenção/livre/README), minimapa, clique abre o doc no viewer lateral.
 - **Visão Geral**: **faixa de frescor** no topo (acima de tudo) + resumo IA em blocos "O que é / Onde parou / O que falta" + metadados do repo.
 - **Faixa de frescor** (ADR-010): faixa horizontal full-width, altura de uma linha, cantos `md`. Sempre exibe `Docs: há X · Código: há Y` (datas relativas). Dentro do limiar → fundo `surface`, texto `muted`, sem ícone — informação, não aviso. Acima do limiar → fundo âmbar 10%, borda âmbar 30%, ícone ⚠️ e "Documentação possivelmente defasada", com tooltip explicando o cálculo e onde mudar o limiar. **Nunca é vermelha** — não é erro, é um sinal; e nunca bloqueia ou esconde o conteúdo abaixo. Entrada: fade, sem slide (não competir com o stagger dos blocos).

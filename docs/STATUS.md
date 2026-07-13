@@ -12,7 +12,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Fatia 9 — Modelo canônico + proveniência por campo + confiança determinística (ADR-012) (prio: alta no MVP2; fundação — sem isso o MCP não tem o que servir; sem spec)
 - Fatia 10 — `docs/CONTEXT.md`: captura de asserção humana, "o que não mexer", validade por SHA (ADR-013) (prio: alta no MVP2; sem spec)
 - Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools (prio: alta no MVP2; substitui a antiga "Fatia 9 — servidor MCP"; sem spec)
-- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (prio: média no MVP2; **pode ser antecipada para a Fatia 5** — pergunta aberta #1 da MVP2.md; sem spec)
+- Fatia 12 — ~~Migração do Kanban para Issues~~ **antecipada para a Fatia 5**. Sobra no MVP2: GitHub Projects v2 (campo Status nativo, ordenação manual), sub-issues e issue types (prio: baixa; sem spec)
 - Fatia 13 — Drift docs × sinal do GitHub + handoff exportável (prio: média no MVP2; sem spec)
 - Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão (prio: baixa; consequência das fatias acima; sem spec)
 
@@ -23,9 +23,9 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (prio: baixa)
 
 ## A Fazer
-- Fatia 5 — Kanban sobre **GitHub Issues** (ADR-011): coluna por label, 5 colunas (Descartado visível), projeção em `.proplan/STATUS.md`, importação manual do STATUS.md legado com aviso, migração do bootstrap da Fatia 3, dnd-kit (prio: alta; **depende da 4.5**) (spec: SPEC-005 **reescrita, aprovada-pi**)
 - Fatia 6 — **Resolução de documentos (ADR-014)** + abas: `DocumentResolver` (convenção → alias → `.proplan/config.yml` → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção `adr/`), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (prio: **alta** — sem isso o produto só funciona em repo que segue a convenção) (spec: SPEC-006 ampliada, aprovada-pi)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (prio: baixa) (spec: SPEC-007 aprovada-pi)
+- **Fatia 7.5 — Consumo de IA (ADR-016), última do MVP1**: ledger `LlmUsage` append-only (registra falhas, retries e descartes — a tabela `insights` de hoje **subestima** o gasto), tokens de cache separados, preço configurável com custo **congelado na chamada**, alerta + **teto rígido** de gasto mensal, tela de consumo com taxa de desperdício (prio: média; **sem dependência — pode ser antecipada se a conta de IA assustar durante a Fatia 7**) (spec: SPEC-009 aprovada-pi)
 
 ## Em Andamento
 - (vazio)
@@ -37,3 +37,4 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Fatia 3 — Insight: resumo IA versionado por hash, bootstrap de STATUS.md com write-back+re-sync, config de provedor (Anthropic/OpenAI/OpenRouter), alerta de defasagem (ADR-010); 42 testes; aceito runtime pelo PI (em: 2026-07-12)
 - Fatia 4 — Grafo de links explícitos: extração markdown+wikilinks, resolução relativa, nó fantasma para quebrados, react-flow + d3-force; 56 testes; validado com rrb-adv (119 docs, 105 arestas); aceito runtime pelo PI (em: 2026-07-12)
 - Fatia 4.5 — Migração para GitHub App (ADR-015): dois tokens (user-to-server para leitura, installation para escrita com identidade `proplan[bot]`), JWT RS256 + cache de installation token por instalação, catálogo por instalação agrupado por conta, teste de arquitetura leitura≠escrita; 78 testes; commit real com autor `rrb-proplan[bot]` validado; aceito runtime pelo PI (em: 2026-07-13)
+- Fatia 5 — Kanban sobre GitHub Issues (ADR-011): módulo board novo, 5 colunas por label `proplan:*`, mutações via Issues API (installation token, bot), projeção `.proplan/STATUS.md` com debounce, importação de STATUS.md legado e bootstrap de cards por IA (manual), dnd-kit com card avatar+faixa de prioridade, otimista até `applied`; write-back promovido a shared; teste de arquitetura projeção-fora-de-docs; 113 testes; builds limpos; **aceite runtime pendente** (em: 2026-07-13)

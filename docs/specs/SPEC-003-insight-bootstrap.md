@@ -25,7 +25,7 @@ O momento "projeto esquecido → entendimento em 1 minuto": abrir o workspace e 
 - **Módulo `insight`** (novo):
   - Job BullMQ `insight` disparado quando um sync termina com `docs_scope_hash` novo (evento in-process `DocsSynced`).
   - **Resumo de estado** (artefato interno, sem commit): entrada = `README.md` + `CLAUDE.md` + docs da convenção; saída = JSON `{ oQueE, ondeParou, oQueFalta[] }` persistido em `insights` com `docs_tree_sha`, `provider`, `model`, `tokens`. Regenerado só quando o hash muda (ADR-002).
-  - **Bootstrap de `STATUS.md`**: para projeto sem `docs/STATUS.md` conforme convenção, gerar proposta no formato exato do `CONVENTION.md`.
+  - **Bootstrap de `STATUS.md`**: para projeto sem `docs/STATUS.md` conforme convenção, gerar proposta no formato exato do `CONVENTION.md`. ⚠️ **Superseded pela SPEC-005 (ADR-011, 2026-07-12)**: o bootstrap passa a **propor cards → criar Issues**, não escrever um `STATUS.md`. O endpoint `POST /projects/:id/bootstrap/status/commit` é substituído por `POST /projects/:id/board/bootstrap` + `/apply`. Entregue como está na Fatia 3; migrado na Fatia 5.
   - Cap de custo por execução: limite de tokens de entrada; docs truncados por prioridade README > CLAUDE > STATUS > demais.
 - **Write-back (antecipado da Fatia 5, nasce aqui)**: commit de arquivo via GitHub Contents API com SHA base; 409/conflito → re-sync e uma retentativa; persiste → erro claro na UI. Mensagem: `proplan: bootstrap de STATUS.md`.
 - **Web — aba Visão Geral** (ativa): blocos "O que é / Onde parou / O que falta", badge `inferido por IA` (âmbar), botão **Regenerar com dialog de confirmação** (avisa custo de tokens; força re-run auditado), estado "gerando…".
@@ -55,6 +55,7 @@ Do ADR-010, ficam de fora: **defasagem por documento** (badge em cada aba — s�
 ## Contratos
 
 - Prisma novo: `Settings { id, userId único, llmProvider anthropic|openai|openrouter, docsStalenessThresholdDays Int @default(90) }` · `Insight { id, projectId, kind summary|status_bootstrap, docsTreeSha, provider, model, inputTokens, outputTokens, content Json, createdAt }`.
+  - ⚠️ **`Insight.inputTokens`/`outputTokens` NÃO são contabilidade de custo** (ADR-016). `Insight` é **cache de artefato** chaveado por `docsTreeSha`: não registra chamadas que falharam, nem o retry de JSON inválido, nem proposta de bootstrap descartada, e perde o gasto antigo ao regenerar. Somar essas colunas **subestima** o gasto. O registro real é o ledger `LlmUsage` — **Fatia 7.5 (SPEC-009)**.
 - Prisma alterado: `Project` ganha `lastDocsCommitAt DateTime?`, `lastCodeCommitAt DateTime?`, `commitMetaSyncedAt DateTime?` (ADR-010).
 - Env novo: `LLM_MODEL_ANTHROPIC` (default claude-sonnet), `LLM_MODEL_OPENAI`, `LLM_MODEL_OPENROUTER`.
 - API: `GET/PUT /settings` (inclui `docsStalenessThresholdDays`) · `GET /projects/:id/insights/summary` · `POST /projects/:id/insights/summary/regenerate` · `POST /projects/:id/bootstrap/status` (gera proposta) · `POST /projects/:id/bootstrap/status/commit` (body: conteúdo revisado).

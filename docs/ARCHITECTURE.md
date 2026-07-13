@@ -13,7 +13,7 @@ flowchart TB
     end
 
     subgraph API[Monolito Modular — NestJS]
-        REST[REST API + Auth PAT]
+        REST[REST API + Auth<br/>GitHub App: user token · installation token]
         CAT[Catalog<br/>repos, projetos gerenciados]
         ING[Ingestion<br/>sync docs, parse, links]
         INS[Insight<br/>bootstrap IA, inferência versionada]
@@ -49,11 +49,11 @@ flowchart TB
 
 | Módulo | Responsabilidade | Não faz |
 |---|---|---|
-| **Catalog** | Conexão GitHub (PAT no MVP), listar repos, marcar repo como "projeto gerenciado", metadados (nome, descrição, última atividade) | Ler conteúdo de arquivos |
+| **Catalog** | Listar repos **onde o GitHub App está instalado** (ADR-015), marcar repo como "projeto gerenciado", metadados (nome, descrição, última atividade), estado `sem-instalação` | Ler conteúdo de arquivos |
 | **Ingestion** | Sync incremental de `docs/`, `README.md`, `CLAUDE.md`, `.claude/`, `.github/workflows/` via Trees/Contents API; detectar mudança por `docs_tree_sha`; parse de frontmatter YAML; extrair links MD (relativos + wikilinks) → grafo | Interpretar conteúdo (IA) |
 | **Insight** | Bootstrap: gerar MDs da convenção para projeto legado (saída = proposta de commit, dono aprova); inferência de fallback (arquitetura/design/resumo) persistida com `docs_tree_sha`; sugerir arestas semânticas do grafo (marcadas `inferred`) | Chamar IA em request síncrona |
-| **Board** | Compor as abas do workspace (mapa aba→fonte em `CONVENTION.md`); Kanban: parse de `STATUS.md` → colunas/cards; mover card → editar MD → commit via Contents API → aguardar webhook | Guardar estado de card fora do MD |
-| **Identity** (futuro) | GitHub OAuth, multi-tenant, RBAC | Existir no MVP — PAT único em variável de ambiente |
+| **Board** | **Resolver a fonte de cada aba** pela escada do ADR-014 (`DocumentResolver`: convenção → alias → `.proplan/config.yml` → ausente); compor as abas; Kanban sobre **GitHub Issues** (ADR-011): mover card → trocar label / fechar issue via Issues API; gerar e commitar a projeção `.proplan/STATUS.md` | Guardar estado de card como fonte (a tabela `issues` é cache); escrever qualquer artefato gerado dentro de `docs/` |
+| **Identity** | **GitHub App** (ADR-015): login por OAuth do App → `userToken` (**todas as leituras**); JWT RS256 → `installationToken` cacheado (**todas as escritas**, identidade `proplan[bot]`). Multi-tenant e RBAC na Fatia 8 | Deixar leitura usar installation token (vazaria repos que o usuário logado não enxerga) |
 
 ## Estratégia de dados
 
@@ -61,7 +61,9 @@ flowchart TB
 |---|---|
 | **PostgreSQL** | `projects`, `documents` (metadados + conteúdo parseado + sha), `doc_links` (arestas do grafo: `source`, `target`, `type: explicit\|inferred`), `insights` (artefatos IA: `kind`, `docs_tree_sha`, `content`, `model`), `sync_runs` (auditoria) |
 | **Redis** | Filas BullMQ (`sync`, `insight`); cache de composição de abas (invalidado por webhook) |
-| **Repo GitHub (alvo)** | Fonte de verdade de `STATUS.md` e todos os docs da convenção |
+| **Repo GitHub (alvo) — `docs/`** | Fonte de verdade de **todos os docs** da convenção. **Só conteúdo humano** — nada gerado pelo ProPlan entra aqui (ADR-011) |
+| **Repo GitHub (alvo) — `.proplan/`** | Tudo que é do ProPlan, commitado no repo-alvo: `.proplan/STATUS.md` (projeção do board — gerado) e `.proplan/config.yml` (mapeamento de documentos — ADR-014, confirmado pelo humano). Fora de `docs/` para não contaminar o frescor do ADR-010 |
+| **GitHub Issues (alvo)** | **Fonte de verdade do estado do trabalho** (ADR-011): coluna = label `proplan:*`; `closed` = Feito; `closed` + `proplan:descartado` = Descartado. Tabela `issues` no Postgres é cache derivado |
 
 Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb`.
 

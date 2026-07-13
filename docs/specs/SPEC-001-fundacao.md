@@ -43,7 +43,8 @@ Ingestão de docs, abas do workspace, Kanban, grafo, IA, webhooks, multi-tenant.
 ## Notas técnicas
 
 - ADR-007 (OAuth antecipado, Prisma). Octokit descartado nesta fatia: v4+ é ESM-only e conflita com build CJS do Nest — GitHub API via fetch.
-- Escopo OAuth `repo read:user`: concede mais que leitura (limitação de OAuth Apps do GitHub); necessário pra Fatia 5 commitar `STATUS.md`. Alternativa GitHub App fica para revisão futura.
+- Escopo OAuth `repo read:user`: concede mais que leitura (limitação de OAuth Apps do GitHub); necessário pra Fatia 5 commitar. Alternativa GitHub App fica para revisão futura.
+- ⚠️ **Superseded na autenticação pelo ADR-015 (2026-07-12)**: o "revisão futura" acima foi resolvido — **OAuth App → GitHub App**, migrado na **Fatia 4.5 (SPEC-008)**. Motivo: a Fatia 5 já exigiria reconsentimento; trocar junto sai quase de graça, e traz permissão mínima + identidade `proplan[bot]` nas escritas. O escopo `repo` grosso registrado aqui deixa de existir.
 - Portas: web 5180 (strictPort), API 3000.
 
 ## Perguntas abertas

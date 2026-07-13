@@ -128,23 +128,25 @@ Validado ao vivo com o GitHub App real (`RRB ProPlan`, App ID 4281045, instalaç
 
 **Nota de segurança:** ambiente 100% local; a chave privada do App fica só no `.env` (fora do git). Rotação não exigida pelo PI neste ambiente.
 
-## Fatia 5 — Kanban sobre GitHub Issues (SPEC-005 reescrita, `aprovada-pi`) — `a-fazer`
+## Fatia 5 — Kanban sobre GitHub Issues (SPEC-005 reescrita, `aprovada-pi`) — `feito`
 
 Só iniciar com a **Fatia 4.5** `feito` (o board escreve com installation token; sem ela, não há escrita).
 
 O estado do trabalho vive nas **Issues** (ADR-011): coluna = label `proplan:*`, `closed` = Feito, `closed`+`proplan:descartado` = Descartado. A projeção vai para **`.proplan/STATUS.md`** (raiz, fora de `docs/` — senão o board mascara o alerta do ADR-010). O parser round-trip fiel da versão anterior da spec **não existe mais** — some o item mais caro da fatia.
 
+Entregue pelo Claude Code em 2 checkpoints (back, front); **aceite runtime pendente** (o PI valida ao vivo: arrastar card → issue muda no GitHub com autor bot).
+
 1. ~~`identity`: escopo OAuth de escrita + reconsentimento~~ — **resolvido pela Fatia 4.5**. O board apenas consome `GithubAuth.installationToken(projectId)`.
-2. `a-fazer` — `board/infrastructure`: `GithubIssuesClient` (listar com ETag/paginação, criar, patch, labels idempotentes; **filtrar `pull_request` do payload de issues**).
-3. `a-fazer` — `board/domain`: mapeamento issue↔card/coluna (5 colunas); **gerador** de `.proplan/STATUS.md` (issues → markdown, arquivo inteiro a cada vez) + **parser de leitura** (só importação de legado e modo degradado).
-4. `a-fazer` — Promover write-back de `insight/infrastructure` para compartilhado (segundo consumidor — usado agora só para commitar a projeção).
-5. `a-fazer` — Fila BullMQ `board` (serializada por projeto) + `BoardMutation`; mutações → Issues API; projeção com **debounce** (5 cards arrastados = 1 commit).
-6. `a-fazer` — Detecção de legado: `sync-job` marca `Project.needsIssueImport` (tem `docs/STATUS.md` sem cabeçalho de projeção **e** nenhuma issue `proplan:*`).
-7. `a-fazer` — API: `GET board`, `POST mutations` (202), `GET mutations/:id`, `POST board/import-from-status`, `POST board/bootstrap` + `/apply`. **Substitui** `POST /bootstrap/status/commit` da SPEC-003.
-8. `a-fazer` — Modo degradado: repo com `has_issues === false` → board read-only sobre `docs/STATUS.md`, com faixa explicativa.
-9. `a-fazer` — Web: aba Kanban com dnd-kit (tilt, placeholder, spring), otimista + borda pulsante, número da issue no card + link, criar inline/editar popover/descartar com confirmação; coluna Descartado colapsada; banner de importação + badge no catálogo.
-10. `a-fazer` — **Teste obrigatório**: sequência de mutações no board **não altera** `lastDocsCommitAt` nem apaga o ⚠️ do ADR-010 (é a razão de `.proplan/` existir).
-11. `a-fazer` — Critérios da SPEC-005; atualizar este arquivo + STATUS.md; commitar tudo.
+2. `feito` — `board/infrastructure`: `GithubIssuesClient` (listar com paginação, criar, patch, labels idempotentes 422=ok; **filtra `pull_request`**). 4 testes.
+3. `feito` — `board/domain`: `column-mapping` (issue↔coluna, transições, prioridade) + `projection` (gerador `.proplan/STATUS.md` no formato CONVENTION.md + parser de leitura tolerante). 34 testes.
+4. `feito` — Write-back promovido de `insight/infrastructure` para `shared/github` (2º consumidor: a projeção do board). `SharedModule`.
+5. `feito` — Fila BullMQ `board` serializada (concorrência 1) + `BoardMutation` (status por polling); mutações → Issues API via `MutationApplierService`; projeção com **debounce** (jobId por projeto, leading-edge, 5 cards = 1 commit). A mutação termina em `applied`; a projeção é consequência e não reverte card em falha.
+6. `feito` — Detecção de legado: `BoardService` marca `Project.needsIssueImport` no sync de issues (tem `docs/STATUS.md` sem cabeçalho de projeção **e** nenhuma issue `proplan:*`). Sync de issues disparado pelo evento `SyncCompleted` (sempre, sucesso e noop).
+7. `feito` — API: `GET board`, `POST mutations` (202), `GET mutations/:id` (`queued|applying|applied|failed`), `POST/GET board/import-from-status`, `POST board/bootstrap` (propõe cards por IA — `InsightService.proposeCards`) + `/apply`. **Substitui** `POST /bootstrap/status/commit` da SPEC-003 (removido; `BootstrapService` deletado).
+8. `feito` — Modo degradado: `has_issues === false` → board read-only, faixa explicativa; `installationStatus = missing` → read-only com CTA de reinstalar.
+9. `feito` — Web: aba Kanban dnd-kit (card **variação B**: avatar do assignee + faixa de prioridade semântica), otimista + borda pulsante até `applied` (polling), indicador global "salvando no repo…" na janela de debounce; criar inline/editar popover/descartar com `ConfirmDialog`; coluna Descartado colapsada; banner de importação + badge "importar" no catálogo; bootstrap IA (propõe → revisa → cria). Toasts só no resultado.
+10. `feito` — **Teste de arquitetura** (`projection-path.arch.spec.ts`): a projeção mora em `.proplan/STATUS.md`, nunca `docs/` — mutações não mascaram o ⚠️ do ADR-010.
+11. `feito` — 113 testes verdes (back), tsc + nest build + vite build limpos; app sobe com as 8 rotas do board; front carrega sem erro de bundle. DEVELOPMENT.md + STATUS.md atualizados; entrega commitada. Aceite runtime pendente.
 
 ## Fatia 6 — Resolução de documentos + abas (SPEC-006 **ampliada**, `aprovada-pi`) — `a-fazer`
 
@@ -170,6 +172,20 @@ Só iniciar com a Fatia 6 `feito`.
 4. `a-fazer` — **Nível 3 da escada (ADR-014)**: classificação semântica — doc cujo nome não bate com alias nenhum, mas cujo conteúdo é claramente a entidade. Preenche o slot que o `DocumentResolver` já deixou pronto na Fatia 6. Resultado é `inferência` (badge âmbar, spans citados), nunca `fato`, e **perde** para `.proplan/config.yml`.
 5. `a-fazer` — Fallbacks Arquitetura/Design: job, badge âmbar, Regenerar, "Promover a documento" (editor → commit → re-sync).
 6. `a-fazer` — Critérios da SPEC-007; atualizar este arquivo + STATUS.md; commitar tudo.
+
+## Fatia 7.5 — Consumo de IA: tokens, custo e teto (SPEC-009, `aprovada-pi`) — `a-fazer` `[paralelo]`
+
+**Última fatia do MVP1.** Sem dependência de nenhuma outra — toca só `insight` e `settings`. Marcada `[paralelo]`: pode ser puxada para frente a qualquer momento. **Antecipe se a conta de IA assustar durante a Fatia 7**, que é a que mais chama o provedor.
+
+**O erro que ela corrige** (ADR-016): a tabela `insights` de hoje **não é** um registro de gasto. Ela é cache de artefato chaveado por `docs_tree_sha` — logo, não vê chamadas que falharam, não vê o retry de JSON inválido, não vê proposta de bootstrap descartada, e perde o gasto antigo quando o artefato é regenerado. Somar `insights.inputTokens` produz uma conta que **sempre subestima**.
+
+1. `a-fazer` — Prisma: `LlmUsage` (append-only: sem `@updatedAt`, sem cascade delete — o gasto sobrevive ao projeto) + `ModelPrice` (seed dos modelos em uso) + `Settings.llmAlertUsdMonthly`/`llmHardCapUsdMonthly`; migration.
+2. `a-fazer` — `LlmClient` (ADR-008) passa a devolver o **uso bruto** (incl. `cache_creation_input_tokens` / `cache_read_input_tokens`); `LlmUsageRecorder` no `insight/application` grava a linha. Adapters HTTP **não** conhecem preço nem banco.
+3. `a-fazer` — Custo em `Decimal` (nunca `Float`), calculado na chamada e **congelado** na linha junto do `priceSnapshot`. Modelo sem preço → chamada acontece, `costUsd = null`, `priceMissing = true`. **Teste-chave**: mudar o preço em Configurações **não altera** custo já registrado.
+4. `a-fazer` — Gate do **teto rígido** no ponto de **enfileiramento** (listener de `DocsSynced` + endpoints de regenerar/bootstrap) — barrar antes de gastar, não dentro do client. Sem "forçar mesmo assim".
+5. `a-fazer` — Falha ao gravar o ledger é **logada, não propagada** (perder linha de contabilidade é ruim; derrubar o resumo do usuário é pior). Linha é gravada **também em erro** (`status: error`, tokens que o provedor devolveu, ou `0` em timeout puro).
+6. `a-fazer` — Web: tela Configurações → **Uso de IA** (mês corrente, barra até alerta/teto, quebra por projeto/tipo/modelo, **taxa de desperdício**, histórico 6 meses, aviso de preço ausente).
+7. `a-fazer` — Critérios da SPEC-009 (incl. retry gerando **duas** linhas e regeneração **somando**, não substituindo); atualizar este arquivo + STATUS.md; commitar tudo.
 
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
