@@ -54,6 +54,7 @@ model Project {
   issues       Issue[]
   boardMutations BoardMutation[]
   resolutions    DocumentResolution[]
+  suppressedLinks SuppressedLink[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -80,6 +81,7 @@ model Document {
 
 enum DocLinkKind {
   explicit
+  inferred
 }
 
 model DocLink {
@@ -90,6 +92,7 @@ model DocLink {
   targetPath       String      @map("target_path")
   kind             DocLinkKind @default(explicit)
   anchor           String?
+  reason           String?
   source           Document    @relation("source", fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   target           Document?   @relation("target", fields: [targetDocumentId], references: [id], onDelete: SetNull)
 
@@ -147,6 +150,10 @@ model Settings {
 enum InsightKind {
   summary
   status_bootstrap
+  architecture_fallback
+  design_fallback
+  edges_marker
+  classify_marker
 }
 
 model Insight {
@@ -252,4 +259,15 @@ model BoardMutation {
 
   @@index([projectId, createdAt])
   @@map("board_mutations")
+}
+
+model SuppressedLink {
+  id         String   @id @default(uuid())
+  projectId  String   @map("project_id")
+  sourcePath String   @map("source_path")
+  targetPath String   @map("target_path")
+  createdAt  DateTime @default(now()) @map("created_at")
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, sourcePath, targetPath])
+  @@map("suppressed_links")
 }
