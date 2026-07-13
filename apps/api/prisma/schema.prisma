@@ -183,6 +183,12 @@ model SyncRun {
   removed       Int        @default(0)
   skipped       Int        @default(0)
   error         String?
+  // Write-back propagation: quando um sync é disparado logo após o ProPlan
+  // commitar um doc (promote, putMapping), estas colunas dizem qual (path,
+  // blobSha) a Trees API precisa já refletir antes de o sync decidir noop —
+  // a Git Trees API tem consistência eventual. Nulos = sync comum, sem espera.
+  expectPath    String?    @map("expect_path")
+  expectBlobSha String?    @map("expect_blob_sha")
   startedAt     DateTime   @default(now()) @map("started_at")
   finishedAt    DateTime?  @map("finished_at")
   project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)

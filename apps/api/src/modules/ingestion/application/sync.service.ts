@@ -36,6 +36,18 @@ export interface SyncResult {
   skipped: number;
 }
 
+/**
+ * Backoff entre re-leituras da Trees API à espera da propagação de um write-back
+ * (ver SyncService.listScope). Um item por tentativa; a soma (~7,5s) cobre com
+ * folga a janela típica de consistência eventual do GitHub.
+ */
+const TREE_PROPAGATION_BACKOFF_MS = [1000, 2000, 4500];
+const TREE_PROPAGATION_RETRIES = TREE_PROPAGATION_BACKOFF_MS.length;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -68,13 +80,7 @@ export class SyncService {
 
     try {
       const token = await this.auth.userToken(project.userId);
-      const tree = await this.git.listTree(
-        token,
-        project.owner,
-        project.name,
-        project.defaultBranch,
-      );
-      const scope = tree.filter((b) => isInScope(b.path));
+      const scope = await this.listScope(token, project, run);
       const scopeHash = computeScopeHash(scope);
 
       // Idempotência: hash igual ao último aplicado → no-op sem downloads.
@@ -206,6 +212,57 @@ export class SyncService {
       // Relança para o BullMQ contabilizar a tentativa (retry com backoff).
       throw err;
     }
+  }
+
+  /**
+   * Lê a árvore de docs (Trees API) e retorna o escopo. Quando o run carrega
+   * uma expectativa de write-back (`expectPath`/`expectBlobSha` — ver
+   * enqueueSync), refaz o listTree com backoff curto até a árvore refletir
+   * aquele blob. A Git Trees API tem consistência eventual: por alguns segundos
+   * após um commit, ela ainda serve a árvore anterior. Sem esta espera o re-sync
+   * do promote lê o escopo antigo → mesmo hash → noop → o doc promovido não é
+   * ingerido e o badge não some até um sync manual.
+   *
+   * Validar o SHA (em vez de dormir cego) é o root-cause: retorna assim que a
+   * propagação de fato aconteceu, e não paga a espera quando ela já aconteceu.
+   * Se estourar o teto, segue com a árvore que tem — o próximo sync natural
+   * corrige, sem perda de dado.
+   */
+  private async listScope(
+    token: string,
+    project: { owner: string; name: string; defaultBranch: string; id: string },
+    run: { expectPath: string | null; expectBlobSha: string | null },
+  ) {
+    const readScope = async () => {
+      const tree = await this.git.listTree(
+        token,
+        project.owner,
+        project.name,
+        project.defaultBranch,
+      );
+      return tree.filter((b) => isInScope(b.path));
+    };
+
+    let scope = await readScope();
+    if (!run.expectBlobSha || !run.expectPath) return scope;
+
+    const satisfied = () =>
+      scope.some(
+        (b) => b.path === run.expectPath && b.blobSha === run.expectBlobSha,
+      );
+
+    for (let attempt = 0; attempt < TREE_PROPAGATION_RETRIES && !satisfied(); attempt++) {
+      await sleep(TREE_PROPAGATION_BACKOFF_MS[attempt]);
+      scope = await readScope();
+    }
+
+    if (!satisfied()) {
+      this.logger.warn(
+        `Trees API ainda não refletiu ${run.expectPath} (projeto ${project.id}) ` +
+          `após ${TREE_PROPAGATION_RETRIES} tentativas — seguindo; próximo sync corrige.`,
+      );
+    }
+    return scope;
   }
 
   /**

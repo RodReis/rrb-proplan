@@ -53,15 +53,27 @@ export class IngestionService {
    * Enfileira um sync do projeto. Cria o SyncRun `queued` e joga na fila.
    * jobId por (projectId) coalescente: dois enqueues próximos não empilham
    * dois runs enquanto um está pendente — reforça a idempotência por hash.
+   *
+   * `expect` = (path, blobSha) que o ProPlan acabou de commitar (promote,
+   * putMapping). O sync espera a Trees API refletir esse blob antes de decidir
+   * noop — a Git Trees API tem consistência eventual (ver SyncService.runSync).
    */
-  async enqueueSync(projectId: string): Promise<{ syncRunId: string }> {
+  async enqueueSync(
+    projectId: string,
+    expect?: { path: string; blobSha: string },
+  ): Promise<{ syncRunId: string }> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
     });
     if (!project) throw new NotFoundException('Projeto não encontrado');
 
     const run = await this.prisma.syncRun.create({
-      data: { projectId, status: 'queued' },
+      data: {
+        projectId,
+        status: 'queued',
+        expectPath: expect?.path ?? null,
+        expectBlobSha: expect?.blobSha ?? null,
+      },
     });
 
     await this.syncQueue.add(

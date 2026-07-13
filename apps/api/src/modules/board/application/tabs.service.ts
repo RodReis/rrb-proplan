@@ -121,6 +121,7 @@ export class TabsService {
     const path = FALLBACK_DOC_PATH[tab];
 
     const token = await this.auth.installationToken(projectId);
+    let newBlobSha = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const baseSha = await this.writeback.getFileSha(
@@ -130,7 +131,7 @@ export class TabsService {
           path,
           project.defaultBranch,
         );
-        await this.writeback.putFile({
+        newBlobSha = await this.writeback.putFile({
           token,
           owner: project.owner,
           repo: project.name,
@@ -147,7 +148,11 @@ export class TabsService {
       }
     }
 
-    return this.sync.enqueueSync(projectId);
+    // O re-sync espera a Trees API refletir este commit antes de decidir noop
+    // (consistência eventual — ver SyncService.listScope). Sem isso, o listTree
+    // imediato leria o escopo antigo → mesmo hash → noop → o doc promovido não
+    // seria ingerido e o badge não sumiria até um sync manual.
+    return this.sync.enqueueSync(projectId, { path, blobSha: newBlobSha });
   }
 
   private async markdownOf(projectId: string, path: string | null): Promise<string> {
