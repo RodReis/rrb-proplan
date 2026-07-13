@@ -1,5 +1,8 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
@@ -7,8 +10,10 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
@@ -49,6 +54,21 @@ export class IngestionController {
     return this.ingestion.graph(req.userId, projectId);
   }
 
+  /** Suprime uma aresta inferida (some do grafo; não volta na próxima regeneração). */
+  @Delete('graph/edges')
+  @HttpCode(202)
+  async suppressEdge(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') projectId: string,
+    @Body() body: { sourcePath: string; targetPath: string },
+  ) {
+    await this.assertOwner(req.userId, projectId);
+    if (!body?.sourcePath || !body?.targetPath) {
+      throw new BadRequestException('sourcePath e targetPath obrigatórios');
+    }
+    await this.ingestion.suppressEdge(projectId, body.sourcePath, body.targetPath);
+  }
+
   @Get('documents/content')
   documentContent(
     @Req() req: AuthenticatedRequest,
@@ -57,6 +77,31 @@ export class IngestionController {
   ) {
     if (!path) throw new NotFoundException('Parâmetro path obrigatório');
     return this.ingestion.documentContent(req.userId, projectId, path);
+  }
+
+  /** Serve o binário sob demanda (PDF/imagem/html/docx) sem persistir bytes. */
+  @Get('documents/raw')
+  async documentRaw(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') projectId: string,
+    @Query('path') path: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!path) throw new NotFoundException('Parâmetro path obrigatório');
+    const out = await this.ingestion.rawContent(req.userId, projectId, path);
+    if (out.type === 'docx') {
+      res.json({ text: out.text });
+      return;
+    }
+    res.set('Content-Type', out.contentType);
+    res.set('Content-Disposition', 'inline');
+    if (out.isHtml) {
+      res.set(
+        'Content-Security-Policy',
+        "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+      );
+    }
+    res.send(out.buffer);
   }
 
   private async assertOwner(userId: string, projectId: string): Promise<void> {

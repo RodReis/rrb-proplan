@@ -2,7 +2,7 @@
 
 ---
 proplan: v1
-updated: 2026-07-12
+updated: 2026-07-13
 ---
 # Status
 
@@ -10,24 +10,25 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 
 ## Backlog
 
-### MVP2 — memória operacional verificável (escopo: `docs/specs/MVP2.md`, rascunho)
+### MVP2 — doc humana como artefato de primeira classe (escopo: `docs/specs/MVP2.md`, rascunho)
+
+> Tese **reposicionada em 2026-07-13** (`docs/LANDSCAPE.md`): "memória verificável com evidência" deixou de ser diferencial — o GitHub Copilot Memory já faz citação obrigatória + verificação, on-by-default desde mar/2026. O que sobrou e é nosso: **detectar quando a doc humana está mentindo** + **guardar o que só existe na cabeça do dono** (ADR-013, o ponto cego estrutural do Copilot: ele exige citação de *código*).
 - Fatia 9 — Modelo canônico + proveniência por campo + confiança determinística (ADR-012) (prio: alta no MVP2; fundação — sem isso o MCP não tem o que servir; sem spec)
 - Fatia 10 — `docs/CONTEXT.md`: captura de asserção humana, "o que não mexer", validade por SHA (ADR-013) (prio: alta no MVP2; sem spec)
-- Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools (prio: alta no MVP2; substitui a antiga "Fatia 9 — servidor MCP"; sem spec)
-- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (prio: média no MVP2; **pode ser antecipada para a Fatia 5** — pergunta aberta #1 da MVP2.md; sem spec)
+- Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools, **sem pass-through do GitHub** (ADR-017: nunca ser a segunda fonte de um fato que o GitHub serve ao vivo — nosso cache é foto, o agente não vê botão de Sincronizar e **age**) (prio: alta no MVP2; sem spec)
+- Fatia 12 — ~~Migração do Kanban para Issues~~ **antecipada para a Fatia 5**. Sobra no MVP2: GitHub Projects v2 (campo Status nativo, ordenação manual), sub-issues e issue types (prio: baixa; sem spec)
 - Fatia 13 — Drift docs × sinal do GitHub + handoff exportável (prio: média no MVP2; sem spec)
 - Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão (prio: baixa; consequência das fatias acima; sem spec)
 
 ### Não priorizado
-- Fatia 8 — Multi-tenant: RBAC, organizações, billing (prio: baixa, só se virar produto; OAuth antecipado pela Fatia 1 — ADR-007; sem spec por decisão — especulação até o PI decidir produtizar)
+- Fatia 8 — Multi-tenant: RBAC, organizações, billing (prio: baixa, só se virar produto; a base de auth já fica pronta na Fatia 4.5 — GitHub App instalável por org, rate limit por instalação, ADR-015; sem spec por decisão — especulação até o PI decidir produtizar)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (prio: baixa; autorizado no adendo ao ADR-003, exige spec própria; ressalva: dependency graph desabilitado por padrão em repo privado)
 - Defasagem por documento (badge por aba) — só se o alerta global do ADR-010 se provar útil (prio: baixa)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (prio: baixa)
+- **Botão "Regenerar" nos fallbacks de Arquitetura/Design** — cortado da Fatia 7 (2026-07-13). **Só depois da Fatia 7.5**, protegido pelo teto de gasto (ADR-016): hoje seria botão de chamada de IA sem cap, na fatia que mais consome IA. Caso legítimo que o justifica: artefato cacheado por `docs_tree_sha` nunca reaplica um provedor novo (ADR-008) — Regenerar é a única via. `POST /insights/:kind/regenerate` com `force: true` + ConfirmDialog de custo (prio: baixa)
 
 ## A Fazer
-- Fatia 5 — Kanban sobre **GitHub Issues** (ADR-011): coluna por label, 5 colunas (Descartado visível), projeção em `.proplan/STATUS.md`, escopo OAuth de escrita, importação manual do STATUS.md legado com aviso, migração do bootstrap da Fatia 3, dnd-kit (prio: alta) (spec: SPEC-005 **reescrita, aprovada-pi**)
-- Fatia 6 — **Resolução de documentos (ADR-014)** + abas: `DocumentResolver` (convenção → alias → `.proplan/config.yml` → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção `adr/`), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (prio: **alta** — sem isso o produto só funciona em repo que segue a convenção) (spec: SPEC-006 ampliada, aprovada-pi)
-- Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (prio: baixa) (spec: SPEC-007 aprovada-pi)
+- **Fatia 7.5 — Consumo de IA (ADR-016), última do MVP1**: ledger `LlmUsage` append-only (registra falhas, retries e descartes — a tabela `insights` de hoje **subestima** o gasto), tokens de cache separados, preço configurável com custo **congelado na chamada**, alerta + **teto rígido** de gasto mensal, tela de consumo com taxa de desperdício (prio: média; **sem dependência — pode ser antecipada se a conta de IA assustar durante a Fatia 7**) (spec: SPEC-009 aprovada-pi)
 
 ## Em Andamento
 - (vazio)
@@ -38,3 +39,8 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Fatia 2 — Ingestion: sync de docs via Trees/Blobs, hash/diff incremental, no-op idempotente, BullMQ, 4 endpoints, workspace + aba Documentos (react-markdown), 18 testes; aceito runtime pelo PI (em: 2026-07-12)
 - Fatia 3 — Insight: resumo IA versionado por hash, bootstrap de STATUS.md com write-back+re-sync, config de provedor (Anthropic/OpenAI/OpenRouter), alerta de defasagem (ADR-010); 42 testes; aceito runtime pelo PI (em: 2026-07-12)
 - Fatia 4 — Grafo de links explícitos: extração markdown+wikilinks, resolução relativa, nó fantasma para quebrados, react-flow + d3-force; 56 testes; validado com rrb-adv (119 docs, 105 arestas); aceito runtime pelo PI (em: 2026-07-12)
+- Fatia 4.5 — Migração para GitHub App (ADR-015): dois tokens (user-to-server para leitura, installation para escrita com identidade `proplan[bot]`), JWT RS256 + cache de installation token por instalação, catálogo por instalação agrupado por conta, teste de arquitetura leitura≠escrita; 78 testes; commit real com autor `rrb-proplan[bot]` validado; aceito runtime pelo PI (em: 2026-07-13)
+- Fatia 5 — Kanban sobre GitHub Issues (ADR-011): módulo board novo, **6 colunas** por label `proplan:*` (Feito × Finalizado, emenda 2026-07-13), mutações via Issues API (installation token, bot) com comentário de carimbo ao finalizar/descartar, projeção `.proplan/STATUS.md` com debounce, importação de STATUS.md legado (prévia editável) e bootstrap de cards por IA (manual), dnd-kit com card avatar+faixa de prioridade, otimista até `applied`; write-back promovido a shared; teste de arquitetura projeção-fora-de-docs; 118 testes; validado no rrb-adv e no dogfooding do próprio rrb-proplan (roadmap importado, #11 finalizada por `rrb-proplan[bot]` com comentário, ADR-010 preservado); aceito runtime pelo PI (em: 2026-07-13)
+- Fatia 6 — **Resolução de documentos (ADR-014)** + abas: `DocumentResolver` em `ingestion` (escada convenção → alias não-ganancioso → `.proplan/config.yml` → ausente, persistida em `DocumentResolution` como cache derivado), escopo de sync ampliado (`.claude/**`, workflows, config.yml, dirs de alias), 4 parsers determinísticos (Decisões arquivo/coleção, Deploy, Skills&Agentes, CI), 6 abas + tela de mapeamento (escreve config.yml por `rrb-proplan[bot]`) + Mermaid lazy no viewer; `board` só consome `resolutionOf` (ADR-001); teste que prova a fatia (nomes próprios → nível 2); 165 testes, builds limpos; validado ao vivo no `rrb-adv` (alias em `DECISÕES.md`/`CLAUDE.md`, fallback de CI, mapeamento commitando `.proplan/config.yml` por bot, cache reconstruído idêntico); aceito runtime pelo PI (em: 2026-07-13)
+- **Documentos ricos — árvore + preview de binários** (achado no aceite da Fatia 6): lista de docs em **árvore de pastas** (`DocTree`); `classifyKind` por extensão + `Document.kind`; sync classifica (**markdown baixa+persiste; binário grava só metadado, não baixa bytes**); endpoint `/documents/raw` (stream sob demanda com user token, **nunca persiste bytes**; `.docx`→texto via mammoth; `.html`→`iframe sandbox` + CSP; 413 no >25MB); viewer ramifica por kind; emenda ao **ADR-003** (binário em `docs/` é documentação, preview sob demanda). 175 testes, builds limpos; **os 4 tipos validados ao vivo no `rrb-adv`** (png imagem · docx texto · html sandbox · pdf 8 páginas inline); aceito runtime pelo PI (em: 2026-07-13). **2 achados de produto registrados** (ver DEVELOPMENT.md): `docsScopeHash` conta arquivos skipped; doc texto→binário mantém content antigo até reprocessar
+- Fatia 7 — **Insight semântico (SPEC-007)**: onde a convenção não alcança, a IA completa — sempre rotulada, versionada por hash. **Eixo A** arestas semânticas (`DocLink kind:inferred`+`reason`, `SuppressedLink` que não ressuscita, grafo web tracejado âmbar + remover/toggle acessível). **Eixo B** nível 3 da escada (classificação semântica com spans obrigatórios ADR-012, nunca sobrescreve config/convenção, deploy nunca classificado; abas com badge âmbar + spans + corrigir). **Eixo C** fallback IA de Arquitetura/Design (markdown versionado, badge, **promover a documento** por bot → re-sync). **Raiz corrigida (decisão PI)**: `rebuild` preserva inferidas no noop (`rebuildLinks` só apaga `explicit`; `resolution.rebuild` preserva `inference` só enquanto ausente + doc existe). Fronteira ADR-001 (insight gera, ingestion/board persistem via métodos públicos); IA só atrás de BullMQ (ADR-002). **Sem botão "Regenerar"** (cortado — chamada de IA sem teto; volta na 7.5). 223 testes, builds limpos; **review final whole-branch** pegou 1 bug cross-task (nível 3 preservava path de doc deletado → aba 500) corrigido na raiz. **Entregue — aguardando aceite runtime do PI** (spec: SPEC-007 aprovada-pi)

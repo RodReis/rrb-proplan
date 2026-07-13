@@ -1,8 +1,6 @@
 import {
-  Body,
   Controller,
   Get,
-  HttpCode,
   Param,
   Post,
   Req,
@@ -12,16 +10,12 @@ import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
-import { BootstrapService } from '../application/bootstrap.service';
 import { InsightService } from '../application/insight.service';
 
 @Controller('projects/:id')
 @UseGuards(JwtAuthGuard)
 export class InsightController {
-  constructor(
-    private readonly insight: InsightService,
-    private readonly bootstrap: BootstrapService,
-  ) {}
+  constructor(private readonly insight: InsightService) {}
 
   @Get('insights/summary')
   summary(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
@@ -36,19 +30,7 @@ export class InsightController {
     await this.insight.regenerate(req.userId, id);
     return this.insight.latestSummary(req.userId, id);
   }
-
-  @Post('bootstrap/status')
-  proposeStatus(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return this.bootstrap.proposeStatus(req.userId, id);
-  }
-
-  @Post('bootstrap/status/commit')
-  @HttpCode(202)
-  commitStatus(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-    @Body() body: { content: string },
-  ) {
-    return this.bootstrap.commitStatus(req.userId, id, body.content);
-  }
 }
+// O bootstrap de STATUS.md (proposeStatus/commitStatus) da SPEC-003 foi
+// substituído pelo fluxo de cards do board (SPEC-005): POST /board/bootstrap
+// (propõe cards por IA) + /board/bootstrap/apply (cria as issues).

@@ -6,6 +6,15 @@ updated: 2026-07-12
 
 **Dono deste arquivo: Claude Code.** Atualize o estado de cada item ao trabalhar e commite junto da entrega. O `docs/STATUS.md` (kanban de fatias) deve refletir este arquivo — atualize os dois.
 
+**Camadas — não invadir a do outro** (ADR-011, `card = fatia`, decisão do PI em 2026-07-13):
+
+| camada | responde | granularidade |
+|---|---|---|
+| **Issues / board** | *qual fatia está em qual coluna* | **uma issue por fatia** |
+| **este arquivo** | *onde estou dentro da fatia* | os N passos, com `a-fazer`/`feito` |
+
+Granularidades diferentes ⇒ **nenhum fato mora nos dois lugares**. Não criar issue por sub-item — isso duplicaria o estado que os checkmarks daqui já guardam, e é exatamente o que o ADR-011 existe para impedir.
+
 **Estados**: `a-fazer` → `em-andamento` → `feito` (entregue pelo Code, critérios da spec cumpridos) → `finalizado` (aceito pelo PI).
 
 **Regras de execução**:
@@ -99,61 +108,156 @@ Entregue pelo Claude Code e **aceito pelo PI em 2026-07-12** (validação runtim
 
 **Bugs corrigidos no aceite:** (1) **byte NUL** (0x00) num doc do rrb-adv quebrava o sync inteiro (Postgres text rejeita NUL) — `getBlob` sanitiza; destravou 16→119 docs. (2) **grafo sumia/piscava** no hover/clique — ReactFlow v11 controlado sem `onNodesChange` perdia as medições dos nós ao recriar o array; migrado para `useNodesState` + estilos com referência constante + `key` no canvas. (3) scroll do painel vazava zoom pro grafo — `overscroll-contain`.
 
-## Fatia 4.5 — Migração para GitHub App (SPEC-008, `aprovada-pi`) — `a-fazer`
+## Fatia 4.5 — Migração para GitHub App (SPEC-008, `aprovada-pi`) — `finalizado`
 
 **Pré-requisito da Fatia 5. Não pular.** Existe agora porque a Fatia 5 já obrigaria a reconsentir (escopo de escrita em Issues) — trocar o mecanismo de auth **junto** custa quase nada; depois custa reconsentir e migrar tokens de novo (ADR-015, supersede a auth do ADR-007).
 
 Dois tokens: **user-to-server** para **toda leitura**; **installation token** para **toda escrita**, com identidade `proplan[bot]`. Leitura com installation token é **proibida** (o ProPlan enxergaria o que o usuário logado não enxerga).
 
-1. `a-fazer` — Criar o GitHub App no GitHub (permissões mínimas: `Contents` rw, `Issues` rw, `Metadata` r, `Actions` r; webhooks **desligados** — ADR-009). Gerar chave privada; envs novos em `.env.example`.
-2. `a-fazer` — `identity`: `GithubAuth.userToken` (OAuth do App + **refresh transparente**) e `.installationToken` (JWT RS256 `exp ≤ 10min` → access_token, **cacheado em Redis TTL 55min**). Testes primeiro.
-3. `a-fazer` — Prisma: `User` (`encryptedUserToken`, `encryptedRefreshToken`, `tokenExpiresAt`), `Project` (`installationId`, `installationStatus`); migration.
-4. `a-fazer` — Migrar todos os call sites de `AuthService.githubTokenOf` → `userToken` (leituras) / `installationToken` (write-back do bootstrap). **Teste de arquitetura**: nenhum caminho de leitura chama `installationToken`.
-5. `a-fazer` — `catalog`: listar repos **por instalação** (`/user/installations`), estado vazio "Instalar no GitHub" + CTA "Instalar em mais repositórios"; projeto que perdeu a instalação → `installationStatus = missing`, escritas desabilitadas com faixa.
-6. `a-fazer` — Critérios da SPEC-008. **O teste que prova a fatia**: um commit do ProPlan aparece no GitHub com autor **`proplan[bot]`**, não com o usuário.
+Entregue pelo Claude Code em 3 checkpoints e **aceito pelo PI em 2026-07-13** (validação runtime com o GitHub App real `RRB ProPlan`).
 
-## Fatia 5 — Kanban sobre GitHub Issues (SPEC-005 reescrita, `aprovada-pi`) — `a-fazer`
+1. `feito` (config do dono) — Guia de criação do GitHub App no README (permissões mínimas: `Contents` rw, `Issues` rw, `Metadata` r, `Actions` r; webhooks **desligados** — ADR-009; chave privada em base64). Envs novos em `.env.example` (`GITHUB_APP_ID/CLIENT_ID/CLIENT_SECRET/SLUG/PRIVATE_KEY`); OAuth App removido.
+2. `feito` — `identity`: `GithubAuth.userToken` (OAuth do App + **refresh transparente**, margem de 5min) e `.installationToken` (JWT RS256 `iat -60s`/`exp 9min` → access_token, **cacheado em Redis por instalação, TTL 55min**). `GithubAppJwt`, `InstallationTokenService`, `GithubOauthClient` (exchange/refresh), `GithubInstallationsClient`. 16 testes.
+3. `feito` — Prisma: `User` troca `encryptedGithubToken` por `encryptedUserToken`/`encryptedRefreshToken`/`tokenExpiresAt` (nullable — PI reloga); `Project` ganha `installationId`/`installationStatus`. Migration `fatia_4_5_github_app` aplicada, projetos preservados.
+4. `feito` — Call sites migrados: `sync` e `catalog.listInstallations` → `userToken` (leitura); `bootstrap.commitStatus` → `installationToken(projectId)` (escrita, prova do autor bot). **Teste de arquitetura** (varredura estática): `installationToken` só em caminhos de escrita da allowlist.
+5. `feito` — `catalog`: lista repos **por instalação** (`/user/installations` + `/user/installations/{id}/repositories`), **agrupado por conta**; endpoints `GET /catalog/installations` e `GET /catalog/install-url`. Reconciliação pura (`reconcileInstallations`): repo sumiu de toda instalação → `installationStatus = missing`. Front: grupos por conta, empty state "Instalar no GitHub", "Instalar em mais repositórios", "sem repositórios acessíveis nesta conta", badge `sem instalação` na sidebar.
+6. `feito` — Critérios da SPEC-008 cobertos por 78 testes + builds limpos; teste que prova a fatia validado no aceite runtime abaixo.
+
+### Aceite runtime (2026-07-13)
+
+Validado ao vivo com o GitHub App real (`RRB ProPlan`, App ID 4281045, instalação `146171535` na conta `RodReis`):
+- ✅ Login pelo App (OAuth do App): `client_id` do App na URL de autorização, sessão volta com avatar. Bug pego e corrigido: a API lê `apps/api/.env` (não o `.env` da raiz) — os envs do App foram para o arquivo certo.
+- ✅ Catálogo por instalação, agrupado por conta (`RodReis · PESSOAL`); repos selecionados no GitHub aparecem após re-fetch.
+- ✅ Estado "instalação sem repositórios acessíveis" renderiza o texto correto (reproduzido ao instalar sem marcar repos).
+- ✅ Reconciliação: os 3 projetos gerenciados (`landpage`, `rrb-adv`, `rrb-proplan`) ligados à instalação, `installationStatus = active`; badge `sem instalação` apareceu enquanto a lista vinha vazia (antes da permissão/seleção) e sumiu depois.
+- ✅ **Installation token** emitido (201) com as permissões mínimas exatas: `contents:write`, `issues:write`, `actions:read`, `metadata:read` — nada além.
+- ✅ **O teste que prova a fatia**: write-back via installation token (Contents PUT) gerou commit com **autor `rrb-proplan[bot]`**, não o usuário. Committer `GitHub` (padrão da Contents API). Arquivo de teste criado e removido, ambos por bot.
+
+**Config do App que faltou no guia inicial (corrigida no README):** `Setup URL = http://localhost:5180` — sem ela o GitHub deixa o usuário parado na própria tela após instalar, em vez de devolvê-lo ao ProPlan.
+
+**Nota de segurança:** ambiente 100% local; a chave privada do App fica só no `.env` (fora do git). Rotação não exigida pelo PI neste ambiente.
+
+## Fatia 5 — Kanban sobre GitHub Issues (SPEC-005 reescrita, `aprovada-pi`) — `finalizado`
 
 Só iniciar com a **Fatia 4.5** `feito` (o board escreve com installation token; sem ela, não há escrita).
 
 O estado do trabalho vive nas **Issues** (ADR-011): coluna = label `proplan:*`, `closed` = Feito, `closed`+`proplan:descartado` = Descartado. A projeção vai para **`.proplan/STATUS.md`** (raiz, fora de `docs/` — senão o board mascara o alerta do ADR-010). O parser round-trip fiel da versão anterior da spec **não existe mais** — some o item mais caro da fatia.
 
+Entregue pelo Claude Code em 2 checkpoints (back, front) e **aceito pelo PI em 2026-07-13** (validação runtime no `rrb-adv`).
+
 1. ~~`identity`: escopo OAuth de escrita + reconsentimento~~ — **resolvido pela Fatia 4.5**. O board apenas consome `GithubAuth.installationToken(projectId)`.
-2. `a-fazer` — `board/infrastructure`: `GithubIssuesClient` (listar com ETag/paginação, criar, patch, labels idempotentes; **filtrar `pull_request` do payload de issues**).
-3. `a-fazer` — `board/domain`: mapeamento issue↔card/coluna (5 colunas); **gerador** de `.proplan/STATUS.md` (issues → markdown, arquivo inteiro a cada vez) + **parser de leitura** (só importação de legado e modo degradado).
-4. `a-fazer` — Promover write-back de `insight/infrastructure` para compartilhado (segundo consumidor — usado agora só para commitar a projeção).
-5. `a-fazer` — Fila BullMQ `board` (serializada por projeto) + `BoardMutation`; mutações → Issues API; projeção com **debounce** (5 cards arrastados = 1 commit).
-6. `a-fazer` — Detecção de legado: `sync-job` marca `Project.needsIssueImport` (tem `docs/STATUS.md` sem cabeçalho de projeção **e** nenhuma issue `proplan:*`).
-7. `a-fazer` — API: `GET board`, `POST mutations` (202), `GET mutations/:id`, `POST board/import-from-status`, `POST board/bootstrap` + `/apply`. **Substitui** `POST /bootstrap/status/commit` da SPEC-003.
-8. `a-fazer` — Modo degradado: repo com `has_issues === false` → board read-only sobre `docs/STATUS.md`, com faixa explicativa.
-9. `a-fazer` — Web: aba Kanban com dnd-kit (tilt, placeholder, spring), otimista + borda pulsante, número da issue no card + link, criar inline/editar popover/descartar com confirmação; coluna Descartado colapsada; banner de importação + badge no catálogo.
-10. `a-fazer` — **Teste obrigatório**: sequência de mutações no board **não altera** `lastDocsCommitAt` nem apaga o ⚠️ do ADR-010 (é a razão de `.proplan/` existir).
-11. `a-fazer` — Critérios da SPEC-005; atualizar este arquivo + STATUS.md; commitar tudo.
+2. `feito` — `board/infrastructure`: `GithubIssuesClient` (listar com paginação, criar, patch, labels idempotentes 422=ok; **filtra `pull_request`**). 4 testes.
+3. `feito` — `board/domain`: `column-mapping` (issue↔coluna, transições, prioridade) + `projection` (gerador `.proplan/STATUS.md` no formato CONVENTION.md + parser de leitura tolerante). 34 testes.
+4. `feito` — Write-back promovido de `insight/infrastructure` para `shared/github` (2º consumidor: a projeção do board). `SharedModule`.
+5. `feito` — Fila BullMQ `board` serializada (concorrência 1) + `BoardMutation` (status por polling); mutações → Issues API via `MutationApplierService`; projeção com **debounce** (jobId por projeto, leading-edge, 5 cards = 1 commit). A mutação termina em `applied`; a projeção é consequência e não reverte card em falha.
+6. `feito` — Detecção de legado: `BoardService` marca `Project.needsIssueImport` no sync de issues (tem `docs/STATUS.md` sem cabeçalho de projeção **e** nenhuma issue `proplan:*`). Sync de issues disparado pelo evento `SyncCompleted` (sempre, sucesso e noop).
+7. `feito` — API: `GET board`, `POST mutations` (202), `GET mutations/:id` (`queued|applying|applied|failed`), `POST/GET board/import-from-status`, `POST board/bootstrap` (propõe cards por IA — `InsightService.proposeCards`) + `/apply`. **Substitui** `POST /bootstrap/status/commit` da SPEC-003 (removido; `BootstrapService` deletado).
+8. `feito` — Modo degradado: `has_issues === false` → board read-only, faixa explicativa; `installationStatus = missing` → read-only com CTA de reinstalar.
+9. `feito` — Web: aba Kanban dnd-kit (card **variação B**: avatar do assignee + faixa de prioridade semântica), otimista + borda pulsante até `applied` (polling), indicador global "salvando no repo…" na janela de debounce; criar inline/editar popover/descartar com `ConfirmDialog`; coluna Descartado colapsada; banner de importação + badge "importar" no catálogo; bootstrap IA (propõe → revisa → cria). Toasts só no resultado.
+10. `feito` — **Teste de arquitetura** (`projection-path.arch.spec.ts`): a projeção mora em `.proplan/STATUS.md`, nunca `docs/` — mutações não mascaram o ⚠️ do ADR-010.
+11. `feito` — 113 testes verdes (back), tsc + nest build + vite build limpos; app sobe com as 8 rotas do board; front carrega sem erro de bundle. DEVELOPMENT.md + STATUS.md atualizados; entrega commitada.
 
-## Fatia 6 — Resolução de documentos + abas (SPEC-006 **ampliada**, `aprovada-pi`) — `a-fazer`
+### Aceite runtime (2026-07-13)
 
-Só iniciar com a Fatia 5 `feito`.
+Validado ao vivo no `RodReis/rrb-adv` (16 issues semeadas com as fatias pendentes do roadmap, criadas por bot):
+- ✅ Board lê as issues, 5 colunas com contadores corretos (Backlog 12 · A Fazer 4 · resto vazio); card variação B (avatar do assignee + faixa de prioridade semântica + chip + #número).
+- ✅ **O teste que prova a fatia**: arrastar #98 de A Fazer → Em Andamento trocou a label no GitHub (`proplan:todo` → `proplan:doing`) com autor **`rrb-proplan[bot]`**, não o usuário. UI otimista + borda pulsante; mutação `applied` em ~1,4s.
+- ✅ Projeção `.proplan/STATUS.md` commitada por `rrb-proplan[bot]` (mensagem padrão), 1 commit (debounce).
+- ✅ **ADR-010 não mascarado**: o commit da projeção não entra no histórico de `path=docs` — `lastDocsCommitAt` segue apontando para o último commit humano (12/07). É a razão de `.proplan/` existir.
+- ✅ Toast de resultado no Sincronizar (top-right, preferência do PI): sucesso com resumo, "já estava atualizado" no noop, erro persistente.
+
+**Melhoria implementada no aceite (estava no DESIGN.md, faltava):** toast do botão Sincronizar com polling do sync-run e resumo do conteúdo.
+
+### Emenda: 6ª coluna Finalizado + dogfooding no próprio repo (2026-07-13)
+
+A SPEC-005 foi **emendada** (6 colunas: Feito × Finalizado) depois da entrega de 5 colunas; a implementação foi alinhada e o `rrb-proplan` passou a gerir o próprio roadmap:
+- **Coluna Finalizado** (`closed` + `proplan:finalizado` = aceito pelo PI, distinto de Feito = entregue aguardando aceite). `closes #N` cai em Feito, nunca Finalizado (nenhuma automação forja aceite). Migration `board_finalized_column`.
+- **Comentário de carimbo**: mover para Finalizado/Descartado posta `proplan: finalizado pelo PI em <data>` na issue (evidência no GitHub). **Validado**: #11 movida para Finalizado → `closed` + `proplan:finalizado` + comentário por `rrb-proplan[bot]`.
+- **Importação do roadmap real**: `docs/STATUS.md` do rrb-proplan importado via UI (prévia editável) → issues 1:1 com as fatias (`card = fatia`, ADR-011). Bugs do parser corrigidos no caminho: CRLF (repo Windows importava 0 cards), títulos com markdown/cauda de metadados, prioridade `prio: **alta**`, placeholder `(vazio)`.
+- **UI**: colunas fechadas colapsam em faixa fina vertical; títulos em 3 linhas + tooltip; scroll contido (X no board, Y na coluna). Card Finalizado verde com ✓.
+- **Limpeza**: as 16 issues de demo criadas no `rrb-adv` foram fechadas (eram seed, não roadmap canônico).
+- 118 testes verdes; builds limpos.
+
+## Fatia 6 — Resolução de documentos + abas (SPEC-006 **ampliada**, `aprovada-pi`) — `finalizado`
+
+Entregue pelo Claude Code (design + plano em `docs/superpowers/`, execução subagent-driven) e **aceito pelo PI em 2026-07-13** (validação runtime no `RodReis/rrb-adv`, repo de nomes próprios).
 
 **O coração da fatia é o `DocumentResolver` (ADR-014), não as abas.** Casar documento por caminho exato funciona só neste repo; os repos reais têm `arquitetura.md`, `adr/0001-*.md`, `docs/qa/`. Escada: convenção → alias → `.proplan/config.yml` → ausente. **O ProPlan nunca renomeia, move ou reescreve doc do usuário** — ele mapeia.
 
-1. `a-fazer` — `board/domain`: `DocumentResolver` + tabela de alias + parse de `.proplan/config.yml`. **Testes unitários primeiro**, com fixture de repo de nomes esquisitos. Teste explícito de alias não-ganancioso (`docs/archive/` **não** é `arch`).
-2. `a-fazer` — Ampliar filtro de sync: `.claude/**`, `.github/workflows/*.yml`, `.proplan/config.yml` e diretórios de alias (`adr/`, `decisions/`, `docs/**`); re-sync.
-3. `a-fazer` — Parsers determinísticos: `TestingDoc`, `DeployDoc`, `SkillsIndex`, `DecisionsIndex` (arquivo **ou** coleção), workflows YAML. Testes unitários.
-4. `a-fazer` — API: `GET /tabs/:tab` (payload + `source: {level, path, confidence}`), `GET /mapping`, `PUT /mapping` (escreve `.proplan/config.yml` via write-back + re-sync).
-5. `a-fazer` — Mermaid no viewer (lazy, fallback para código em erro) — vale para Documentos e todas as abas.
-6. `a-fazer` — Web: **tela de mapeamento** (confirmar/corrigir/marcar ausente) + abas Arquitetura, **Decisões**, Design, Testes, Deploy (tabela estruturada com badges), Skills & Agentes; linha "reconhecido por nome — corrigir" nas abas de nível 2; empty states com CTA.
-7. `a-fazer` — Critérios da SPEC-006 (incluindo o **teste que prova a fatia**: repo com nomes próprios resolve tudo em nível 2); atualizar este arquivo + STATUS.md; commitar tudo.
+1. `feito` — **`ingestion/domain`** (⚠️ **não** `board` — correção do ADR-014 em 2026-07-13): `DocumentResolver` (escada config→convenção→alias→ausente, puro) + `alias-table` não-ganancioso + `parseProplanConfig`; `DocumentResolution` no Prisma (cache derivado, `docsTreeSha`/`resolvedAt` prontos p/ nível 3 da Fatia 7); `ResolutionService.rebuild` persiste no fim de todo sync (success + noop), como `rebuildLinks`. Teste explícito `archive` ≠ `arch`. 27 testes de domínio.
+2. `feito` — Filtro de sync ampliado: `.proplan/config.yml`, `.claude/**` fino (só `skills/*/SKILL.md` e `agents/*.md`), `.github/workflows/*.yml`, diretórios/arquivos de alias na raiz (`adr/`, `AGENTS.md`, etc.). `.proplan/STATUS.md` fora (artefato gerado). Casos negativos testados.
+3. `feito` — Parsers determinísticos em `board/domain`: `parseDecisions` (arquivo **ou** coleção `adr/*.md`), `parseDeploy` (tabela de ambientes), `parseSkills` (skills+agents via gray-matter), `parseWorkflow` (fallback CI). Testes unitários.
+4. `feito` — API (módulo `board`): `GET /projects/:id/tabs/:tab` (payload + `source: {level, source, path, paths, confidence}`), `GET /tabs/mapping` (rows + `proplanConfigInvalid`), `PUT /tabs/mapping` (escreve `.proplan/config.yml` via write-back com installation token + re-sync; retry em conflito). Ownership id+userId em todas. `board` só **lê** `ResolutionService.resolutionOf` — nunca resolve (ADR-001). `mapping.service` na allowlist do teste de arquitetura do ADR-015.
+5. `feito` — Mermaid no viewer (lazy import, isolado em chunk próprio; fallback pro código cru em erro de sintaxe) — vale para Documentos e todas as abas.
+6. `feito` — Web: **tela de mapeamento** (overlay: confirmar/corrigir/marcar ausente → PUT; banner de config inválida) + abas Arquitetura, **Decisões**, Design, Testes (com fallback CI), Deploy (tabela com badges), Skills & Agentes; trilho `TabFrame` (skeleton/erro/aviso "reconhecido por nome — corrigir"/empty state); atalho "corrigir" das abas nível 2 abre a tela focada.
+7. `feito` — **Teste que prova a fatia**: 3 fixtures (`document-resolver.fixtures.spec.ts`) — repo-convenção → nível 1, repo-nomes-próprios → nível 2, repo-vazio → nível 4. Suíte back **163/163**, builds API+web limpos, API sobe com as 3 rotas. Aceite runtime abaixo.
 
-## Fatia 7 — Insight semântico (SPEC-007, `aprovada-pi`) — `a-fazer`
+### Aceite runtime (2026-07-13)
 
-Só iniciar com a Fatia 6 `feito`.
+Validado automatizável pelo Claude Code:
+- ✅ 165 testes back verdes (incl. as 3 fixtures da prova + teste de arquitetura do ADR-015 estendido para `mapping.service` + o caso de `resolutionOf` ausente).
+- ✅ `tsc --noEmit` + `nest build` + `vite build` limpos.
+- ✅ API sobe com `/projects/:id/tabs/:tab` (GET), `/tabs/mapping` (GET, PUT) mapeadas.
+- ✅ Migration `fatia_6_document_resolution` aplicada; coluna `proplan_config_invalid` no banco; 3 projetos gerenciados preservados.
 
-1. `a-fazer` — Prisma: `DocLink.kind inferred` + `reason`, `SuppressedLink`, novos `Insight.kind`; migration.
-2. `a-fazer` — Job de arestas semânticas (batch único por sync, JSON estrito + retry, exclui explícitas e suprimidas).
-3. `a-fazer` — API supressão de aresta + grafo com inferidas; Web: tracejadas âmbar, tooltip motivo, remover, toggle.
-4. `a-fazer` — **Nível 3 da escada (ADR-014)**: classificação semântica — doc cujo nome não bate com alias nenhum, mas cujo conteúdo é claramente a entidade. Preenche o slot que o `DocumentResolver` já deixou pronto na Fatia 6. Resultado é `inferência` (badge âmbar, spans citados), nunca `fato`, e **perde** para `.proplan/config.yml`.
-5. `a-fazer` — Fallbacks Arquitetura/Design: job, badge âmbar, Regenerar, "Promover a documento" (editor → commit → re-sync).
-6. `a-fazer` — Critérios da SPEC-007; atualizar este arquivo + STATUS.md; commitar tudo.
+Validado ao vivo pelo PI no **`RodReis/rrb-adv`** (repo de nomes próprios, documentação farta):
+- ✅ **Escada do ADR-014 em repo não-convencional**: Decisões (`docs/DECISÕES.md`, com acento) e Skills&Agentes (`CLAUDE.md`) resolvidos por **alias** (nível 2, badge "reconhecido por nome"); Design por **manual** (`.proplan/config.yml` → `docs/design/DESIGN_SYSTEM.md`); Testes e Deploy **ausentes** (nível 4). Alias acento-insensitive comprovado.
+- ✅ **Aba Testes com fallback de CI**: sem doc de testes, parseou `.github/workflows/ci.yml` (name/gatilhos/jobs).
+- ✅ **Tela de mapeamento end-to-end**: trocar a fonte → toast "Mapeamento salvo — re-sincronizando" → `.proplan/config.yml` commitado no repo (aparece na lista de docs após o re-sync). Escrita por installation token (bot).
+- ✅ **Critério de cache (o "#7")**: apagadas as 6 linhas de `document_resolutions` do rrb-adv e reconstruídas a partir de `documents` + `.proplan/config.yml` (sem tocar no GitHub) → **estado idêntico** (hash `3da0577c…` antes e depois). Prova de que a resolução é cache derivado e a decisão do usuário vive só no repo.
+
+**Achados do PI durante o aceite (NÃO são bug da Fatia 6 — viram trabalho próprio, ver abaixo):** a lista de documentos é plana (deveria ser árvore de pastas quando há muitas subpastas); binários (`.pdf`, `.docx`) e `.html` aparecem como lixo/HTML cru no viewer (o pipeline os lê como texto — limite técnico do ADR-003, não violação de path). Árvore tratada como polimento da aba Documentos; binários com preview abrem fatia própria (emenda ao ADR-003).
+
+## Documentos ricos — árvore + preview de binários — `finalizado`
+
+Achado no aceite da Fatia 6. Entregue pelo Claude Code (design + plano em `docs/superpowers/`, execução subagent-driven) e **aceito pelo PI em 2026-07-13** (4 tipos validados ao vivo no `rrb-adv`).
+
+1. `feito` — **Árvore de pastas** (`DocTree`): a lista plana de docs vira árvore, pastas antes de arquivos, expand/collapse (rasas abrem). Resolve o scroll enorme em repos com muitas subpastas.
+2. `feito` — `classifyKind` (extensão → `markdown|pdf|image|html|office|binary`, puro) + `Document.kind` (migration `documentos_ricos_kind`, default markdown).
+3. `feito` — **Sync classifica**: markdown baixa+persiste (fluxo atual, intacto); binário grava **só metadado** (`content: ''`, `byteSize: 0`, `kind`), **não baixa os bytes**. Sync tão leve quanto antes.
+4. `feito` — **Endpoint `GET /documents/raw`**: busca o blob do GitHub sob demanda (user token, respeita visibilidade), stream **efêmero** com Content-Type correto — **nunca persiste bytes**. `.docx`→texto via **mammoth**; `.html`→`iframe sandbox=""` + CSP no response; teto 25 MB → 413. Ownership; só serve path do índice (não é proxy arbitrário). Teste de arquitetura do ADR-015 prova que não usa installation token.
+5. `feito` — **Viewer ramifica por kind**: pdf (iframe nativo), image (`<img>` + fundo xadrez), html (sandbox + aviso), office (texto + aviso), binary (estado neutro), markdown (atual, com Mermaid — preservado sem regressão).
+6. `feito` — Emenda ao **ADR-003** (binário em `docs/` é documentação, não código; preview sob demanda, nunca persiste bytes) + `CONVENTION.md` + `ARCHITECTURE.md`. 175 testes verdes, builds limpos.
+
+### Aceite runtime (2026-07-13)
+
+Validado ao vivo pelo PI no `rrb-adv`: **os 4 tipos** — `finac.png` (imagem, fundo xadrez), `Requisito.docx` (texto extraído por mammoth), `mockup-builder-agentes-SPEC-025.html` (renderizado em sandbox, "scripts não executados"), `Software jurídico para advocacia.pdf` (viewer nativo, 8 páginas, miniaturas/zoom). Banco confere: 23 binários (3 pdf · 17 image · 2 html · 1 office) com **`content` vazio** (só metadado), 104 markdown com conteúdo.
+
+**Nota de estado durante o aceite**: os docs já sincronizados **antes** desta fatia ficam `kind=markdown` (a migration defaultou markdown) até o primeiro sync pós-fatia reclassificar. No aceite, isso exigiu limpar o `docsScopeHash` (forçar reprocessamento) — porque o sync é idempotente por hash e o hash não muda só porque a lógica mudou.
+
+### Achados de produto (registrados, NÃO corrigidos — decisão do PI)
+
+Dois defeitos **latentes** que esta fatia **expôs** mas não causou — ambos da idempotência do sync (ADR-003/SPEC-002), a decidir em fatia própria:
+
+1. **`docsScopeHash` conta arquivos `skipped`.** Um blob pulado (ex.: PDF >512 KB tratado como texto no passado) entra no hash (está na árvore) mas nunca vira `document`. Como o hash não muda, o sync é sempre `noop` e o arquivo fica invisível — mesmo depois de a lógica que o pulava ser corrigida. No aceite, os 3 PDFs só entraram após limpar o hash à mão. Correção possível: o hash contar só o que realmente foi ingerido, ou uma migration de fatia forçar re-sync.
+2. **Doc texto→binário mantém o `content` de texto** até um reprocessamento que o toque por SHA. O ramo binário do sync limpa `content` no upsert, mas só quando o doc entra em `added`/`updated`; docs pré-fatia com mesmo SHA não reprocessam. No aceite, ~2 MB de lixo (imagens lidas como texto) ficaram no banco; limpos à mão. Mesma raiz do #1: mudança de lógica não invalida a idempotência por SHA/hash.
+
+## Fatia 7 — Insight semântico (SPEC-007, `aprovada-pi`) — `feito` (aguardando aceite runtime do PI)
+
+Entregue pelo Claude Code (design + plano em `docs/superpowers/`, execução subagent-driven: implementer + review por task, review final whole-branch). **Onde a convenção não alcança, a IA completa** — sempre rotulada, versionada por hash, com caminho de promoção a documento real. Fronteira ADR-001 respeitada (o `insight` gera, o `ingestion`/`board` persistem via métodos públicos); nenhuma IA no render (ADR-002).
+
+1. `feito` — Prisma: `DocLink.kind inferred` + `reason`, `SuppressedLink`, `Insight.kind` (`edges_marker`, `classify_marker`, `architecture_fallback`, `design_fallback`); migration aplicada.
+2. `feito` — Job de arestas semânticas (batch por sync, JSON estrito + 1 retry, exclui explícitas e suprimidas; idempotente por `edges_marker`).
+3. `feito` — API supressão de aresta (`DELETE /graph/edges`, ownership antes) + grafo com `kind`/`reason`; Web: tracejadas âmbar, tooltip do motivo, remover (otimista+rollback), toggle, painel acessível por teclado.
+4. `feito` — **Nível 3 da escada (ADR-014)**, no **`insight`**: classificação semântica com spans obrigatórios (ADR-012), grava `DocumentResolution` via `writeInferredResolution` (`source: 'inference'`); **nunca sobrescreve** `config`/convenção/alias; **deploy nunca classificado**. Abas: badge âmbar + spans + "corrigir mapeamento". **Raiz corrigida (decisão PI)**: `rebuild` preserva inferidas no noop (`rebuildLinks` só apaga `explicit`; `resolution.rebuild` preserva `inference` só enquanto a entidade continua ausente E o doc ainda existe).
+5. `feito` — Fallbacks Arquitetura/Design: job (markdown versionado por hash, só gera se ausente), badge âmbar, **"Promover a documento"** (editor + preview → write-back por `rrb-proplan[bot]` → re-sync). ⚠️ **Sem botão "Regenerar"** — cortado em 2026-07-13 (é chamada de IA sem teto; o cap só chega na Fatia 7.5). Correção de fallback ruim = **promover a documento** ou **corrigir mapeamento**, nunca re-rolar o dado.
+6. `feito` — Suíte 223 testes verde, `tsc` e builds (API+web) limpos. **Review final whole-branch** pegou 1 bug cross-task (resolução nível 3 preservava path de doc deletado → aba 500 permanente) — corrigido na raiz (`rebuild` valida a existência do path). Concorrência dos jobs confirmada serial (BullMQ concurrency=1): classify sempre antes de fallback, sem race.
+
+**Aceite runtime (pendente do PI, padrão das Fatias 1-6):** precisa login no GitHub App + olho ao vivo no `rrb-adv`. Roteiro: arestas tracejadas com motivo + remover não ressuscita no re-sync (`SuppressedLink`); mesmo hash → 0 nova chamada de IA; doc de nome não-convencional classificado nível 3 com badge + spans, "corrigir" grava `config.yml`; projeto sem `ARCHITECTURE.md` mostra fallback + badge, promover commita e o badge some após re-sync; **noop não destrói inferência** (fix da raiz). O aceite gasta tokens de IA reais (conta do PI).
+
+## Fatia 7.5 — Consumo de IA: tokens, custo e teto (SPEC-009, `aprovada-pi`) — `a-fazer` `[paralelo]`
+
+**Última fatia do MVP1.** Sem dependência de nenhuma outra — toca só `insight` e `settings`. Marcada `[paralelo]`: pode ser puxada para frente a qualquer momento. **Antecipe se a conta de IA assustar durante a Fatia 7**, que é a que mais chama o provedor.
+
+**O erro que ela corrige** (ADR-016): a tabela `insights` de hoje **não é** um registro de gasto. Ela é cache de artefato chaveado por `docs_tree_sha` — logo, não vê chamadas que falharam, não vê o retry de JSON inválido, não vê proposta de bootstrap descartada, e perde o gasto antigo quando o artefato é regenerado. Somar `insights.inputTokens` produz uma conta que **sempre subestima**.
+
+1. `a-fazer` — Prisma: `LlmUsage` (append-only: sem `@updatedAt`, sem cascade delete — o gasto sobrevive ao projeto) + `ModelPrice` (seed dos modelos em uso) + `Settings.llmAlertUsdMonthly`/`llmHardCapUsdMonthly`; migration.
+2. `a-fazer` — `LlmClient` (ADR-008) passa a devolver o **uso bruto** (incl. `cache_creation_input_tokens` / `cache_read_input_tokens`); `LlmUsageRecorder` no `insight/application` grava a linha. Adapters HTTP **não** conhecem preço nem banco.
+3. `a-fazer` — Custo em `Decimal` (nunca `Float`), calculado na chamada e **congelado** na linha junto do `priceSnapshot`. Modelo sem preço → chamada acontece, `costUsd = null`, `priceMissing = true`. **Teste-chave**: mudar o preço em Configurações **não altera** custo já registrado.
+4. `a-fazer` — Gate do **teto rígido** no ponto de **enfileiramento** (listener de `DocsSynced` + endpoints de regenerar/bootstrap) — barrar antes de gastar, não dentro do client. Sem "forçar mesmo assim".
+5. `a-fazer` — Falha ao gravar o ledger é **logada, não propagada** (perder linha de contabilidade é ruim; derrubar o resumo do usuário é pior). Linha é gravada **também em erro** (`status: error`, tokens que o provedor devolveu, ou `0` em timeout puro).
+6. `a-fazer` — Web: tela Configurações → **Uso de IA** (mês corrente, barra até alerta/teto, quebra por projeto/tipo/modelo, **taxa de desperdício**, histórico 6 meses, aviso de preço ausente).
+7. `a-fazer` — Critérios da SPEC-009 (incl. retry gerando **duas** linhas e regeneração **somando**, não substituindo); atualizar este arquivo + STATUS.md; commitar tudo.
 
 ## Fatia 8 — Multi-tenant — `sem-spec`
 

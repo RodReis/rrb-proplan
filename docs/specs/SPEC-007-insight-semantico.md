@@ -13,6 +13,12 @@ Fechar o híbrido do ADR-002: onde a convenção não alcança, a IA completa �
 
 ## Escopo
 
+- **Nível 3 da escada de resolução** (ADR-014; o `DocumentResolver` da Fatia 6 já nasce com o slot vazio):
+  - Entra em cena **só** quando convenção, alias e `.proplan/config.yml` não resolveram a entidade. Classifica um documento de nome não-reconhecido pelo **conteúdo** (ex.: `docs/notas-tecnicas.md` é a Arquitetura).
+  - Saída é **`inferência`, nunca `fato`**: badge âmbar, spans citados que sustentam a classificação (ADR-012), e sempre com a ação "não é isso — corrigir" que grava `.proplan/config.yml`.
+  - **Perde para `.proplan/config.yml`** e para `null` explícito (ausência confirmada pelo humano nunca é reaberta pela IA).
+  - Nunca classifica **Deploy** — a `CONVENTION.md` proíbe inferência ali (deploy errado é pior que ausente).
+
 - **Arestas semânticas do grafo** (módulo `insight`):
   - Job disparado após sync com hash novo (mesmo gatilho do resumo): entrada = lista de docs com path + título + headings + primeiras ~40 linhas; saída JSON estrita = pares `{sourcePath, targetPath, motivo}` para relações **não cobertas por link explícito**.
   - Persistência em `DocLink` com `kind: inferred` + `reason`; regeneração por hash substitui as inferidas anteriores, **exceto** as suprimidas.

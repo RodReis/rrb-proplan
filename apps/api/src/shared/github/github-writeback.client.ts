@@ -10,8 +10,10 @@ export class WritebackConflictError extends Error {
 }
 
 /**
- * Escrita de arquivo no repo-alvo via GitHub Contents API (ADR-005).
- * Nasce aqui (insight); a Fatia 5 (Kanban) reusa promovendo para shared.
+ * Escrita de arquivo no repo-alvo via GitHub Contents API. Compartilhado
+ * (SharedModule) — nasceu no insight (bootstrap de STATUS.md, Fatia 3) e ganhou
+ * segundo consumidor no board (projeção .proplan/STATUS.md, Fatia 5). Toda
+ * escrita usa installation token (identidade proplan[bot], ADR-015).
  */
 @Injectable()
 export class GithubWritebackClient {

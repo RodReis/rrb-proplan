@@ -3,10 +3,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   api,
+  DocKind,
   DocumentContent,
   DocumentSummary,
   SyncRun,
 } from '../../lib/api';
+import { DocTree } from './DocTree';
+import { useResizableWidth } from './useResizableWidth';
 
 interface Props {
   projectId: string;
@@ -26,6 +29,12 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
   const [state, setState] = useState<DocsState>({ status: 'loading' });
   const [run, setRun] = useState<SyncRun | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const { width, dragging, onMouseDown, onKeyDown } = useResizableWidth({
+    storageKey: 'proplan.docs.panelWidth',
+    initial: 440,
+    min: 240,
+    max: 720,
+  });
 
   const loadDocs = useCallback(async () => {
     try {
@@ -83,33 +92,41 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
   const skipped = run?.status === 'success' ? run.skipped : 0;
 
   return (
-    <div className="flex h-full">
-      <nav className="w-72 shrink-0 overflow-y-auto border-r border-border p-2">
+    <div className={'flex h-full' + (dragging ? ' cursor-col-resize select-none' : '')}>
+      <nav
+        className="shrink-0 overflow-y-auto p-2"
+        style={{ width }}
+      >
         {isSyncing && (
           <div className="mb-2 rounded-md bg-brand/5 px-3 py-2 text-xs text-brand">
             Sincronizando…
           </div>
         )}
-        {state.docs.map((doc) => (
-          <button
-            key={doc.id}
-            onClick={() => setSelected(doc.path)}
-            className={
-              'group relative flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors duration-150 ' +
-              (selected === doc.path
-                ? 'bg-brand/5 text-brand'
-                : 'text-text hover:bg-bg')
-            }
-          >
-            <span className="truncate">{doc.path}</span>
-            {doc.isConventional && (
-              <span className="shrink-0 rounded-sm bg-brand/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand">
-                convenção
-              </span>
-            )}
-          </button>
-        ))}
+        <DocTree docs={state.docs} selected={selected} onSelect={setSelected} />
       </nav>
+
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Redimensionar painel de documentos"
+        tabIndex={0}
+        onMouseDown={onMouseDown}
+        onKeyDown={onKeyDown}
+        className={
+          'group relative w-px shrink-0 cursor-col-resize bg-border outline-none ' +
+          'before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[""] ' + // área de clique confortável
+          (dragging ? 'bg-brand' : 'hover:bg-brand/40 focus-visible:bg-brand')
+        }
+      >
+        {/* pega discreta no meio, aparece no hover/drag */}
+        <span
+          aria-hidden
+          className={
+            'pointer-events-none absolute left-1/2 top-1/2 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-opacity duration-150 ' +
+            (dragging ? 'bg-brand opacity-100' : 'bg-brand/50 opacity-0 group-hover:opacity-100')
+          }
+        />
+      </div>
 
       <div className="flex-1 overflow-y-auto">
         {skipped > 0 && (
@@ -118,7 +135,11 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
           </div>
         )}
         {selected ? (
-          <DocumentViewer projectId={projectId} path={selected} />
+          <DocumentViewer
+            projectId={projectId}
+            path={selected}
+            kind={state.docs.find((d) => d.path === selected)?.kind ?? 'markdown'}
+          />
         ) : (
           <p className="p-8 text-sm text-text-muted">
             Selecione um documento à esquerda.
@@ -135,6 +156,63 @@ type ViewerState =
   | { status: 'ready'; doc: DocumentContent };
 
 function DocumentViewer({
+  projectId,
+  path,
+  kind,
+}: {
+  projectId: string;
+  path: string;
+  kind: DocKind;
+}) {
+  if (kind === 'pdf')
+    return (
+      <iframe
+        src={api.rawUrl(projectId, path)}
+        title={path}
+        className="h-full w-full border-0"
+      />
+    );
+
+  if (kind === 'image')
+    return (
+      <div className="flex h-full items-center justify-center overflow-auto bg-[repeating-conic-gradient(#f3f4f6_0_25%,#fff_0_50%)] bg-[length:20px_20px] p-8">
+        <img
+          src={api.rawUrl(projectId, path)}
+          alt={path}
+          className="max-h-full max-w-full"
+        />
+      </div>
+    );
+
+  if (kind === 'html')
+    return (
+      <div className="flex h-full flex-col">
+        <div className="border-b border-border bg-warning/5 px-8 py-2 text-xs text-warning">
+          Conteúdo isolado por segurança — scripts não são executados.
+        </div>
+        <iframe
+          src={api.rawUrl(projectId, path)}
+          title={path}
+          sandbox=""
+          className="flex-1 border-0"
+        />
+      </div>
+    );
+
+  if (kind === 'office') return <DocxViewer projectId={projectId} path={path} />;
+
+  if (kind === 'binary')
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
+        <p className="text-sm font-medium">Pré-visualização não disponível</p>
+        <p className="max-w-md text-xs text-text-muted">{path}</p>
+      </div>
+    );
+
+  return <MarkdownDoc projectId={projectId} path={path} />;
+}
+
+function MarkdownDoc({
   projectId,
   path,
 }: {
@@ -175,10 +253,57 @@ function DocumentViewer({
   );
 }
 
+function DocxViewer({
+  projectId,
+  path,
+}: {
+  projectId: string;
+  path: string;
+}) {
+  const [state, setState] = useState<
+    | { status: 'loading' }
+    | { status: 'error'; message: string }
+    | { status: 'ready'; text: string }
+  >({ status: 'loading' });
+
+  useEffect(() => {
+    let active = true;
+    setState({ status: 'loading' });
+    api
+      .docxText(projectId, path)
+      .then((r) => active && setState({ status: 'ready', text: r.text }))
+      .catch(
+        (e) => active && setState({ status: 'error', message: String(e) }),
+      );
+    return () => {
+      active = false;
+    };
+  }, [projectId, path]);
+
+  if (state.status === 'loading')
+    return <div className="m-8 h-64 animate-pulse rounded-md bg-border/50" />;
+  if (state.status === 'error')
+    return (
+      <p className="m-8 text-sm text-error">
+        Falha ao ler o documento: {state.message}
+      </p>
+    );
+  return (
+    <div className="px-8 py-6">
+      <p className="mb-4 text-xs text-text-muted">
+        Texto extraído — formatação e imagens omitidas.
+      </p>
+      <pre className="whitespace-pre-wrap font-sans text-sm text-text">
+        {state.text}
+      </pre>
+    </div>
+  );
+}
+
 function DocsSkeleton() {
   return (
     <div className="flex h-full">
-      <div className="w-72 shrink-0 space-y-2 border-r border-border p-4">
+      <div className="w-[440px] shrink-0 space-y-2 border-r border-border p-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-8 animate-pulse rounded-md bg-border/50" />
         ))}

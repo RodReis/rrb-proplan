@@ -17,8 +17,24 @@ describe('isInScope', () => {
     expect(isInScope('CLAUDE.md.bak')).toBe(false);
   });
 
-  it('exclui .claude e workflows (só na Fatia 6)', () => {
-    expect(isInScope('.claude/skills/x.md')).toBe(false);
-    expect(isInScope('.github/workflows/ci.yml')).toBe(false);
+  it('Fatia 6: inclui .proplan/config.yml, .claude e workflows', () => {
+    expect(isInScope('.proplan/config.yml')).toBe(true);
+    expect(isInScope('.claude/skills/x/SKILL.md')).toBe(true);
+    expect(isInScope('.claude/agents/y.md')).toBe(true);
+    expect(isInScope('.github/workflows/ci.yml')).toBe(true);
+    expect(isInScope('.github/workflows/ci.yaml')).toBe(true);
+  });
+
+  it('Fatia 6: inclui diretórios de alias na raiz e alias soltos', () => {
+    expect(isInScope('adr/0001-x.md')).toBe(true);
+    expect(isInScope('decisions/0001.md')).toBe(true);
+    expect(isInScope('AGENTS.md')).toBe(true);
+    expect(isInScope('CONTRIBUTING.md')).toBe(true);
+  });
+
+  it('Fatia 6: exclui ruído de .claude e .github fora do escopo fino', () => {
+    expect(isInScope('.claude/settings.json')).toBe(false);
+    expect(isInScope('.github/ISSUE_TEMPLATE/bug.md')).toBe(false);
+    expect(isInScope('.proplan/STATUS.md')).toBe(false); // artefato gerado, não fonte
   });
 });

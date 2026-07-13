@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  PayloadTooLargeException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 /** Cap de tamanho por documento de texto (SPEC-002 notas técnicas). */
 export const MAX_BLOB_BYTES = 512 * 1024;
@@ -84,6 +88,34 @@ export class GithubGitClient {
     // (encoding errado / binário) quebravam o sync inteiro — removemos.
     const content = buf.toString('utf-8').replace(/\x00/g, '');
     return { content, byteSize: buf.byteLength };
+  }
+
+  /** Bytes crus de um blob (Buffer), sem decodificar como texto — para binários
+   *  servidos sob demanda no preview. Teto de sanidade de 25 MB (stream efêmero,
+   *  nunca persistido). Diferente de getBlob, que força utf-8 e é só para texto. */
+  async getRawBlob(
+    token: string,
+    owner: string,
+    repo: string,
+    blobSha: string,
+  ): Promise<Buffer> {
+    const res = await this.fetchGithub(
+      token,
+      `https://api.github.com/repos/${owner}/${repo}/git/blobs/${blobSha}`,
+    );
+    const body = (await res.json()) as {
+      content: string;
+      encoding: string;
+      size: number;
+    };
+    const MAX_RAW = 25 * 1024 * 1024;
+    if (body.size > MAX_RAW)
+      throw new PayloadTooLargeException(
+        `Arquivo acima de 25 MB (${body.size} bytes) — pré-visualização indisponível.`,
+      );
+    return body.encoding === 'base64'
+      ? Buffer.from(body.content, 'base64')
+      : Buffer.from(body.content);
   }
 
   /**

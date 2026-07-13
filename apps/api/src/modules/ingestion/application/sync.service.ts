@@ -2,13 +2,15 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AuthService } from '../../identity/application/auth.service';
+import { GithubAuth } from '../../identity/application/github-auth.service';
 import { LinkService } from './link.service';
+import { ResolutionService } from './resolution.service';
 import { diffScope } from '../domain/diff';
 import { parseFrontmatter } from '../domain/frontmatter';
 import { computeScopeHash } from '../domain/scope-hash';
 import { isInScope } from '../domain/scope-filter';
 import { GithubGitClient } from '../infrastructure/github-git.client';
+import { classifyKind } from '../domain/document-kind';
 
 /** Evento de domínio: docs de um projeto foram sincronizados com hash novo. */
 export class DocsSyncedEvent {
@@ -18,6 +20,13 @@ export class DocsSyncedEvent {
   ) {}
 }
 export const DOCS_SYNCED = 'docs.synced';
+
+/** Emitido ao fim de todo sync (sucesso E noop). O board escuta para
+ *  sincronizar as issues junto — cobre mudanças feitas direto no GitHub. */
+export class SyncCompletedEvent {
+  constructor(readonly projectId: string) {}
+}
+export const SYNC_COMPLETED = 'sync.completed';
 
 export interface SyncResult {
   status: 'success' | 'noop' | 'failed';
@@ -33,10 +42,11 @@ export class SyncService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auth: AuthService,
+    private readonly auth: GithubAuth,
     private readonly git: GithubGitClient,
     private readonly events: EventEmitter2,
     private readonly links: LinkService,
+    private readonly resolution: ResolutionService,
   ) {}
 
   /**
@@ -57,7 +67,7 @@ export class SyncService {
     });
 
     try {
-      const token = await this.auth.githubTokenOf(project.userId);
+      const token = await this.auth.userToken(project.userId);
       const tree = await this.git.listTree(
         token,
         project.owner,
@@ -73,12 +83,14 @@ export class SyncService {
         // Recomputa o grafo no noop também: docs ingeridos antes da Fatia 4
         // ainda não têm arestas; recompute é barato e idempotente.
         await this.links.rebuildLinks(project.id);
+        await this.resolution.rebuild(project.id);
         await this.finish(run.id, 'noop', scopeHash, {
           added: 0,
           updated: 0,
           removed: 0,
           skipped: 0,
         });
+        this.events.emit(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
         return;
       }
 
@@ -91,6 +103,35 @@ export class SyncService {
 
       let skipped = 0;
       for (const entry of [...added, ...updated]) {
+        const kind = classifyKind(entry.path);
+
+        if (kind !== 'markdown') {
+          // Binário: só metadado, NÃO baixa os bytes (Decisão 2). content vazio,
+          // byteSize 0 — o tamanho real aparece quando o preview busca sob demanda.
+          await this.prisma.document.upsert({
+            where: { projectId_path: { projectId: project.id, path: entry.path } },
+            create: {
+              projectId: project.id,
+              path: entry.path,
+              blobSha: entry.blobSha,
+              content: '',
+              frontmatter: Prisma.JsonNull,
+              isConventional: false,
+              byteSize: 0,
+              kind,
+            },
+            update: {
+              blobSha: entry.blobSha,
+              content: '',
+              frontmatter: Prisma.JsonNull,
+              isConventional: false,
+              byteSize: 0,
+              kind,
+            },
+          });
+          continue;
+        }
+
         const blob = await this.git.getBlob(
           token,
           project.owner,
@@ -117,6 +158,7 @@ export class SyncService {
             frontmatter,
             isConventional: fm.isConventional,
             byteSize: blob.byteSize,
+            kind: 'markdown',
           },
           update: {
             blobSha: entry.blobSha,
@@ -124,6 +166,7 @@ export class SyncService {
             frontmatter,
             isConventional: fm.isConventional,
             byteSize: blob.byteSize,
+            kind: 'markdown',
           },
         });
       }
@@ -136,6 +179,7 @@ export class SyncService {
 
       // Grafo (SPEC-004): recomputa arestas a partir do conteúdo atual dos docs.
       await this.links.rebuildLinks(project.id);
+      await this.resolution.rebuild(project.id);
 
       await this.prisma.project.update({
         where: { id: project.id },
@@ -152,6 +196,7 @@ export class SyncService {
       });
 
       this.events.emit(DOCS_SYNCED, new DocsSyncedEvent(project.id, scopeHash));
+      this.events.emit(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       await this.prisma.syncRun.update({

@@ -24,11 +24,17 @@ const MAX_PAGES = 10; // 1000 repos — acima disso é outro produto
 
 @Injectable()
 export class GithubClient {
-  /** Repos do usuário autenticado, ordenados por push mais recente. */
-  async listRepos(token: string): Promise<RepoSummary[]> {
+  /**
+   * Repos acessíveis por uma instalação do GitHub App, com o token do usuário
+   * (ADR-015: leitura respeita a visibilidade dele). Paginado.
+   * `GET /user/installations/{id}/repositories`.
+   */
+  async listInstallationRepos(
+    token: string,
+    installationId: number,
+  ): Promise<RepoSummary[]> {
     const all: GithubRepo[] = [];
-    let url: string | null =
-      'https://api.github.com/user/repos?per_page=100&sort=pushed&direction=desc';
+    let url: string | null = `https://api.github.com/user/installations/${installationId}/repositories?per_page=100`;
 
     for (let page = 0; url && page < MAX_PAGES; page++) {
       const res: Response = await fetch(url, {
@@ -40,7 +46,8 @@ export class GithubClient {
       });
       if (res.status === 401) throw new UnauthorizedException('Token GitHub inválido');
       if (!res.ok) throw new Error(`GitHub API ${res.status}`);
-      all.push(...((await res.json()) as GithubRepo[]));
+      const body = (await res.json()) as { repositories: GithubRepo[] };
+      all.push(...(body.repositories ?? []));
       url = nextLink(res.headers.get('link'));
     }
 

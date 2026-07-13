@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, Freshness, InsightSummary } from '../../lib/api';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { BootstrapDialog } from './BootstrapDialog';
 
 interface Props {
@@ -18,6 +19,7 @@ export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
   const [state, setState] = useState<SummaryState>({ status: 'loading' });
   const [freshness, setFreshness] = useState<Freshness | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [confirmRegen, setConfirmRegen] = useState(false);
   const [bootstrapOpen, setBootstrapOpen] = useState(false);
 
   const load = useCallback(() => {
@@ -32,8 +34,7 @@ export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
   useEffect(load, [load]);
 
   async function regenerate() {
-    if (!confirm('Regenerar o resumo consome tokens do provedor de IA. Continuar?'))
-      return;
+    setConfirmRegen(false);
     setRegenerating(true);
     try {
       const summary = await api.regenerateSummary(projectId);
@@ -89,7 +90,7 @@ export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
               inferido por IA · {state.summary.provider}
             </span>
             <button
-              onClick={regenerate}
+              onClick={() => setConfirmRegen(true)}
               disabled={regenerating}
               className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand disabled:opacity-50"
             >
@@ -137,6 +138,16 @@ export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
             setBootstrapOpen(false);
             onSynced();
           }}
+        />
+      )}
+
+      {confirmRegen && (
+        <ConfirmDialog
+          title="Regenerar resumo"
+          message="Regenerar o resumo consome tokens do provedor de IA. Continuar?"
+          confirmLabel="Regenerar"
+          onConfirm={() => void regenerate()}
+          onCancel={() => setConfirmRegen(false)}
         />
       )}
     </div>

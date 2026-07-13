@@ -31,8 +31,14 @@ export class AuthService {
   }
 
   async handleCallback(code: string): Promise<{ jwt: string }> {
-    const token = await this.github.exchangeCode(code);
-    const ghUser = await this.github.fetchUser(token);
+    const tokens = await this.github.exchangeCode(code);
+    const ghUser = await this.github.fetchUser(tokens.accessToken);
+
+    const tokenFields = {
+      encryptedUserToken: this.crypto.encrypt(tokens.accessToken),
+      encryptedRefreshToken: this.crypto.encrypt(tokens.refreshToken),
+      tokenExpiresAt: tokens.expiresAt,
+    };
 
     const user = await this.prisma.user.upsert({
       where: { githubId: BigInt(ghUser.id) },
@@ -41,13 +47,13 @@ export class AuthService {
         login: ghUser.login,
         name: ghUser.name,
         avatarUrl: ghUser.avatar_url,
-        encryptedGithubToken: this.crypto.encrypt(token),
+        ...tokenFields,
       },
       update: {
         login: ghUser.login,
         name: ghUser.name,
         avatarUrl: ghUser.avatar_url,
-        encryptedGithubToken: this.crypto.encrypt(token),
+        ...tokenFields,
       },
     });
 
@@ -63,12 +69,5 @@ export class AuthService {
       name: user.name,
       avatarUrl: user.avatarUrl,
     };
-  }
-
-  /** Interface pública do módulo: token GitHub decriptado para outros módulos. */
-  async githubTokenOf(userId: string): Promise<string> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException();
-    return this.crypto.decrypt(user.encryptedGithubToken);
   }
 }

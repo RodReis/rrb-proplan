@@ -41,6 +41,42 @@ export class InsightEventListener {
         removeOnFail: 50,
       },
     );
+    this.logger.log(`DocsSynced → enfileira arestas do projeto ${event.projectId}`);
+    await this.queue.add(
+      'edges',
+      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      {
+        jobId: `${event.projectId}_edges_${event.docsScopeHash}`,
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 50,
+        removeOnFail: 50,
+      },
+    );
+    this.logger.log(`DocsSynced → enfileira classificação do projeto ${event.projectId}`);
+    await this.queue.add(
+      'classify',
+      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      {
+        jobId: `${event.projectId}_classify_${event.docsScopeHash}`,
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 50,
+        removeOnFail: 50,
+      },
+    );
+    this.logger.log(`DocsSynced → enfileira fallback (arquitetura/design) do projeto ${event.projectId}`);
+    await this.queue.add(
+      'fallback',
+      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      {
+        jobId: `${event.projectId}_fallback_${event.docsScopeHash}`,
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 50,
+        removeOnFail: 50,
+      },
+    );
   }
 }
 
@@ -53,7 +89,20 @@ export class InsightWorker extends WorkerHost {
   }
 
   async process(job: Job<InsightJobData>): Promise<void> {
-    this.logger.log(`Insight job ${job.id} → projeto ${job.data.projectId}`);
+    this.logger.log(`Insight job ${job.id} (${job.name}) → projeto ${job.data.projectId}`);
+    if (job.name === 'edges') {
+      await this.insight.generateEdges(job.data.projectId);
+      return;
+    }
+    if (job.name === 'classify') {
+      await this.insight.classifyAbsent(job.data.projectId);
+      return;
+    }
+    if (job.name === 'fallback') {
+      await this.insight.generateFallback(job.data.projectId, 'architecture');
+      await this.insight.generateFallback(job.data.projectId, 'design');
+      return;
+    }
     await this.insight.generateSummary(job.data.projectId);
   }
 }

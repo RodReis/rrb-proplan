@@ -15,7 +15,21 @@ export interface Repo {
   defaultBranch: string;
   isPrivate: boolean;
   pushedAt: string | null;
+  installationId: number;
   managedProjectId: string | null;
+}
+
+/** Um grupo do catálogo = uma instalação do App em uma conta (ADR-015). */
+export interface InstallationGroup {
+  installationId: number;
+  account: string;
+  accountType: 'User' | 'Organization';
+  repos: Repo[];
+}
+
+export interface CatalogInstallations {
+  groups: InstallationGroup[];
+  empty: boolean;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -34,12 +48,43 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export class UnauthorizedError extends Error {}
 
+export type Entity = 'architecture' | 'decisions' | 'design' | 'testing' | 'deploy' | 'skills';
+export type TabSourceKind = 'convention' | 'alias' | 'config' | 'inference' | 'absent';
+
+export interface TabSource {
+  level: 1 | 2 | 3 | 4;
+  source: TabSourceKind;
+  path: string | null;
+  paths: string[];
+  confidence: number;
+}
+export interface TabResponse<P = unknown> {
+  source: TabSource;
+  payload: P | null;
+}
+
+/** Presente no payload de uma aba quando a resolução é nível 3 (inferência de IA, ADR-014). */
+export interface InferencePayload {
+  inferred: true;
+  spans: string[];
+}
+
+/** Uma linha do mapeamento manual (Fatia 6, ADR-014): entidade + resolução atual + candidatos do repo. */
+export interface MappingRow {
+  entity: Entity;
+  resolution: TabSource & { entity: Entity };
+  candidates: string[];
+}
+
+export type DocKind = 'markdown' | 'pdf' | 'image' | 'html' | 'office' | 'binary';
+
 export interface DocumentSummary {
   id: string;
   path: string;
   isConventional: boolean;
   byteSize: number;
   updatedAt: string;
+  kind: DocKind;
 }
 
 export interface DocumentContent extends DocumentSummary {
@@ -67,7 +112,9 @@ export const api = {
   loginUrl: `${API_URL}/auth/github`,
   me: () => request<SessionUser>('/auth/me'),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
-  repos: () => request<Repo[]>('/catalog/repos'),
+  installations: () =>
+    request<CatalogInstallations>('/catalog/installations'),
+  installUrl: () => request<{ url: string }>('/catalog/install-url'),
   addProject: (repo: Repo) =>
     request<{ id: string }>('/catalog/projects', {
       method: 'POST',
@@ -87,6 +134,12 @@ export const api = {
   documentContent: (projectId: string, path: string) =>
     request<DocumentContent>(
       `/projects/${projectId}/documents/content?path=${encodeURIComponent(path)}`,
+    ),
+  rawUrl: (projectId: string, path: string) =>
+    `${API_URL}/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`,
+  docxText: (projectId: string, path: string) =>
+    request<{ text: string }>(
+      `/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`,
     ),
   settings: () => request<Settings>('/settings'),
   updateSettings: (input: Partial<Pick<Settings, 'llmProvider' | 'docsStalenessThresholdDays'>>) =>
@@ -114,7 +167,102 @@ export const api = {
     ),
   graph: (projectId: string) =>
     request<DocGraph>(`/projects/${projectId}/graph`),
+  suppressEdge: (projectId: string, sourcePath: string, targetPath: string) =>
+    request<void>(`/projects/${projectId}/graph/edges`, {
+      method: 'DELETE',
+      body: JSON.stringify({ sourcePath, targetPath }),
+    }),
+  tab: <P = unknown>(projectId: string, tab: Entity) =>
+    request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
+  promote: (projectId: string, tab: Entity, content: string) =>
+    request<void>(`/projects/${projectId}/tabs/${tab}/promote`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+  mapping: (projectId: string) =>
+    request<{ rows: MappingRow[]; proplanConfigInvalid: boolean }>(
+      `/projects/${projectId}/tabs/mapping`,
+    ),
+  putMapping: (projectId: string, entity: Entity, path: string | null) =>
+    request<{ syncRunId: string }>(`/projects/${projectId}/tabs/mapping`, {
+      method: 'PUT',
+      body: JSON.stringify({ entity, path }),
+    }),
+
+  // Board (Kanban sobre Issues — SPEC-005)
+  board: (projectId: string) =>
+    request<BoardView>(`/projects/${projectId}/board`),
+  mutateBoard: (projectId: string, input: MutationInput) =>
+    request<{ mutationId: string }>(`/projects/${projectId}/board/mutations`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  mutationStatus: (projectId: string, mutationId: string) =>
+    request<BoardMutationState>(
+      `/projects/${projectId}/board/mutations/${mutationId}`,
+    ),
+  previewImport: (projectId: string) =>
+    request<CardToCreate[]>(`/projects/${projectId}/board/import-from-status`),
+  applyImport: (projectId: string, cards: CardToCreate[]) =>
+    request<{ created: number }>(
+      `/projects/${projectId}/board/import-from-status`,
+      { method: 'POST', body: JSON.stringify({ cards }) },
+    ),
+  proposeCards: (projectId: string) =>
+    request<CardToCreate[]>(`/projects/${projectId}/board/bootstrap`, {
+      method: 'POST',
+    }),
+  applyBootstrap: (projectId: string, cards: CardToCreate[]) =>
+    request<{ created: number }>(`/projects/${projectId}/board/bootstrap/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ cards }),
+    }),
 };
+
+export type BoardColumn =
+  | 'backlog'
+  | 'todo'
+  | 'doing'
+  | 'done'
+  | 'finalized'
+  | 'discarded';
+export type IssuePriority = 'alta' | 'media' | 'baixa';
+export type BoardMode = 'active' | 'degraded' | 'no-installation';
+
+export interface BoardCard {
+  number: number;
+  title: string;
+  column: BoardColumn;
+  priority: IssuePriority | null;
+  assignee: { login: string; avatarUrl: string } | null;
+  htmlUrl: string;
+  closedAt: string | null;
+}
+
+export interface BoardView {
+  mode: BoardMode;
+  needsIssueImport: boolean;
+  columns: { column: BoardColumn; cards: BoardCard[] }[];
+}
+
+export interface BoardMutationState {
+  id: string;
+  status: 'queued' | 'applying' | 'applied' | 'failed';
+  error: string | null;
+  type: string;
+}
+
+export type MutationInput =
+  | { type: 'move_column'; number: number; toColumn: BoardColumn }
+  | { type: 'create_card'; title: string; column: BoardColumn; priority?: IssuePriority }
+  | { type: 'edit_card'; number: number; title?: string; priority?: IssuePriority | null }
+  | { type: 'discard_card'; number: number };
+
+export interface CardToCreate {
+  title: string;
+  column: BoardColumn;
+  priority?: IssuePriority | null;
+}
 
 export interface GraphNode {
   docId: string;
@@ -128,6 +276,8 @@ export interface GraphEdge {
   target: string | null;
   targetPath: string;
   broken: boolean;
+  kind: 'explicit' | 'inferred';
+  reason: string | null;
 }
 
 export interface DocGraph {
@@ -164,6 +314,34 @@ export interface InsightSummary {
   createdAt: string;
 }
 
+export interface DecisionItem {
+  title: string;
+  status: string | null;
+  date: string | null;
+  path: string;
+  anchor: string | null;
+}
+
+export interface DeployEnv {
+  env: string;
+  status: string;
+  platform: string;
+  url: string | null;
+}
+
+export interface SkillEntry {
+  name: string;
+  description: string | null;
+  path: string;
+}
+
+export interface WorkflowInfo {
+  file: string;
+  name: string;
+  triggers: string[];
+  jobs: { name: string; runsOn: string | null }[];
+}
+
 /** Projeto gerenciado como retornado por GET /catalog/projects. */
 export interface Project {
   id: string;
@@ -172,6 +350,9 @@ export interface Project {
   description: string | null;
   defaultBranch: string;
   githubRepoId: number;
+  installationId: number | null;
+  installationStatus: 'active' | 'missing';
+  needsIssueImport: boolean;
   docsScopeHash: string | null;
   lastSyncAt: string | null;
 }

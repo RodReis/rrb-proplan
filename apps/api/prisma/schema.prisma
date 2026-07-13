@@ -8,17 +8,24 @@ datasource db {
 }
 
 model User {
-  id                   String    @id @default(uuid())
-  githubId             BigInt    @unique @map("github_id")
-  login                String
-  name                 String?
-  avatarUrl            String?   @map("avatar_url")
-  encryptedGithubToken String    @map("encrypted_github_token")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
-  projects             Project[]
+  id                     String    @id @default(uuid())
+  githubId               BigInt    @unique @map("github_id")
+  login                  String
+  name                   String?
+  avatarUrl              String?   @map("avatar_url")
+  encryptedUserToken     String?   @map("encrypted_user_token")
+  encryptedRefreshToken  String?   @map("encrypted_refresh_token")
+  tokenExpiresAt         DateTime? @map("token_expires_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  projects               Project[]
 
   @@map("users")
+}
+
+enum InstallationStatus {
+  active
+  missing
 }
 
 model Project {
@@ -30,16 +37,24 @@ model Project {
   description  String?
   defaultBranch String  @map("default_branch")
   isPrivate    Boolean  @map("is_private")
+  installationId     Int?               @map("installation_id")
+  installationStatus InstallationStatus @default(active) @map("installation_status")
   docsScopeHash String? @map("docs_scope_hash")
   lastSyncAt   DateTime? @map("last_sync_at")
   lastDocsCommitAt   DateTime? @map("last_docs_commit_at")
   lastCodeCommitAt   DateTime? @map("last_code_commit_at")
   commitMetaSyncedAt DateTime? @map("commit_meta_synced_at")
+  needsIssueImport   Boolean  @default(false) @map("needs_issue_import")
+  proplanConfigInvalid Boolean @default(false) @map("proplan_config_invalid")
   createdAt    DateTime @default(now()) @map("created_at")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents    Document[]
   syncRuns     SyncRun[]
   insights     Insight[]
+  issues       Issue[]
+  boardMutations BoardMutation[]
+  resolutions    DocumentResolution[]
+  suppressedLinks SuppressedLink[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -53,6 +68,7 @@ model Document {
   content        String
   frontmatter    Json?
   isConventional Boolean  @default(false) @map("is_conventional")
+  kind           String   @default("markdown")
   byteSize       Int      @map("byte_size")
   updatedAt      DateTime @updatedAt @map("updated_at")
   project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -65,6 +81,7 @@ model Document {
 
 enum DocLinkKind {
   explicit
+  inferred
 }
 
 model DocLink {
@@ -75,12 +92,35 @@ model DocLink {
   targetPath       String      @map("target_path")
   kind             DocLinkKind @default(explicit)
   anchor           String?
+  reason           String?
   source           Document    @relation("source", fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   target           Document?   @relation("target", fields: [targetDocumentId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([sourceDocumentId])
   @@map("doc_links")
+}
+
+// Cache derivado da resolução de documentos (ADR-014, Fatia 6). NÃO é fonte —
+// a decisão do usuário mora em .proplan/config.yml no repo. Apagar estas linhas
+// e re-sincronizar reconstrói a resolução idêntica. `docsTreeSha` e `resolvedAt`
+// preparam o nível 3 (Fatia 7, insight): job assíncrono versionado por tree-sha
+// grava aqui com source: 'inference' — daí os campos entram já nesta migration.
+model DocumentResolution {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  entity      String   // architecture | decisions | design | testing | deploy | skills
+  level       Int      // 1 | 2 | 4
+  source      String   // convention | alias | config | absent | inference (Fatia 7)
+  path        String?
+  paths       String[]
+  confidence  Float
+  docsTreeSha String?  @map("docs_tree_sha")
+  resolvedAt  DateTime @default(now()) @map("resolved_at")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, entity])
+  @@map("document_resolutions")
 }
 
 enum SyncStatus {
@@ -110,6 +150,10 @@ model Settings {
 enum InsightKind {
   summary
   status_bootstrap
+  architecture_fallback
+  design_fallback
+  edges_marker
+  classify_marker
 }
 
 model Insight {
@@ -145,4 +189,85 @@ model SyncRun {
 
   @@index([projectId, startedAt])
   @@map("sync_runs")
+}
+
+// As 6 colunas do board (SPEC-005, emenda 2026-07-13). Backlog = issue aberta
+// sem label proplan:*. Feito = closed sem label (aguardando aceite do PI);
+// Finalizado = closed + proplan:finalizado (aceito).
+enum BoardColumn {
+  backlog
+  todo
+  doing
+  done
+  finalized
+  discarded
+}
+
+enum IssuePriority {
+  alta
+  media
+  baixa
+}
+
+// Cache derivado da Issues API (ADR-011) — não é fonte. A verdade vive nas
+// GitHub Issues; esta tabela espelha o último sync para render rápido.
+model Issue {
+  id         String        @id @default(uuid())
+  projectId  String        @map("project_id")
+  number     Int
+  title      String
+  state      String // open | closed (nativo do GitHub)
+  column     BoardColumn
+  priority   IssuePriority?
+  assigneeLogin     String? @map("assignee_login")
+  assigneeAvatarUrl String? @map("assignee_avatar_url")
+  htmlUrl    String        @map("html_url")
+  closedAt   DateTime?     @map("closed_at")
+  updatedAt  DateTime      @map("updated_at")
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, number])
+  @@index([projectId, column])
+  @@map("issues")
+}
+
+enum BoardMutationType {
+  move_column
+  create_card
+  edit_card
+  discard_card
+}
+
+enum BoardMutationStatus {
+  queued
+  applying
+  applied
+  failed
+}
+
+// Auditoria e estado da fila de mutações (SPEC-005). Polling lê o status.
+model BoardMutation {
+  id         String              @id @default(uuid())
+  projectId  String              @map("project_id")
+  type       BoardMutationType
+  payload    Json
+  status     BoardMutationStatus @default(queued)
+  error      String?
+  createdAt  DateTime            @default(now()) @map("created_at")
+  finishedAt DateTime?           @map("finished_at")
+  project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("board_mutations")
+}
+
+model SuppressedLink {
+  id         String   @id @default(uuid())
+  projectId  String   @map("project_id")
+  sourcePath String   @map("source_path")
+  targetPath String   @map("target_path")
+  createdAt  DateTime @default(now()) @map("created_at")
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@unique([projectId, sourcePath, targetPath])
+  @@map("suppressed_links")
 }
