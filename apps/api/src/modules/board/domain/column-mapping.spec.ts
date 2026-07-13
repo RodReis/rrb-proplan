@@ -1,6 +1,7 @@
 import {
   columnOf,
   DISCARDED_LABEL,
+  FINALIZED_LABEL,
   priorityOf,
   transitionTo,
 } from './column-mapping';
@@ -17,13 +18,23 @@ describe('columnOf', () => {
     expect(columnOf('open', ['proplan:doing'])).toBe('doing');
   });
 
-  it('fechada sem descartado → done', () => {
+  it('fechada sem label extra → done (entregue, aguardando aceite do PI)', () => {
     expect(columnOf('closed', [])).toBe('done');
     expect(columnOf('closed', ['proplan:doing'])).toBe('done'); // label residual não muda
   });
 
-  it('fechada com descartado → discarded (distinguível de done)', () => {
+  it('fechada com finalizado → finalized (aceito pelo PI)', () => {
+    expect(columnOf('closed', [FINALIZED_LABEL])).toBe('finalized');
+  });
+
+  it('fechada com descartado → discarded', () => {
     expect(columnOf('closed', [DISCARDED_LABEL])).toBe('discarded');
+  });
+
+  it('closes #N (issue fechada por PR, sem label) cai em Feito, NUNCA Finalizado', () => {
+    // A razão do mapeamento: nenhuma automação do GitHub pode forjar "aceito pelo PI".
+    expect(columnOf('closed', [])).toBe('done');
+    expect(columnOf('closed', [])).not.toBe('finalized');
   });
 
   it('doing tem precedência sobre todo se ambas as labels existirem', () => {
@@ -63,21 +74,29 @@ describe('transitionTo', () => {
     expect(t.removeLabels).toContain(DISCARDED_LABEL);
   });
 
-  it('descartar: closed + descartado, remove labels de coluna aberta', () => {
+  it('finalizar: closed + finalizado, remove as outras labels (nunca open)', () => {
+    const t = transitionTo('finalized');
+    expect(t.state).toBe('closed');
+    expect(t.addLabels).toEqual([FINALIZED_LABEL]);
+    expect(t.removeLabels).toContain(DISCARDED_LABEL);
+    expect(t.removeLabels).toContain('proplan:doing');
+    expect(t.removeLabels).not.toContain(FINALIZED_LABEL);
+  });
+
+  it('descartar: closed + descartado, remove finalizado e labels abertas', () => {
     const t = transitionTo('discarded');
     expect(t.state).toBe('closed');
     expect(t.addLabels).toEqual([DISCARDED_LABEL]);
-    expect(t.removeLabels).toEqual([
-      'proplan:backlog',
-      'proplan:todo',
-      'proplan:doing',
-    ]);
+    expect(t.removeLabels).toContain(FINALIZED_LABEL);
+    expect(t.removeLabels).toContain('proplan:doing');
+    expect(t.removeLabels).not.toContain(DISCARDED_LABEL);
   });
 
-  it('reabrir descartado (arrastar para A Fazer): open + todo, remove descartado', () => {
+  it('reabrir finalizado/descartado (arrastar para A Fazer): open + todo, remove ambas', () => {
     const t = transitionTo('todo');
     expect(t.state).toBe('open');
     expect(t.addLabels).toEqual(['proplan:todo']);
     expect(t.removeLabels).toContain(DISCARDED_LABEL);
+    expect(t.removeLabels).toContain(FINALIZED_LABEL);
   });
 });

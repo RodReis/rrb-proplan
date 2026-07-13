@@ -92,6 +92,25 @@ export class GithubIssuesClient {
   }
 
   /**
+   * Posta um comentário na issue (carimbo de aceite/descarte — SPEC-005).
+   * Evidência permanente e auditável no GitHub, não cache. Installation token.
+   */
+  async comment(
+    installationToken: string,
+    owner: string,
+    repo: string,
+    number: number,
+    body: string,
+  ): Promise<void> {
+    await this.write<unknown>(
+      installationToken,
+      'POST',
+      `https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments`,
+      { body },
+    );
+  }
+
+  /**
    * Cria uma label no repo. Idempotente: 422 (já existe) é tratado como sucesso
    * (SPEC-005). Só cria — não atualiza cor de label existente.
    */

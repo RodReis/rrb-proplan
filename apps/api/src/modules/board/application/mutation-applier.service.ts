@@ -7,6 +7,7 @@ import {
   DISCARDED_LABEL,
   priorityOf,
   PRIORITY_LABELS,
+  STAMPED_COLUMNS,
   transitionTo,
 } from '../domain/column-mapping';
 import { LABEL_COLORS } from '../board.constants';
@@ -91,6 +92,28 @@ export class MutationApplierService {
       labels: nextLabels,
     });
     await this.cacheIssue(projectId, issue);
+    await this.stampIfNeeded(token, owner, repo, input.number, input.toColumn);
+  }
+
+  /**
+   * Carimbo de aceite/descarte (SPEC-005): ao mover para Finalizado/Descartado,
+   * posta um comentário permanente na issue — evidência auditável, não cache.
+   * `closed_at` marca a entrega; este comentário marca o aceite/descarte.
+   */
+  private async stampIfNeeded(
+    token: string,
+    owner: string,
+    repo: string,
+    number: number,
+    toColumn: string,
+  ): Promise<void> {
+    if (!STAMPED_COLUMNS.includes(toColumn as never)) return;
+    const date = new Date().toISOString().slice(0, 10);
+    const body =
+      toColumn === 'finalized'
+        ? `proplan: finalizado pelo PI em ${date}`
+        : `proplan: descartado em ${date}`;
+    await this.issues.comment(token, owner, repo, number, body);
   }
 
   private async editCard(

@@ -105,4 +105,17 @@ describe('parseStatusMarkdown', () => {
   it('ignora o placeholder _(vazio)_', () => {
     expect(parseStatusMarkdown('## Backlog\n\n_(vazio)_')).toEqual([]);
   });
+
+  it('extrai prioridade mesmo com markdown no meio (`prio: **alta**`)', () => {
+    const md = '## A Fazer\n- Fatia 6 (prio: **alta** — nota)';
+    expect(parseStatusMarkdown(md)[0].priority).toBe('alta');
+  });
+
+  it('parseia STATUS.md com CRLF (repo Windows) — o \\r não pode quebrar o heading', () => {
+    const crlf = '## A Fazer\r\n- Fatia 6 (prio: alta)\r\n## Feito\r\n- Setup\r\n';
+    expect(parseStatusMarkdown(crlf)).toEqual([
+      { title: 'Fatia 6', column: 'todo', priority: 'alta', number: null },
+      { title: 'Setup', column: 'done', priority: null, number: null },
+    ]);
+  });
 });

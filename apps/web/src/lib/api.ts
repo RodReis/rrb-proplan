@@ -161,7 +161,13 @@ export const api = {
     }),
 };
 
-export type BoardColumn = 'backlog' | 'todo' | 'doing' | 'done' | 'discarded';
+export type BoardColumn =
+  | 'backlog'
+  | 'todo'
+  | 'doing'
+  | 'done'
+  | 'finalized'
+  | 'discarded';
 export type IssuePriority = 'alta' | 'media' | 'baixa';
 export type BoardMode = 'active' | 'degraded' | 'no-installation';
 

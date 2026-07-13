@@ -159,12 +159,15 @@ model SyncRun {
   @@map("sync_runs")
 }
 
-// As 5 colunas do board (SPEC-005). Backlog = issue aberta sem label proplan:*.
+// As 6 colunas do board (SPEC-005, emenda 2026-07-13). Backlog = issue aberta
+// sem label proplan:*. Feito = closed sem label (aguardando aceite do PI);
+// Finalizado = closed + proplan:finalizado (aceito).
 enum BoardColumn {
   backlog
   todo
   doing
   done
+  finalized
   discarded
 }
 

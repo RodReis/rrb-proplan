@@ -41,17 +41,37 @@ export function KanbanColumn({
     setCreating(false);
   }
 
+  // Colapsada: faixa fina com o título na vertical e o contador — não ocupa
+  // uma coluna larga vazia (SPEC-005: Finalizado/Descartado colapsados).
+  if (collapsed) {
+    return (
+      <button
+        onClick={onToggleCollapse}
+        className="flex h-full w-10 shrink-0 flex-col items-center gap-2 rounded-md border border-border bg-surface-hover py-3 text-text-muted transition-colors hover:text-brand"
+      >
+        <span className="text-xs">▸</span>
+        <span className="rounded-full border border-border bg-surface px-1.5 text-[11px]">
+          {cards.length}
+        </span>
+        <span
+          className="mt-1 text-sm font-semibold [writing-mode:vertical-rl]"
+          style={{ transform: 'rotate(180deg)' }}
+        >
+          {COLUMN_LABEL[column]}
+        </span>
+      </button>
+    );
+  }
+
   return (
-    <div className="flex w-72 shrink-0 flex-col">
+    <div className="flex h-full w-72 shrink-0 flex-col">
       <div className="mb-2 flex items-center justify-between px-1">
         <button
           onClick={onToggleCollapse}
           disabled={!onToggleCollapse}
           className="flex items-center gap-1.5 text-sm font-semibold disabled:cursor-default"
         >
-          {onToggleCollapse && (
-            <span className="text-text-muted">{collapsed ? '▸' : '▾'}</span>
-          )}
+          {onToggleCollapse && <span className="text-text-muted">▾</span>}
           {COLUMN_LABEL[column]}
           <span className="rounded-full border border-border bg-surface px-1.5 text-[11px] font-normal text-text-muted">
             {cards.length}
@@ -72,7 +92,7 @@ export function KanbanColumn({
         <div
           ref={setNodeRef}
           className={
-            'flex min-h-[80px] flex-1 flex-col gap-2 rounded-md border p-2 transition-colors ' +
+            'flex min-h-[80px] flex-1 flex-col gap-2 overflow-y-auto rounded-md border p-2 transition-colors ' +
             (isOver ? 'border-brand/40 bg-brand/5' : 'border-border bg-surface-hover')
           }
         >

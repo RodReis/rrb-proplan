@@ -26,6 +26,16 @@ export function ImportBanner({ projectId, onImported, onBootstrap }: Props) {
     }
   }
 
+  function removeCard(index: number) {
+    setPreview((prev) => prev?.filter((_, i) => i !== index) ?? null);
+  }
+
+  function editTitle(index: number, title: string) {
+    setPreview((prev) =>
+      prev?.map((c, i) => (i === index ? { ...c, title } : c)) ?? null,
+    );
+  }
+
   async function confirmImport() {
     if (!preview) return;
     setImporting(true);
@@ -86,18 +96,29 @@ export function ImportBanner({ projectId, onImported, onBootstrap }: Props) {
               {preview.map((c, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between border-b border-border/50 px-2 py-1.5 text-sm last:border-0"
+                  className="flex items-center gap-2 border-b border-border/50 px-2 py-1.5 text-sm last:border-0"
                 >
-                  <span>{c.title}</span>
-                  <span className="text-xs text-text-muted">
+                  <input
+                    value={c.title}
+                    onChange={(e) => editTitle(i, e.target.value)}
+                    className="min-w-0 flex-1 bg-transparent outline-none focus:text-brand"
+                  />
+                  <span className="shrink-0 text-xs text-text-muted">
                     {COLUMN_LABEL[c.column]}
                     {c.priority ? ` · ${c.priority}` : ''}
                   </span>
+                  <button
+                    onClick={() => removeCard(i)}
+                    title="Remover da importação"
+                    className="shrink-0 text-text-muted hover:text-error"
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
               {preview.length === 0 && (
                 <p className="py-6 text-center text-sm text-text-muted">
-                  Nenhum card reconhecido no STATUS.md.
+                  Nenhum card selecionado — remova todos ou cancele.
                 </p>
               )}
             </div>

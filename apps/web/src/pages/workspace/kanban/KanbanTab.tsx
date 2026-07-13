@@ -32,8 +32,19 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [editing, setEditing] = useState<BoardCard | null>(null);
-  const [collapsed, setCollapsed] = useState(true); // Descartado colapsado
+  // Finalizado e Descartado nascem colapsados (histórico, não polui o board).
+  const [collapsed, setCollapsed] = useState<Set<BoardColumn>>(
+    new Set<BoardColumn>(['finalized', 'discarded']),
+  );
   const [bootstrapOpen, setBootstrapOpen] = useState(false);
+
+  const toggleCollapse = useCallback((col: BoardColumn) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(col) ? next.delete(col) : next.add(col);
+      return next;
+    });
+  }, []);
   const [savingRepo, setSavingRepo] = useState(false);
 
   // Indicador global discreto: após uma mutação, a projeção .proplan/STATUS.md
@@ -131,7 +142,7 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
   }
 
   return (
-    <div className="relative flex h-full flex-col">
+    <div className="relative flex h-full flex-col overflow-hidden">
       {savingRepo && (
         <div className="pointer-events-none absolute right-6 top-3 z-20 flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] text-text-muted shadow-sm">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
@@ -152,16 +163,18 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-        <div className="flex flex-1 gap-3 overflow-x-auto p-6">
+        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-6">
           {COLUMN_ORDER.map((column) => (
             <KanbanColumn
               key={column}
               column={column}
               cards={cardsByColumn(board, column)}
               pendingNumbers={pending}
-              collapsed={column === 'discarded' ? collapsed : false}
+              collapsed={collapsed.has(column)}
               onToggleCollapse={
-                column === 'discarded' ? () => setCollapsed((c) => !c) : undefined
+                column === 'finalized' || column === 'discarded'
+                  ? () => toggleCollapse(column)
+                  : undefined
               }
               onEdit={setEditing}
               onCreate={

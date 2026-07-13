@@ -22,19 +22,22 @@ const COLUMN_TITLE: Record<BoardColumn, string> = {
   todo: 'A Fazer',
   doing: 'Em Andamento',
   done: 'Feito',
+  finalized: 'Finalizado',
   discarded: 'Descartado',
 };
 
 // Linha de um card na projeção (formato da CONVENTION.md):
 //   `- Título (#42, prio: alta)`
-//   Feito:      `- Título (#12, fechado em: 2026-06-20)`
-//   Descartado: `- Título (#27, descartado em: 2026-07-02)`
+//   Feito:       `- Título (#12, fechado em: 2026-06-20)`
+//   Finalizado:  `- Título (#12, finalizado em: 2026-06-20)`
+//   Descartado:  `- Título (#27, descartado em: 2026-07-02)`
 function cardLine(card: ProjectionCard): string {
   const parts: string[] = [`#${card.number}`];
   if (card.priority) parts.push(`prio: ${card.priority}`);
   if (card.closedAt) {
     const date = card.closedAt.toISOString().slice(0, 10);
     if (card.column === 'done') parts.push(`fechado em: ${date}`);
+    else if (card.column === 'finalized') parts.push(`finalizado em: ${date}`);
     else if (card.column === 'discarded') parts.push(`descartado em: ${date}`);
   }
   return `- ${card.title} (${parts.join(', ')})`;

@@ -5,6 +5,7 @@ export const COLUMN_ORDER: BoardColumn[] = [
   'todo',
   'doing',
   'done',
+  'finalized',
   'discarded',
 ];
 
@@ -13,6 +14,7 @@ export const COLUMN_LABEL: Record<BoardColumn, string> = {
   todo: 'A Fazer',
   doing: 'Em Andamento',
   done: 'Feito',
+  finalized: 'Finalizado',
   discarded: 'Descartado',
 };
 

@@ -26,6 +26,7 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
   };
 
   const discarded = card.column === 'discarded';
+  const finalized = card.column === 'finalized';
 
   return (
     <div
@@ -35,12 +36,22 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
       {...listeners}
       onClick={() => onEdit(card)}
       className={
-        'group relative cursor-grab rounded-md border bg-surface p-2.5 pl-3.5 ' +
+        'group relative cursor-grab rounded-md border p-2.5 pl-3.5 ' +
         'transition-all duration-150 hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-sm ' +
-        (pending ? 'animate-pulse border-brand/60 ' : 'border-border ') +
+        (pending
+          ? 'animate-pulse border-brand/60 bg-surface '
+          : finalized
+            ? 'border-success/30 bg-success/5 '
+            : 'border-border bg-surface ') +
         (discarded ? 'opacity-70' : '')
       }
     >
+      {/* Finalizado: selo de aceite (verde = conquista) */}
+      {finalized && (
+        <span className="absolute right-1.5 top-1.5 text-[10px] text-success" title="Aceito pelo PI">
+          ✓
+        </span>
+      )}
       {/* Faixa de prioridade (variação B) */}
       {card.priority && (
         <span
@@ -52,8 +63,9 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
       )}
 
       <p
+        title={card.title}
         className={
-          'text-[13px] font-medium leading-snug ' +
+          'line-clamp-3 text-[13px] font-medium leading-snug ' +
           (discarded ? 'text-text-muted line-through' : 'text-text')
         }
       >
