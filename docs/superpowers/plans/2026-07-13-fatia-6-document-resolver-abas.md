@@ -642,22 +642,28 @@ E, na lista de relações do `Project` (após `boardMutations ...`, linha 54), a
 ```prisma
 // Cache derivado da resolução de documentos (ADR-014, Fatia 6). NÃO é fonte —
 // a decisão do usuário mora em .proplan/config.yml no repo. Apagar estas linhas
-// e re-sincronizar reconstrói a resolução idêntica.
+// e re-sincronizar reconstrói a resolução idêntica. `docsTreeSha` e `resolvedAt`
+// preparam o nível 3 (Fatia 7, insight): job assíncrono versionado por tree-sha
+// grava aqui com source: 'inference' — daí os campos entram já nesta migration.
 model DocumentResolution {
-  id         String  @id @default(uuid())
-  projectId  String  @map("project_id")
-  entity     String  // architecture | decisions | design | testing | deploy | skills
-  level      Int     // 1 | 2 | 4
-  source     String  // convention | alias | config | absent
-  path       String?
-  paths      String[]
-  confidence Float
-  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  entity      String   // architecture | decisions | design | testing | deploy | skills
+  level       Int      // 1 | 2 | 4
+  source      String   // convention | alias | config | absent | inference (Fatia 7)
+  path        String?
+  paths       String[]
+  confidence  Float
+  docsTreeSha String?  @map("docs_tree_sha")
+  resolvedAt  DateTime @default(now()) @map("resolved_at")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, entity])
   @@map("document_resolutions")
 }
 ```
+
+> `docsTreeSha`/`resolvedAt` vêm da SPEC-006 corrigida (2026-07-13): a Fatia 7 grava nível 3 aqui, versionado por tree-sha. Incluí-los agora evita uma migration na Fatia 7. Nos níveis 1/2/4 (determinísticos, sem hash de conteúdo) `docsTreeSha` fica `null`; `resolvedAt` marca o recálculo.
 
 - [ ] **Step 3: Gerar a migration**
 
