@@ -105,7 +105,37 @@ Persistidos como colunas em `Project` — não em tabela nova, não em cache. Is
 
 **Momento da virada — decidido pelo PI em 2026-07-12: antecipado para a Fatia 5.** A SPEC-005 foi reescrita sobre este ADR (Issues como fonte) antes de qualquer linha de código. Custo aceito: reconsentimento de OAuth com escopo de escrita agora, e migração do bootstrap da Fatia 3 (que gerava `STATUS.md` por IA e passa a **criar issues**). Ganho: nenhum write-path descartável é escrito, e o requisito mais caro da spec anterior — round-trip fiel byte a byte do markdown — **deixa de existir**, porque a projeção é gerada do zero a cada vez.
 
-**Onde a coluna mora**: label `proplan:backlog|todo|doing` + `closed` = Feito + `closed` com `proplan:descartado` = Descartado (coluna visível — decisão do PI: rastreabilidade; issue nunca é deletada). GitHub Projects v2 (campo Status nativo, ordenação manual) foi **rejeitado no MVP** — exige GraphQL e um Project configurado por repo; reavaliar no MVP2 junto com sub-issues.
+**Onde a coluna mora** (emenda de 2026-07-13 — **6 colunas**):
+
+| coluna | estado da issue |
+|---|---|
+| Backlog | `open` + `proplan:backlog` (ou `open` sem label `proplan:*`) |
+| A Fazer | `open` + `proplan:todo` |
+| Em Andamento | `open` + `proplan:doing` |
+| **Feito** | `closed`, **sem** label extra — *entregue pelo Code, aguardando aceite* |
+| **Finalizado** | `closed` + `proplan:finalizado` — *aceito pelo PI* |
+| Descartado | `closed` + `proplan:descartado` |
+
+**Por que "Feito" e "Finalizado" são colunas, e não um badge**: o `DEVELOPMENT.md` já distingue `feito` (o Code entregou) de `finalizado` (o PI aceitou). "Feito" **é uma fila com dono** — trabalho parado aguardando ação do PI. Coluna existe para isso. Um board que mostra "3 fatias esperando aceite" é útil; um badge cinza escondido dentro de Feito, não.
+
+**Por que Finalizado é `closed` + label, e não um estado `open`** — a pegadinha que decide a implementação: issue no GitHub é **binária**. Se `Finalizado = closed`, o merge de um PR com `closes #42` fecharia a issue e o board marcaria como **"aceito pelo PI" um trabalho que o PI nunca viu** — uma mentira gerada pelo comportamento *nativo* do GitHub. Com o mapeamento acima, `closes #42` cai em **Feito** (entregue), que é o significado correto; o **aceite é o PI aplicando a label**, um ato deliberado que **nenhuma automação consegue forjar**.
+
+**Carimbo de aceite**: `closed_at` registra a **entrega**, não o **aceite** — e a data de aplicação de label não é recuperável de forma barata. Então, ao mover para **Finalizado** ou **Descartado**, o ProPlan **posta um comentário na issue** (`proplan: finalizado pelo PI em <data>` / `proplan: descartado em <data>`). Fica no GitHub, é permanente, auditável, sobrevive ao ProPlan, e é **evidência real** — não cache nosso.
+
+GitHub Projects v2 (campo Status nativo, ordenação manual) foi **rejeitado no MVP** — exige GraphQL e um Project configurado por repo; reavaliar no MVP2 junto com sub-issues.
+
+**Granularidade do card — `card = fatia`** (decisão do PI, 2026-07-13). Vale para o `rrb-proplan` gerenciando a si mesmo, e é a regra padrão.
+
+O `DEVELOPMENT.md` **também rastreia estado** (cada sub-item tem `a-fazer`/`feito`). Se o card tivesse a granularidade do sub-item, existiria um card "Mermaid no viewer" **e** um item "Mermaid no viewer" no `DEVELOPMENT.md` — **o mesmo fato em dois lugares**, que é exatamente o pecado que este ADR existe para matar. O problema nunca foi a existência das duas camadas; foi elas caírem na **mesma granularidade**.
+
+| camada | responde | dono |
+|---|---|---|
+| **Issues** (uma por fatia) | *qual fatia está em qual coluna* | ProPlan / PI |
+| **`docs/DEVELOPMENT.md`** (os N passos, com checkmarks) | *onde estou dentro da fatia* | Claude Code |
+
+Granularidades diferentes ⇒ **sobreposição zero**. Nenhum fato mora nos dois.
+
+**Sub-issues do GitHub foram rejeitadas** (por ora): dariam hierarquia nativa e barra de progresso `3/7` — mas o board é uma grade **plana** de 5 colunas, e sub-issue obriga a escolher entre mostrar a mãe (perde granularidade), as filhas (perde a fatia) ou as duas (duplica o trabalho na tela). Nenhuma serve. E o único ganho real (`3/7`) o `DEVELOPMENT.md` já dá — com o *porquê* de cada passo. **A escolha é reversível na direção certa**: as issues-mãe já existem; pendurar filhas depois é trivial. O inverso (nascer com sub-issues e achatar) exigiria fechar e recriar issue — perdendo o histórico que este ADR protege. Reavaliar no MVP2 **só se** o board plano se provar grosso demais na prática.
 
 **Onde a projeção mora — `docs/` × `.proplan/`** (decisão do PI, 2026-07-12): a projeção é gravada em **`.proplan/STATUS.md`**, na **raiz** do repo-alvo, fora de `docs/`. Regra geral, válida para todo artefato futuro: **`docs/` = conteúdo humano; `.proplan/` = gerado pelo ProPlan.** Motivo: o ADR-010 usa o último commit em `path=docs` como sinal de "quando um humano mexeu na doc" — se o board commitasse em `docs/` a cada card arrastado, o alerta de documentação defasada morreria em silêncio, e quanto mais o produto fosse usado, mais cego ficaria. Registro dos descartes: (a) `docs/.proplan/` **não funciona** — `path=docs` na Commits API inclui subdiretórios; (b) filtrar commits por mensagem `proplan:` funciona mas pagina, é heurística de string e filtraria por engano os commits de `docs/CONTEXT.md` (ADR-013), que são conteúdo humano e devem contar como frescor.
 
@@ -237,6 +267,37 @@ Ou seja: usar `insights` como fonte de custo produz uma conta que **sempre subes
 **Consequência**: é o mesmo princípio do ADR-012 aplicado a dinheiro — **registrar o fato no momento em que ele é verdade, em vez de reinterpretá-lo depois**. Custo: uma tabela e uma escrita a mais por chamada de IA (irrelevante — a chamada de IA já custa 100× isso em latência). Risco aceito: preço mal configurado gera custo errado *na origem* — mas o `priceSnapshot` na linha deixa o erro **auditável e corrigível**, em vez de invisível.
 
 **Alternativa rejeitada**: *derivar custo de `insights` na leitura, multiplicando tokens por uma tabela de preço atual*. Barato hoje, mentiroso amanhã: recalcular histórico com preço novo reescreve o passado, e continua cego a falhas e retries.
+
+## ADR-017 — Uma fonte por fato: o MCP do ProPlan nunca replica o que o GitHub serve ao vivo
+
+**Status**: aprovado pelo PI em 2026-07-13. Rege a **Fatia 11** (MCP Server). Evidência do levantamento em `docs/LANDSCAPE.md` (2026-07-13).
+
+**Contexto**: o `MVP2.md` previa tools como `get_next_task` e resources com o estado do board. O levantamento de mercado (`LANDSCAPE.md`) mostrou que o **GitHub MCP Server oficial já expõe issues, PRs e Projects** — listar issue é chamada nativa e gratuita. Isso levantou a pergunta: *cortar tudo que o GitHub já faz?*
+
+**A resposta simples estava errada.** "Cortar o que o GitHub faz" confunde duas coisas muito diferentes:
+
+- `list_issues` do GitHub MCP devolve **uma lista**.
+- `get_next_task` do ProPlan devolve **um julgamento**: *"pegue a #42; não a #38, que depende de uma decisão de arquitetura nunca tomada (sem ADR); não a #51, que você marcou como 'não mexer'; confiança 0.6, porque o `ARCHITECTURE.md` tem 8 meses"*.
+
+O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013) nem o apodrecimento da doc (ADR-010/012). **O julgamento é o produto.**
+
+**Mas o instinto de cortar apontava para uma regra real — e ela é de corretude, não de posicionamento competitivo.**
+
+**Decisão**: **o ProPlan nunca é a segunda fonte de um fato que o GitHub serve ao vivo.**
+
+| tipo | exemplo | decisão |
+|---|---|---|
+| **Pass-through** de fato que o GitHub já serve | listar issues, corpo de issue, estado de PR, resultado de check | **Não expor.** O agente usa o GitHub MCP — que sempre estará mais fresco que nós |
+| **Julgamento** sobre esses fatos | `get_next_task`, `find_blockers`, drift, confiança, handoff | **Expor.** É o produto |
+| **O que só existe no ProPlan** | `get_constraints` ("o que não mexer"), "por que parei" (ADR-013) | **Expor. É o fosso** — nem o GitHub tem (o Copilot Memory exige citação de código, e essas asserções não têm código para citar) |
+
+**Corolário de desenho**: as tools do ProPlan **referenciam** a issue (número + URL), **nunca a reproduzem**. Entregamos a decisão e a evidência; o agente busca o detalhe na fonte.
+
+**Por que isso é corretude e não estratégia**: sem webhooks (ADR-009), nosso cache de issues está sempre potencialmente defasado. Se o MCP servir esse cache como fato, o agente pode consultar o ProPlan e o GitHub MCP **na mesma sessão e receber respostas diferentes** — e não tem como saber qual está certa. Ele não vê botão de "Sincronizar"; **ele age**. É a pior classe de bug que existe aqui: dado velho com aparência de autoridade.
+
+**A assimetria que justifica o Kanban continuar como está**: a UI do ProPlan *pode* ler o cache — o humano vê o botão Sincronizar e sabe que aquilo é uma foto. O agente não. **Cache é ótimo para renderizar, péssimo para servir como fato a quem vai agir sobre ele.** O board (Fatia 5) não muda.
+
+**Consequências**: o MCP do ProPlan fica **menor e mais afiado** — some a tentação de virar proxy de GitHub. Custo: o agente precisa de **dois** servidores MCP conectados (o do GitHub e o nosso), e o nosso depende do outro para ser útil. Aceito: complementar, nunca competir — foi a tese desde o começo.
 
 ## ADR-009 — Sem webhooks enquanto o ambiente for 100% local
 

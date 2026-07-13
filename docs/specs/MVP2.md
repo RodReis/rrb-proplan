@@ -15,13 +15,23 @@ Documento de escopo do MVP2. **Não é uma fatia** — é o guarda-chuva que def
 
 ## 1. Tese
 
-> **Memória operacional verificável: toda resposta aponta evidência — commit, arquivo, issue, PR, workflow ou decisão, com data e SHA.**
+> ⚠️ **Reposicionada em 2026-07-13** após o levantamento de mercado (`docs/LANDSCAPE.md`). A tese anterior era *"memória operacional verificável: toda resposta aponta evidência"*. Ela **deixou de ser diferencial** — o **GitHub Copilot Memory** (preview jan/2026, on-by-default desde mar/2026) já faz memória com **citação obrigatória e verificação just-in-time**, testada adversarialmente. Manter aquela frase como pitch principal é entrar numa comparação com a GitHub que se perde por distribuição, não por mérito.
 
-Essa frase é o norte do produto e o critério de corte de qualquer feature. Se uma feature não aumenta a capacidade de responder **com prova**, ela não entra no MVP2.
+**A tese que sobrou é mais estreita — e é defensável:**
 
-O teste que ela precisa passar: *por que não usar só o GitHub MCP?* Porque o GitHub MCP entrega **fatos brutos** ("a issue #12 existe", "o check falhou"). Ele não entrega **julgamento com procedência** ("a próxima ação confiável é X, porque o ADR-004 de 12/03 diz Y e o CI de ontem confirma Z, e a confiança disso é 0.82 pelo seguinte cálculo"). O ProPlan é a **camada de memória por cima** do GitHub — complemento, nunca concorrente.
+> **A documentação que o humano escreveu é um artefato de primeira classe. O ProPlan é o único que sabe quando ela está mentindo — e o único que guarda o que só existe na cabeça do dono.**
+
+Duas metades, e cada uma tem um motivo concreto para ninguém mais ocupar (evidência datada em `LANDSCAPE.md`):
+
+1. **Drift da doc humana, determinístico, sem clonar código.** Swimm exige que a doc more dentro do Swimm. Mintlify e Promptless miram doc de cliente. Backstage/Cortex/Port checam se a doc **existe**, nunca se está **certa**. E o Copilot Memory verifica fatos sobre o **código** — não se o seu `ARCHITECTURE.md` está mentindo. A doc de arquitetura abandonada é órfã no mercado inteiro.
+
+2. **Asserção humana sem citação de código** (ADR-013). A memória do Copilot **exige** citar código. *"Parei porque o Supabase não dava conta do realtime"* **não tem código para citar** — logo ele não consegue guardá-la **por construção**, não por imaturidade. É o ponto cego estrutural deles, e é o nosso fosso.
+
+**Critério de corte**: se uma feature não fortalece uma dessas duas metades, ela não entra no MVP2.
 
 **Corolário não-negociável**: quando a confiança fica abaixo do limiar, a resposta correta é **"não sei — doc ausente/defasada"**, com link do que falta. Um sistema que sabe recusar vale mais que um que sempre responde. O modo de falha que mata o produto não é o silêncio — é a resposta confiante e errada.
+
+**Complemento, nunca concorrente** (ADR-017): o GitHub MCP entrega **fatos brutos**; o ProPlan entrega **julgamento com procedência** sobre eles, mais o que só ele tem. Nunca replicamos o que o GitHub já serve ao vivo.
 
 ---
 
@@ -96,22 +106,34 @@ Toda resposta de toda tool retorna:
 
 Estas seis perguntas **são** a especificação do produto:
 
-| pergunta do agente | tool |
-|---|---|
-| onde eu parei? | `get_project_state` |
-| qual issue devo pegar? | `get_next_task` |
-| quais arquivos de contexto preciso ler? | `get_handoff_context` |
-| qual é a Definition of Done? | `get_handoff_context` |
-| quais testes rodam antes do PR? | `get_handoff_context` |
-| **o que eu não devo mexer?** | **`get_constraints`** ← a de maior valor; só existe graças ao ADR-013 |
+| pergunta do agente | tool | por que não é o GitHub MCP |
+|---|---|---|
+| onde eu parei? | `get_project_state` | julgamento sobre o estado, com confiança e drift — não uma listagem |
+| qual issue devo pegar? | `get_next_task` | *"pegue a #42; não a #38 (decisão de arquitetura nunca tomada); não a #51 (você marcou 'não mexer')"* — o GitHub não conhece as suas asserções nem a podridão da sua doc |
+| quais arquivos de contexto preciso ler? | `get_handoff_context` | derivado do `DocumentResolver` (ADR-014) |
+| qual é a Definition of Done? | `get_handoff_context` | vem da doc + asserção |
+| quais testes rodam antes do PR? | `get_handoff_context` | doc + workflows |
+| **o que eu não devo mexer?** | **`get_constraints`** | **o fosso** (ADR-013). O Copilot Memory exige citação de código; essas asserções **não têm código para citar** |
 
 Mais: `explain_project`, `find_blockers`.
+
+### O que **não** expomos (ADR-017)
+
+> **O ProPlan nunca é a segunda fonte de um fato que o GitHub serve ao vivo.**
+
+**Cortado**: qualquer pass-through — listar issues, corpo de issue, estado de PR, resultado de check. O GitHub MCP oficial já expõe tudo isso, **e sempre estará mais fresco que nós** (sem webhook — ADR-009 — nosso cache é uma foto). Se servíssemos isso, o agente poderia consultar os dois na mesma sessão e **receber respostas diferentes, sem saber qual é a certa**. Ele não vê botão de Sincronizar; **ele age**.
+
+**Corolário de desenho**: as tools **referenciam** a issue (número + URL) — **nunca a reproduzem**. Entregamos decisão e evidência; o detalhe o agente busca na fonte.
+
+**Consequência aceita**: o agente precisa de **dois** MCPs conectados (o do GitHub e o nosso), e o nosso depende do outro para ser útil. Complementar, nunca concorrente — é a tese desde o começo.
 
 **Fora do MVP2**: `sync_github_project`, `update_status_from_pr` — escrita autônoma de estado por agente só depois do ADR-011 estabilizado e com trilha de auditoria. Agente que escreve estado sem supervisão é como o produto se corrompe.
 
 ### Resources
 
-`proplan://repo/{owner}/{repo}/{overview|state|architecture|kanban|risks|tests|deploy|constraints}`
+`proplan://repo/{owner}/{repo}/{overview|state|architecture|risks|tests|deploy|constraints}`
+
+**`kanban` foi removido da lista** (ADR-017): seria pass-through do board — o agente lê issues no GitHub MCP.
 
 ---
 
@@ -161,7 +183,10 @@ São *consequência* dos itens 1–6, não features independentes: o dado já va
 1. **Fatia 9** — Modelo canônico + proveniência + confiança determinística (ADR-012). *É a fundação: sem isso o MCP não tem o que servir.*
 2. **Fatia 10** — `docs/CONTEXT.md` + captura de asserção humana (ADR-013). *O fosso.*
 3. **Fatia 11** — MCP Server com contrato de evidência e as 6 tools.
-4. **Fatia 12** — ~~Migração Issues↔`STATUS.md` (ADR-011)~~ → **antecipada para a Fatia 5** (decisão do PI, 2026-07-12). Sobra no MVP2: **GitHub Projects v2** (campo Status nativo, ordenação manual), **sub-issues** e **issue types**.
+4. **Fatia 12** — ~~Migração Issues↔`STATUS.md` (ADR-011)~~ → **antecipada para a Fatia 5** (decisão do PI, 2026-07-12). Sobra no MVP2, e **só sob condição**:
+   - **GitHub Projects v2** (campo Status nativo, ordenação manual) — só se a ordenação determinística do board incomodar na prática.
+   - **Sub-issues** — **rejeitadas no ADR-011** (2026-07-13). O board é grade plana; sub-issue obriga a escolher entre mostrar a mãe (perde granularidade), as filhas (perde a fatia) ou as duas (duplica na tela). O único ganho real (barra `3/7`) o `DEVELOPMENT.md` já dá. **Reabrir só se** o board plano (`card = fatia`) se provar grosso demais **na prática** — não por antecipação.
+   - **Issue types** — sem caso de uso hoje.
 5. **Fatia 13** — Drift + handoff exportável.
 6. **Fatia 14** — Views; portfólio primeiro.
 
