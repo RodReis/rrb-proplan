@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GithubAuth } from '../../identity/application/github-auth.service';
 import { LinkService } from './link.service';
+import { ResolutionService } from './resolution.service';
 import { diffScope } from '../domain/diff';
 import { parseFrontmatter } from '../domain/frontmatter';
 import { computeScopeHash } from '../domain/scope-hash';
@@ -44,6 +45,7 @@ export class SyncService {
     private readonly git: GithubGitClient,
     private readonly events: EventEmitter2,
     private readonly links: LinkService,
+    private readonly resolution: ResolutionService,
   ) {}
 
   /**
@@ -80,6 +82,7 @@ export class SyncService {
         // Recomputa o grafo no noop também: docs ingeridos antes da Fatia 4
         // ainda não têm arestas; recompute é barato e idempotente.
         await this.links.rebuildLinks(project.id);
+        await this.resolution.rebuild(project.id);
         await this.finish(run.id, 'noop', scopeHash, {
           added: 0,
           updated: 0,
@@ -144,6 +147,7 @@ export class SyncService {
 
       // Grafo (SPEC-004): recomputa arestas a partir do conteúdo atual dos docs.
       await this.links.rebuildLinks(project.id);
+      await this.resolution.rebuild(project.id);
 
       await this.prisma.project.update({
         where: { id: project.id },
