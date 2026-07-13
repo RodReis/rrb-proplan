@@ -9,6 +9,7 @@ import {
   SyncRun,
 } from '../../lib/api';
 import { DocTree } from './DocTree';
+import { useResizableWidth } from './useResizableWidth';
 
 interface Props {
   projectId: string;
@@ -28,6 +29,12 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
   const [state, setState] = useState<DocsState>({ status: 'loading' });
   const [run, setRun] = useState<SyncRun | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const { width, dragging, onMouseDown, onKeyDown } = useResizableWidth({
+    storageKey: 'proplan.docs.panelWidth',
+    initial: 440,
+    min: 240,
+    max: 720,
+  });
 
   const loadDocs = useCallback(async () => {
     try {
@@ -85,8 +92,11 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
   const skipped = run?.status === 'success' ? run.skipped : 0;
 
   return (
-    <div className="flex h-full">
-      <nav className="w-[440px] shrink-0 overflow-y-auto border-r border-border p-2">
+    <div className={'flex h-full' + (dragging ? ' cursor-col-resize select-none' : '')}>
+      <nav
+        className="shrink-0 overflow-y-auto p-2"
+        style={{ width }}
+      >
         {isSyncing && (
           <div className="mb-2 rounded-md bg-brand/5 px-3 py-2 text-xs text-brand">
             Sincronizando…
@@ -94,6 +104,29 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
         )}
         <DocTree docs={state.docs} selected={selected} onSelect={setSelected} />
       </nav>
+
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Redimensionar painel de documentos"
+        tabIndex={0}
+        onMouseDown={onMouseDown}
+        onKeyDown={onKeyDown}
+        className={
+          'group relative w-px shrink-0 cursor-col-resize bg-border outline-none ' +
+          'before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[""] ' + // área de clique confortável
+          (dragging ? 'bg-brand' : 'hover:bg-brand/40 focus-visible:bg-brand')
+        }
+      >
+        {/* pega discreta no meio, aparece no hover/drag */}
+        <span
+          aria-hidden
+          className={
+            'pointer-events-none absolute left-1/2 top-1/2 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-opacity duration-150 ' +
+            (dragging ? 'bg-brand opacity-100' : 'bg-brand/50 opacity-0 group-hover:opacity-100')
+          }
+        />
+      </div>
 
       <div className="flex-1 overflow-y-auto">
         {skipped > 0 && (
