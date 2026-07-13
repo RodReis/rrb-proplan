@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettingsService } from '../../settings/application/settings.service';
+import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { selectContext } from '../domain/context-budget';
 import { buildSummaryUser, SUMMARY_SYSTEM } from '../domain/summary-prompt';
 import { parseSummary, StateSummary } from '../domain/summary';
@@ -11,11 +12,14 @@ import {
   CardProposal,
   parseCards,
 } from '../domain/cards-prompt';
+import { buildEdgesUser, EDGES_SYSTEM, InferredEdge, parseEdges } from '../domain/edges-prompt';
+import { summarizeDoc } from '../domain/summarize-doc';
 import { LlmClientFactory } from '../infrastructure/llm-client.factory';
 
 /** Teto de tokens de entrada por resumo (cap de custo — SPEC-003). */
 const MAX_INPUT_TOKENS = 12_000;
 const MAX_OUTPUT_TOKENS = 1024;
+const MAX_EDGES_OUTPUT_TOKENS = 2048;
 
 @Injectable()
 export class InsightService {
@@ -25,6 +29,7 @@ export class InsightService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly llmFactory: LlmClientFactory,
+    private readonly ingestion: IngestionService,
   ) {}
 
   /**
@@ -130,6 +135,94 @@ export class InsightService {
         lastErr = err;
         this.logger.warn(
           `Proposta de cards inválida (tentativa ${attempt + 1}): ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+    throw lastErr;
+  }
+
+  /**
+   * Gera arestas semânticas entre documentos via IA e ENTREGA ao ingestion —
+   * insight nunca escreve no store (ADR-001). Idempotente por docsTreeSha via
+   * marker `edges_marker`. Chamado só pelo worker (ADR-002 — IA nunca no
+   * caminho de render).
+   */
+  async generateEdges(projectId: string): Promise<void> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+    if (!project?.docsScopeHash) return;
+    const hash = project.docsScopeHash;
+
+    const marker = await this.prisma.insight.findFirst({
+      where: { projectId, kind: 'edges_marker', docsTreeSha: hash },
+    });
+    if (marker) return; // idempotente por hash
+
+    const docs = await this.prisma.document.findMany({
+      where: { projectId },
+      select: { path: true, content: true },
+    });
+    if (docs.length < 2) return;
+
+    const context = selectContext(docs, MAX_INPUT_TOKENS);
+    const excerptByPath = new Map(context.map((d) => [d.path, d.content]));
+    const docMeta = context.map((d) => ({
+      path: d.path,
+      ...summarizeDoc(excerptByPath.get(d.path) ?? ''),
+    }));
+
+    const explicit = await this.prisma.docLink.findMany({
+      where: { projectId, kind: 'explicit' },
+      select: { source: { select: { path: true } }, targetPath: true },
+    });
+    const explicitPairs = explicit.map((l) => ({
+      source: l.source.path,
+      target: l.targetPath,
+    }));
+
+    const provider = await this.settings.providerOf(project.userId);
+    const client = this.llmFactory.create(provider);
+    const edges = await this.completeEdges(client, docMeta, explicitPairs);
+
+    await this.ingestion.writeInferredEdges(projectId, edges);
+
+    await this.prisma.insight.create({
+      data: {
+        projectId,
+        kind: 'edges_marker',
+        docsTreeSha: hash,
+        provider: client.provider,
+        model: 'edges',
+        inputTokens: 0,
+        outputTokens: 0,
+        content: {} as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  /** Chama o LLM e valida o JSON de arestas; 1 retry em JSON inválido. */
+  private async completeEdges(
+    client: ReturnType<LlmClientFactory['create']>,
+    docs: { path: string; title: string; headings: string[]; excerpt: string }[],
+    explicitPairs: { source: string; target: string }[],
+  ): Promise<InferredEdge[]> {
+    const req = {
+      system: EDGES_SYSTEM,
+      user: buildEdgesUser(docs, explicitPairs),
+      maxTokens: MAX_EDGES_OUTPUT_TOKENS,
+    };
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await client.complete(req);
+      try {
+        return parseEdges(res.text);
+      } catch (err) {
+        lastErr = err;
+        this.logger.warn(
+          `Arestas inválidas (tentativa ${attempt + 1}): ${
             err instanceof Error ? err.message : err
           }`,
         );
