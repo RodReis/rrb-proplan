@@ -1,12 +1,32 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Queue } from 'bullmq';
+import * as mammoth from 'mammoth';
+import { GithubAuth } from '../../identity/application/github-auth.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { GithubGitClient } from '../infrastructure/github-git.client';
 import { SYNC_QUEUE } from '../ingestion.constants';
 
 export interface SyncJobData {
   syncRunId: string;
 }
+
+/** Content-Type por extensão para o preview sob demanda (Task 4). */
+const CONTENT_TYPE: Record<string, string> = {
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  webp: 'image/webp',
+  html: 'text/html',
+  htm: 'text/html',
+};
 
 /**
  * Interface pública do módulo ingestion (SPEC-002). Outros módulos
@@ -17,6 +37,8 @@ export class IngestionService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue(SYNC_QUEUE) private readonly syncQueue: Queue<SyncJobData>,
+    private readonly auth: GithubAuth,
+    private readonly git: GithubGitClient,
   ) {}
 
   /**
@@ -66,6 +88,7 @@ export class IngestionService {
         isConventional: true,
         byteSize: true,
         updatedAt: true,
+        kind: true,
       },
       orderBy: { path: 'asc' },
     });
@@ -78,6 +101,45 @@ export class IngestionService {
     });
     if (!doc) throw new NotFoundException('Documento não encontrado');
     return doc;
+  }
+
+  /** Conteúdo bruto de um binário para preview. docx → texto extraído; demais →
+   *  bytes + content-type. markdown → erro (usar documentContent). */
+  async rawContent(
+    userId: string,
+    projectId: string,
+    path: string,
+  ): Promise<
+    | { type: 'stream'; buffer: Buffer; contentType: string; isHtml: boolean }
+    | { type: 'docx'; text: string }
+  > {
+    await this.assertOwner(userId, projectId);
+    const doc = await this.prisma.document.findUnique({
+      where: { projectId_path: { projectId, path } },
+      select: { blobSha: true, kind: true },
+    });
+    if (!doc) throw new NotFoundException('Documento não encontrado');
+    if (doc.kind === 'markdown')
+      throw new BadRequestException('Use /documents/content para markdown');
+
+    const project = await this.prisma.project.findUniqueOrThrow({
+      where: { id: projectId },
+    });
+    const token = await this.auth.userToken(project.userId);
+    const buffer = await this.git.getRawBlob(
+      token,
+      project.owner,
+      project.name,
+      doc.blobSha,
+    );
+
+    if (doc.kind === 'office') {
+      const { value } = await mammoth.extractRawText({ buffer });
+      return { type: 'docx', text: value };
+    }
+    const ext = (path.split('.').pop() ?? '').toLowerCase();
+    const contentType = CONTENT_TYPE[ext] ?? 'application/octet-stream';
+    return { type: 'stream', buffer, contentType, isHtml: doc.kind === 'html' };
   }
 
   /** Grafo de documentos: nós (docs) + arestas (links explícitos). SPEC-004. */

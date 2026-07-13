@@ -86,6 +86,31 @@ export class GithubGitClient {
     return { content, byteSize: buf.byteLength };
   }
 
+  /** Bytes crus de um blob (Buffer), sem decodificar como texto — para binários
+   *  servidos sob demanda no preview. Teto de sanidade de 25 MB (stream efêmero,
+   *  nunca persistido). Diferente de getBlob, que força utf-8 e é só para texto. */
+  async getRawBlob(
+    token: string,
+    owner: string,
+    repo: string,
+    blobSha: string,
+  ): Promise<Buffer> {
+    const res = await this.fetchGithub(
+      token,
+      `https://api.github.com/repos/${owner}/${repo}/git/blobs/${blobSha}`,
+    );
+    const body = (await res.json()) as {
+      content: string;
+      encoding: string;
+      size: number;
+    };
+    const MAX_RAW = 25 * 1024 * 1024;
+    if (body.size > MAX_RAW) throw new Error(`Blob acima de 25 MB: ${body.size}`);
+    return body.encoding === 'base64'
+      ? Buffer.from(body.content, 'base64')
+      : Buffer.from(body.content);
+  }
+
   /**
    * Data do último commit do repo, opcionalmente filtrado por `path`
    * (ADR-010 — só metadado, nunca diff/conteúdo). null se não houver commit
