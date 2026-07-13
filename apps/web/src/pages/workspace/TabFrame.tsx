@@ -9,17 +9,23 @@ interface Props {
   label: string;
   /** Spans citados pela IA que justificam a classificação nível 3 (ADR-012). */
   spans?: string[];
+  /**
+   * A entidade está ausente (nível 4) MAS há um fallback inferido pela IA no
+   * payload (Arquitetura/Design). Quando true, não mostra o vazio "não
+   * documentado" — os children trazem o conteúdo inferido + badge + promover.
+   */
+  inferred?: boolean;
   /** Abre a tela de mapeamento focada nesta entidade. */
   onCorrect: () => void;
   children: ReactNode;
 }
 
 /** Estados uniformes das abas: skeleton, erro, aviso de fonte (alias/inferência), ausente. */
-export function TabFrame({ loading, error, source, label, spans, onCorrect, children }: Props) {
+export function TabFrame({ loading, error, source, label, spans, inferred, onCorrect, children }: Props) {
   if (loading) return <div className="m-8 h-40 animate-pulse rounded-md bg-border/50" />;
   if (error) return <p className="m-8 text-sm text-error">{error}</p>;
 
-  if (source && source.level === 4) {
+  if (source && source.level === 4 && !inferred) {
     return (
       <div className="m-8 rounded-lg border border-dashed border-border p-8 text-center">
         <p className="text-sm font-medium">{label} não documentado</p>
