@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
 import { GraphTab } from './GraphTab';
 import { OverviewTab } from './OverviewTab';
+import { KanbanTab } from './kanban/KanbanTab';
 import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
 
 /** Shape mínimo para abrir o workspace (repo do catálogo ou projeto gerenciado). */
@@ -113,6 +114,9 @@ export function Workspace({ project, onBack }: Props) {
         )}
         {activeTab === 'documents' && (
           <DocumentsTab projectId={projectId} syncNonce={syncNonce} />
+        )}
+        {activeTab === 'kanban' && (
+          <KanbanTab projectId={projectId} syncNonce={syncNonce} />
         )}
         {activeTab === 'graph' && (
           <GraphTab projectId={projectId} syncNonce={syncNonce} />

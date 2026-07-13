@@ -128,7 +128,7 @@ export function Home({ user, onLogout }: Props) {
                     (isOpen ? 'h-4' : 'h-0 group-hover:h-4')
                   }
                 />
-                <div className="flex items-center gap-1.5 font-medium">
+                <div className="flex flex-wrap items-center gap-1.5 font-medium">
                   {p.name}
                   {missing && (
                     <span
@@ -136,6 +136,14 @@ export function Home({ user, onLogout }: Props) {
                       className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning"
                     >
                       sem instalação
+                    </span>
+                  )}
+                  {p.needsIssueImport && (
+                    <span
+                      title="Tem um STATUS.md legado — importar como Issues no Kanban"
+                      className="rounded-full bg-brand/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand"
+                    >
+                      importar
                     </span>
                   )}
                 </div>

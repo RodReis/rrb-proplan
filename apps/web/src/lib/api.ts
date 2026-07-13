@@ -130,7 +130,75 @@ export const api = {
     ),
   graph: (projectId: string) =>
     request<DocGraph>(`/projects/${projectId}/graph`),
+
+  // Board (Kanban sobre Issues — SPEC-005)
+  board: (projectId: string) =>
+    request<BoardView>(`/projects/${projectId}/board`),
+  mutateBoard: (projectId: string, input: MutationInput) =>
+    request<{ mutationId: string }>(`/projects/${projectId}/board/mutations`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  mutationStatus: (projectId: string, mutationId: string) =>
+    request<BoardMutationState>(
+      `/projects/${projectId}/board/mutations/${mutationId}`,
+    ),
+  previewImport: (projectId: string) =>
+    request<CardToCreate[]>(`/projects/${projectId}/board/import-from-status`),
+  applyImport: (projectId: string, cards: CardToCreate[]) =>
+    request<{ created: number }>(
+      `/projects/${projectId}/board/import-from-status`,
+      { method: 'POST', body: JSON.stringify({ cards }) },
+    ),
+  proposeCards: (projectId: string) =>
+    request<CardToCreate[]>(`/projects/${projectId}/board/bootstrap`, {
+      method: 'POST',
+    }),
+  applyBootstrap: (projectId: string, cards: CardToCreate[]) =>
+    request<{ created: number }>(`/projects/${projectId}/board/bootstrap/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ cards }),
+    }),
 };
+
+export type BoardColumn = 'backlog' | 'todo' | 'doing' | 'done' | 'discarded';
+export type IssuePriority = 'alta' | 'media' | 'baixa';
+export type BoardMode = 'active' | 'degraded' | 'no-installation';
+
+export interface BoardCard {
+  number: number;
+  title: string;
+  column: BoardColumn;
+  priority: IssuePriority | null;
+  assignee: { login: string; avatarUrl: string } | null;
+  htmlUrl: string;
+  closedAt: string | null;
+}
+
+export interface BoardView {
+  mode: BoardMode;
+  needsIssueImport: boolean;
+  columns: { column: BoardColumn; cards: BoardCard[] }[];
+}
+
+export interface BoardMutationState {
+  id: string;
+  status: 'queued' | 'applying' | 'applied' | 'failed';
+  error: string | null;
+  type: string;
+}
+
+export type MutationInput =
+  | { type: 'move_column'; number: number; toColumn: BoardColumn }
+  | { type: 'create_card'; title: string; column: BoardColumn; priority?: IssuePriority }
+  | { type: 'edit_card'; number: number; title?: string; priority?: IssuePriority | null }
+  | { type: 'discard_card'; number: number };
+
+export interface CardToCreate {
+  title: string;
+  column: BoardColumn;
+  priority?: IssuePriority | null;
+}
 
 export interface GraphNode {
   docId: string;
@@ -190,6 +258,7 @@ export interface Project {
   githubRepoId: number;
   installationId: number | null;
   installationStatus: 'active' | 'missing';
+  needsIssueImport: boolean;
   docsScopeHash: string | null;
   lastSyncAt: string | null;
 }

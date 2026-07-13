@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Toaster } from 'sonner';
 import { api, SessionUser, UnauthorizedError } from './lib/api';
 import { Login } from './pages/Login';
 import { Home } from './pages/Home';
@@ -35,11 +36,14 @@ export default function App() {
   if (auth.status === 'anonymous') return <Login />;
 
   return (
-    <Home
-      user={auth.user}
-      onLogout={() => {
-        void api.logout().then(() => setAuth({ status: 'anonymous' }));
-      }}
-    />
+    <>
+      <Home
+        user={auth.user}
+        onLogout={() => {
+          void api.logout().then(() => setAuth({ status: 'anonymous' }));
+        }}
+      />
+      <Toaster position="bottom-right" theme="light" richColors closeButton />
+    </>
   );
 }
