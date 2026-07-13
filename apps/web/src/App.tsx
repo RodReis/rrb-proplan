@@ -43,7 +43,7 @@ export default function App() {
           void api.logout().then(() => setAuth({ status: 'anonymous' }));
         }}
       />
-      <Toaster position="bottom-right" theme="light" richColors closeButton />
+      <Toaster position="top-right" theme="light" richColors closeButton />
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../lib/api';
+import { toast } from 'sonner';
+import { api, SyncRun } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
 import { GraphTab } from './GraphTab';
 import { OverviewTab } from './OverviewTab';
@@ -38,9 +39,14 @@ export function Workspace({ project, onBack }: Props) {
 
   async function handleSync() {
     setSyncing(true);
+    const toastId = toast.loading('Sincronizando…');
     try {
-      await api.sync(projectId);
+      const { syncRunId } = await api.sync(projectId);
+      const run = await pollSyncRun(projectId, syncRunId);
       setSyncNonce((n) => n + 1);
+      reportSync(run, toastId);
+    } catch (err) {
+      toast.error(`Falha ao sincronizar: ${err}`, { id: toastId });
     } finally {
       setSyncing(false);
     }
@@ -123,5 +129,46 @@ export function Workspace({ project, onBack }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+const SYNC_POLL_MS = 1200;
+const SYNC_TIMEOUT_MS = 60_000;
+
+/** Faz polling do sync-run até terminar (success|noop|failed). */
+async function pollSyncRun(projectId: string, runId: string): Promise<SyncRun> {
+  const start = Date.now();
+  for (;;) {
+    const run = await api.latestSyncRun(projectId);
+    if (run && run.id === runId && run.status !== 'queued' && run.status !== 'running') {
+      return run;
+    }
+    if (Date.now() - start > SYNC_TIMEOUT_MS) {
+      throw new Error('tempo esgotado');
+    }
+    await new Promise((r) => setTimeout(r, SYNC_POLL_MS));
+  }
+}
+
+/** Toast com o resultado do sync (política de toasts do DESIGN.md). */
+function reportSync(run: SyncRun, toastId: string | number): void {
+  if (run.status === 'failed') {
+    toast.error(`Sincronização falhou: ${run.error ?? 'erro desconhecido'}`, {
+      id: toastId,
+    });
+    return;
+  }
+  if (run.status === 'noop') {
+    toast.info('Já estava atualizado — nada mudou.', { id: toastId });
+    return;
+  }
+  const parts = [
+    run.added && `${run.added} novo${run.added > 1 ? 's' : ''}`,
+    run.updated && `${run.updated} atualizado${run.updated > 1 ? 's' : ''}`,
+    run.removed && `${run.removed} removido${run.removed > 1 ? 's' : ''}`,
+  ].filter(Boolean);
+  toast.success(
+    parts.length ? `Sincronizado — ${parts.join(', ')}.` : 'Sincronizado.',
+    { id: toastId },
   );
 }
