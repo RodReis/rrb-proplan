@@ -50,3 +50,42 @@ describe('ResolutionService.rebuild', () => {
     );
   });
 });
+
+describe('ResolutionService.resolutionOf', () => {
+  it('sem linha persistida (sync ainda não rodou) → devolve ausente, não lança', async () => {
+    const prisma = {
+      documentResolution: { findUnique: jest.fn().mockResolvedValue(null) },
+    } as any;
+    const svc = new ResolutionService(prisma);
+
+    const result = await svc.resolutionOf('p1', 'architecture');
+
+    expect(result).toEqual({
+      entity: 'architecture',
+      level: 4,
+      source: 'absent',
+      path: null,
+      paths: [],
+      confidence: 0,
+    });
+  });
+
+  it('com linha persistida → mapeia os campos do row', async () => {
+    const row = {
+      entity: 'architecture',
+      level: 1,
+      source: 'convention',
+      path: 'docs/ARCHITECTURE.md',
+      paths: [],
+      confidence: 1.0,
+    };
+    const prisma = {
+      documentResolution: { findUnique: jest.fn().mockResolvedValue(row) },
+    } as any;
+    const svc = new ResolutionService(prisma);
+
+    const result = await svc.resolutionOf('p1', 'architecture');
+
+    expect(result).toEqual(row);
+  });
+});

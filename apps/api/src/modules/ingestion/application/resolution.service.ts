@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { resolveDocuments } from '../domain/document-resolver';
 import { Entity, Resolution } from '../domain/entity';
@@ -55,7 +55,12 @@ export class ResolutionService {
     const row = await this.prisma.documentResolution.findUnique({
       where: { projectId_entity: { projectId, entity } },
     });
-    if (!row) throw new NotFoundException(`Resolução não encontrada: ${entity}`);
+    if (!row) {
+      // Ainda não há resolução persistida (ex.: projeto recém-adicionado, sync em
+      // andamento). Trata como ausente (nível 4) — degrada como listDocuments/graph,
+      // não quebra a aba com 404. O próximo sync popula a linha real.
+      return { entity, level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
+    }
     return {
       entity: row.entity as Entity,
       level: row.level as 1 | 2 | 4,
