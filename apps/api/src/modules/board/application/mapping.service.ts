@@ -38,7 +38,9 @@ export class MappingService {
   ) {}
 
   /** As 6 entidades com a resolução atual + candidatos (paths + diretórios do repo). */
-  async getMapping(projectId: string): Promise<MappingRow[]> {
+  async getMapping(
+    projectId: string,
+  ): Promise<{ rows: MappingRow[]; proplanConfigInvalid: boolean }> {
     const docs = await this.prisma.document.findMany({
       where: { projectId },
       select: { path: true },
@@ -59,7 +61,13 @@ export class MappingService {
       const resolution = await this.resolution.resolutionOf(projectId, entity);
       rows.push({ entity, resolution, candidates });
     }
-    return rows;
+
+    // Flag gravado pelo ResolutionService quando .proplan/config.yml tem YAML inválido (ADR-014).
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { proplanConfigInvalid: true },
+    });
+    return { rows, proplanConfigInvalid: project?.proplanConfigInvalid ?? false };
   }
 
   /** Escreve a entidade em .proplan/config.yml (ler-mesclar-reescrever) + re-sync. */

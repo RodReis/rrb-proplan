@@ -154,7 +154,10 @@ export const api = {
     request<DocGraph>(`/projects/${projectId}/graph`),
   tab: <P = unknown>(projectId: string, tab: Entity) =>
     request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
-  mapping: (projectId: string) => request<MappingRow[]>(`/projects/${projectId}/tabs/mapping`),
+  mapping: (projectId: string) =>
+    request<{ rows: MappingRow[]; proplanConfigInvalid: boolean }>(
+      `/projects/${projectId}/tabs/mapping`,
+    ),
   putMapping: (projectId: string, entity: Entity, path: string | null) =>
     request<{ syncRunId: string }>(`/projects/${projectId}/tabs/mapping`, {
       method: 'PUT',

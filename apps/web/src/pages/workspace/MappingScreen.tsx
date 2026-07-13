@@ -27,6 +27,7 @@ interface Props {
 /** Overlay de mapeamento manual das 6 entidades (Fatia 6, ADR-014). */
 export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Props) {
   const [rows, setRows] = useState<MappingRow[]>([]);
+  const [proplanConfigInvalid, setProplanConfigInvalid] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Entity | null>(null);
 
@@ -34,7 +35,11 @@ export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Prop
     let active = true;
     api
       .mapping(projectId)
-      .then((r) => active && setRows(r))
+      .then((r) => {
+        if (!active) return;
+        setRows(r.rows);
+        setProplanConfigInvalid(r.proplanConfigInvalid);
+      })
       .catch((e) => active && toast.error(`Falha ao carregar mapeamento: ${e}`))
       .finally(() => active && setLoading(false));
     return () => {
@@ -75,6 +80,12 @@ export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Prop
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-8">
+        {proplanConfigInvalid && (
+          <div className="mb-4 rounded-md border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-text">
+            Config do ProPlan inválida neste repositório — o mapeamento manual foi
+            ignorado. Corrija o <code>.proplan/config.yml</code> no repo.
+          </div>
+        )}
         {loading ? (
           <div className="h-40 animate-pulse rounded-md bg-border/50" />
         ) : (
