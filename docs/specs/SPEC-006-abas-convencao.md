@@ -17,7 +17,18 @@ Completar o workspace **em repos reais, não só nos que seguem a convenção**:
 
 ### Resolução de documentos (ADR-014) — o coração da fatia
 
-- **`DocumentResolver`** (novo, em `board/domain`): dada uma entidade (`architecture`, `decisions`, `design`, `testing`, `deploy`, `skills`), devolve `{ level: 1|2|4, path|paths, confidence, source: 'convention'|'alias'|'config'|'absent' }`. Nível 3 (IA) fica na Fatia 7 — o resolver já nasce com o slot.
+> ⚠️ **Correção de 2026-07-13**: a versão anterior desta spec dizia `board/domain`. **Errado.** Ver ADR-014 (seção "Onde o resolver mora"). O resolver é o **padrão do ADR-002 aplicado a caminho em vez de conteúdo** — determinístico no `ingestion`, IA como artefato versionado no `insight`, `board` só consome.
+
+**Onde cada parte mora:**
+
+| módulo | o quê |
+|---|---|
+| **`ingestion`** | níveis **1, 2 e 4** — casamento determinístico de caminho (convenção → alias → `.proplan/config.yml` → ausente). Ele já é dono da tabela `documents` e já sincroniza/parseia o `config.yml`. **Resolve e persiste no `sync-job`.** |
+| **`insight`** | nível **3** (Fatia 7) — classificação semântica, job assíncrono versionado por `docs_tree_sha`. O store de resolução já nasce com o slot. |
+| **`board`** | **apenas lê** a resolução para compor a aba. **Nunca resolve.** |
+
+- **`DocumentResolver`** (novo, em **`ingestion/domain`**): dada uma entidade (`architecture`, `decisions`, `design`, `testing`, `deploy`, `skills`), devolve `{ level: 1|2|4, path|paths, confidence, source: 'convention'|'alias'|'config'|'absent' }`. Puro, sem IA, testável isolado.
+- **A resolução é persistida no sync**, não calculada no render — mesma disciplina do ADR-002. Recalculada quando `docs_tree_sha` ou o `config.yml` mudam (que é exatamente o gatilho do sync).
 - **Tabela de alias**: constante em código (não configuração do usuário), conforme a `CONVENTION.md`. Casa com/sem acento, qualquer caixa, na raiz ou em `docs/`, com/sem extensão. **Diretório como fonte** é caso de primeira classe (`adr/`, `docs/qa/`) — resolve para uma **coleção** de documentos, não um só.
 - **`.proplan/config.yml`**: lido no sync; **vence todos os níveis**. `null` explícito = "confirmado ausente", e a aba deixa de insistir no CTA.
 - **Tela de mapeamento** (nova, no workspace): mostra o que o resolver decidiu por entidade, com o nível e o caminho. O usuário confirma, corrige (seleciona outro arquivo/diretório do repo) ou marca como ausente → **escreve `.proplan/config.yml`** via write-back compartilhado. É o mesmo mecanismo de asserção humana do ADR-013, aparecendo já no MVP1.
@@ -50,20 +61,36 @@ Completar o workspace **em repos reais, não só nos que seguem a convenção**:
 - [ ] Tela de mapeamento: corrigir a fonte da Arquitetura para um arquivo arbitrário do repo **escreve `.proplan/config.yml`**, e a aba passa a usar a nova fonte após o re-sync.
 - [ ] Marcar Deploy como **ausente** (`null`) no mapeamento faz a aba parar de oferecer o CTA — e a escolha **sobrevive ao re-sync** (está no repo, não no banco).
 - [ ] `.proplan/config.yml` **vence** convenção e alias (teste: repo com `docs/ARCHITECTURE.md` **e** config apontando para outro arquivo → vence a config).
+- [ ] **`DocumentResolution` é cache, e o teste prova**: apagar as linhas do banco e ressincronizar reconstrói a resolução idêntica — **nenhuma decisão do usuário é perdida** (ela está no `.proplan/config.yml`, no repo).
 - [ ] Aba Testes sem doc mas com workflows mostra a lista do CI com o aviso de origem.
 - [ ] **Nenhum arquivo do repo-alvo é renomeado, movido ou reescrito** em nenhum fluxo desta fatia (o único write é `.proplan/config.yml`).
 - [ ] Nenhuma chamada de IA em toda a fatia.
 
 ## Contratos
 
-- `board/domain`: `DocumentResolver` (interface acima) + `ProplanConfig` (parse de `.proplan/config.yml`, tolerante a arquivo ausente/inválido → cai na escada).
-- Parsers no `board`: `TestingDoc`, `DeployDoc`, `SkillsIndex`, `DecisionsIndex` (arquivo **ou** coleção) — derivados de `documents`, sem tabelas novas.
+- **`ingestion/domain`**: `DocumentResolver` (interface acima) + `ProplanConfig` (parse de `.proplan/config.yml`, tolerante a arquivo ausente/inválido → cai na escada). `SyncService` resolve e persiste ao fim do run.
+- **Prisma**: `DocumentResolution { id, projectId, entity, level, source, path?, paths String[], confidence, docsTreeSha, resolvedAt, @@unique([projectId, entity]) }` — recomputada a cada sync. Nível 3 (Fatia 7) grava aqui também, com `source: 'inference'`; **nunca sobrescreve** uma linha de `source: 'config'`.
+- **Parsers de conteúdo no `board`** (composição de aba, a partir do path já resolvido): `TestingDoc`, `DeployDoc`, `SkillsIndex`, `DecisionsIndex` (arquivo **ou** coleção) — derivados de `documents`, sem tabelas novas.
+- **`board` consome `IngestionService.resolutionOf(projectId, entity)`** — interface pública. **Não importa o `DocumentResolver` nem o `insight`** (regra de fronteira do ADR-001).
+
+### Fonte × cache — a distinção que a versão anterior desta spec borrou
+
+> A versão anterior dizia *"sem tabela nova: o mapeamento mora no repo"* **e** listava uma tabela nova na mesma seção. Contradição de redação, corrigida em 2026-07-13.
+
+| | o quê | onde | por quê |
+|---|---|---|---|
+| **Mapeamento** | o que o **usuário decidiu** (`architecture: docs/notas.md`) | **`.proplan/config.yml`, no repo** | **fonte de verdade** — o projeto tem que ser retomável sem o ProPlan (ADR-011) |
+| **Resolução** | o que o ProPlan **calculou** (`architecture → docs/notas.md, nível 2, conf. 0.8`) | **`DocumentResolution`, no banco** | **cache derivado**, recomputado a cada sync — como `documents`, `doc_links` e `issues` já são |
+
+Não existe "tabela nova" no sentido que a regra proibia (guardar **decisão do usuário** fora do repo). Existe **mais um cache derivado** — o padrão que o projeto inteiro já usa. Apagar o banco e ressincronizar reconstrói a resolução inteira, sem perda: **é o teste que prova que ela é cache.**
 - API: `GET /projects/:id/tabs/:tab` → payload estruturado + `{ source: { level, path, confidence } }` (o front não conhece a regra de resolução) · `GET /projects/:id/mapping` (o que o resolver decidiu, por entidade, + candidatos) · `PUT /projects/:id/mapping` → escreve `.proplan/config.yml` (202, write-back + re-sync).
-- Sem tabela nova: o mapeamento **mora no repo**, não no banco (regra do ADR-011 — o projeto tem que ser retomável sem o ProPlan).
+- **O mapeamento do usuário mora no repo** (`.proplan/config.yml`), nunca no banco — regra do ADR-011: o projeto tem que ser retomável sem o ProPlan. A tabela `DocumentResolution` **não viola isso**: ela é cache derivado, não decisão. Ver "Fonte × cache" acima.
 
 ## Notas técnicas
 
-- **Ordem de implementação**: o `DocumentResolver` e seus testes vêm **primeiro**. As abas são consumidoras dele. Testar o resolver com fixtures de repo real (nomes esquisitos) antes de encostar na UI.
+- **Ordem de implementação**: o `DocumentResolver` (em `ingestion/domain`) e seus testes vêm **primeiro**. As abas são consumidoras dele, via interface pública do `ingestion`. Testar o resolver com fixtures de repo real (nomes esquisitos) antes de encostar na UI.
+- **Por que não no `board`, nem no `insight`** (ADR-014): resolver caminho é propriedade do **índice de documentos** (dono: `ingestion`), não composição de aba nem interpretação de conteúdo. Pôr o resolver inteiro no `insight` faria o `board` depender do módulo de IA **só para renderizar** — encostando a IA no caminho de render, que o ADR-002 proíbe.
+- **A resolução é persistida, não calculada no render.** Mesma disciplina do ADR-002/ADR-010: computar no job, servir do banco.
 - **Alias não pode ser ganancioso**: casar `docs/design-system/README.md` como "Design" é aceitável; casar qualquer arquivo com "arch" no nome (ex.: `docs/archive/notas.md`) **não é**. Regras de alias exigem casamento do **nome do arquivo/diretório inteiro** (sem extensão), não substring. `archive` ≠ `arch`. Teste unitário explícito para esse caso.
 - **Confiança por nível** alimenta o sinal `cobertura` do ADR-012 (MVP2) — o resolver já devolve `confidence`; nada consome ainda.
 - Mermaid: client-side, lazy-loaded, com fallback para código em erro de sintaxe — diagrama quebrado não derruba a aba.

@@ -207,6 +207,18 @@ mapping:
 
 **Refinamento da regra do ADR-011**: `.proplan/` passa a ser **"tudo que é do ProPlan"** — artefato gerado (`STATUS.md`) *e* configuração (`config.yml`). `docs/` continua sendo só o projeto. O cálculo de frescor do ADR-010 (`path=docs`) segue intacto.
 
+**Onde o resolver mora — correção de 2026-07-13.** A primeira versão deste ADR (e a SPEC-006) diziam `board/domain`. **Estava errado.** O resolver não é composição de aba nem interpretação de conteúdo — nos níveis 1, 2 e 4 ele apenas **casa caminho**, o que é propriedade do **índice de documentos**. E o nível 3 é IA, que nunca pode encostar no caminho de renderização (ADR-002).
+
+O resolver **não é padrão novo**: é o **padrão do ADR-002 aplicado a *caminho* em vez de *conteúdo*** — determinístico primeiro, IA como artefato versionado de fallback, nunca no render.
+
+| módulo | responsabilidade | quando |
+|---|---|---|
+| **`ingestion`** | níveis **1, 2 e 4** — determinístico, sem IA. Convenção, alias e `.proplan/config.yml` (que ele já sincroniza e parseia). **Persiste a resolução.** | no `sync-job` |
+| **`insight`** | nível **3** — classificação semântica. Job assíncrono, versionado por `docs_tree_sha`, escrevendo no mesmo store. **Perde** para config e alias. | após sync, se o hash mudou |
+| **`board`** | **apenas consome** a resolução. **Nunca resolve nada.** | na renderização |
+
+Alternativas rejeitadas: (a) *resolver inteiro no `insight`* — deixa a cauda balançar o cachorro (um nível de quatro usa IA) e faz o `board` depender do módulo de IA **só para renderizar uma aba**, aproximando a IA do render que o ADR-002 proíbe; (b) *resolver inteiro no `board/domain`* (a letra original) — dá ao `board` duas responsabilidades sem relação: Kanban e resolução de documentos; (c) *módulo novo dedicado* — boilerplate (module, wiring, DI) para uma escada e cinco parsers que cabem nos módulos que já são donos do dado.
+
 **Consequência**: o mapeamento confirmado pelo usuário é, na prática, a **primeira asserção humana** do ADR-013 — o mecanismo aparece já no MVP1, o que valida o desenho antes do MVP2. Custo: mais uma superfície de UI (tela de mapeamento no onboarding do projeto) e uma tabela de alias para manter. Risco: alias agressivo demais casa arquivo errado com confiança de `fato` — mitigado porque o usuário revisa o mapeamento antes de ele valer.
 
 ## ADR-015 — GitHub App em vez de OAuth App; identidade de bot para escritas

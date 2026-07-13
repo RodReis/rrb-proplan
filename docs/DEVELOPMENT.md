@@ -184,12 +184,12 @@ Só iniciar com a Fatia 5 `feito`.
 
 **O coração da fatia é o `DocumentResolver` (ADR-014), não as abas.** Casar documento por caminho exato funciona só neste repo; os repos reais têm `arquitetura.md`, `adr/0001-*.md`, `docs/qa/`. Escada: convenção → alias → `.proplan/config.yml` → ausente. **O ProPlan nunca renomeia, move ou reescreve doc do usuário** — ele mapeia.
 
-1. `a-fazer` — `board/domain`: `DocumentResolver` + tabela de alias + parse de `.proplan/config.yml`. **Testes unitários primeiro**, com fixture de repo de nomes esquisitos. Teste explícito de alias não-ganancioso (`docs/archive/` **não** é `arch`).
+1. `a-fazer` — **`ingestion/domain`** (⚠️ **não** `board` — correção do ADR-014 em 2026-07-13): `DocumentResolver` + tabela de alias + parse de `.proplan/config.yml`; `DocumentResolution` no Prisma; `SyncService` resolve e **persiste** ao fim do run (nunca no render — ADR-002). **Testes unitários primeiro**, com fixture de repo de nomes esquisitos. Teste explícito de alias não-ganancioso (`docs/archive/` **não** é `arch`).
 2. `a-fazer` — Ampliar filtro de sync: `.claude/**`, `.github/workflows/*.yml`, `.proplan/config.yml` e diretórios de alias (`adr/`, `decisions/`, `docs/**`); re-sync.
 3. `a-fazer` — Parsers determinísticos: `TestingDoc`, `DeployDoc`, `SkillsIndex`, `DecisionsIndex` (arquivo **ou** coleção), workflows YAML. Testes unitários.
 4. `a-fazer` — API: `GET /tabs/:tab` (payload + `source: {level, path, confidence}`), `GET /mapping`, `PUT /mapping` (escreve `.proplan/config.yml` via write-back + re-sync).
 5. `a-fazer` — Mermaid no viewer (lazy, fallback para código em erro) — vale para Documentos e todas as abas.
-6. `a-fazer` — Web: **tela de mapeamento** (confirmar/corrigir/marcar ausente) + abas Arquitetura, **Decisões**, Design, Testes, Deploy (tabela estruturada com badges), Skills & Agentes; linha "reconhecido por nome — corrigir" nas abas de nível 2; empty states com CTA.
+6. `a-fazer` — Web: **tela de mapeamento** (confirmar/corrigir/marcar ausente) + abas Arquitetura, **Decisões**, Design, Testes, Deploy (tabela estruturada com badges), Skills & Agentes; linha "reconhecido por nome — corrigir" nas abas de nível 2; empty states com CTA. O `board` **lê** `IngestionService.resolutionOf` — **nunca resolve nada** (fronteira do ADR-001).
 7. `a-fazer` — Critérios da SPEC-006 (incluindo o **teste que prova a fatia**: repo com nomes próprios resolve tudo em nível 2); atualizar este arquivo + STATUS.md; commitar tudo.
 
 ## Fatia 7 — Insight semântico (SPEC-007, `aprovada-pi`) — `a-fazer`
@@ -199,7 +199,7 @@ Só iniciar com a Fatia 6 `feito`.
 1. `a-fazer` — Prisma: `DocLink.kind inferred` + `reason`, `SuppressedLink`, novos `Insight.kind`; migration.
 2. `a-fazer` — Job de arestas semânticas (batch único por sync, JSON estrito + retry, exclui explícitas e suprimidas).
 3. `a-fazer` — API supressão de aresta + grafo com inferidas; Web: tracejadas âmbar, tooltip motivo, remover, toggle.
-4. `a-fazer` — **Nível 3 da escada (ADR-014)**: classificação semântica — doc cujo nome não bate com alias nenhum, mas cujo conteúdo é claramente a entidade. Preenche o slot que o `DocumentResolver` já deixou pronto na Fatia 6. Resultado é `inferência` (badge âmbar, spans citados), nunca `fato`, e **perde** para `.proplan/config.yml`.
+4. `a-fazer` — **Nível 3 da escada (ADR-014)**, no **`insight`**: classificação semântica — doc cujo nome não bate com alias nenhum, mas cujo conteúdo é claramente a entidade. Job assíncrono versionado por `docs_tree_sha`, gravando em `DocumentResolution` com `source: 'inference'`. Resultado é `inferência` (badge âmbar, spans citados), nunca `fato`, e **nunca sobrescreve** linha de `source: 'config'`.
 5. `a-fazer` — Fallbacks Arquitetura/Design: job, badge âmbar, Regenerar, "Promover a documento" (editor → commit → re-sync).
 6. `a-fazer` — Critérios da SPEC-007; atualizar este arquivo + STATUS.md; commitar tudo.
 
