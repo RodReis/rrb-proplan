@@ -8,7 +8,7 @@ import { parseSkills } from '../domain/skills-index';
 import { parseWorkflow, WorkflowInfo } from '../domain/workflow-parser';
 
 export interface TabSource {
-  level: 1 | 2 | 4;
+  level: 1 | 2 | 3 | 4;
   source: Resolution['source'];
   path: string | null;
   paths: string[];

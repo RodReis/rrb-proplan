@@ -1,6 +1,9 @@
 import { ResolutionService } from './resolution.service';
 
-function makePrisma(docs: { path: string; isConventional: boolean; content: string }[]) {
+function makePrisma(
+  docs: { path: string; isConventional: boolean; content: string }[],
+  inferredRows: any[] = [],
+) {
   const created: any[] = [];
   return {
     created,
@@ -12,6 +15,7 @@ function makePrisma(docs: { path: string; isConventional: boolean; content: stri
         ),
       },
       documentResolution: {
+        findMany: jest.fn().mockResolvedValue(inferredRows),
         deleteMany: jest.fn().mockResolvedValue({}),
         createMany: jest.fn().mockImplementation(({ data }) => {
           created.push(...data);
@@ -47,6 +51,59 @@ describe('ResolutionService.rebuild', () => {
     expect(created).toHaveLength(6);
     expect(prisma.project.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { proplanConfigInvalid: true } }),
+    );
+  });
+
+  it('entidade absent na escada + tinha linha inference → preserva nível 3 inference', async () => {
+    const { prisma, created } = makePrisma(
+      [{ path: 'docs/arquitetura.md', isConventional: false, content: '# a' }],
+      [
+        {
+          entity: 'testing',
+          level: 3,
+          source: 'inference',
+          path: 'docs/notas-qa.md',
+          paths: [],
+          confidence: 0.65,
+        },
+      ],
+    );
+    const svc = new ResolutionService(prisma);
+
+    await svc.rebuild('p1');
+
+    const testingRow = created.find((r) => r.entity === 'testing');
+    expect(testingRow).toEqual(
+      expect.objectContaining({
+        level: 3,
+        source: 'inference',
+        path: 'docs/notas-qa.md',
+        confidence: 0.65,
+      }),
+    );
+  });
+
+  it('entidade que a escada resolve como convention/alias + tinha inference → convenção vence', async () => {
+    const { prisma, created } = makePrisma(
+      [{ path: 'docs/arquitetura.md', isConventional: false, content: '# a' }],
+      [
+        {
+          entity: 'architecture',
+          level: 3,
+          source: 'inference',
+          path: 'docs/notas-antigas.md',
+          paths: [],
+          confidence: 0.5,
+        },
+      ],
+    );
+    const svc = new ResolutionService(prisma);
+
+    await svc.rebuild('p1');
+
+    const architectureRow = created.find((r) => r.entity === 'architecture');
+    expect(architectureRow).toEqual(
+      expect.objectContaining({ level: 2, source: 'alias', path: 'docs/arquitetura.md' }),
     );
   });
 });

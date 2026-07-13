@@ -28,16 +28,42 @@ export class ResolutionService {
     });
     const { config, invalid } = parseProplanConfig(configDoc?.content ?? null);
 
+    // Linhas inference (nível 3) atuais: a escada nunca as produz — se a entidade
+    // segue absent na nova escada, a inferência é preservada (ADR-014: inferência
+    // > ausente). Se a escada resolve para convention/alias/config, a convenção
+    // vence e a inference cede.
+    const inferredByEntity = new Map(
+      (
+        await this.prisma.documentResolution.findMany({
+          where: { projectId, source: 'inference' },
+        })
+      ).map((row) => [row.entity, row]),
+    );
+
     const resolutions = resolveDocuments({ docs, config });
-    const rows = resolutions.map((r) => ({
-      projectId,
-      entity: r.entity,
-      level: r.level,
-      source: r.source,
-      path: r.path,
-      paths: r.paths,
-      confidence: r.confidence,
-    }));
+    const rows = resolutions.map((r) => {
+      const inferred = r.source === 'absent' ? inferredByEntity.get(r.entity) : undefined;
+      if (inferred) {
+        return {
+          projectId,
+          entity: r.entity,
+          level: 3,
+          source: 'inference',
+          path: inferred.path,
+          paths: inferred.paths,
+          confidence: inferred.confidence,
+        };
+      }
+      return {
+        projectId,
+        entity: r.entity,
+        level: r.level,
+        source: r.source,
+        path: r.path,
+        paths: r.paths,
+        confidence: r.confidence,
+      };
+    });
 
     await this.prisma.$transaction([
       this.prisma.documentResolution.deleteMany({ where: { projectId } }),
@@ -47,6 +73,28 @@ export class ResolutionService {
     await this.prisma.project.update({
       where: { id: projectId },
       data: { proplanConfigInvalid: invalid },
+    });
+  }
+
+  /**
+   * Escreve uma aresta inferida (nível 3, IA) como resolução de fallback de uma
+   * entidade. Guarda: só sobrescreve linha `absent` — nunca convenção, alias ou
+   * config (hierarquia ADR-014: humano/convenção > inferência > ausente).
+   */
+  async writeInferredResolution(
+    projectId: string,
+    entity: Entity,
+    path: string,
+    confidence: number,
+  ): Promise<void> {
+    const row = await this.prisma.documentResolution.findUnique({
+      where: { projectId_entity: { projectId, entity } },
+    });
+    if (!row || row.source !== 'absent') return;
+
+    await this.prisma.documentResolution.update({
+      where: { projectId_entity: { projectId, entity } },
+      data: { level: 3, source: 'inference', path, confidence },
     });
   }
 
@@ -63,7 +111,7 @@ export class ResolutionService {
     }
     return {
       entity: row.entity as Entity,
-      level: row.level as 1 | 2 | 4,
+      level: row.level as 1 | 2 | 3 | 4,
       source: row.source as Resolution['source'],
       path: row.path,
       paths: row.paths,
