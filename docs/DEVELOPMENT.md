@@ -128,13 +128,13 @@ Validado ao vivo com o GitHub App real (`RRB ProPlan`, App ID 4281045, instalaç
 
 **Nota de segurança:** ambiente 100% local; a chave privada do App fica só no `.env` (fora do git). Rotação não exigida pelo PI neste ambiente.
 
-## Fatia 5 — Kanban sobre GitHub Issues (SPEC-005 reescrita, `aprovada-pi`) — `feito`
+## Fatia 5 — Kanban sobre GitHub Issues (SPEC-005 reescrita, `aprovada-pi`) — `finalizado`
 
 Só iniciar com a **Fatia 4.5** `feito` (o board escreve com installation token; sem ela, não há escrita).
 
 O estado do trabalho vive nas **Issues** (ADR-011): coluna = label `proplan:*`, `closed` = Feito, `closed`+`proplan:descartado` = Descartado. A projeção vai para **`.proplan/STATUS.md`** (raiz, fora de `docs/` — senão o board mascara o alerta do ADR-010). O parser round-trip fiel da versão anterior da spec **não existe mais** — some o item mais caro da fatia.
 
-Entregue pelo Claude Code em 2 checkpoints (back, front); **aceite runtime pendente** (o PI valida ao vivo: arrastar card → issue muda no GitHub com autor bot).
+Entregue pelo Claude Code em 2 checkpoints (back, front) e **aceito pelo PI em 2026-07-13** (validação runtime no `rrb-adv`).
 
 1. ~~`identity`: escopo OAuth de escrita + reconsentimento~~ — **resolvido pela Fatia 4.5**. O board apenas consome `GithubAuth.installationToken(projectId)`.
 2. `feito` — `board/infrastructure`: `GithubIssuesClient` (listar com paginação, criar, patch, labels idempotentes 422=ok; **filtra `pull_request`**). 4 testes.
@@ -146,7 +146,18 @@ Entregue pelo Claude Code em 2 checkpoints (back, front); **aceite runtime pende
 8. `feito` — Modo degradado: `has_issues === false` → board read-only, faixa explicativa; `installationStatus = missing` → read-only com CTA de reinstalar.
 9. `feito` — Web: aba Kanban dnd-kit (card **variação B**: avatar do assignee + faixa de prioridade semântica), otimista + borda pulsante até `applied` (polling), indicador global "salvando no repo…" na janela de debounce; criar inline/editar popover/descartar com `ConfirmDialog`; coluna Descartado colapsada; banner de importação + badge "importar" no catálogo; bootstrap IA (propõe → revisa → cria). Toasts só no resultado.
 10. `feito` — **Teste de arquitetura** (`projection-path.arch.spec.ts`): a projeção mora em `.proplan/STATUS.md`, nunca `docs/` — mutações não mascaram o ⚠️ do ADR-010.
-11. `feito` — 113 testes verdes (back), tsc + nest build + vite build limpos; app sobe com as 8 rotas do board; front carrega sem erro de bundle. DEVELOPMENT.md + STATUS.md atualizados; entrega commitada. Aceite runtime pendente.
+11. `feito` — 113 testes verdes (back), tsc + nest build + vite build limpos; app sobe com as 8 rotas do board; front carrega sem erro de bundle. DEVELOPMENT.md + STATUS.md atualizados; entrega commitada.
+
+### Aceite runtime (2026-07-13)
+
+Validado ao vivo no `RodReis/rrb-adv` (16 issues semeadas com as fatias pendentes do roadmap, criadas por bot):
+- ✅ Board lê as issues, 5 colunas com contadores corretos (Backlog 12 · A Fazer 4 · resto vazio); card variação B (avatar do assignee + faixa de prioridade semântica + chip + #número).
+- ✅ **O teste que prova a fatia**: arrastar #98 de A Fazer → Em Andamento trocou a label no GitHub (`proplan:todo` → `proplan:doing`) com autor **`rrb-proplan[bot]`**, não o usuário. UI otimista + borda pulsante; mutação `applied` em ~1,4s.
+- ✅ Projeção `.proplan/STATUS.md` commitada por `rrb-proplan[bot]` (mensagem padrão), 1 commit (debounce).
+- ✅ **ADR-010 não mascarado**: o commit da projeção não entra no histórico de `path=docs` — `lastDocsCommitAt` segue apontando para o último commit humano (12/07). É a razão de `.proplan/` existir.
+- ✅ Toast de resultado no Sincronizar (top-right, preferência do PI): sucesso com resumo, "já estava atualizado" no noop, erro persistente.
+
+**Melhoria implementada no aceite (estava no DESIGN.md, faltava):** toast do botão Sincronizar com polling do sync-run e resumo do conteúdo.
 
 ## Fatia 6 — Resolução de documentos + abas (SPEC-006 **ampliada**, `aprovada-pi`) — `a-fazer`
 
