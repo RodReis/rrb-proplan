@@ -15,6 +15,13 @@ export interface SyncJobData {
   syncRunId: string;
 }
 
+/** Par sourcePath→targetPath inferido pelo módulo insight (ADR-001: insight nunca escreve). */
+export interface InferredEdgeInput {
+  sourcePath: string;
+  targetPath: string;
+  reason: string;
+}
+
 /** Content-Type por extensão para o preview sob demanda (Task 4). */
 const CONTENT_TYPE: Record<string, string> = {
   pdf: 'application/pdf',
@@ -176,6 +183,70 @@ export class IngestionService {
     }));
 
     return { nodes, edges };
+  }
+
+  /**
+   * Persiste as arestas inferidas pela IA (ADR-014 nível grafo). O insight ENTREGA
+   * os pares; o ingestion — dono do store — resolve paths→ids, exclui os suprimidos
+   * (SuppressedLink) e faz replace-all das inferidas do projeto. As explícitas nunca
+   * são tocadas. Pares cujo source/target não é um document conhecido são descartados.
+   */
+  async writeInferredEdges(
+    projectId: string,
+    edges: InferredEdgeInput[],
+  ): Promise<void> {
+    const docs = await this.prisma.document.findMany({
+      where: { projectId },
+      select: { id: true, path: true },
+    });
+    const idByPath = new Map(docs.map((d) => [d.path, d.id]));
+    const suppressed = await this.prisma.suppressedLink.findMany({
+      where: { projectId },
+      select: { sourcePath: true, targetPath: true },
+    });
+    const suppressedSet = new Set(
+      suppressed.map((s) => `${s.sourcePath} ${s.targetPath}`),
+    );
+
+    const rows = edges
+      .filter((e) => idByPath.has(e.sourcePath) && idByPath.has(e.targetPath))
+      .filter((e) => !suppressedSet.has(`${e.sourcePath} ${e.targetPath}`))
+      .map((e) => ({
+        projectId,
+        sourceDocumentId: idByPath.get(e.sourcePath)!,
+        targetDocumentId: idByPath.get(e.targetPath)!,
+        targetPath: e.targetPath,
+        kind: 'inferred' as const,
+        reason: e.reason,
+      }));
+
+    await this.prisma.$transaction([
+      this.prisma.docLink.deleteMany({
+        where: { projectId, kind: 'inferred' },
+      }),
+      ...(rows.length ? [this.prisma.docLink.createMany({ data: rows })] : []),
+    ]);
+  }
+
+  /** Supressão manual de uma aresta inferida (persiste e some — não volta na regeneração). */
+  async suppressEdge(
+    projectId: string,
+    sourcePath: string,
+    targetPath: string,
+  ): Promise<void> {
+    await this.prisma.suppressedLink
+      .create({ data: { projectId, sourcePath, targetPath } })
+      .catch(() => {
+        /* @@unique — já suprimida, idempotente */
+      });
+    await this.prisma.docLink.deleteMany({
+      where: {
+        projectId,
+        kind: 'inferred',
+        targetPath,
+        source: { path: sourcePath },
+      },
+    });
   }
 
   /** Garante que o projeto pertence ao usuário (isolamento por dono). */
