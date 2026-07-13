@@ -1,5 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { GithubAuth } from '../../identity/application/github-auth.service';
+import {
+  GithubWritebackClient,
+  WritebackConflictError,
+} from '../../../shared/github/github-writeback.client';
+import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, Resolution } from '../../ingestion/domain/entity';
 import { InsightService } from '../../insight/application/insight.service';
@@ -7,6 +13,13 @@ import { parseDecisions } from '../domain/decisions-index';
 import { parseDeploy } from '../domain/deploy-doc';
 import { parseSkills } from '../domain/skills-index';
 import { parseWorkflow, WorkflowInfo } from '../domain/workflow-parser';
+
+/** Entidades com fallback inferido — as únicas promovíveis a doc real (Task 10/11). */
+type FallbackEntity = 'architecture' | 'design';
+const FALLBACK_DOC_PATH: Record<FallbackEntity, string> = {
+  architecture: 'docs/ARCHITECTURE.md',
+  design: 'docs/DESIGN.md',
+};
 
 export interface TabSource {
   level: 1 | 2 | 3 | 4;
@@ -26,6 +39,9 @@ export class TabsService {
     private readonly prisma: PrismaService,
     private readonly ingestion: ResolutionService,
     private readonly insight: InsightService,
+    private readonly auth: GithubAuth,
+    private readonly writeback: GithubWritebackClient,
+    private readonly sync: IngestionService,
   ) {}
 
   /** Ownership: mesmo padrão do BoardService — findFirst por id+userId. */
@@ -46,6 +62,11 @@ export class TabsService {
       if (tab === 'testing') {
         const ci = await this.ciFallback(projectId);
         if (ci.workflows.length > 0) return { source, payload: { ci, inferred: true } };
+      }
+      if (tab === 'architecture' || tab === 'design') {
+        const fallback = await this.insight.latestFallbackInternal(projectId, tab);
+        const markdown = (fallback?.content as { markdown?: string } | undefined)?.markdown;
+        if (markdown) return { source, payload: { markdown, inferred: true } };
       }
       return { source, payload: null };
     }
@@ -78,6 +99,55 @@ export class TabsService {
       default:
         return { source, payload: null };
     }
+  }
+
+  /**
+   * Promove o fallback inferido (revisado pelo usuário) a documento real do
+   * repo: commita `content` em docs/ARCHITECTURE.md ou docs/DESIGN.md
+   * (installation token, ADR-015) e dispara re-sync — no próximo sync a
+   * entidade deixa de ser "absent" e o fallback para de ser servido.
+   * Write-back segue exatamente o padrão do MappingService.putMapping.
+   */
+  async promote(
+    userId: string,
+    projectId: string,
+    tab: Entity,
+    content: string,
+  ): Promise<{ syncRunId: string }> {
+    if (tab !== 'architecture' && tab !== 'design') {
+      throw new BadRequestException(`Aba sem fallback promovível: ${tab}`);
+    }
+    const project = await this.assertOwner(userId, projectId);
+    const path = FALLBACK_DOC_PATH[tab];
+
+    const token = await this.auth.installationToken(projectId);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const baseSha = await this.writeback.getFileSha(
+          token,
+          project.owner,
+          project.name,
+          path,
+          project.defaultBranch,
+        );
+        await this.writeback.putFile({
+          token,
+          owner: project.owner,
+          repo: project.name,
+          path,
+          branch: project.defaultBranch,
+          content,
+          message: `docs: promove ${tab} inferido a documento (${path})`,
+          baseSha,
+        });
+        break;
+      } catch (err) {
+        if (err instanceof WritebackConflictError && attempt === 0) continue;
+        throw err;
+      }
+    }
+
+    return this.sync.enqueueSync(projectId);
   }
 
   private async markdownOf(projectId: string, path: string | null): Promise<string> {

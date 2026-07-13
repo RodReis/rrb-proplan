@@ -21,6 +21,8 @@ const WRITE_ALLOWLIST = [
   join('board', 'application', 'board-import.service.ts'), // cria issues (import/bootstrap)
   // Fatia 6 (ADR-014): escreve o mapeamento do usuário em .proplan/config.yml.
   join('board', 'application', 'mapping.service.ts'), // commita .proplan/config.yml (bot)
+  // Fatia 7, Task 11: promove fallback inferido a docs/ARCHITECTURE.md ou docs/DESIGN.md.
+  join('board', 'application', 'tabs.service.ts'), // commita o doc real revisado (bot)
 ];
 
 function tsFiles(dir: string): string[] {

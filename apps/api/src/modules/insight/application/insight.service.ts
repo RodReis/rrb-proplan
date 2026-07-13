@@ -379,6 +379,15 @@ export class InsightService {
   /** Fallback inferido mais recente de `entity` no projeto (ou null). Consumido pelo board. */
   async latestFallback(userId: string, projectId: string, entity: FallbackEntity) {
     await this.assertOwner(userId, projectId);
+    return this.latestFallbackInternal(projectId, entity);
+  }
+
+  /**
+   * Mesma consulta de `latestFallback`, sem owner-check. Uso interno por
+   * chamadores que já validaram o dono do projeto (ex.: TabsController via
+   * TabsService.assertOwner) — evita duplicar a checagem de ownership.
+   */
+  async latestFallbackInternal(projectId: string, entity: FallbackEntity) {
     return this.prisma.insight.findFirst({
       where: { projectId, kind: `${entity}_fallback` as InsightKind },
       orderBy: { createdAt: 'desc' },

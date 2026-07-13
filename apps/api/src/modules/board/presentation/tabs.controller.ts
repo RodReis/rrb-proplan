@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
   NotFoundException,
   Param,
+  Post,
   Put,
   Req,
   UseGuards,
@@ -60,5 +62,24 @@ export class TabsController {
     // (findFirst id+userId → NotFound) antes de resolver a aba.
     await this.tabs.assertOwner(req.userId, projectId);
     return this.tabs.getTab(projectId, tab as Entity);
+  }
+
+  @Post(':tab/promote')
+  @HttpCode(202)
+  async promote(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') projectId: string,
+    @Param('tab') tab: string,
+    @Body() body: { content: string },
+  ) {
+    if (!(ENTITIES as string[]).includes(tab)) {
+      throw new NotFoundException(`Aba desconhecida: ${tab}`);
+    }
+    if (!body.content || !body.content.trim()) {
+      throw new BadRequestException('content é obrigatório');
+    }
+    // Ownership validado no service (promote chama assertOwner) — mesmo
+    // padrão de putMapping, que delega ao service em vez de duplicar aqui.
+    return this.tabs.promote(req.userId, projectId, tab as Entity, body.content);
   }
 }

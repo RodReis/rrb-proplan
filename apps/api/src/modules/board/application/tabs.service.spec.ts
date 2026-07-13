@@ -7,8 +7,8 @@ describe('TabsService.getTab — architecture', () => {
       document: { findUnique: jest.fn().mockResolvedValue({ content: '# Arquitetura' }) },
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const insight = { latestClassifySpans: jest.fn() } as any;
-    const svc = new TabsService(prisma, ingestion, insight);
+    const insight = { latestClassifySpans: jest.fn(), latestFallbackInternal: jest.fn() } as any;
+    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any);
     const out = await svc.getTab('p1', 'architecture');
     expect(out.source.level).toBe(1);
     expect(out.payload).toEqual({ markdown: '# Arquitetura' });
@@ -19,8 +19,8 @@ describe('TabsService.getTab — architecture', () => {
     const resolution = { entity: 'architecture', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
     const prisma = { document: { findUnique: jest.fn() } } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const insight = { latestClassifySpans: jest.fn() } as any;
-    const svc = new TabsService(prisma, ingestion, insight);
+    const insight = { latestClassifySpans: jest.fn(), latestFallbackInternal: jest.fn().mockResolvedValue(null) } as any;
+    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any);
     const out = await svc.getTab('p1', 'architecture');
     expect(out.source.level).toBe(4);
     expect(out.payload).toBeNull();
@@ -33,7 +33,7 @@ describe('TabsService.getTab — architecture', () => {
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn().mockResolvedValue(['trecho A']) } as any;
-    const svc = new TabsService(prisma, ingestion, insight);
+    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any);
     const out = await svc.getTab('p1', 'architecture');
     expect(out.source.level).toBe(3);
     expect(out.source.source).toBe('inference');
@@ -50,7 +50,7 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn() } as any;
-    const out = await new TabsService(prisma, ingestion, insight).getTab('p1', 'decisions');
+    const out = await new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any).getTab('p1', 'decisions');
     expect((out.payload as any).items[0].title).toBe('Título X');
     expect((out.payload as any).inferred).toBeUndefined();
   });
@@ -66,7 +66,7 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn() } as any;
-    const out = await new TabsService(prisma, ingestion, insight).getTab('p1', 'testing');
+    const out = await new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any).getTab('p1', 'testing');
     expect((out.payload as any).inferred).toBe(true);
     expect((out.payload as any).ci.workflows[0].name).toBe('CI');
     expect(out.source.level).toBe(4); // resolução ainda é ausente; payload é fallback
@@ -76,8 +76,8 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
     const resolution = { entity: 'deploy', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
     const prisma = { document: { findUnique: jest.fn(), findMany: jest.fn() } } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
-    const insight = { latestClassifySpans: jest.fn() } as any;
-    const out = await new TabsService(prisma, ingestion, insight).getTab('p1', 'deploy');
+    const insight = { latestClassifySpans: jest.fn(), latestFallbackInternal: jest.fn().mockResolvedValue(null) } as any;
+    const out = await new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any).getTab('p1', 'deploy');
     expect(out.payload).toBeNull();
   });
 });
