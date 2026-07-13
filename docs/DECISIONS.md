@@ -25,7 +25,12 @@ Formato curto: contexto → decisão → consequências. Revisar o ADR antes de 
 1. **Commits API** — data, SHA, autor e mensagem de commit, com filtro por `path`. Nunca `diff`, nunca `patch`, nunca conteúdo de arquivo fora do escopo do ADR-003. Habilita o ADR-010.
 2. **Dependency Graph / SBOM API** (`GET /repos/{owner}/{repo}/dependency-graph/sbom`) — lista de dependências em SPDX JSON, derivada dos manifests pelo próprio GitHub. Autorizado, **não implementado no MVP**. Ressalva registrada: em repositório **privado** o Dependency Graph vem **desabilitado por padrão** — qualquer feature construída sobre ele precisa de fallback explícito ("não habilitado neste repo"), nunca falhar em silêncio. Uso previsto: aba Arquitetura ("stack detectada") e Deploy. Requer spec própria antes de codificar.
 
-O que continua proibido: clonar o repo, baixar blobs fora do escopo do ADR-003, Code Search API, varredura de `TODO`, leitura de diffs.
+**Adendo (2026-07-13) — documentos binários no escopo (preview sob demanda)**: um `.pdf`, `.docx`, `.png` ou `.html` **dentro de `docs/`** é documentação legítima, não código — o path já é autorizado. O que barrava era técnico (o pipeline lia todo blob como texto UTF-8, corrompendo binário). Fica autorizado:
+
+3. **Metadado de qualquer arquivo do escopo**: o índice `documents` lista todo arquivo de `docs/**` (e demais paths do escopo), com `kind` classificado por extensão. Só **markdown/texto** tem o conteúdo baixado e persistido (alimenta abas, grafo, resolução). Binário grava **só metadado** (path, sha, `kind`) — **nunca os bytes**.
+4. **Stream sob demanda de documentos binários** (`pdf`, `image`, `html`, `docx`): quando o usuário abre o preview, a API busca o blob do GitHub **na hora** (user token, respeitando visibilidade) e faz stream **efêmero** — nunca persiste. `docx` é transformado em texto (mammoth); `html` renderiza em `<iframe sandbox="">` sem scripts + CSP restritiva no response. O endpoint só serve paths que já estão no índice do projeto (não é proxy arbitrário). **Nunca** serve arquivo de código-fonte (fora do escopo do ADR-003).
+
+O que continua proibido: clonar o repo, baixar blobs **de código-fonte** (fora do escopo), **persistir bytes de binário no banco**, Code Search API, varredura de `TODO`, leitura de diffs.
 
 ## ADR-004 — BullMQ em vez de Kafka
 

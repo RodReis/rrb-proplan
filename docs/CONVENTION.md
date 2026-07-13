@@ -156,6 +156,13 @@ Formato livre com frontmatter. Recomendado: diagrama Mermaid na arquitetura; `TE
 - **Explícitos**: links markdown relativos (`[arquitetura](ARCHITECTURE.md)`) e wikilinks (`[[ARCHITECTURE]]`). Viram arestas `explicit`.
 - **Inferidos**: o Insight sugere arestas semânticas entre docs sem link direto; renderizadas tracejadas e removíveis pelo usuário (persistência da remoção no banco).
 
+## Documentos binários (preview sob demanda)
+
+A aba **Documentos** lista **todo** arquivo de `docs/**` (e do escopo), em árvore de pastas — inclusive binários (`.pdf`, `.docx`, `.png`, `.html`, imagens). O `kind` é classificado por extensão:
+
+- **markdown/texto** (`.md`, `.txt`, `.yml`…) alimenta as abas, o grafo e a resolução (conteúdo baixado e persistido).
+- **binário** (`.pdf`/imagem/`.html`/`.docx`) é **só preview** — nunca vira fonte de aba nem nó de grafo. O banco guarda só o metadado; os bytes são buscados sob demanda do GitHub quando o preview abre (ADR-003, adendo 2026-07-13). `.docx` mostra o texto extraído; `.html` renderiza isolado (sandbox, sem scripts); `.xlsx`/`.pptx`/desconhecido → "pré-visualização não disponível".
+
 ## Versionamento da convenção
 
 `proplan: v1`. Mudanças de formato incrementam a versão; o parser mantém compatibilidade com a anterior por, no mínimo, um ciclo.
