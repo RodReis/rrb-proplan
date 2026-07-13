@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { IngestionService } from './application/ingestion.service';
 import { LinkService } from './application/link.service';
+import { ResolutionService } from './application/resolution.service';
 import { SyncService } from './application/sync.service';
 import { GithubGitClient } from './infrastructure/github-git.client';
 import { SyncWorker } from './infrastructure/sync.worker';
@@ -16,9 +17,10 @@ import { IngestionController } from './presentation/ingestion.controller';
     IngestionService,
     SyncService,
     LinkService,
+    ResolutionService,
     GithubGitClient,
     SyncWorker,
   ],
-  exports: [IngestionService],
+  exports: [IngestionService, ResolutionService],
 })
 export class IngestionModule {}
