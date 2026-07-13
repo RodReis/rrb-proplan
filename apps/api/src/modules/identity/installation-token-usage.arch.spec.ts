@@ -19,6 +19,8 @@ const WRITE_ALLOWLIST = [
   join('board', 'application', 'mutation-applier.service.ts'), // aplica mutações na Issues API
   join('board', 'application', 'projection.service.ts'), // commita .proplan/STATUS.md
   join('board', 'application', 'board-import.service.ts'), // cria issues (import/bootstrap)
+  // Fatia 6 (ADR-014): escreve o mapeamento do usuário em .proplan/config.yml.
+  join('board', 'application', 'mapping.service.ts'), // commita .proplan/config.yml (bot)
 ];
 
 function tsFiles(dir: string): string[] {
