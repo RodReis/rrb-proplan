@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { api, SyncRun } from '../../lib/api';
+import { api, Entity, SyncRun } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
 import { GraphTab } from './GraphTab';
+import { MappingScreen } from './MappingScreen';
 import { OverviewTab } from './OverviewTab';
 import { KanbanTab } from './kanban/KanbanTab';
 import { ArchitectureTab } from './tabs/ArchitectureTab';
@@ -31,6 +32,10 @@ export function Workspace({ project, onBack }: Props) {
   const [syncNonce, setSyncNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [hasStatusDoc, setHasStatusDoc] = useState(false);
+  const [mapping, setMapping] = useState<{ open: boolean; focus: Entity | null }>({
+    open: false,
+    focus: null,
+  });
 
   const refreshDocsList = useCallback(() => {
     api
@@ -59,7 +64,7 @@ export function Workspace({ project, onBack }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       <header className="border-b border-border px-8 pt-5">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
@@ -81,13 +86,21 @@ export function Workspace({ project, onBack }: Props) {
               Abrir no GitHub ↗
             </a>
           </div>
-          <button
-            onClick={() => void handleSync()}
-            disabled={syncing}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold transition-all duration-150 hover:border-brand hover:text-brand disabled:opacity-50"
-          >
-            {syncing ? 'Sincronizando…' : 'Sincronizar'}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setMapping({ open: true, focus: null })}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand"
+            >
+              Mapeamento
+            </button>
+            <button
+              onClick={() => void handleSync()}
+              disabled={syncing}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold transition-all duration-150 hover:border-brand hover:text-brand disabled:opacity-50"
+            >
+              {syncing ? 'Sincronizando…' : 'Sincronizar'}
+            </button>
+          </div>
         </div>
 
         <nav className="mt-4 flex gap-1 overflow-x-auto">
@@ -134,24 +147,60 @@ export function Workspace({ project, onBack }: Props) {
           <GraphTab projectId={projectId} syncNonce={syncNonce} />
         )}
         {activeTab === 'architecture' && (
-          <ArchitectureTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+          <ArchitectureTab
+            projectId={projectId}
+            syncNonce={syncNonce}
+            onCorrect={() => setMapping({ open: true, focus: 'architecture' })}
+          />
         )}
         {activeTab === 'design' && (
-          <DesignTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+          <DesignTab
+            projectId={projectId}
+            syncNonce={syncNonce}
+            onCorrect={() => setMapping({ open: true, focus: 'design' })}
+          />
         )}
         {activeTab === 'decisions' && (
-          <DecisionsTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+          <DecisionsTab
+            projectId={projectId}
+            syncNonce={syncNonce}
+            onCorrect={() => setMapping({ open: true, focus: 'decisions' })}
+          />
         )}
         {activeTab === 'tests' && (
-          <TestsTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+          <TestsTab
+            projectId={projectId}
+            syncNonce={syncNonce}
+            onCorrect={() => setMapping({ open: true, focus: 'testing' })}
+          />
         )}
         {activeTab === 'deploy' && (
-          <DeployTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+          <DeployTab
+            projectId={projectId}
+            syncNonce={syncNonce}
+            onCorrect={() => setMapping({ open: true, focus: 'deploy' })}
+          />
         )}
         {activeTab === 'skills' && (
-          <SkillsTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+          <SkillsTab
+            projectId={projectId}
+            syncNonce={syncNonce}
+            onCorrect={() => setMapping({ open: true, focus: 'skills' })}
+          />
         )}
       </div>
+
+      {mapping.open && (
+        <MappingScreen
+          projectId={projectId}
+          focusEntity={mapping.focus}
+          onClose={() => setMapping({ open: false, focus: null })}
+          onSaved={() => {
+            setMapping({ open: false, focus: null });
+            setSyncNonce((n) => n + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -63,6 +63,13 @@ export interface TabResponse<P = unknown> {
   payload: P | null;
 }
 
+/** Uma linha do mapeamento manual (Fatia 6, ADR-014): entidade + resolução atual + candidatos do repo. */
+export interface MappingRow {
+  entity: Entity;
+  resolution: TabSource & { entity: Entity };
+  candidates: string[];
+}
+
 export interface DocumentSummary {
   id: string;
   path: string;
@@ -147,6 +154,12 @@ export const api = {
     request<DocGraph>(`/projects/${projectId}/graph`),
   tab: <P = unknown>(projectId: string, tab: Entity) =>
     request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
+  mapping: (projectId: string) => request<MappingRow[]>(`/projects/${projectId}/tabs/mapping`),
+  putMapping: (projectId: string, entity: Entity, path: string | null) =>
+    request<{ syncRunId: string }>(`/projects/${projectId}/tabs/mapping`, {
+      method: 'PUT',
+      body: JSON.stringify({ entity, path }),
+    }),
 
   // Board (Kanban sobre Issues — SPEC-005)
   board: (projectId: string) =>
