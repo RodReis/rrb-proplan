@@ -48,6 +48,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export class UnauthorizedError extends Error {}
 
+export type Entity = 'architecture' | 'decisions' | 'design' | 'testing' | 'deploy' | 'skills';
+export type TabSourceKind = 'convention' | 'alias' | 'config' | 'absent';
+
+export interface TabSource {
+  level: 1 | 2 | 4;
+  source: TabSourceKind;
+  path: string | null;
+  paths: string[];
+  confidence: number;
+}
+export interface TabResponse<P = unknown> {
+  source: TabSource;
+  payload: P | null;
+}
+
 export interface DocumentSummary {
   id: string;
   path: string;
@@ -130,6 +145,8 @@ export const api = {
     ),
   graph: (projectId: string) =>
     request<DocGraph>(`/projects/${projectId}/graph`),
+  tab: <P = unknown>(projectId: string, tab: Entity) =>
+    request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
 
   // Board (Kanban sobre Issues — SPEC-005)
   board: (projectId: string) =>

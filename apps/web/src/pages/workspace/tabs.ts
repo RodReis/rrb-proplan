@@ -11,6 +11,7 @@ export const WORKSPACE_TABS: TabDef[] = [
   { id: 'documents', label: 'Documentos', enabledIn: 2 },
   { id: 'kanban', label: 'Kanban', enabledIn: 5 },
   { id: 'graph', label: 'Grafo', enabledIn: 4 },
+  { id: 'decisions', label: 'Decisões', enabledIn: 6 },
   { id: 'architecture', label: 'Arquitetura', enabledIn: 6 },
   { id: 'skills', label: 'Skills & Agentes', enabledIn: 6 },
   { id: 'tests', label: 'Testes', enabledIn: 6 },
@@ -18,4 +19,4 @@ export const WORKSPACE_TABS: TabDef[] = [
   { id: 'deploy', label: 'Deploy', enabledIn: 6 },
 ];
 
-export const CURRENT_SLICE = 5;
+export const CURRENT_SLICE = 6;
