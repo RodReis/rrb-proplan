@@ -106,6 +106,37 @@ describe('ResolutionService.rebuild', () => {
       expect.objectContaining({ level: 2, source: 'alias', path: 'docs/arquitetura.md' }),
     );
   });
+
+  it('config com entity:null (decisão humana) + tinha inference → config vence, inference descartada', async () => {
+    const { prisma, created } = makePrisma(
+      [
+        {
+          path: '.proplan/config.yml',
+          isConventional: false,
+          content: 'proplan: v2\nmapping:\n  architecture: null\n',
+        },
+      ],
+      [
+        {
+          entity: 'architecture',
+          level: 3,
+          source: 'inference',
+          path: 'docs/notas.md',
+          paths: [],
+          confidence: 0.7,
+        },
+      ],
+    );
+    const svc = new ResolutionService(prisma);
+
+    await svc.rebuild('p1');
+
+    const architectureRow = created.find((r) => r.entity === 'architecture');
+    expect(architectureRow).toEqual(
+      expect.objectContaining({ level: 4, source: 'config', path: null }),
+    );
+    expect(architectureRow.source).not.toBe('inference');
+  });
 });
 
 describe('ResolutionService.resolutionOf', () => {
