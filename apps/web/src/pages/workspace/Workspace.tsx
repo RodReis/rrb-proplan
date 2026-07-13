@@ -6,6 +6,11 @@ import { GraphTab } from './GraphTab';
 import { OverviewTab } from './OverviewTab';
 import { KanbanTab } from './kanban/KanbanTab';
 import { ArchitectureTab } from './tabs/ArchitectureTab';
+import { DecisionsTab } from './tabs/DecisionsTab';
+import { DeployTab } from './tabs/DeployTab';
+import { DesignTab } from './tabs/DesignTab';
+import { SkillsTab } from './tabs/SkillsTab';
+import { TestsTab } from './tabs/TestsTab';
 import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
 
 /** Shape mínimo para abrir o workspace (repo do catálogo ou projeto gerenciado). */
@@ -130,6 +135,21 @@ export function Workspace({ project, onBack }: Props) {
         )}
         {activeTab === 'architecture' && (
           <ArchitectureTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+        )}
+        {activeTab === 'design' && (
+          <DesignTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+        )}
+        {activeTab === 'decisions' && (
+          <DecisionsTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+        )}
+        {activeTab === 'tests' && (
+          <TestsTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+        )}
+        {activeTab === 'deploy' && (
+          <DeployTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
+        )}
+        {activeTab === 'skills' && (
+          <SkillsTab projectId={projectId} syncNonce={syncNonce} onCorrect={() => {}} />
         )}
       </div>
     </div>

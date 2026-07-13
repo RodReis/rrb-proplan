@@ -271,6 +271,34 @@ export interface InsightSummary {
   createdAt: string;
 }
 
+export interface DecisionItem {
+  title: string;
+  status: string | null;
+  date: string | null;
+  path: string;
+  anchor: string | null;
+}
+
+export interface DeployEnv {
+  env: string;
+  status: string;
+  platform: string;
+  url: string | null;
+}
+
+export interface SkillEntry {
+  name: string;
+  description: string | null;
+  path: string;
+}
+
+export interface WorkflowInfo {
+  file: string;
+  name: string;
+  triggers: string[];
+  jobs: { name: string; runsOn: string | null }[];
+}
+
 /** Projeto gerenciado como retornado por GET /catalog/projects. */
 export interface Project {
   id: string;
