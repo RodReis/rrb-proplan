@@ -86,7 +86,7 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
 
   return (
     <div className="flex h-full">
-      <nav className="w-72 shrink-0 overflow-y-auto border-r border-border p-2">
+      <nav className="w-[440px] shrink-0 overflow-y-auto border-r border-border p-2">
         {isSyncing && (
           <div className="mb-2 rounded-md bg-brand/5 px-3 py-2 text-xs text-brand">
             Sincronizando…
@@ -270,7 +270,7 @@ function DocxViewer({
 function DocsSkeleton() {
   return (
     <div className="flex h-full">
-      <div className="w-72 shrink-0 space-y-2 border-r border-border p-4">
+      <div className="w-[440px] shrink-0 space-y-2 border-r border-border p-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-8 animate-pulse rounded-md bg-border/50" />
         ))}
