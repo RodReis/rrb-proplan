@@ -1,5 +1,5 @@
 import { InsightService } from './insight.service';
-import { fakeRecorder } from './fake-recorder';
+import { fakeRecorder, fakeUsageGate } from './fake-recorder';
 
 function makeSvc(overrides: {
   prisma?: any;
@@ -19,7 +19,7 @@ function makeSvc(overrides: {
   const resolution =
     overrides.resolution ??
     ({ resolutionOf: jest.fn().mockResolvedValue({ entity: 'architecture', level: 4, source: 'absent', path: null, paths: [], confidence: 0 }) } as any);
-  const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
+  const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder(), fakeUsageGate());
   return { svc, prisma, settings, llmFactory, ingestion, resolution };
 }
 

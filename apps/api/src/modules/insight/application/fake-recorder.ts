@@ -1,4 +1,17 @@
 import { LlmUsageRecorder } from './llm-usage.recorder';
+import { UsageService } from './usage.service';
+
+/** Gate de teto fake que sempre permite gastar (para specs que não testam o teto). */
+export function fakeUsageGate(): UsageService {
+  return {
+    async canSpend() {
+      return true;
+    },
+    async canSpendForUser() {
+      return true;
+    },
+  } as unknown as UsageService;
+}
 
 /**
  * Recorder fake para os specs do InsightService: replica o comportamento
