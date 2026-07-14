@@ -129,4 +129,11 @@ describe('transitionTo', () => {
     expect(t.removeLabels).toContain(DISCARDED_LABEL);
     expect(t.removeLabels).toContain(FINALIZED_LABEL);
   });
+
+  it('coluna inválida (ex.: número vazado do dnd) → lança, não retorna undefined', () => {
+    // Regressão do bug: soltar sobre um card fazia toColumn virar o número da
+    // issue; transitionTo(12) retornava undefined e estourava undefined.removeLabels.
+    expect(() => transitionTo(12 as never)).toThrow(/inválida/);
+    expect(() => transitionTo('finalizado' as never)).toThrow(/inválida/); // valor != enum
+  });
 });

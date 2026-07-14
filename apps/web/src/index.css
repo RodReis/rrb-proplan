@@ -183,12 +183,22 @@ button:active {
   padding: 10px 12px;
 }
 .act-summary-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-family: var(--mono);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--g-ai);
   margin-bottom: 6px;
+}
+.act-summary-when {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--term-faint);
+  font-weight: 400;
 }
 .act-summary-body {
   font-size: 13px;

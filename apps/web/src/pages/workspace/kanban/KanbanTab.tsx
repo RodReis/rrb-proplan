@@ -89,7 +89,12 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
     setActiveCard(null);
     if (state.status !== 'ready' || !e.over) return;
     const number = Number(e.active.id);
-    const toColumn = e.over.id as BoardColumn;
+    // `over.id` é a COLUNA quando se solta na área vazia, mas é o NÚMERO de um
+    // card quando se solta SOBRE outro card (o card é sortable). Nesse caso a
+    // coluna de destino sai do `data.card.column` do card alvo — senão
+    // `toColumn` viraria um número e `transitionTo` receberia lixo.
+    const overCard = e.over.data.current?.card as BoardCard | undefined;
+    const toColumn = (overCard ? overCard.column : e.over.id) as BoardColumn;
     const card = findCard(state.board, number);
     if (!card || card.column === toColumn) return;
 

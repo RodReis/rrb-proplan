@@ -46,7 +46,10 @@ function LastSyncSummary({ items }: { items: ActivityItem[] }) {
 
   return (
     <section className="act-summary">
-      <div className="act-summary-h">Última rodada de IA</div>
+      <div className="act-summary-h">
+        <span>Última rodada de IA</span>
+        <span className="act-summary-when">{relativeTime(ai[0].at)}</span>
+      </div>
       <div className="act-summary-body">
         <strong>{generated.length}</strong> gerad{generated.length === 1 ? 'a' : 'as'}
         {' · '}
