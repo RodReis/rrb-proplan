@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityItem, ActivityItemKind, api, OperationView } from '../../lib/api';
 
 interface Props {
@@ -9,7 +9,12 @@ interface Props {
   refreshNonce: number;
 }
 
-const RUNNING_POLL_MS = 1500;
+// Polling adaptativo do painel (o F5 manual morreu — SPEC-010): rápido enquanto
+// há trabalho chegando, lento em repouso. Os jobs de IA são assíncronos e
+// terminam depois do sync HTTP; o painel precisa se acompanhar sozinho.
+const ACTIVE_POLL_MS = 2000; // há operação em curso ou o feed acabou de mudar
+const REST_POLL_MS = 15000; // estabilizou — sondagem lenta pega mudança externa
+const QUIET_TICKS_TO_REST = 3; // ~6s sem novidade → entra em repouso
 
 /** Grupo visual por tipo de item (SPEC-010 + polish terminal-carbono). */
 type Group = 'ai' | 'write' | 'sync';
@@ -80,7 +85,8 @@ function LastSyncSummary({ items }: { items: ActivityItem[] }) {
         </div>
       )}
       <div className="act-summary-next">
-        Próximo passo: <b>Sincronizar</b> após editar docs → <b>recarregar (F5)</b> → o resultado aparece na aba correspondente (Grafo, Arquitetura, Visão Geral).
+        Edite os docs e <b>Sincronize</b> — este painel acompanha sozinho e mostra
+        cada inferência assim que a IA termina.
       </div>
     </section>
   );
@@ -146,39 +152,58 @@ export function ActivityPanel({ projectId, projectName, onClose, refreshNonce }:
   const [includeSyncs, setIncludeSyncs] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Polling adaptativo: os jobs de IA (summary/edges/classify) rodam ASSÍNCRONOS
+  // (BullMQ), terminando ~30s DEPOIS do sync HTTP retornar. Sem isto, o feed
+  // buscaria cedo demais e o usuário precisaria de F5 para ver as linhas novas.
+  // Aqui o painel se acompanha sozinho: recarrega feed+running a cada tick e
+  // PARA quando não há operação em curso e o feed ficou 2 ciclos sem mudar
+  // (a IA estabilizou). Reancorado a cada sync via refreshNonce.
   useEffect(() => {
     let active = true;
+    let quietTicks = 0;
+    let lastTopId: string | null = null;
+
     async function tick() {
       if (!active) return;
+      let running: OperationView[] = [];
+      let feedChanged = false;
       try {
-        setRunning(await api.activityRunning(projectId));
+        [running] = await Promise.all([
+          api.activityRunning(projectId).then((r) => {
+            setRunning(r);
+            return r;
+          }),
+          api.activityFeed(projectId, { includeSyncs }).then((feed) => {
+            if (!active) return;
+            const topId = feed.items[0]?.id ?? null;
+            feedChanged = topId !== lastTopId;
+            lastTopId = topId;
+            setItems(feed.items);
+            setCursor(feed.nextCursor);
+            setLoading(false);
+          }),
+        ]);
       } catch {
-        /* transitório */
+        /* transitório — segue tentando */
       }
-      if (active) setTimeout(() => void tick(), RUNNING_POLL_MS);
+      if (!active) return;
+      // Continua rápido enquanto há operação em curso OU o feed acabou de mudar
+      // (IA ainda chegando); senão conta silêncio e desacelera/para.
+      if (running.length > 0 || feedChanged) quietTicks = 0;
+      else quietTicks += 1;
+      if (quietTicks < QUIET_TICKS_TO_REST) {
+        setTimeout(() => void tick(), ACTIVE_POLL_MS);
+      } else {
+        // Repouso: uma sondagem lenta ocasional pega mudanças vindas de fora
+        // (outro cliente, webhook) sem manter o painel em polling apertado.
+        setTimeout(() => void tick(), REST_POLL_MS);
+      }
     }
     void tick();
     return () => {
       active = false;
     };
-  }, [projectId]);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const feed = await api.activityFeed(projectId, { includeSyncs });
-      setItems(feed.items);
-      setCursor(feed.nextCursor);
-    } catch {
-      /* transitório */
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, includeSyncs]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload, refreshNonce]);
+  }, [projectId, includeSyncs, refreshNonce]);
 
   async function loadMore() {
     if (!cursor) return;
