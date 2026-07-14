@@ -19,6 +19,22 @@ const SOURCE_BADGE: Record<string, string> = {
   absent: 'ausente',
 };
 
+/**
+ * Estado de uma resolução, para a UI (CONVENTION.md + ADR-014): os três são
+ * distintos e a tela precisa distingui-los —
+ * - `file`: arquivo único (`path` set) → editável pelo `<select>`.
+ * - `collection`: diretório/coleção (`path` null, `paths` não vazio, ex.: `adr/`,
+ *   `.claude/skills/`) → resolvida e populada; NÃO é opção de `<select>` de
+ *   arquivo único e se ajusta no `.proplan/config.yml`, não aqui.
+ * - `absent`: nada resolve (`path` null, `paths` vazio) → "(marcar ausente)".
+ */
+type ResolutionKind = 'file' | 'collection' | 'absent';
+function resolutionKind(r: MappingRow['resolution']): ResolutionKind {
+  if (r.path) return 'file';
+  if (r.paths.length > 0) return 'collection';
+  return 'absent';
+}
+
 interface Props {
   projectId: string;
   focusEntity: Entity | null;
@@ -110,19 +126,30 @@ export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Prop
                   {r.resolution.path ?? (r.resolution.paths.length ? r.resolution.paths.join(', ') : '—')}
                 </div>
                 <div className="mt-3 flex items-center gap-2">
-                  <select
-                    className="rounded-md border border-border bg-bg px-2 py-1 text-xs"
-                    defaultValue={r.resolution.path ?? ''}
-                    disabled={operationId !== null}
-                    onChange={(e) => save(r.entity, e.target.value || null)}
-                  >
-                    <option value="">(marcar ausente)</option>
-                    {r.candidates.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  {resolutionKind(r.resolution) === 'collection' ? (
+                    // Coleção (diretório): resolvida e populada — não é escolha de
+                    // arquivo único. Read-only aqui; ajusta-se no .proplan/config.yml.
+                    <p className="text-xs text-text-muted">
+                      <span className="font-medium text-text">Coleção</span> de{' '}
+                      {r.resolution.paths.length} documento
+                      {r.resolution.paths.length === 1 ? '' : 's'} — ajuste no{' '}
+                      <code>.proplan/config.yml</code>.
+                    </p>
+                  ) : (
+                    <select
+                      className="rounded-md border border-border bg-bg px-2 py-1 text-xs"
+                      value={r.resolution.path ?? ''}
+                      disabled={operationId !== null}
+                      onChange={(e) => save(r.entity, e.target.value || null)}
+                    >
+                      <option value="">(marcar ausente)</option>
+                      {r.candidates.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </li>
             ))}

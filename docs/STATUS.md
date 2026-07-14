@@ -31,7 +31,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - (vazio)
 
 ## Em Andamento
-- (vazio)
+- **Correção — tela de Mapeamento exibe coleção como "ausente"** (bug documentado, achado no dogfooding do `rrb-organize`): `MappingScreen.tsx` distingue agora os **3 estados** (CONVENTION.md + ADR-014): arquivo único → `<select>` editável; **coleção** (`path` null, `paths` não vazio — `adr/`, `.claude/skills/`, alias) → read-only "Coleção de N documentos · ajuste no `.proplan/config.yml`", **sem** o `<select>` de arquivo único (elimina o "(marcar ausente)" enganoso e o risco de sobrescrever); ausente (`paths` vazio) → "(marcar ausente)". `<select>` virou controlado (`value`). Validado contra 6 coleções reais no banco (decisions/skills por alias em rrb-adv/proplan/organize). Build limpo. **Entregue — PR refs #36.**
 
 ## Feito
 - **Correção — semântica de `Feito` no board (ADR-011)** (bug documentado, achado no aceite da 7.7): o código do board estava na **versão pré-correção** do ADR-011 (`Feito = closed` sem label), defasado desde 2026-07-13. Ao aplicar `proplan:done` na #31 (correto pelo processo), o card caía em **Backlog** — o `columnOf` ignorava `proplan:done`. Corrigido para a doc normativa (ADR-011 "Erro corrigido em 2026-07-13" + SPEC-005): **Feito = `open` + `proplan:done`** (a issue só fecha no aceite). 2º bug na mesma função: `closed` sem label ia para Feito → agora vai para **Finalizado** com badge "fechada fora do ProPlan" (`Issue.closedOutside`, SPEC-005 linha 119). +UX (decisão do PI): Atividade abre ao concluir o sync; coluna Finalizado nasce aberta. Resíduo da SPEC-005 (versão antiga) limpo. 294 testes, builds limpos. PR #33 mergeado. **Aceito pelo PI** (em: 2026-07-14)
