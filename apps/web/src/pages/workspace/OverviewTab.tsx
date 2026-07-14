@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, Freshness, InsightSummary } from '../../lib/api';
+import { api, CurrentMonthUsage, Freshness, InsightSummary } from '../../lib/api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { BootstrapDialog } from './BootstrapDialog';
 
@@ -18,6 +18,7 @@ type SummaryState =
 export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
   const [state, setState] = useState<SummaryState>({ status: 'loading' });
   const [freshness, setFreshness] = useState<Freshness | null>(null);
+  const [usage, setUsage] = useState<CurrentMonthUsage | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [bootstrapOpen, setBootstrapOpen] = useState(false);
@@ -29,6 +30,7 @@ export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
       .then((summary) => setState({ status: 'ready', summary }))
       .catch((err) => setState({ status: 'error', message: String(err) }));
     api.freshness(projectId).then(setFreshness).catch(() => setFreshness(null));
+    api.usageCurrentMonth().then(setUsage).catch(() => setUsage(null));
   }, [projectId]);
 
   useEffect(load, [load]);
@@ -49,6 +51,7 @@ export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-8 py-6">
       {freshness && <FreshnessBar freshness={freshness} />}
+      {usage && <UsageAlert usage={usage} />}
 
       {state.status === 'loading' && <SummarySkeleton />}
 
@@ -207,6 +210,38 @@ function SummarySkeleton() {
       {Array.from({ length: 3 }).map((_, i) => (
         <div key={i} className="h-24 animate-pulse rounded-lg bg-border/50" />
       ))}
+    </div>
+  );
+}
+
+/**
+ * Faixa de gasto de IA (SPEC-009). Só aparece quando passou do alerta ou bateu
+ * o teto — silenciosa dentro do orçamento (como a de frescor, é sinal, não ruído).
+ */
+function UsageAlert({ usage }: { usage: CurrentMonthUsage }) {
+  const spent = Number(usage.costUsd);
+  const alert = Number(usage.alertUsd);
+  const overAlert = alert > 0 && spent >= alert;
+  if (!usage.blocked && !overAlert) return null;
+
+  const color = usage.blocked ? 'var(--color-error)' : 'var(--color-warning)';
+  const money = (v: string) => `$${Number(v).toFixed(2)}`;
+  return (
+    <div
+      className="flex items-center gap-2 rounded-md px-4 py-2.5 text-sm"
+      style={{
+        border: `1px solid color-mix(in oklab, ${color} 30%, transparent)`,
+        background: `color-mix(in oklab, ${color} 8%, transparent)`,
+        color,
+      }}
+    >
+      <span aria-hidden>{usage.blocked ? '⛔' : '⚠️'}</span>
+      <span>
+        {usage.blocked
+          ? `Teto de gasto de IA atingido (${money(usage.costUsd)}/${money(usage.capUsd)}) — inferências pausadas este mês.`
+          : `Gasto de IA acima do alerta (${money(usage.costUsd)} de ${money(usage.capUsd)} do teto).`}{' '}
+        <span className="opacity-80">Ajuste em Configurações → Uso de IA.</span>
+      </span>
     </div>
   );
 }

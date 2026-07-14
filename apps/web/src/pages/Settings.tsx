@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, LlmProvider, Settings as SettingsData } from '../lib/api';
+import { UsageTab } from './UsageTab';
 
 interface Props {
   onClose: () => void;
@@ -16,9 +17,12 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready'; data: SettingsData };
 
+type Tab = 'general' | 'usage';
+
 export function Settings({ onClose }: Props) {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<Tab>('general');
 
   useEffect(() => {
     api
@@ -44,11 +48,26 @@ export function Settings({ onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-lg border border-border bg-surface p-6 shadow-lg"
+        className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg border border-border bg-surface shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold">Configurações</h2>
+        <div className="flex items-center justify-between border-b border-border px-6 pt-5">
+          <div className="flex gap-1">
+            {(['general', 'usage'] as Tab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={
+                  'rounded-t-md px-3 py-2 text-sm transition-colors ' +
+                  (tab === t
+                    ? 'font-semibold text-brand'
+                    : 'text-text-muted hover:text-text')
+                }
+              >
+                {t === 'general' ? 'Configurações' : 'Uso de IA'}
+              </button>
+            ))}
+          </div>
           <button
             onClick={onClose}
             className="text-text-muted transition-colors duration-150 hover:text-text"
@@ -57,13 +76,15 @@ export function Settings({ onClose }: Props) {
           </button>
         </div>
 
-        {state.status === 'loading' && (
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        {tab === 'usage' && <UsageTab />}
+        {tab === 'general' && state.status === 'loading' && (
           <div className="h-40 animate-pulse rounded-md bg-border/50" />
         )}
-        {state.status === 'error' && (
+        {tab === 'general' && state.status === 'error' && (
           <p className="text-sm text-error">{state.message}</p>
         )}
-        {state.status === 'ready' && (
+        {tab === 'general' && state.status === 'ready' && (
           <div className="space-y-6">
             <section>
               <h3 className="mb-2 text-sm font-medium">Provedor de IA</h3>
@@ -128,8 +149,60 @@ export function Settings({ onClose }: Props) {
                 <span className="text-sm text-text-muted">dias</span>
               </div>
             </section>
+
+            <section>
+              <h3 className="mb-1 text-sm font-medium">Teto de gasto de IA</h3>
+              <p className="mb-2 text-xs text-text-muted">
+                USD por mês, somando todos os provedores. Ao passar do{' '}
+                <strong>teto</strong>, nenhuma chamada de IA é feita até você ajustar. Use{' '}
+                <code>0</code> no teto para desligar o bloqueio.
+              </p>
+              <div className="flex flex-wrap items-end gap-4">
+                <label className="flex flex-col gap-1 text-xs text-text-muted">
+                  Alerta (âmbar)
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-text-muted">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      defaultValue={state.data.llmAlertUsdMonthly}
+                      disabled={saving}
+                      onBlur={(e) => {
+                        const v = e.target.value;
+                        if (Number(v) >= 0 && v !== state.data.llmAlertUsdMonthly) {
+                          void save({ llmAlertUsdMonthly: v });
+                        }
+                      }}
+                      className="w-24 rounded-md border border-border px-3 py-1.5 text-sm tabular-nums"
+                    />
+                  </div>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-text-muted">
+                  Teto (bloqueia)
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-text-muted">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      defaultValue={state.data.llmHardCapUsdMonthly}
+                      disabled={saving}
+                      onBlur={(e) => {
+                        const v = e.target.value;
+                        if (Number(v) >= 0 && v !== state.data.llmHardCapUsdMonthly) {
+                          void save({ llmHardCapUsdMonthly: v });
+                        }
+                      }}
+                      className="w-24 rounded-md border border-border px-3 py-1.5 text-sm tabular-nums"
+                    />
+                  </div>
+                </label>
+              </div>
+            </section>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
