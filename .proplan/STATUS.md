@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-13
+updated: 2026-07-14
 ---
 <!-- gerado pelo ProPlan a partir das Issues — não edite à mão -->
 # Status
@@ -24,7 +24,7 @@ updated: 2026-07-13
 
 ## Em Andamento
 
-- Fatia 7.6 — Operação assíncrona visível + painel de Atividade (#19)
+_(vazio)_
 
 ## Feito
 
@@ -32,8 +32,11 @@ _(vazio)_
 
 ## Finalizado
 
+- Fatia 7.7 — Invalidação de inferência por inputHash (SPEC-011) (#31, prio: alta, finalizado em: 2026-07-14)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (#12, prio: baixa, finalizado em: 2026-07-13)
 - Fatia 6 — Resolução de documentos (ADR-014) + abas: DocumentResolver (convenção → alias → .proplan/config.yml → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção adr/), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (#11, prio: baixa, finalizado em: 2026-07-13)
+- Fatia 7.6 — Operação assíncrona visível + painel de Atividade (#19, finalizado em: 2026-07-14)
+- Fatia 7.5 — Consumo de IA: ledger, custo e teto de gasto (#25, finalizado em: 2026-07-14)
 
 ## Descartado
 
