@@ -215,6 +215,7 @@ export function Workspace({ project, onBack }: Props) {
       {activityOpen && (
         <ActivityPanel
           projectId={projectId}
+          projectName={project.name}
           refreshNonce={syncNonce}
           onClose={() => setActivityOpen(false)}
         />
