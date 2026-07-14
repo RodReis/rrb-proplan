@@ -4,6 +4,7 @@ import { api, Entity, SyncRun } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
 import { GraphTab } from './GraphTab';
 import { MappingScreen } from './MappingScreen';
+import { ActivityPanel } from './ActivityPanel';
 import { OverviewTab } from './OverviewTab';
 import { KanbanTab } from './kanban/KanbanTab';
 import { ArchitectureTab } from './tabs/ArchitectureTab';
@@ -32,6 +33,7 @@ export function Workspace({ project, onBack }: Props) {
   const [syncNonce, setSyncNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [hasStatusDoc, setHasStatusDoc] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [mapping, setMapping] = useState<{ open: boolean; focus: Entity | null }>({
     open: false,
     focus: null,
@@ -87,6 +89,12 @@ export function Workspace({ project, onBack }: Props) {
             </a>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setActivityOpen((o) => !o)}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand"
+            >
+              Atividade
+            </button>
             <button
               onClick={() => setMapping({ open: true, focus: null })}
               className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand"
@@ -201,6 +209,14 @@ export function Workspace({ project, onBack }: Props) {
             setMapping({ open: false, focus: null });
             setSyncNonce((n) => n + 1);
           }}
+        />
+      )}
+
+      {activityOpen && (
+        <ActivityPanel
+          projectId={projectId}
+          refreshNonce={syncNonce}
+          onClose={() => setActivityOpen(false)}
         />
       )}
     </div>
