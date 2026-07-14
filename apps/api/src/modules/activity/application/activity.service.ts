@@ -9,6 +9,7 @@ import {
   OperationKind,
   Step,
 } from '../domain/operation-steps';
+import { ActivityItem, buildFeed } from '../domain/activity-feed';
 
 export interface OperationView {
   id: string;
@@ -23,13 +24,15 @@ export interface OperationView {
 }
 
 /**
- * Interface pública do módulo `activity` (SPEC-010). Os 4 fluxos de escrita
- * (promote, mapping, bootstrap, board_mutation) — em board e insight — criam
- * uma Operation e avançam seus passos por aqui. O front faz polling por id.
+ * Interface pública do módulo `activity` (SPEC-010). Os 3 fluxos que congelam
+ * (promote, mapping, bootstrap) — em board e insight — criam uma Operation e
+ * avançam seus passos por aqui. O front faz polling por id. O board_mutation
+ * ficou de fora de propósito (Kanban já é otimista — ver operation-steps.ts).
  *
  * O estado mora no banco (não na tela): F5 no meio da operação volta mostrando
- * o passo atual. NÃO é fonte do histórico — o histórico é projeção sobre
- * SyncRun/Insight/BoardMutation (ADR-017 aplicado internamente).
+ * o passo atual. A Operation NÃO é fonte do histórico — o histórico (feed) é
+ * projeção de leitura sobre Operation+Insight+BoardMutation+SyncRun, sem tabela
+ * duplicada (ADR-017 aplicado internamente).
  */
 @Injectable()
 export class ActivityService {
@@ -145,5 +148,89 @@ export class ActivityService {
       startedAt: op.startedAt,
       finishedAt: op.finishedAt,
     };
+  }
+
+  /** Operações em curso (seção "Agora" do painel). Valida o dono. */
+  async running(userId: string, projectId: string): Promise<OperationView[]> {
+    await this.assertOwner(userId, projectId);
+    const ops = await this.prisma.operation.findMany({
+      where: { projectId, status: 'running' },
+      orderBy: { startedAt: 'desc' },
+    });
+    // Deriva a conclusão de cada uma (mesma regra do get) para não mostrar como
+    // "em curso" algo cujo SyncRun já terminou.
+    return Promise.all(ops.map((o) => this.get(userId, o.id)));
+  }
+
+  /**
+   * Histórico do painel (seção "Histórico"): projeção de leitura sobre as 4
+   * fontes, ordem reversa, paginada por cursor (timestamp ISO). `includeSyncs`
+   * revela os SyncRun (inclusive `noop`) — por padrão ficam ocultos para o feed
+   * não encher de "nada mudou". Não duplica evento (ADR-017).
+   */
+  async feed(
+    userId: string,
+    projectId: string,
+    opts: { cursor?: string; includeSyncs?: boolean; limit?: number } = {},
+  ): Promise<{ items: ActivityItem[]; nextCursor: string | null }> {
+    const project = await this.assertOwner(userId, projectId);
+    const limit = Math.min(opts.limit ?? 30, 100);
+    const before = opts.cursor ? new Date(opts.cursor) : undefined;
+    const take = limit + 1; // por fonte: o suficiente para preencher a página
+
+    const [operations, insights, mutations, syncs] = await Promise.all([
+      this.prisma.operation.findMany({
+        where: { projectId, ...(before ? { startedAt: { lt: before } } : {}) },
+        orderBy: { startedAt: 'desc' },
+        take,
+        select: { id: true, kind: true, status: true, commitUrl: true, startedAt: true },
+      }),
+      this.prisma.insight.findMany({
+        where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take,
+        select: { id: true, kind: true, provider: true, model: true, createdAt: true },
+      }),
+      this.prisma.boardMutation.findMany({
+        where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take,
+        select: { id: true, type: true, payload: true, status: true, createdAt: true },
+      }),
+      opts.includeSyncs
+        ? this.prisma.syncRun.findMany({
+            where: { projectId, ...(before ? { startedAt: { lt: before } } : {}) },
+            orderBy: { startedAt: 'desc' },
+            take,
+            select: { id: true, status: true, added: true, updated: true, removed: true, startedAt: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const issueUrl = (number?: number) =>
+      number ? `https://github.com/${project.owner}/${project.name}/issues/${number}` : null;
+
+    const all = buildFeed({
+      operations,
+      insights,
+      mutations: mutations.map((m) => ({
+        ...m,
+        issueUrl: issueUrl((m.payload as { number?: number } | null)?.number),
+      })),
+      syncs,
+    });
+
+    const page = all.slice(0, limit);
+    const nextCursor = all.length > limit ? page[page.length - 1].at : null;
+    return { items: page, nextCursor };
+  }
+
+  private async assertOwner(userId: string, projectId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, userId },
+      select: { id: true, owner: true, name: true },
+    });
+    if (!project) throw new NotFoundException('Projeto não encontrado');
+    return project;
   }
 }

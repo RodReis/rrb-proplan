@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { ActivityService } from './application/activity.service';
 import { ActivityController } from './presentation/activity.controller';
+import { ActivityFeedController } from './presentation/activity-feed.controller';
 
 /**
  * Módulo `activity` (SPEC-010, Fatia 7.6): dono do modelo Operation e da
@@ -11,7 +12,7 @@ import { ActivityController } from './presentation/activity.controller';
  */
 @Module({
   imports: [IdentityModule],
-  controllers: [ActivityController],
+  controllers: [ActivityController, ActivityFeedController],
   providers: [ActivityService],
   exports: [ActivityService],
 })

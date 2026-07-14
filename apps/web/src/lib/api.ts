@@ -114,6 +114,21 @@ export interface OperationView {
   finishedAt: string | null;
 }
 
+/** Um item do histórico do painel de Atividade (SPEC-010, projeção de leitura). */
+export type ActivityItemKind = 'operation' | 'insight' | 'board_mutation' | 'sync';
+export interface ActivityItem {
+  id: string;
+  kind: ActivityItemKind;
+  at: string;
+  title: string;
+  detail: string | null;
+  evidenceUrl: string | null;
+}
+export interface ActivityFeed {
+  items: ActivityItem[];
+  nextCursor: string | null;
+}
+
 export type SyncStatus = 'queued' | 'running' | 'success' | 'noop' | 'failed';
 
 export interface SyncRun {
@@ -202,6 +217,15 @@ export const api = {
     }),
   operation: (operationId: string) =>
     request<OperationView>(`/operations/${operationId}`),
+  activityRunning: (projectId: string) =>
+    request<OperationView[]>(`/projects/${projectId}/activity/running`),
+  activityFeed: (projectId: string, opts: { cursor?: string; includeSyncs?: boolean } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.cursor) q.set('cursor', opts.cursor);
+    if (opts.includeSyncs) q.set('includeSyncs', 'true');
+    const qs = q.toString();
+    return request<ActivityFeed>(`/projects/${projectId}/activity${qs ? `?${qs}` : ''}`);
+  },
   mapping: (projectId: string) =>
     request<{ rows: MappingRow[]; proplanConfigInvalid: boolean }>(
       `/projects/${projectId}/tabs/mapping`,
