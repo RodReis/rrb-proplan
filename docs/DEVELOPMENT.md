@@ -232,7 +232,7 @@ Dois defeitos **latentes** que esta fatia **expôs** mas não causou — ambos d
 1. **`docsScopeHash` conta arquivos `skipped`.** Um blob pulado (ex.: PDF >512 KB tratado como texto no passado) entra no hash (está na árvore) mas nunca vira `document`. Como o hash não muda, o sync é sempre `noop` e o arquivo fica invisível — mesmo depois de a lógica que o pulava ser corrigida. No aceite, os 3 PDFs só entraram após limpar o hash à mão. Correção possível: o hash contar só o que realmente foi ingerido, ou uma migration de fatia forçar re-sync.
 2. **Doc texto→binário mantém o `content` de texto** até um reprocessamento que o toque por SHA. O ramo binário do sync limpa `content` no upsert, mas só quando o doc entra em `added`/`updated`; docs pré-fatia com mesmo SHA não reprocessam. No aceite, ~2 MB de lixo (imagens lidas como texto) ficaram no banco; limpos à mão. Mesma raiz do #1: mudança de lógica não invalida a idempotência por SHA/hash.
 
-## Fatia 7 — Insight semântico (SPEC-007, `aprovada-pi`) — `feito` (aguardando aceite runtime do PI)
+## Fatia 7 — Insight semântico (SPEC-007, `aprovada-pi`) — `feito` (aceito pelo PI em 2026-07-14)
 
 Entregue pelo Claude Code (design + plano em `docs/superpowers/`, execução subagent-driven: implementer + review por task, review final whole-branch). **Onde a convenção não alcança, a IA completa** — sempre rotulada, versionada por hash, com caminho de promoção a documento real. Fronteira ADR-001 respeitada (o `insight` gera, o `ingestion`/`board` persistem via métodos públicos); nenhuma IA no render (ADR-002).
 
