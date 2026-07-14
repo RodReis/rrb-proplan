@@ -35,6 +35,8 @@ export class OpenAiCompatClient implements LlmClient {
           { role: 'system', content: req.system },
           { role: 'user', content: req.user },
         ],
+        // OpenRouter devolve o custo real da chamada quando pedimos usage.
+        ...(this.provider === 'openrouter' ? { usage: { include: true } } : {}),
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -44,13 +46,25 @@ export class OpenAiCompatClient implements LlmClient {
     const body = (await res.json()) as {
       choices: Array<{ message: { content: string } }>;
       model: string;
-      usage?: { prompt_tokens: number; completion_tokens: number };
+      usage?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        prompt_tokens_details?: { cached_tokens?: number };
+        cost?: number; // OpenRouter: custo real em USD
+      };
     };
     return {
       text: body.choices[0]?.message.content ?? '',
       model: body.model,
       inputTokens: body.usage?.prompt_tokens ?? 0,
       outputTokens: body.usage?.completion_tokens ?? 0,
+      // OpenAI/OpenRouter só têm cache read; write não existe → 0 (SPEC-009).
+      cacheCreationTokens: 0,
+      cacheReadTokens: body.usage?.prompt_tokens_details?.cached_tokens ?? 0,
+      // OpenRouter informa o custo → vence a nossa tabela (costSource: provider).
+      ...(this.provider === 'openrouter' && typeof body.usage?.cost === 'number'
+        ? { providerCostUsd: body.usage.cost }
+        : {}),
     };
   }
 }

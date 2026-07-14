@@ -1,4 +1,5 @@
 import { InsightService } from './insight.service';
+import { fakeRecorder } from './fake-recorder';
 
 describe('InsightService.generateEdges', () => {
   it('idempotente: marker do hash existe → não chama IA', async () => {
@@ -10,7 +11,7 @@ describe('InsightService.generateEdges', () => {
     const ingestion = { writeInferredEdges: jest.fn() } as any;
     const settings = { providerOf: jest.fn() } as any;
     const resolution = {} as any;
-    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution);
+    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
     await svc.generateEdges('p1');
     expect(llmFactory.create).not.toHaveBeenCalled();
     expect(ingestion.writeInferredEdges).not.toHaveBeenCalled();
@@ -28,7 +29,7 @@ describe('InsightService.generateEdges', () => {
     const ingestion = { writeInferredEdges: jest.fn().mockResolvedValue(undefined) } as any;
     const settings = { providerOf: jest.fn().mockResolvedValue('anthropic') } as any;
     const resolution = {} as any;
-    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution);
+    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
     await svc.generateEdges('p1');
     expect(ingestion.writeInferredEdges).toHaveBeenCalledWith('p1', [{ sourcePath: 'docs/a.md', targetPath: 'docs/b.md', reason: 'X' }]);
     expect(prisma.insight.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: 'edges_marker', docsTreeSha: 'h1' }) }));

@@ -56,6 +56,7 @@ model Project {
   resolutions    DocumentResolution[]
   suppressedLinks SuppressedLink[]
   operations     Operation[]
+  llmUsage       LlmUsage[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -143,6 +144,10 @@ model Settings {
   userId                    String      @unique @map("user_id")
   llmProvider               LlmProvider @default(anthropic) @map("llm_provider")
   docsStalenessThresholdDays Int        @default(90) @map("docs_staleness_threshold_days")
+  // Teto de gasto de IA (ADR-016, SPEC-009). USD/mês, global (soma provedores).
+  // Alerta = faixa âmbar; teto = nenhum job de IA enfileirado. 0 desliga o teto.
+  llmAlertUsdMonthly        Decimal     @default(5)  @map("llm_alert_usd_monthly")  @db.Decimal(10, 4)
+  llmHardCapUsdMonthly      Decimal     @default(20) @map("llm_hard_cap_usd_monthly") @db.Decimal(10, 4)
   updatedAt                 DateTime    @updatedAt @map("updated_at")
 
   @@map("settings")
@@ -172,6 +177,69 @@ model Insight {
 
   @@index([projectId, kind, createdAt])
   @@map("insights")
+}
+
+enum LlmUsageStatus {
+  ok
+  error
+  discarded
+}
+
+enum CostSource {
+  provider // custo veio na resposta do provedor (OpenRouter) — é fato
+  table    // custo calculado da ModelPrice (Anthropic/OpenAI) — inferência auditável
+  none     // sem preço cadastrado → costUsd null, priceMissing
+}
+
+// Ledger append-only do gasto de IA (ADR-016, SPEC-009). Uma linha por CHAMADA
+// ao provedor — sucesso, erro, retry (attempt próprio), descarte. NUNCA update,
+// nunca delete, nunca chaveado por docs_tree_sha. É o registro do gasto; a
+// tabela `insights` continua sendo o cache do artefato — as duas param de se
+// confundir. Sobrevive ao projeto (projectId vira null, sem cascade).
+model LlmUsage {
+  id                   String         @id @default(uuid())
+  projectId            String?        @map("project_id")
+  kind                 String         // summary | status_bootstrap | architecture_fallback | ...
+  provider             String
+  model                String
+  attempt              Int            @default(1) // retry de JSON inválido = linha própria com attempt 1
+  status               LlmUsageStatus
+  inputTokens          Int            @map("input_tokens")
+  outputTokens         Int            @map("output_tokens")
+  cacheCreationTokens  Int            @default(0) @map("cache_creation_tokens")
+  cacheReadTokens      Int            @default(0) @map("cache_read_tokens")
+  // Dinheiro em Decimal (Postgres numeric) — Float acumula erro com frações de centavo.
+  costUsd              Decimal?       @map("cost_usd") @db.Decimal(12, 8)
+  costSource           CostSource     @map("cost_source")
+  priceMissing         Boolean        @default(false) @map("price_missing")
+  priceSnapshot        Json?          @map("price_snapshot") // as 4 tarifas usadas, congeladas
+  pricedAt             DateTime?      @map("priced_at")
+  errorCode            String?        @map("error_code")
+  latencyMs            Int?           @map("latency_ms")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  project              Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([projectId, createdAt])
+  @@map("llm_usage")
+}
+
+// Preço por modelo (ADR-016). Editável na tela; custo é congelado na chamada
+// via priceSnapshot no ledger — mudar aqui NUNCA reescreve gasto já registrado.
+model ModelPrice {
+  id              String   @id @default(uuid())
+  provider        String
+  model           String
+  inputPer1M      Decimal  @map("input_per_1m") @db.Decimal(12, 6)
+  outputPer1M     Decimal  @map("output_per_1m") @db.Decimal(12, 6)
+  cacheWritePer1M Decimal  @default(0) @map("cache_write_per_1m") @db.Decimal(12, 6)
+  cacheReadPer1M  Decimal  @default(0) @map("cache_read_per_1m") @db.Decimal(12, 6)
+  effectiveFrom   DateTime @default(now()) @map("effective_from")
+  source          String?  // link/nota de onde o preço veio
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, model, effectiveFrom])
+  @@map("model_prices")
 }
 
 model SyncRun {

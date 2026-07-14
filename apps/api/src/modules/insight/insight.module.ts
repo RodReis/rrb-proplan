@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { SettingsModule } from '../settings/settings.module';
 import { IngestionModule } from '../ingestion/ingestion.module';
 import { InsightService } from './application/insight.service';
+import { LlmUsageRecorder } from './application/llm-usage.recorder';
 import { AnthropicClient } from './infrastructure/anthropic.client';
 import { LlmClientFactory } from './infrastructure/llm-client.factory';
 import {
@@ -21,6 +22,7 @@ import { InsightController } from './presentation/insight.controller';
   controllers: [InsightController],
   providers: [
     InsightService,
+    LlmUsageRecorder,
     LlmClientFactory,
     AnthropicClient,
     InsightEventListener,

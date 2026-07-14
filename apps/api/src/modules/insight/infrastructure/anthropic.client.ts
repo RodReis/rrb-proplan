@@ -31,7 +31,12 @@ export class AnthropicClient implements LlmClient {
     const body = (await res.json()) as {
       content: Array<{ type: string; text?: string }>;
       model: string;
-      usage: { input_tokens: number; output_tokens: number };
+      usage: {
+        input_tokens: number;
+        output_tokens: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
     };
     const text = body.content
       .filter((c) => c.type === 'text')
@@ -42,6 +47,9 @@ export class AnthropicClient implements LlmClient {
       model: body.model,
       inputTokens: body.usage.input_tokens,
       outputTokens: body.usage.output_tokens,
+      // Anthropic devolve write e read separados; ausente → 0 (SPEC-009).
+      cacheCreationTokens: body.usage.cache_creation_input_tokens ?? 0,
+      cacheReadTokens: body.usage.cache_read_input_tokens ?? 0,
     };
   }
 }

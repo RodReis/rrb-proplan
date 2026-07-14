@@ -5,6 +5,7 @@ import { SettingsService } from '../../settings/application/settings.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, ENTITIES } from '../../ingestion/domain/entity';
+import { LlmUsageRecorder } from './llm-usage.recorder';
 import { selectContext } from '../domain/context-budget';
 import { buildSummaryUser, SUMMARY_SYSTEM } from '../domain/summary-prompt';
 import { parseSummary, StateSummary } from '../domain/summary';
@@ -48,6 +49,7 @@ export class InsightService {
     private readonly llmFactory: LlmClientFactory,
     private readonly ingestion: IngestionService,
     private readonly resolution: ResolutionService,
+    private readonly usage: LlmUsageRecorder,
   ) {}
 
   /**
@@ -86,7 +88,7 @@ export class InsightService {
     const provider = await this.settings.providerOf(project.userId);
     const client = this.llmFactory.create(provider);
 
-    const summary = await this.completeWithRetry(client, context);
+    const summary = await this.completeWithRetry(project.id, client, context);
     const content: StateSummary = {
       oQueE: summary.oQueE,
       ondeParou: summary.ondeParou,
@@ -144,21 +146,9 @@ export class InsightService {
     const client = this.llmFactory.create(await this.settings.providerOf(project.userId));
     const req = { system: CARDS_SYSTEM, user: buildCardsUser(context), maxTokens: 2048 };
 
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await client.complete(req);
-      try {
-        return parseCards(res.text);
-      } catch (err) {
-        lastErr = err;
-        this.logger.warn(
-          `Proposta de cards inválida (tentativa ${attempt + 1}): ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-      }
-    }
-    throw lastErr;
+    // runParsed grava uma linha por tentativa: parse inválido → discarded,
+    // parse ok → ok (SPEC-009). O ledger não derruba a chamada.
+    return this.usage.runParsed(client, req, { projectId, kind: 'status_bootstrap' }, parseCards);
   }
 
   /**
@@ -203,7 +193,7 @@ export class InsightService {
 
     const provider = await this.settings.providerOf(project.userId);
     const client = this.llmFactory.create(provider);
-    const edges = await this.completeEdges(client, docMeta, explicitPairs);
+    const edges = await this.completeEdges(projectId, client, docMeta, explicitPairs);
 
     await this.ingestion.writeInferredEdges(projectId, edges);
 
@@ -272,7 +262,7 @@ export class InsightService {
 
       const provider = await this.settings.providerOf(project.userId);
       const client = this.llmFactory.create(provider);
-      hits = await this.completeClassify(client, docMeta, absentEntities);
+      hits = await this.completeClassify(project.id, client, docMeta, absentEntities);
 
       for (const hit of hits) {
         await this.resolution.writeInferredResolution(
@@ -356,10 +346,11 @@ export class InsightService {
 
     let res;
     try {
-      res = await client.complete(req);
+      res = await this.usage.run(client, req, { projectId, kind, attempt: 1 });
     } catch (err) {
       this.logger.warn(`Fallback de ${entity} falhou (tentativa 1): ${err instanceof Error ? err.message : err}`);
-      res = await client.complete(req); // 1 retry só em erro de chamada — não há parse
+      // 1 retry só em erro de chamada (não há parse) — linha própria com attempt 2.
+      res = await this.usage.run(client, req, { projectId, kind, attempt: 2 });
     }
 
     await this.prisma.insight.create({
@@ -396,6 +387,7 @@ export class InsightService {
 
   /** Chama o LLM e valida o JSON de classificação; 1 retry em JSON inválido. */
   private async completeClassify(
+    projectId: string,
     client: ReturnType<LlmClientFactory['create']>,
     docs: { path: string; title: string; headings: string[]; excerpt: string }[],
     absentEntities: (typeof CLASSIFIABLE_ENTITIES)[number][],
@@ -405,25 +397,17 @@ export class InsightService {
       user: buildClassifyUser(docs, absentEntities),
       maxTokens: MAX_CLASSIFY_OUTPUT_TOKENS,
     };
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await client.complete(req);
-      try {
-        return parseClassify(res.text);
-      } catch (err) {
-        lastErr = err;
-        this.logger.warn(
-          `Classificação inválida (tentativa ${attempt + 1}): ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-      }
-    }
-    throw lastErr;
+    return this.usage.runParsed(
+      client,
+      req,
+      { projectId, kind: 'classify_marker' },
+      parseClassify,
+    );
   }
 
   /** Chama o LLM e valida o JSON de arestas; 1 retry em JSON inválido. */
   private async completeEdges(
+    projectId: string,
     client: ReturnType<LlmClientFactory['create']>,
     docs: { path: string; title: string; headings: string[]; excerpt: string }[],
     explicitPairs: { source: string; target: string }[],
@@ -433,25 +417,12 @@ export class InsightService {
       user: buildEdgesUser(docs, explicitPairs),
       maxTokens: MAX_EDGES_OUTPUT_TOKENS,
     };
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await client.complete(req);
-      try {
-        return parseEdges(res.text);
-      } catch (err) {
-        lastErr = err;
-        this.logger.warn(
-          `Arestas inválidas (tentativa ${attempt + 1}): ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-      }
-    }
-    throw lastErr;
+    return this.usage.runParsed(client, req, { projectId, kind: 'edges_marker' }, parseEdges);
   }
 
   /** Chama o LLM e valida o JSON; 1 retry em JSON inválido (SPEC-003). */
   private async completeWithRetry(
+    projectId: string,
     client: ReturnType<LlmClientFactory['create']>,
     context: { path: string; content: string }[],
   ): Promise<StateSummary & { model: string; inputTokens: number; outputTokens: number }> {
@@ -460,27 +431,15 @@ export class InsightService {
       user: buildSummaryUser(context),
       maxTokens: MAX_OUTPUT_TOKENS,
     };
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await client.complete(req);
-      try {
-        const parsed = parseSummary(res.text);
-        return {
-          ...parsed,
-          model: res.model,
-          inputTokens: res.inputTokens,
-          outputTokens: res.outputTokens,
-        };
-      } catch (err) {
-        lastErr = err;
-        this.logger.warn(
-          `Resumo inválido (tentativa ${attempt + 1}): ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-      }
-    }
-    throw lastErr;
+    return this.usage.runParsed(client, req, { projectId, kind: 'summary' }, (text, res) => {
+      const parsed = parseSummary(text);
+      return {
+        ...parsed,
+        model: res.model,
+        inputTokens: res.inputTokens,
+        outputTokens: res.outputTokens,
+      };
+    });
   }
 
   private async assertOwner(userId: string, projectId: string): Promise<void> {
