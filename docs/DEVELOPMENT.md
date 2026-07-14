@@ -271,7 +271,7 @@ Validado ao vivo contra a consistência eventual **real** do GitHub (repo só co
 
 O bug original (promover → `noop` → doc não ingerido até sync manual) **não reproduz**.
 
-## Fatia 7.6 — Operação assíncrona visível + painel de Atividade (SPEC-010, `aprovada-pi`) — `feito` (aguardando aceite runtime do PI)
+## Fatia 7.6 — Operação assíncrona visível + painel de Atividade (SPEC-010, `aprovada-pi`) — `feito` (aceito pelo PI em 2026-07-14)
 
 **Achado no aceite runtime da Fatia 7**: o usuário promove um documento, clica em commitar e a tela **fica idêntica por 5–10 segundos**. Sem sinal nenhum. O PI aguentou porque *sabia* o que rodava por baixo; outra pessoa clica de novo ou fecha.
 
