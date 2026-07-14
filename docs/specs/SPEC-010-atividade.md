@@ -62,6 +62,30 @@ Painel lateral, abrível de qualquer tela, **por projeto** (decisão do PI: most
 
 **Por que isso é mais que conforto**: o ProPlan **escreve no repositório do usuário**. Um sistema que faz isso tem obrigação de responder *"o que você andou fazendo lá?"* — com link, data e evidência. É a tese do produto aplicada a si mesmo.
 
+## Bugs do aceite runtime (2026-07-13) — bloqueiam o aceite da fatia
+
+Encontrados pelo PI no painel já rodando no `rrb-proplan`.
+
+**1. Jargão vazando nas linhas do histórico.** O painel mostra *"Moveu a issue #3 para **todo**"* e *"Moveu a issue #12 para **finalized**"*. `todo` e `finalized` são **nomes de label**, não palavras em português. Isso viola o critério de aceite explícito desta spec (*"nenhum passo mostra jargão"*). Correto: *"para **A Fazer**"*, *"para **Finalizado**"*. **A tradução coluna→nome é a mesma da `CONVENTION.md`** — não inventar uma segunda.
+
+**2. Verbo sem objeto — a linha não é evidência, é log.** O painel mostra *"Classificou documentos por IA"* e *"Inferiu ligações entre documentos por IA"*. **Quantos? Quantas?** Um painel que promete **evidência** e entrega ação sem resultado não cumpre a própria tese. Correto: *"Classificou **3** documentos"*, *"Inferiu **14** ligações"*, *"Gerou o resumo — **1.491 tokens de entrada**"*. **Toda linha do histórico carrega o resultado**, não só o verbo.
+
+**3. Agrupar as inferências por sync (melhoria, não bug).** As três chamadas de IA de um mesmo sync aparecem como **três linhas soltas** — são um evento só, com três partes. Agrupar (*"Sincronizou → classificou 3 docs, inferiu 14 ligações, gerou resumo"*) deixa o feed legível **e torna óbvio o achado abaixo**.
+
+## Achado que o painel revelou — gasto recorrente invisível
+
+> **O painel se pagou no primeiro dia.** Isto não estava previsto na spec; foi ele que mostrou.
+
+O histórico expõe um padrão: as três inferências (`classify` · `edges` · `summary`) **rodam de novo a cada commit em `docs/`** — porque o `docs_tree_sha` muda e o ADR-002 manda regenerar.
+
+**E quem mais commita em `docs/` neste repo é o Claude Code**, a cada entrega — o `CLAUDE.md` o obriga a commitar `DEVELOPMENT.md` e `STATUS.md` junto do código.
+
+**Consequência**: **cada entrega do Code dispara três chamadas de IA no ProPlan** — e nenhuma delas ensina nada de novo (o resumo do projeto não muda porque um passo virou `feito`). É dinheiro escapando de forma invisível, em todo repo gerenciado que tenha commits frequentes de doc.
+
+**Encaminhamento**:
+- **Antecipar a Fatia 7.5** (ledger `LlmUsage` + teto de gasto, ADR-016). Ela está marcada `[paralelo]`, sem dependência — e este achado é o gatilho que a própria spec previa (*"antecipe se a conta de IA assustar"*).
+- **Investigar (sem spec, é bug documentado)**: a regeneração deveria depender do **conteúdo relevante para cada inferência**, não do hash da árvore inteira. Um commit que só toca `docs/DEVELOPMENT.md` não deveria invalidar o resumo do projeto. Isso é refinamento do ADR-002 — **levar ao PI antes de implementar**, porque muda a regra de invalidação (é decisão de produto, não bug).
+
 ## Fora de escopo
 
 Log técnico / stack trace / payload de request (é painel de **atividade**, não console de debug — se virar isso, ninguém olha). SSE ou websocket (polling basta — ADR-009). Notificação fora da aba. Cancelar operação em curso (commit já foi; cancelar é mentira). Filtro e busca no histórico (só ordem reversa + paginação). Retenção configurável — histórico segue a vida do projeto.
@@ -77,6 +101,9 @@ Log técnico / stack trace / payload de request (é painel de **atividade**, nã
 - [ ] **Histórico bate com o banco**: cada commit feito pelo ProPlan aparece com link clicável que abre o commit real no GitHub.
 - [ ] Recarregar a página **no meio de uma operação** volta mostrando o estado atual dela (o estado é do servidor, não da tela).
 - [ ] Nenhum passo mostra jargão: nada de `202`, `docsTreeSha`, `enqueueSync` na cara do usuário.
+- [ ] **Nenhuma linha do histórico mostra nome de label**: `todo`/`doing`/`done`/`finalizado` aparecem como **"A Fazer" / "Em Andamento" / "Feito" / "Finalizado"** (mesma tradução da `CONVENTION.md`, não uma segunda).
+- [ ] **Toda linha carrega o resultado, não só o verbo**: `Classificou 3 documentos`, `Inferiu 14 ligações`, `Gerou o resumo — 1.491 tokens de entrada`. **"Classificou documentos por IA" (sem número) reprova.**
+- [ ] As inferências de um mesmo sync aparecem **agrupadas**, não como linhas soltas.
 - [ ] **Feed limpo por padrão**: com 10 syncs `noop` e 1 commit no banco, o histórico mostra **1 item**. Ligar o toggle "mostrar syncs" revela os 11.
 - [ ] **Painel é por projeto**: atividade do `landpage` não aparece no painel do `rrb-proplan`.
 

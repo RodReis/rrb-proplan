@@ -7,7 +7,11 @@
     "start:prod": "node dist/main.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
+    "prisma:seed": "ts-node prisma/seed.ts",
     "test": "jest"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
