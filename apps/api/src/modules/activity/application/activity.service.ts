@@ -189,7 +189,7 @@ export class ActivityService {
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
         orderBy: { createdAt: 'desc' },
         take,
-        select: { id: true, kind: true, provider: true, model: true, createdAt: true },
+        select: { id: true, kind: true, provider: true, model: true, createdAt: true, content: true },
       }),
       this.prisma.boardMutation.findMany({
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },

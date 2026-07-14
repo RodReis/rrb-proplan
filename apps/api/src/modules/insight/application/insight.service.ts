@@ -219,7 +219,9 @@ export class InsightService {
         model: 'edges',
         inputTokens: 0,
         outputTokens: 0,
-        content: {} as unknown as Prisma.InputJsonValue,
+        // Guarda a contagem — as arestas em si vão para o ingestion (ADR-001);
+        // o marker registra quantas, para o painel de Atividade mostrar o resultado.
+        content: { count: edges.length } as unknown as Prisma.InputJsonValue,
       },
     });
   }

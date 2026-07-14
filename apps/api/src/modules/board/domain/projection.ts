@@ -1,3 +1,4 @@
+import { COLUMN_TITLE } from '../../../shared/convention/columns';
 import { BoardColumn, COLUMNS, IssuePriority } from './column-mapping';
 
 // Gerador da projeção .proplan/STATUS.md (SPEC-005 / ADR-011). Escrita de fora
@@ -16,15 +17,6 @@ export interface ProjectionCard {
   column: BoardColumn;
   closedAt: Date | null;
 }
-
-const COLUMN_TITLE: Record<BoardColumn, string> = {
-  backlog: 'Backlog',
-  todo: 'A Fazer',
-  doing: 'Em Andamento',
-  done: 'Feito',
-  finalized: 'Finalizado',
-  discarded: 'Descartado',
-};
 
 // Linha de um card na projeção (formato da CONVENTION.md):
 //   `- Título (#42, prio: alta)`
