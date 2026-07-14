@@ -331,6 +331,17 @@ O painel dizia "reaproveitou" mas não deixava crível que reaproveitar custou z
 
 **Bug corrigido no aceite**: ao renomear o `kind` do feed (`insight`→`insight_run`), o front tinha o tipo e o mapa `GROUP_OF` ainda no valor antigo → `undefined.mark` quebrava o painel. Escapou do build porque back e front têm tipos separados (acoplados por string). 290 testes no total, builds API+web limpos.
 
+## Fatia 6.1 — Aba Deploy: documento primeiro (SPEC-012, `aprovada-pi`) — `feito` (aguardando merge + aceite runtime do PI)
+
+Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parser estrutural rígido: `tabs.service` rodava `parseDeploy(md)` e **descartava o documento**. Doc mapeado sem a tabela do `CONVENTION.md` (achado no dogfooding do `rrb-organize`: `docs/runbooks/deploy-railway.md`, prosa) → aba desenhava cabeçalho de tabela vazio. O ProPlan exigindo o próprio formato — violando o ADR-014 na renderização, depois de o mapeamento ter feito a coisa certa.
+
+1. `feito` — `tabs.service` (`case 'deploy'`): payload aditivo `{ environments, markdown, path }`. Novo helper `deployDoc` resolve o markdown de arquivo único (`markdownOf`) **ou coleção** (decisão do PI — concatena os N `paths`, cada doc sob `## <path>`, ordem de `paths` preservada). `parseDeploy` **não muda**.
+2. `feito` — `DeployTab.tsx`: 3 estados — painel de ambientes **acima** + doc abaixo (se `environments`) · **só o doc** (`MarkdownView`, o mesmo viewer de Arq/Design — react-markdown + Mermaid lazy da Fatia 6) · vazio "não documentado" + CTA (via `TabFrame`, inalterado).
+3. `feito` — **Fallback de IA em Deploy segue proibido** (`CONVENTION.md`): renderizar o que o humano escreveu não é inferir deploy. Doc com tabela mostra a tabela 2× (duplicação aceita pelo PI — esconder conteúdo do dono exigiria um 2º parser de seções e seria dívida de princípio).
+4. `feito` — Testes da fatia (`tabs.service.spec`): doc sem tabela → `markdown` não-vazio + `environments: []`; doc com tabela → painel **e** markdown; coleção → concatena na ordem. `parseDeploy` inalterado (15 testes de deploy/tabs passam sem mudança — prova). 298 testes no total, builds limpos.
+
+Risco baixo: mudança aditiva no payload + render, nenhuma escrita no repo, nenhuma IA, nenhum job. Alvo real: `rrb-organize` (deploy `source: config`).
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.

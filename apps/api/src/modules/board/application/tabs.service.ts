@@ -89,8 +89,15 @@ export class TabsService {
         return { source, payload: { items: parseDecisions(docs), ...inference } };
       }
       case 'deploy': {
-        const md = await this.markdownOf(projectId, r.path);
-        return { source, payload: { environments: parseDeploy(md), ...inference } };
+        // SPEC-012: o documento mapeado SEMPRE aparece (ADR-014). O painel de
+        // ambientes (parseDeploy) é enriquecimento de quem segue a convenção do
+        // CONVENTION.md, nunca pedágio de quem não segue. parseDeploy NÃO mudou.
+        // Coleção suportada (decisão do PI): concatena os N docs de `paths`.
+        const { markdown, path } = await this.deployDoc(projectId, r);
+        return {
+          source,
+          payload: { environments: parseDeploy(markdown), markdown: markdown || null, path, ...inference },
+        };
       }
       case 'skills': {
         const docs = await this.docsOf(projectId, r.paths.length ? r.paths : r.path ? [r.path] : []);
@@ -189,6 +196,31 @@ export class TabsService {
     });
     if (!doc) throw new NotFoundException(`Documento não encontrado: ${path}`);
     return doc.content;
+  }
+
+  /**
+   * Markdown do doc de Deploy mapeado (SPEC-012). Arquivo único → o conteúdo.
+   * Coleção (`path` null, `paths` não vazio) → os N docs concatenados, cada um
+   * sob um heading com o seu path (mantém Mermaid e leitura por arquivo). Devolve
+   * o path exibível (`path` do único, ou os paths juntos para a coleção).
+   */
+  private async deployDoc(
+    projectId: string,
+    r: { path: string | null; paths: string[] },
+  ): Promise<{ markdown: string; path: string | null }> {
+    if (r.path) {
+      return { markdown: await this.markdownOf(projectId, r.path), path: r.path };
+    }
+    if (r.paths.length === 0) return { markdown: '', path: null };
+    const docs = await this.docsOf(projectId, r.paths);
+    // Ordena pela ordem de `paths` (docsOf não garante ordem do `in`) e mantém
+    // path+conteúdo juntos — filtrar antes do map desalinharia os índices.
+    const byPath = new Map(docs.map((d) => [d.path, d.content]));
+    const markdown = r.paths
+      .filter((p) => byPath.has(p))
+      .map((p) => `## ${p}\n\n${byPath.get(p)}`)
+      .join('\n\n---\n\n');
+    return { markdown, path: r.paths.join(', ') };
   }
 
   private async docsOf(projectId: string, paths: string[]): Promise<{ path: string; content: string }[]> {
