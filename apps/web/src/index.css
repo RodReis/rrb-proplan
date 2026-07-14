@@ -183,6 +183,10 @@ button:active {
   padding: 10px 12px;
 }
 .act-summary-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-family: var(--mono);
   font-size: 10px;
   text-transform: uppercase;
@@ -190,15 +194,50 @@ button:active {
   color: var(--g-ai);
   margin-bottom: 6px;
 }
-.act-summary-body {
-  font-size: 13px;
+.act-summary-when {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--term-faint);
+  font-weight: 400;
+}
+.act-summary-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.act-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid var(--term-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--term-ink) 3%, transparent);
+}
+.act-metric-n {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--term-ink);
+  font-variant-numeric: tabular-nums;
+}
+.act-metric-lbl {
+  font-size: 12px;
   color: var(--term-ink);
 }
-.act-summary-body strong { color: var(--term-ink); font-weight: 700; }
+.act-metric-sub {
+  margin-top: auto;
+  padding-top: 4px;
+  font-size: 11px;
+  color: var(--term-dim);
+}
+.act-metric-free { color: var(--g-sync); }
 .act-summary-econ {
-  margin-top: 5px;
+  margin-top: 8px;
   font-size: 12px;
   color: var(--g-sync);
+  line-height: 1.45;
 }
 .act-summary-next {
   margin-top: 8px;

@@ -129,5 +129,9 @@ export function transitionTo(target: BoardColumn): ColumnTransition {
         addLabels: [DISCARDED_LABEL],
         removeLabels: allColumnLabels.filter((l) => l !== DISCARDED_LABEL),
       };
+    default:
+      // Coluna inválida (ex.: o front mandou um número em vez da coluna) —
+      // falha explícita em vez de `undefined.removeLabels` lá no applier.
+      throw new Error(`Coluna de destino inválida: ${JSON.stringify(target)}`);
   }
 }

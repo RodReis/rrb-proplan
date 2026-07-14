@@ -46,16 +46,37 @@ function LastSyncSummary({ items }: { items: ActivityItem[] }) {
 
   return (
     <section className="act-summary">
-      <div className="act-summary-h">Última rodada de IA</div>
-      <div className="act-summary-body">
-        <strong>{generated.length}</strong> gerad{generated.length === 1 ? 'a' : 'as'}
-        {' · '}
-        <strong>{reused}</strong> reaproveitad{reused === 1 ? 'a' : 'as'} (sem custo)
-        {totalTokens > 0 && <> · <strong>{totalTokens.toLocaleString('pt-BR')} tokens</strong></>}
+      <div className="act-summary-h">
+        <span>Nesta sincronização</span>
+        <span className="act-summary-when">{relativeTime(ai[0].at)}</span>
       </div>
+
+      <div className="act-summary-metrics">
+        <div className="act-metric">
+          <span className="act-metric-n">{generated.length}</span>
+          <span className="act-metric-lbl">
+            {generated.length === 1 ? 'inferência gerada' : 'inferências geradas'}
+          </span>
+          {totalTokens > 0 && (
+            <span className="act-metric-sub">
+              {totalTokens.toLocaleString('pt-BR')} tokens gastos
+            </span>
+          )}
+        </div>
+        <div className="act-metric">
+          <span className="act-metric-n">{reused}</span>
+          <span className="act-metric-lbl">
+            {reused === 1 ? 'reaproveitada' : 'reaproveitadas'}
+          </span>
+          <span className="act-metric-sub act-metric-free">
+            {reused > 0 ? 'sem novo gasto' : '—'}
+          </span>
+        </div>
+      </div>
+
       {reused > 0 && (
         <div className="act-summary-econ">
-          Economizou {reused} chamada{reused === 1 ? '' : 's'} de IA — o texto não mudou desde a última vez.
+          Economizou {reused} chamada{reused === 1 ? '' : 's'} — esses documentos não mudaram desde a última vez.
         </div>
       )}
       <div className="act-summary-next">
