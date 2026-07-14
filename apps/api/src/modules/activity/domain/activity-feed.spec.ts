@@ -59,8 +59,19 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
       mutations: [{ id: 'm1', type: 'move_column', payload: { number: 7, toColumn: 'done' }, status: 'applied', createdAt: d('2026-07-13T10:00:00Z'), issueUrl: 'http://i/7' }],
       syncs: [],
     });
-    expect(item.title).toBe('Moveu a issue #7 para done');
+    expect(item.title).toBe('Moveu a issue #7 para Feito');
     expect(item.evidenceUrl).toBe('http://i/7');
+  });
+
+  it('move_column traduz o valor do enum para o nome de exibição (nunca "todo"/"finalized")', () => {
+    const mk = (toColumn: string) =>
+      buildFeed({
+        operations: [], insights: [], syncs: [],
+        mutations: [{ id: 'm', type: 'move_column', payload: { number: 1, toColumn }, status: 'applied', createdAt: d('2026-07-13T10:00:00Z'), issueUrl: null }],
+      })[0].title;
+    expect(mk('todo')).toBe('Moveu a issue #1 para A Fazer');
+    expect(mk('doing')).toBe('Moveu a issue #1 para Em Andamento');
+    expect(mk('finalized')).toBe('Moveu a issue #1 para Finalizado');
   });
 
   it('insight: mostra provider/model no detalhe, sem link', () => {

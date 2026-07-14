@@ -70,11 +70,25 @@ const INSIGHT_TITLE: Record<string, string> = {
   status_bootstrap: 'Propôs um backlog por IA',
 };
 
+// Nome de exibição das colunas (linguagem de gente, não o valor do enum). Cópia
+// local das 6 colunas — evita o módulo activity importar apresentação do board
+// (constante trivial; o front tem a sua própria em kanban/columns.ts).
+const COLUMN_DISPLAY: Record<string, string> = {
+  backlog: 'Backlog',
+  todo: 'A Fazer',
+  doing: 'Em Andamento',
+  done: 'Feito',
+  finalized: 'Finalizado',
+  discarded: 'Descartado',
+};
+
 function mutationTitle(type: string, payload: unknown): string {
   const p = (payload ?? {}) as { number?: number; toColumn?: string; title?: string };
   switch (type) {
-    case 'move_column':
-      return `Moveu a issue #${p.number} para ${p.toColumn ?? 'outra coluna'}`;
+    case 'move_column': {
+      const col = p.toColumn ? COLUMN_DISPLAY[p.toColumn] ?? p.toColumn : 'outra coluna';
+      return `Moveu a issue #${p.number} para ${col}`;
+    }
     case 'create_card':
       return `Criou o card "${p.title ?? ''}"`;
     case 'edit_card':
