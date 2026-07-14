@@ -3,48 +3,60 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
 import { api, Entity } from '../../lib/api';
+import { OperationSteps, useOperation } from './OperationSteps';
 
 interface Props {
   projectId: string;
   tab: Entity;
   initialContent: string;
   onClose: () => void;
+  /** Chamado quando a operação de promoção conclui (a aba deve recarregar). */
   onPromoted: () => void;
 }
 
 /**
  * Editor de promoção do conteúdo inferido por IA (nível 3/4) a documento real
- * (Task 12, Fatia 7). Reusa o padrão visual do BootstrapDialog (Fatia 3):
- * textarea font-mono + toggle Preview (ReactMarkdown + remarkGfm).
+ * (Fatia 7). Ao commitar, entra em modo "operação em curso": mostra os passos
+ * nomeados (SPEC-010) e recarrega a aba sozinho quando o sync termina — a tela
+ * nunca fica igual e muda por baixo.
  */
 export function PromoteDialog({ projectId, tab, initialContent, onClose, onPromoted }: Props) {
   const [content, setContent] = useState(initialContent);
   const [preview, setPreview] = useState(false);
-  const [promoting, setPromoting] = useState(false);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const op = useOperation(operationId, onPromoted);
+  const running = operationId !== null && op?.status !== 'failed';
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    // Esc só fecha enquanto edita — durante a operação, o commit já foi.
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !running && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, running]);
 
   async function promote() {
-    setPromoting(true);
+    setStarting(true);
     try {
-      await api.promote(projectId, tab, content);
-      toast.success('Documento promovido — sincronizando…');
-      onPromoted();
+      const { operationId } = await api.promote(projectId, tab, content);
+      setOperationId(operationId);
     } catch (err) {
       toast.error(`Falha ao promover: ${err}`);
     } finally {
-      setPromoting(false);
+      setStarting(false);
     }
+  }
+
+  function retry() {
+    setOperationId(null);
+    void promote();
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-text/20 p-4"
-      onClick={onClose}
+      onClick={() => !running && onClose()}
     >
       <div
         className="flex h-[80vh] w-full max-w-3xl flex-col rounded-lg border border-border bg-surface"
@@ -52,21 +64,27 @@ export function PromoteDialog({ projectId, tab, initialContent, onClose, onPromo
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold">Promover a documento</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPreview((p) => !p)}
-              className="rounded-md border border-border px-2.5 py-1 text-xs hover:border-brand hover:text-brand"
-            >
-              {preview ? 'Editar' : 'Preview'}
-            </button>
-            <button onClick={onClose} className="text-text-muted hover:text-text" aria-label="Fechar">
-              ✕
-            </button>
-          </div>
+          {!operationId && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPreview((p) => !p)}
+                className="rounded-md border border-border px-2.5 py-1 text-xs hover:border-brand hover:text-brand"
+              >
+                {preview ? 'Editar' : 'Preview'}
+              </button>
+              <button onClick={onClose} className="text-text-muted hover:text-text" aria-label="Fechar">
+                ✕
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto p-5">
-          {preview ? (
+          {operationId && op ? (
+            <div className="mx-auto max-w-lg pt-6">
+              <OperationSteps op={op} />
+            </div>
+          ) : preview ? (
             <article className="prose-doc">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </article>
@@ -81,19 +99,39 @@ export function PromoteDialog({ projectId, tab, initialContent, onClose, onPromo
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <button
-            onClick={onClose}
-            className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => void promote()}
-            disabled={promoting || content.trim() === ''}
-            className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {promoting ? 'Promovendo…' : 'Promover e commitar'}
-          </button>
+          {op?.status === 'failed' ? (
+            <>
+              <button
+                onClick={onClose}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg"
+              >
+                Fechar
+              </button>
+              <button
+                onClick={retry}
+                className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+              >
+                Tentar de novo
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={onClose}
+                disabled={running}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void promote()}
+                disabled={running || starting || content.trim() === ''}
+                className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {operationId ? 'Promovendo…' : starting ? 'Promovendo…' : 'Promover e commitar'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -93,6 +93,27 @@ export interface DocumentContent extends DocumentSummary {
   frontmatter: Record<string, unknown> | null;
 }
 
+/** Operação assíncrona de escrita (SPEC-010): passos nomeados + polling por id. */
+export type OperationKind = 'promote' | 'mapping' | 'bootstrap' | 'board_mutation';
+export type OperationStatus = 'running' | 'done' | 'failed';
+export type StepStatus = 'pending' | 'running' | 'done' | 'failed';
+export interface OperationStep {
+  key: string;
+  label: string;
+  status: StepStatus;
+}
+export interface OperationView {
+  id: string;
+  kind: OperationKind;
+  status: OperationStatus;
+  steps: OperationStep[];
+  commitUrl: string | null;
+  syncRunId: string | null;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
 export type SyncStatus = 'queued' | 'running' | 'success' | 'noop' | 'failed';
 
 export interface SyncRun {
@@ -175,10 +196,12 @@ export const api = {
   tab: <P = unknown>(projectId: string, tab: Entity) =>
     request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
   promote: (projectId: string, tab: Entity, content: string) =>
-    request<void>(`/projects/${projectId}/tabs/${tab}/promote`, {
+    request<{ operationId: string }>(`/projects/${projectId}/tabs/${tab}/promote`, {
       method: 'POST',
       body: JSON.stringify({ content }),
     }),
+  operation: (operationId: string) =>
+    request<OperationView>(`/operations/${operationId}`),
   mapping: (projectId: string) =>
     request<{ rows: MappingRow[]; proplanConfigInvalid: boolean }>(
       `/projects/${projectId}/tabs/mapping`,

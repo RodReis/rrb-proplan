@@ -9,6 +9,7 @@ import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { InsightModule } from './modules/insight/insight.module';
 import { BoardModule } from './modules/board/board.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { ActivityModule } from './modules/activity/activity.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
@@ -29,6 +30,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
     InsightModule,
     BoardModule,
     CatalogModule,
+    ActivityModule,
   ],
 })
 export class AppModule {}

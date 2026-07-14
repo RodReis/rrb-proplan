@@ -271,6 +271,20 @@ Validado ao vivo contra a consistência eventual **real** do GitHub (repo só co
 
 O bug original (promover → `noop` → doc não ingerido até sync manual) **não reproduz**.
 
+## Fatia 7.6 — Operação assíncrona visível + painel de Atividade (SPEC-010, `aprovada-pi`) — `a-fazer`
+
+**Achado no aceite runtime da Fatia 7**: o usuário promove um documento, clica em commitar e a tela **fica idêntica por 5–10 segundos**. Sem sinal nenhum. O PI aguentou porque *sabia* o que rodava por baixo; outra pessoa clica de novo ou fecha.
+
+**Não é bug do promote.** É a forma de **toda** escrita do ProPlan — `ação → commit → propagação → sync → recarregar` — em **quatro fluxos**: promote, bootstrap, mutação de card, salvar mapeamento. E a operação **continua rodando se o usuário sair da aba**, então feedback preso ao botão não basta.
+
+1. `feito` — Módulo novo `activity` (dono do `Operation`, ADR-001): Prisma `Operation` (kind, steps Json, status, commitUrl?, syncRunId?) + migration; `ActivityService` (start/advance/attachArtifacts/finish/fail) exportado por interface pública; `GET /operations/:id`. **Estado mora no servidor**; o passo final se conclui sozinho quando o `SyncRun` associado termina (derivação lazy no `get` — não acopla o worker BullMQ). Passos nomeados no `domain/operation-steps` (puro, testado). **Promote migrado** — devolve `{ operationId }`. Os outros 3 fluxos ficam no passo 3.
+2. `feito` — `<OperationSteps/>` + `useOperation` (polling 1s — sem SSE/webhook; mesmo padrão do `mutationId`/`sync-run`). **Passos em linguagem de gente**, sem jargão. PromoteDialog mostra os passos e a aba recarrega sozinha ao concluir (badge âmbar some). Aceite ao vivo no `construtor-erp`: passos "Commitando… → Aguardando propagar… → Sincronizando… → Pronto" visíveis, auto-refresh sem clicar Sincronizar.
+3. `a-fazer` — Migrar os outros **três** fluxos para o componente (mapping, bootstrap, board_mutation). Nenhum mantém feedback próprio.
+4. `a-fazer` — `GET /projects/:id/activity` + `<ActivityPanel/>` (rail): **Agora** (operação em curso, sobrevive à navegação) + **Histórico** (**por projeto**; só escrita e inferência por padrão, **toggle "mostrar syncs"** revela os `noop`). Histórico é **projeção de leitura** sobre `SyncRun`+`Insight`+`BoardMutation`+`LlmUsage` — **não** tabela de eventos duplicada (ADR-017 aplicado internamente).
+5. `a-fazer` — Critérios da SPEC-010 (o principal: **em nenhum momento a tela fica igual e muda**); atualizar este arquivo + STATUS.md; commitar.
+
+> **Sinergia**: o sync SHA-aware (backlog, prio alta) mata o `sleep(2500)` do promote — o passo "aguardando propagação" deixa de ser tempo cego e vira verificação real.
+
 ## Fatia 7.5 — Consumo de IA: tokens, custo e teto (SPEC-009, `aprovada-pi`) — `a-fazer` `[paralelo]`
 
 **Última fatia do MVP1.** Sem dependência de nenhuma outra — toca só `insight` e `settings`. Marcada `[paralelo]`: pode ser puxada para frente a qualquer momento. **Antecipe se a conta de IA assustar durante a Fatia 7**, que é a que mais chama o provedor.

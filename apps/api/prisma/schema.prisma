@@ -55,6 +55,7 @@ model Project {
   boardMutations BoardMutation[]
   resolutions    DocumentResolution[]
   suppressedLinks SuppressedLink[]
+  operations     Operation[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -265,6 +266,43 @@ model BoardMutation {
 
   @@index([projectId, createdAt])
   @@map("board_mutations")
+}
+
+// Os 4 fluxos de escrita do ProPlan (SPEC-010, Fatia 7.6). Uma Operation amarra
+// os passos nomeados de UMA ação do usuário (promote, mapping, bootstrap,
+// board_mutation) — o front faz polling por id. Estado mora aqui (não na tela):
+// F5 no meio da operação volta mostrando o passo atual. NÃO é fonte do histórico
+// — o histórico é projeção de leitura sobre SyncRun/Insight/BoardMutation (ADR-017).
+enum OperationKind {
+  promote
+  mapping
+  bootstrap
+  board_mutation
+}
+
+enum OperationStatus {
+  running
+  done
+  failed
+}
+
+model Operation {
+  id         String          @id @default(uuid())
+  projectId  String          @map("project_id")
+  kind       OperationKind
+  status     OperationStatus @default(running)
+  // steps: [{ key, label, status: pending|running|done|failed }] — textos em
+  // linguagem de gente, montados no domain por kind. Nunca jargão.
+  steps      Json
+  commitUrl  String?         @map("commit_url")
+  syncRunId  String?         @map("sync_run_id")
+  error      String?
+  startedAt  DateTime        @default(now()) @map("started_at")
+  finishedAt DateTime?       @map("finished_at")
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, startedAt])
+  @@map("operations")
 }
 
 model SuppressedLink {

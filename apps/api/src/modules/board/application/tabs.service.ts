@@ -9,6 +9,7 @@ import { IngestionService } from '../../ingestion/application/ingestion.service'
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, Resolution } from '../../ingestion/domain/entity';
 import { InsightService } from '../../insight/application/insight.service';
+import { ActivityService } from '../../activity/application/activity.service';
 import { parseDecisions } from '../domain/decisions-index';
 import { parseDeploy } from '../domain/deploy-doc';
 import { parseSkills } from '../domain/skills-index';
@@ -42,6 +43,7 @@ export class TabsService {
     private readonly auth: GithubAuth,
     private readonly writeback: GithubWritebackClient,
     private readonly sync: IngestionService,
+    private readonly activity: ActivityService,
   ) {}
 
   /** Ownership: mesmo padrão do BoardService — findFirst por id+userId. */
@@ -107,52 +109,76 @@ export class TabsService {
    * (installation token, ADR-015) e dispara re-sync — no próximo sync a
    * entidade deixa de ser "absent" e o fallback para de ser servido.
    * Write-back segue exatamente o padrão do MappingService.putMapping.
+   *
+   * Retorna `{ operationId }` (SPEC-010): a operação amarra os passos nomeados
+   * (commit → propagação → sync → pronto). O passo final se conclui sozinho
+   * quando o SyncRun termina (ver ActivityService.get). O front faz polling.
    */
   async promote(
     userId: string,
     projectId: string,
     tab: Entity,
     content: string,
-  ): Promise<{ syncRunId: string }> {
+  ): Promise<{ operationId: string }> {
     if (tab !== 'architecture' && tab !== 'design') {
       throw new BadRequestException(`Aba sem fallback promovível: ${tab}`);
     }
     const project = await this.assertOwner(userId, projectId);
     const path = FALLBACK_DOC_PATH[tab];
+    const operationId = await this.activity.start(projectId, 'promote', path);
 
-    const token = await this.auth.installationToken(projectId);
-    let newBlobSha = '';
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const baseSha = await this.writeback.getFileSha(
-          token,
-          project.owner,
-          project.name,
-          path,
-          project.defaultBranch,
-        );
-        newBlobSha = await this.writeback.putFile({
-          token,
-          owner: project.owner,
-          repo: project.name,
-          path,
-          branch: project.defaultBranch,
-          content,
-          message: `docs: promove ${tab} inferido a documento (${path})`,
-          baseSha,
-        });
-        break;
-      } catch (err) {
-        if (err instanceof WritebackConflictError && attempt === 0) continue;
-        throw err;
+    try {
+      const token = await this.auth.installationToken(projectId);
+      let newBlobSha = '';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const baseSha = await this.writeback.getFileSha(
+            token,
+            project.owner,
+            project.name,
+            path,
+            project.defaultBranch,
+          );
+          newBlobSha = await this.writeback.putFile({
+            token,
+            owner: project.owner,
+            repo: project.name,
+            path,
+            branch: project.defaultBranch,
+            content,
+            message: `docs: promove ${tab} inferido a documento (${path})`,
+            baseSha,
+          });
+          break;
+        } catch (err) {
+          if (err instanceof WritebackConflictError && attempt === 0) continue;
+          throw err;
+        }
       }
-    }
 
-    // O re-sync espera a Trees API refletir este commit antes de decidir noop
-    // (consistência eventual — ver SyncService.listScope). Sem isso, o listTree
-    // imediato leria o escopo antigo → mesmo hash → noop → o doc promovido não
-    // seria ingerido e o badge não sumiria até um sync manual.
-    return this.sync.enqueueSync(projectId, { path, blobSha: newBlobSha });
+      const commitUrl = `https://github.com/${project.owner}/${project.name}/blob/${project.defaultBranch}/${path}`;
+      await this.activity.attachArtifacts(operationId, { commitUrl });
+      await this.activity.advance(operationId, 'propagate');
+
+      // O re-sync espera a Trees API refletir este commit antes de decidir noop
+      // (consistência eventual — ver SyncService.listScope). Sem isso, o listTree
+      // imediato leria o escopo antigo → mesmo hash → noop → o doc promovido não
+      // seria ingerido e o badge não sumiria até um sync manual.
+      const { syncRunId } = await this.sync.enqueueSync(projectId, {
+        path,
+        blobSha: newBlobSha,
+      });
+      await this.activity.advance(operationId, 'sync');
+      await this.activity.attachArtifacts(operationId, { syncRunId });
+      // A operação conclui sozinha quando este SyncRun terminar (get deriva).
+      return { operationId };
+    } catch (err) {
+      await this.activity.fail(
+        operationId,
+        err instanceof Error ? err.message : 'Falha ao promover',
+      );
+      throw err;
+    }
   }
 
   private async markdownOf(projectId: string, path: string | null): Promise<string> {
