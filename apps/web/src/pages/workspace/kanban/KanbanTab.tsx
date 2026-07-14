@@ -33,8 +33,10 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [editing, setEditing] = useState<BoardCard | null>(null);
   // Finalizado e Descartado nascem colapsados (histórico, não polui o board).
+  // Finalizado nasce ABERTO (decisão do PI): entregas aceitas ficam à vista.
+  // Só Descartado nasce colapsado — é o que raramente se olha.
   const [collapsed, setCollapsed] = useState<Set<BoardColumn>>(
-    new Set<BoardColumn>(['finalized', 'discarded']),
+    new Set<BoardColumn>(['discarded']),
   );
   const [bootstrapOpen, setBootstrapOpen] = useState(false);
 

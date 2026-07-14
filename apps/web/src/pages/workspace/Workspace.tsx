@@ -58,6 +58,9 @@ export function Workspace({ project, onBack }: Props) {
       const run = await pollSyncRun(projectId, syncRunId);
       setSyncNonce((n) => n + 1);
       reportSync(run, toastId);
+      // Ao concluir o sync, abre a Atividade para o resultado ficar à vista —
+      // fecha o ciclo "Sincronizar → veja o que o ProPlan fez" (decisão do PI).
+      setActivityOpen(true);
     } catch (err) {
       toast.error(`Falha ao sincronizar: ${err}`, { id: toastId });
     } finally {
