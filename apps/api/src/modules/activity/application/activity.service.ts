@@ -192,7 +192,7 @@ export class ActivityService {
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
         orderBy: { createdAt: 'desc' },
         take,
-        select: { id: true, kind: true, outcome: true, createdAt: true },
+        select: { id: true, kind: true, outcome: true, inputHash: true, docsRead: true, createdAt: true },
       }),
       this.prisma.boardMutation.findMany({
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
@@ -213,9 +213,32 @@ export class ActivityService {
     const issueUrl = (number?: number) =>
       number ? `https://github.com/${project.owner}/${project.name}/issues/${number}` : null;
 
+    // Custo por linha de IA (SPEC-011): casa cada InsightRun `generated` com a
+    // chamada que ela disparou, por (kind, inputHash). LlmUsage é a fonte do
+    // gasto (ADR-016) — aqui só lemos. `reused` não tem chamada → sem linha.
+    const hashes = insightRuns.map((r) => r.inputHash);
+    const usageRows = hashes.length
+      ? await this.prisma.llmUsage.findMany({
+          where: { projectId, status: 'ok', inputHash: { in: hashes } },
+          select: { kind: true, inputHash: true, inputTokens: true, outputTokens: true, costUsd: true },
+        })
+      : [];
+    // Uma chamada por (kind, inputHash) no fluxo de gate — mapa direto.
+    const costByRun = new Map<string, { inputTokens: number; outputTokens: number; costUsd: string | null }>();
+    for (const u of usageRows) {
+      costByRun.set(`${u.kind}:${u.inputHash}`, {
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        costUsd: u.costUsd ? u.costUsd.toString() : null,
+      });
+    }
+
     const all = buildFeed({
       operations,
-      insightRuns,
+      insightRuns: insightRuns.map((r) => ({
+        ...r,
+        cost: r.outcome === 'generated' ? costByRun.get(`${r.kind}:${r.inputHash}`) ?? null : null,
+      })),
       mutations: mutations.map((m) => ({
         ...m,
         issueUrl: issueUrl((m.payload as { number?: number } | null)?.number),

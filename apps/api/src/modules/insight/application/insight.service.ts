@@ -95,9 +95,10 @@ export class InsightService {
     kind: InsightKind,
     outcome: InsightRunOutcome,
     inputHash: string,
+    docsRead?: number,
   ): Promise<void> {
     await this.prisma.insightRun.create({
-      data: { projectId, kind, outcome, inputHash },
+      data: { projectId, kind, outcome, inputHash, docsRead: docsRead ?? null },
     });
   }
 
@@ -150,7 +151,7 @@ export class InsightService {
       }
     }
 
-    const summary = await this.completeSummary(project.id, client, req);
+    const summary = await this.completeSummary(project.id, client, req, inputHash);
     const content: StateSummary = {
       oQueE: summary.oQueE,
       ondeParou: summary.ondeParou,
@@ -170,7 +171,7 @@ export class InsightService {
         content: content as unknown as Prisma.InputJsonValue,
       },
     });
-    await this.recordRun(projectId, 'summary', 'generated', inputHash);
+    await this.recordRun(projectId, 'summary', 'generated', inputHash, context.length);
   }
 
   /** Resumo mais recente do projeto (leitura para a Visão Geral). */
@@ -305,7 +306,7 @@ export class InsightService {
     const edges = await this.usage.runParsed(
       client,
       req,
-      { projectId, kind: 'edges_marker' },
+      { projectId, kind: 'edges_marker', inputHash },
       parseEdges,
     );
 
@@ -326,7 +327,7 @@ export class InsightService {
         content: { count: edges.length } as unknown as Prisma.InputJsonValue,
       },
     });
-    await this.recordRun(projectId, 'edges_marker', 'generated', inputHash);
+    await this.recordRun(projectId, 'edges_marker', 'generated', inputHash, docMeta.length);
   }
 
   /**
@@ -401,7 +402,7 @@ export class InsightService {
     const hits = await this.usage.runParsed(
       client,
       req,
-      { projectId, kind: 'classify_marker' },
+      { projectId, kind: 'classify_marker', inputHash },
       parseClassify,
     );
 
@@ -427,7 +428,7 @@ export class InsightService {
         content: { hits } as unknown as Prisma.InputJsonValue,
       },
     });
-    await this.recordRun(projectId, 'classify_marker', 'generated', inputHash);
+    await this.recordRun(projectId, 'classify_marker', 'generated', inputHash, docMeta.length);
   }
 
   /**
@@ -501,11 +502,11 @@ export class InsightService {
 
     let res;
     try {
-      res = await this.usage.run(client, req, { projectId, kind, attempt: 1 });
+      res = await this.usage.run(client, req, { projectId, kind, attempt: 1, inputHash });
     } catch (err) {
       this.logger.warn(`Fallback de ${entity} falhou (tentativa 1): ${err instanceof Error ? err.message : err}`);
       // 1 retry só em erro de chamada (não há parse) — linha própria com attempt 2.
-      res = await this.usage.run(client, req, { projectId, kind, attempt: 2 });
+      res = await this.usage.run(client, req, { projectId, kind, attempt: 2, inputHash });
     }
 
     await this.prisma.insight.create({
@@ -521,7 +522,7 @@ export class InsightService {
         content: { markdown: res.text } as unknown as Prisma.InputJsonValue,
       },
     });
-    await this.recordRun(projectId, kind, 'generated', inputHash);
+    await this.recordRun(projectId, kind, 'generated', inputHash, context.length);
   }
 
   /** Fallback inferido mais recente de `entity` no projeto (ou null). Consumido pelo board. */
@@ -547,8 +548,9 @@ export class InsightService {
     projectId: string,
     client: ReturnType<LlmClientFactory['create']>,
     req: LlmRequest,
+    inputHash: string,
   ): Promise<StateSummary & { model: string; inputTokens: number; outputTokens: number }> {
-    return this.usage.runParsed(client, req, { projectId, kind: 'summary' }, (text, res) => {
+    return this.usage.runParsed(client, req, { projectId, kind: 'summary', inputHash }, (text, res) => {
       const parsed = parseSummary(text);
       return {
         ...parsed,

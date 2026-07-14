@@ -10,6 +10,8 @@ export interface RecordContext {
   kind: string;
   /** Nº da tentativa (a SPEC-003 faz 1 retry em JSON inválido → linha própria). */
   attempt?: number;
+  /** Hash do prompt (SPEC-011) — liga esta chamada ao artefato Insight. Ausente fora do gate. */
+  inputHash?: string;
 }
 
 /**
@@ -144,6 +146,7 @@ export class LlmUsageRecorder {
           model,
           attempt: ctx.attempt ?? 1,
           status,
+          inputHash: ctx.inputHash ?? null,
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
           cacheCreationTokens: usage.cacheCreationTokens,

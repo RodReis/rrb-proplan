@@ -22,6 +22,8 @@ export interface ActivityItem {
   detail: string | null;
   /** Link clicável de evidência (commit, issue) — ou null. */
   evidenceUrl: string | null;
+  /** Tokens/custo, só nas linhas de IA `generated` (SPEC-011). null quando não se aplica. */
+  cost?: { inputTokens: number; outputTokens: number; costUsd: string | null } | null;
 }
 
 // --- Linhas cruas de cada fonte (o mínimo que o mapeamento precisa) ---
@@ -38,6 +40,10 @@ export interface InsightRunRow {
   kind: string; // summary | edges_marker | classify_marker | architecture_fallback | ...
   outcome: string; // generated | reused | failed
   createdAt: Date;
+  /** Nº de documentos que entraram no prompt (só `generated`; null em `reused`/antigos). */
+  docsRead?: number | null;
+  /** Tokens/custo da chamada que este run disparou (só em `generated`; null em `reused`). */
+  cost?: { inputTokens: number; outputTokens: number; costUsd: string | null } | null;
 }
 export interface BoardMutationRow {
   id: string;
@@ -90,6 +96,26 @@ function insightRunTitle(row: InsightRunRow): string {
     default:
       return `Gerou ${noun} por IA`;
   }
+}
+
+/**
+ * Detalhe da linha de IA. `reused` = deixou explícito que não custou. `generated`
+ * = tokens e custo da chamada (SPEC-011: a economia só é crível se o gasto de
+ * quando SE gasta também aparece). Sem preço cadastrado → mostra só os tokens.
+ */
+function insightRunDetail(row: InsightRunRow): string | null {
+  if (row.outcome === 'reused') return 'Sem chamar a IA (sem custo)';
+  if (row.outcome === 'failed') return null;
+  const parts: string[] = [];
+  if (typeof row.docsRead === 'number') {
+    parts.push(`leu ${row.docsRead} documento${row.docsRead === 1 ? '' : 's'}`);
+  }
+  const c = row.cost;
+  if (c) {
+    parts.push(`${c.inputTokens.toLocaleString('pt-BR')} entrada · ${c.outputTokens.toLocaleString('pt-BR')} saída`);
+    parts.push(c.costUsd == null ? 'sem preço cadastrado' : `US$ ${Number(c.costUsd).toFixed(4)}`);
+  }
+  return parts.length ? parts.join(' · ') : null;
 }
 
 function mutationTitle(type: string, payload: unknown): string {
@@ -150,9 +176,9 @@ export function buildFeed(sources: {
       kind: 'insight_run',
       at: r.createdAt.toISOString(),
       title: insightRunTitle(r),
-      // Reaproveitamento não custou nada; deixa isso explícito na linha.
-      detail: r.outcome === 'reused' ? 'Sem chamar a IA (sem custo)' : null,
+      detail: insightRunDetail(r),
       evidenceUrl: null,
+      cost: r.cost ?? null,
     });
   }
   for (const m of sources.mutations) {

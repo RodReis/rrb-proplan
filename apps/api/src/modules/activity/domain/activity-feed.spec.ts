@@ -104,6 +104,48 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
     expect(item.title).toBe('Falhou ao inferir o Design por IA');
   });
 
+  it('insight_run generated: detalhe mostra docs lidos + tokens + custo (SPEC-011)', () => {
+    const [item] = buildFeed({
+      operations: [], mutations: [], syncs: [],
+      insightRuns: [{
+        id: 'i1', kind: 'edges_marker', outcome: 'generated', createdAt: d('2026-07-13T10:00:00Z'),
+        docsRead: 29,
+        cost: { inputTokens: 10900, outputTokens: 729, costUsd: '0.043635' },
+      }],
+    });
+    expect(item.detail).toBe('leu 29 documentos · 10.900 entrada · 729 saída · US$ 0.0436');
+    expect(item.cost).toEqual({ inputTokens: 10900, outputTokens: 729, costUsd: '0.043635' });
+  });
+
+  it('insight_run generated: 1 documento no singular', () => {
+    const [item] = buildFeed({
+      operations: [], mutations: [], syncs: [],
+      insightRuns: [{ id: 'i1', kind: 'summary', outcome: 'generated', createdAt: d('2026-07-13T10:00:00Z'), docsRead: 1, cost: null }],
+    });
+    expect(item.detail).toBe('leu 1 documento');
+  });
+
+  it('insight_run generated sem preço cadastrado: mostra tokens + aviso, não zero', () => {
+    const [item] = buildFeed({
+      operations: [], mutations: [], syncs: [],
+      insightRuns: [{
+        id: 'i1', kind: 'summary', outcome: 'generated', createdAt: d('2026-07-13T10:00:00Z'),
+        docsRead: 5,
+        cost: { inputTokens: 100, outputTokens: 50, costUsd: null },
+      }],
+    });
+    expect(item.detail).toBe('leu 5 documentos · 100 entrada · 50 saída · sem preço cadastrado');
+  });
+
+  it('insight_run reused: detalhe deixa explícito que não custou; sem cost', () => {
+    const [item] = buildFeed({
+      operations: [], mutations: [], syncs: [],
+      insightRuns: [{ id: 'i1', kind: 'summary', outcome: 'reused', createdAt: d('2026-07-13T10:00:00Z'), cost: null }],
+    });
+    expect(item.detail).toBe('Sem chamar a IA (sem custo)');
+    expect(item.cost).toBeNull();
+  });
+
   it('cada kind tem um objeto em linguagem de gente', () => {
     const mk = (kind: string) =>
       buildFeed({

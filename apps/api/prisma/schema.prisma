@@ -205,6 +205,10 @@ model InsightRun {
   kind      InsightKind
   outcome   InsightRunOutcome
   inputHash String            @map("input_hash")
+  // Nº de documentos que entraram no prompt desta execução (o painel mostra
+  // "leu N documentos"). Nullable: linhas antigas e `reused` não têm. Não é a
+  // lista de nomes — só a contagem, barata de derivar no gerador.
+  docsRead  Int?              @map("docs_read")
   createdAt DateTime          @default(now()) @map("created_at")
   project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -244,6 +248,11 @@ model LlmUsage {
   // Dinheiro em Decimal (Postgres numeric) — Float acumula erro com frações de centavo.
   costUsd              Decimal?       @map("cost_usd") @db.Decimal(12, 8)
   costSource           CostSource     @map("cost_source")
+  // Liga a chamada ao artefato Insight que ela gerou (SPEC-011): o painel de
+  // Atividade casa InsightRun ↔ LlmUsage por (projectId, kind, inputHash) para
+  // mostrar tokens/custo por linha. Nullable: chamadas fora do fluxo de gate
+  // (ex.: proposeCards) não têm hash. NÃO é fonte de gasto — só chave.
+  inputHash            String?        @map("input_hash")
   priceMissing         Boolean        @default(false) @map("price_missing")
   priceSnapshot        Json?          @map("price_snapshot") // as 4 tarifas usadas, congeladas
   pricedAt             DateTime?      @map("priced_at")
@@ -254,6 +263,7 @@ model LlmUsage {
 
   @@index([createdAt])
   @@index([projectId, createdAt])
+  @@index([projectId, kind, inputHash])
   @@map("llm_usage")
 }
 

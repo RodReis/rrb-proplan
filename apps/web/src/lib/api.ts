@@ -123,6 +123,8 @@ export interface ActivityItem {
   title: string;
   detail: string | null;
   evidenceUrl: string | null;
+  /** Tokens/custo da chamada de IA (só linhas insight_run `generated`). */
+  cost?: { inputTokens: number; outputTokens: number; costUsd: string | null } | null;
 }
 export interface ActivityFeed {
   items: ActivityItem[];

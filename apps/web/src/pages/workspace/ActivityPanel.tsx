@@ -25,6 +25,43 @@ const GROUP_META: Record<Group, { tag: string; mark: string }> = {
   sync: { tag: 'Sync', mark: '↻' },
 };
 
+/**
+ * Resumo do último lote de inferência de IA (SPEC-011): torna a economia da 7.7
+ * óbvia de relance — quantas chamadas foram feitas × reaproveitadas e o custo —
+ * e orienta o próximo passo (recarregar para ver o resultado). Deriva do próprio
+ * feed já carregado; agrupa as linhas de IA dentro de ~2 min da mais recente.
+ */
+function LastSyncSummary({ items }: { items: ActivityItem[] }) {
+  const ai = items.filter((i) => i.kind === 'insight_run');
+  if (ai.length === 0) return null;
+
+  const newestAt = new Date(ai[0].at).getTime();
+  const batch = ai.filter((i) => newestAt - new Date(i.at).getTime() <= 120_000);
+  const generated = batch.filter((i) => i.detail !== 'Sem chamar a IA (sem custo)' && !/^Reaproveitou/.test(i.title));
+  const reused = batch.length - generated.length;
+  const totalUsd = generated.reduce((s, i) => s + (i.cost?.costUsd ? Number(i.cost.costUsd) : 0), 0);
+
+  return (
+    <section className="act-summary">
+      <div className="act-summary-h">Última rodada de IA</div>
+      <div className="act-summary-body">
+        <strong>{generated.length}</strong> gerad{generated.length === 1 ? 'a' : 'as'}
+        {' · '}
+        <strong>{reused}</strong> reaproveitad{reused === 1 ? 'a' : 'as'} (sem custo)
+        {totalUsd > 0 && <> · <strong>US$ {totalUsd.toFixed(4)}</strong></>}
+      </div>
+      {reused > 0 && (
+        <div className="act-summary-econ">
+          Economizou {reused} chamada{reused === 1 ? '' : 's'} de IA — o texto não mudou desde a última vez.
+        </div>
+      )}
+      <div className="act-summary-next">
+        Próximo passo: <b>Sincronizar</b> após editar docs → <b>recarregar (F5)</b> → o resultado aparece na aba correspondente (Grafo, Arquitetura, Visão Geral).
+      </div>
+    </section>
+  );
+}
+
 /** Passos de uma operação em curso, na paleta do terminal (fundo carbono). */
 function TermSteps({ op }: { op: OperationView }) {
   return (
@@ -153,6 +190,8 @@ export function ActivityPanel({ projectId, projectName, onClose, refreshNonce }:
             </div>
           </section>
         )}
+
+        <LastSyncSummary items={items} />
 
         <div className="act-subhead">
           <span className="act-subhead-h">Histórico</span>
