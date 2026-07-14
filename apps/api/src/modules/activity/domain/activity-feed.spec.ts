@@ -104,7 +104,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
     expect(item.title).toBe('Falhou ao inferir o Design por IA');
   });
 
-  it('insight_run generated: detalhe mostra docs lidos + tokens + custo (SPEC-011)', () => {
+  it('insight_run generated: detalhe mostra docs lidos + tokens, SEM dinheiro (decisão do PI)', () => {
     const [item] = buildFeed({
       operations: [], mutations: [], syncs: [],
       insightRuns: [{
@@ -113,7 +113,8 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
         cost: { inputTokens: 10900, outputTokens: 729, costUsd: '0.043635' },
       }],
     });
-    expect(item.detail).toBe('leu 29 documentos · 10.900 entrada · 729 saída · US$ 0.0436');
+    expect(item.detail).toBe('leu 29 documentos · 10.900 tokens de entrada · 729 de saída');
+    expect(item.detail).not.toMatch(/US\$|\$/); // o cifrão no feed assusta — vive na aba Uso de IA
     expect(item.cost).toEqual({ inputTokens: 10900, outputTokens: 729, costUsd: '0.043635' });
   });
 
@@ -125,7 +126,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
     expect(item.detail).toBe('leu 1 documento');
   });
 
-  it('insight_run generated sem preço cadastrado: mostra tokens + aviso, não zero', () => {
+  it('insight_run generated: tokens aparecem mesmo sem preço cadastrado', () => {
     const [item] = buildFeed({
       operations: [], mutations: [], syncs: [],
       insightRuns: [{
@@ -134,7 +135,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
         cost: { inputTokens: 100, outputTokens: 50, costUsd: null },
       }],
     });
-    expect(item.detail).toBe('leu 5 documentos · 100 entrada · 50 saída · sem preço cadastrado');
+    expect(item.detail).toBe('leu 5 documentos · 100 tokens de entrada · 50 de saída');
   });
 
   it('insight_run reused: detalhe deixa explícito que não custou; sem cost', () => {

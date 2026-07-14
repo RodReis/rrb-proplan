@@ -100,8 +100,9 @@ function insightRunTitle(row: InsightRunRow): string {
 
 /**
  * Detalhe da linha de IA. `reused` = deixou explícito que não custou. `generated`
- * = tokens e custo da chamada (SPEC-011: a economia só é crível se o gasto de
- * quando SE gasta também aparece). Sem preço cadastrado → mostra só os tokens.
+ * = docs lidos + tokens gastos (SPEC-011: a economia só é crível se o gasto de
+ * quando SE gasta também aparece). Gasto exibido em TOKENS, não em dinheiro — o
+ * valor em US$ vive na aba Uso de IA (decisão do PI: o cifrão no feed assusta).
  */
 function insightRunDetail(row: InsightRunRow): string | null {
   if (row.outcome === 'reused') return 'Sem chamar a IA (sem custo)';
@@ -112,8 +113,7 @@ function insightRunDetail(row: InsightRunRow): string | null {
   }
   const c = row.cost;
   if (c) {
-    parts.push(`${c.inputTokens.toLocaleString('pt-BR')} entrada · ${c.outputTokens.toLocaleString('pt-BR')} saída`);
-    parts.push(c.costUsd == null ? 'sem preço cadastrado' : `US$ ${Number(c.costUsd).toFixed(4)}`);
+    parts.push(`${c.inputTokens.toLocaleString('pt-BR')} tokens de entrada · ${c.outputTokens.toLocaleString('pt-BR')} de saída`);
   }
   return parts.length ? parts.join(' · ') : null;
 }

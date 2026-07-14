@@ -39,7 +39,10 @@ function LastSyncSummary({ items }: { items: ActivityItem[] }) {
   const batch = ai.filter((i) => newestAt - new Date(i.at).getTime() <= 120_000);
   const generated = batch.filter((i) => i.detail !== 'Sem chamar a IA (sem custo)' && !/^Reaproveitou/.test(i.title));
   const reused = batch.length - generated.length;
-  const totalUsd = generated.reduce((s, i) => s + (i.cost?.costUsd ? Number(i.cost.costUsd) : 0), 0);
+  const totalTokens = generated.reduce(
+    (s, i) => s + (i.cost ? i.cost.inputTokens + i.cost.outputTokens : 0),
+    0,
+  );
 
   return (
     <section className="act-summary">
@@ -48,7 +51,7 @@ function LastSyncSummary({ items }: { items: ActivityItem[] }) {
         <strong>{generated.length}</strong> gerad{generated.length === 1 ? 'a' : 'as'}
         {' · '}
         <strong>{reused}</strong> reaproveitad{reused === 1 ? 'a' : 'as'} (sem custo)
-        {totalUsd > 0 && <> · <strong>US$ {totalUsd.toFixed(4)}</strong></>}
+        {totalTokens > 0 && <> · <strong>{totalTokens.toLocaleString('pt-BR')} tokens</strong></>}
       </div>
       {reused > 0 && (
         <div className="act-summary-econ">
