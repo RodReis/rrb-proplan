@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, Entity, MappingRow } from '../../lib/api';
+import { OperationSteps, useOperation } from './OperationSteps';
 
 const LABELS: Record<Entity, string> = {
   architecture: 'Arquitetura',
@@ -30,7 +31,10 @@ export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Prop
   const [rows, setRows] = useState<MappingRow[]>([]);
   const [proplanConfigInvalid, setProplanConfigInvalid] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<Entity | null>(null);
+  const [savingEntity, setSavingEntity] = useState<Entity | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
+
+  const op = useOperation(operationId, onSaved);
 
   useEffect(() => {
     let active = true;
@@ -49,16 +53,13 @@ export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Prop
   }, [projectId]);
 
   async function save(entity: Entity, path: string | null) {
-    setSaving(entity);
-    const toastId = toast.loading('Salvando no repo…');
+    setSavingEntity(entity);
     try {
-      await api.putMapping(projectId, entity, path);
-      toast.success('Mapeamento salvo — re-sincronizando.', { id: toastId });
-      onSaved();
+      const { operationId } = await api.putMapping(projectId, entity, path);
+      setOperationId(operationId);
     } catch (e) {
-      toast.error(`Falha ao salvar: ${e}`, { id: toastId });
-    } finally {
-      setSaving(null);
+      toast.error(`Falha ao salvar: ${e}`);
+      setSavingEntity(null);
     }
   }
 
@@ -112,7 +113,7 @@ export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Prop
                   <select
                     className="rounded-md border border-border bg-bg px-2 py-1 text-xs"
                     defaultValue={r.resolution.path ?? ''}
-                    disabled={saving === r.entity}
+                    disabled={operationId !== null}
                     onChange={(e) => save(r.entity, e.target.value || null)}
                   >
                     <option value="">(marcar ausente)</option>
@@ -122,13 +123,36 @@ export function MappingScreen({ projectId, focusEntity, onClose, onSaved }: Prop
                       </option>
                     ))}
                   </select>
-                  {saving === r.entity && <span className="text-xs text-text-muted">salvando…</span>}
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {op && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-text/20 p-4">
+          <div className="w-full max-w-lg rounded-lg border border-border bg-surface p-5">
+            <h3 className="mb-3 text-sm font-semibold">
+              Salvando o mapeamento de {savingEntity ? LABELS[savingEntity] : ''}
+            </h3>
+            <OperationSteps op={op} />
+            {op.status === 'failed' && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => {
+                    setOperationId(null);
+                    setSavingEntity(null);
+                  }}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg"
+                >
+                  Fechar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

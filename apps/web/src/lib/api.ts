@@ -207,7 +207,7 @@ export const api = {
       `/projects/${projectId}/tabs/mapping`,
     ),
   putMapping: (projectId: string, entity: Entity, path: string | null) =>
-    request<{ syncRunId: string }>(`/projects/${projectId}/tabs/mapping`, {
+    request<{ operationId: string }>(`/projects/${projectId}/tabs/mapping`, {
       method: 'PUT',
       body: JSON.stringify({ entity, path }),
     }),
@@ -227,7 +227,7 @@ export const api = {
   previewImport: (projectId: string) =>
     request<CardToCreate[]>(`/projects/${projectId}/board/import-from-status`),
   applyImport: (projectId: string, cards: CardToCreate[]) =>
-    request<{ created: number }>(
+    request<{ operationId: string }>(
       `/projects/${projectId}/board/import-from-status`,
       { method: 'POST', body: JSON.stringify({ cards }) },
     ),
@@ -236,7 +236,7 @@ export const api = {
       method: 'POST',
     }),
   applyBootstrap: (projectId: string, cards: CardToCreate[]) =>
-    request<{ created: number }>(`/projects/${projectId}/board/bootstrap/apply`, {
+    request<{ operationId: string }>(`/projects/${projectId}/board/bootstrap/apply`, {
       method: 'POST',
       body: JSON.stringify({ cards }),
     }),

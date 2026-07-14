@@ -7,7 +7,11 @@
  * banco. O ActivityService só persiste e avança o que este módulo define.
  */
 
-export type OperationKind = 'promote' | 'mapping' | 'bootstrap' | 'board_mutation';
+// Os fluxos de escrita que CONGELAM a tela hoje (SPEC-010, corrigida 2026-07-13).
+// O board_mutation ficou de fora de propósito: o Kanban já é otimista (SPEC-005),
+// não tem o sintoma do silêncio, e tem seu próprio estado (BoardMutation +
+// mutationId) — envolvê-lo criaria a segunda fonte que o ADR-017 proíbe.
+export type OperationKind = 'promote' | 'mapping' | 'bootstrap';
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed';
 
 export interface Step {
@@ -35,16 +39,13 @@ const STEP_TEMPLATES: Record<OperationKind, { key: string; label: string }[]> = 
     { key: 'sync', label: 'Sincronizando a documentação…' },
     { key: 'done', label: 'Pronto — o mapeamento está ativo' },
   ],
+  // Bootstrap de cards: cria N issues no GitHub e sincroniza o board — NÃO
+  // commita doc nem faz sync de documentação (o STATUS.md legado virou fluxo de
+  // issues na SPEC-005). Conclui síncrono no próprio método (sem SyncRun).
   bootstrap: [
-    { key: 'commit', label: 'Commitando {doc} no repositório…' },
-    { key: 'propagate', label: 'Aguardando o GitHub propagar…' },
-    { key: 'sync', label: 'Sincronizando a documentação…' },
-    { key: 'done', label: 'Pronto — o documento foi criado' },
-  ],
-  board_mutation: [
-    { key: 'mutate', label: 'Atualizando a issue no GitHub…' },
-    { key: 'confirm', label: 'Confirmando a mudança…' },
-    { key: 'done', label: 'Pronto — o card foi movido' },
+    { key: 'issues', label: 'Criando os cards como issues no GitHub…' },
+    { key: 'board', label: 'Sincronizando o board…' },
+    { key: 'done', label: 'Pronto — os cards estão no Kanban' },
   ],
 };
 

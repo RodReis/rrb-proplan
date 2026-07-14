@@ -8,6 +8,7 @@ import {
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, ENTITIES, Resolution } from '../../ingestion/domain/entity';
+import { ActivityService } from '../../activity/application/activity.service';
 import {
   mergeProplanConfig,
   parseProplanConfig,
@@ -35,6 +36,7 @@ export class MappingService {
     private readonly writeback: GithubWritebackClient,
     private readonly ingestion: IngestionService,
     private readonly resolution: ResolutionService,
+    private readonly activity: ActivityService,
   ) {}
 
   /** As 6 entidades com a resolução atual + candidatos (paths + diretórios do repo). */
@@ -70,56 +72,76 @@ export class MappingService {
     return { rows, proplanConfigInvalid: project?.proplanConfigInvalid ?? false };
   }
 
-  /** Escreve a entidade em .proplan/config.yml (ler-mesclar-reescrever) + re-sync. */
+  /**
+   * Escreve a entidade em .proplan/config.yml (ler-mesclar-reescrever) + re-sync.
+   * Retorna `{ operationId }` (SPEC-010): passos nomeados visíveis, aba recarrega
+   * sozinha. Concluída quando o SyncRun termina (ver ActivityService.get).
+   */
   async putMapping(
     projectId: string,
     entity: Entity,
     path: string | null,
-  ): Promise<{ syncRunId: string }> {
+  ): Promise<{ operationId: string }> {
     const project = await this.prisma.project.findUnique({ where: { id: projectId } });
     if (!project) throw new NotFoundException('Projeto não encontrado');
+    const operationId = await this.activity.start(projectId, 'mapping', CONFIG_PATH);
 
-    const current = await this.prisma.document.findUnique({
-      where: { projectId_path: { projectId, path: CONFIG_PATH } },
-      select: { content: true },
-    });
-    const { config } = parseProplanConfig(current?.content ?? null);
-    const merged = mergeProplanConfig(config, entity, path);
-    const content = serializeProplanConfig(merged);
+    try {
+      const current = await this.prisma.document.findUnique({
+        where: { projectId_path: { projectId, path: CONFIG_PATH } },
+        select: { content: true },
+      });
+      const { config } = parseProplanConfig(current?.content ?? null);
+      const merged = mergeProplanConfig(config, entity, path);
+      const content = serializeProplanConfig(merged);
 
-    const token = await this.auth.installationToken(projectId);
-    let newBlobSha = '';
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const baseSha = await this.writeback.getFileSha(
-          token,
-          project.owner,
-          project.name,
-          CONFIG_PATH,
-          project.defaultBranch,
-        );
-        newBlobSha = await this.writeback.putFile({
-          token,
-          owner: project.owner,
-          repo: project.name,
-          path: CONFIG_PATH,
-          branch: project.defaultBranch,
-          content,
-          message: `proplan: mapeia ${entity} → ${path ?? 'ausente'} (.proplan/config.yml)`,
-          baseSha,
-        });
-        break;
-      } catch (err) {
-        if (err instanceof WritebackConflictError && attempt === 0) continue;
-        throw err;
+      const token = await this.auth.installationToken(projectId);
+      let newBlobSha = '';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const baseSha = await this.writeback.getFileSha(
+            token,
+            project.owner,
+            project.name,
+            CONFIG_PATH,
+            project.defaultBranch,
+          );
+          newBlobSha = await this.writeback.putFile({
+            token,
+            owner: project.owner,
+            repo: project.name,
+            path: CONFIG_PATH,
+            branch: project.defaultBranch,
+            content,
+            message: `proplan: mapeia ${entity} → ${path ?? 'ausente'} (.proplan/config.yml)`,
+            baseSha,
+          });
+          break;
+        } catch (err) {
+          if (err instanceof WritebackConflictError && attempt === 0) continue;
+          throw err;
+        }
       }
-    }
 
-    // Espera a Trees API refletir este commit antes de o sync decidir noop
-    // (consistência eventual — ver SyncService.listScope).
-    return this.ingestion.enqueueSync(projectId, {
-      path: CONFIG_PATH,
-      blobSha: newBlobSha,
-    });
+      const commitUrl = `https://github.com/${project.owner}/${project.name}/blob/${project.defaultBranch}/${CONFIG_PATH}`;
+      await this.activity.attachArtifacts(operationId, { commitUrl });
+      await this.activity.advance(operationId, 'propagate');
+
+      // Espera a Trees API refletir este commit antes de o sync decidir noop
+      // (consistência eventual — ver SyncService.listScope).
+      const { syncRunId } = await this.ingestion.enqueueSync(projectId, {
+        path: CONFIG_PATH,
+        blobSha: newBlobSha,
+      });
+      await this.activity.advance(operationId, 'sync');
+      await this.activity.attachArtifacts(operationId, { syncRunId });
+      return { operationId };
+    } catch (err) {
+      await this.activity.fail(
+        operationId,
+        err instanceof Error ? err.message : 'Falha ao salvar o mapeamento',
+      );
+      throw err;
+    }
   }
 }

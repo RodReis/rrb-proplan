@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, CardToCreate } from '../../../lib/api';
 import { COLUMN_LABEL } from './columns';
+import { OperationSteps, useOperation } from '../OperationSteps';
 
 interface Props {
   projectId: string;
@@ -21,7 +22,11 @@ type State =
  */
 export function BootstrapDialog({ projectId, onClose, onCreated }: Props) {
   const [state, setState] = useState<State>({ status: 'proposing' });
-  const [creating, setCreating] = useState(false);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const op = useOperation(operationId, onCreated);
+  const running = operationId !== null && op?.status !== 'failed';
 
   useEffect(() => {
     let active = true;
@@ -44,15 +49,14 @@ export function BootstrapDialog({ projectId, onClose, onCreated }: Props) {
 
   async function create() {
     if (state.status !== 'review') return;
-    setCreating(true);
+    setStarting(true);
     try {
-      const { created } = await api.applyBootstrap(projectId, state.cards);
-      toast.success(`${created} issues criadas.`);
-      onCreated();
+      const { operationId } = await api.applyBootstrap(projectId, state.cards);
+      setOperationId(operationId);
     } catch (err) {
       toast.error(`Falha ao criar: ${err}`);
     } finally {
-      setCreating(false);
+      setStarting(false);
     }
   }
 
@@ -73,6 +77,12 @@ export function BootstrapDialog({ projectId, onClose, onCreated }: Props) {
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto p-3">
+          {op ? (
+            <div className="p-3">
+              <OperationSteps op={op} />
+            </div>
+          ) : (
+            <>
           {state.status === 'proposing' && (
             <div className="flex h-40 flex-col items-center justify-center gap-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
@@ -104,25 +114,37 @@ export function BootstrapDialog({ projectId, onClose, onCreated }: Props) {
                 </div>
               </div>
             ))}
+            </>
+          )}
         </div>
 
-        {state.status === 'review' && (
+        {op?.status === 'failed' ? (
           <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
             <button
               onClick={onClose}
               className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg"
             >
+              Fechar
+            </button>
+          </div>
+        ) : state.status === 'review' && !op ? (
+          <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+            <button
+              onClick={onClose}
+              disabled={running}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg disabled:opacity-50"
+            >
               Cancelar
             </button>
             <button
               onClick={() => void create()}
-              disabled={creating || state.cards.length === 0}
+              disabled={running || starting || state.cards.length === 0}
               className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
-              {creating ? 'Criando…' : `Criar ${state.cards.length} issues`}
+              {starting ? 'Criando…' : `Criar ${state.cards.length} issues`}
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

@@ -277,7 +277,6 @@ enum OperationKind {
   promote
   mapping
   bootstrap
-  board_mutation
 }
 
 enum OperationStatus {
