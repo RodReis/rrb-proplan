@@ -16,9 +16,12 @@ interface OpenAiCompatConfig {
  */
 export class OpenAiCompatClient implements LlmClient {
   readonly provider: string;
+  /** Modelo que SERÁ enviado — entra no inputHash (SPEC-011). */
+  readonly model: string;
 
   constructor(private readonly config: OpenAiCompatConfig) {
     this.provider = config.provider;
+    this.model = config.model;
   }
 
   async complete(req: LlmRequest): Promise<LlmResponse> {

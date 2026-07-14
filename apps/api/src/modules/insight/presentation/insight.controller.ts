@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Param,
@@ -10,7 +11,15 @@ import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
-import { InsightService } from '../application/insight.service';
+import { InsightService, RegenerableKind } from '../application/insight.service';
+
+const REGENERABLE: readonly RegenerableKind[] = [
+  'summary',
+  'edges',
+  'classify',
+  'architecture_fallback',
+  'design_fallback',
+];
 
 @Controller('projects/:id')
 @UseGuards(JwtAuthGuard)
@@ -22,13 +31,26 @@ export class InsightController {
     return this.insight.latestSummary(req.userId, id);
   }
 
-  // Regeneração é síncrona (1 chamada de IA, ~segundos): a UI mostra "gerando…"
-  // durante o await e recebe o resumo pronto — sem polling. ponytail: se a
-  // latência incomodar, promover para job com polling (padrão do sync).
-  @Post('insights/summary/regenerate')
-  async regenerate(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    await this.insight.regenerate(req.userId, id);
-    return this.insight.latestSummary(req.userId, id);
+  // Regeneração força a IA ignorando o inputHash (SPEC-011, item 5): único
+  // caminho para reaplicar um provedor/modelo novo sobre docs inalterados
+  // (ADR-008). Protegida pelo teto de gasto — o service lança
+  // ForbiddenException (403) se o teto do mês foi atingido (SPEC-009).
+  //
+  // Síncrona (1 chamada de IA, ~segundos): a UI mostra "gerando…" durante o
+  // await. ponytail: se a latência incomodar, promover para job com polling.
+  @Post('insights/:kind/regenerate')
+  async regenerate(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('kind') kind: string,
+  ) {
+    if (!REGENERABLE.includes(kind as RegenerableKind)) {
+      throw new BadRequestException(`Inferência não regenerável: ${kind}`);
+    }
+    await this.insight.regenerate(req.userId, id, kind as RegenerableKind);
+    // Só o summary tem leitura direta na Visão Geral; os demais aparecem nas
+    // suas abas/grafo no próximo carregamento (o artefato já foi persistido).
+    return kind === 'summary' ? this.insight.latestSummary(req.userId, id) : { ok: true };
   }
 }
 // O bootstrap de STATUS.md (proposeStatus/commitStatus) da SPEC-003 foi

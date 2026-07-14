@@ -32,6 +32,13 @@ export interface LlmResponse {
  */
 export interface LlmClient {
   readonly provider: string;
+  /**
+   * Modelo que será enviado ao provedor (resolvido do env). Entra no inputHash
+   * (SPEC-011) — trocar de modelo é input novo. É o modelo REQUISITADO, não o
+   * que a resposta relata em `LlmResponse.model` (que pode ser um alias
+   * resolvido pelo provedor); a chave de invalidação usa o requisitado.
+   */
+  readonly model: string;
   complete(req: LlmRequest): Promise<LlmResponse>;
 }
 

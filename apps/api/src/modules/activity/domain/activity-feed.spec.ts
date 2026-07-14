@@ -8,8 +8,8 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
       operations: [
         { id: 'o1', kind: 'promote', status: 'done', commitUrl: 'http://c/1', startedAt: d('2026-07-13T10:00:00Z') },
       ],
-      insights: [
-        { id: 'i1', kind: 'architecture_fallback', provider: 'anthropic', model: 'claude-sonnet-5', createdAt: d('2026-07-13T09:00:00Z'), content: {} },
+      insightRuns: [
+        { id: 'i1', kind: 'architecture_fallback', outcome: 'generated', createdAt: d('2026-07-13T09:00:00Z') },
       ],
       mutations: [
         { id: 'm1', type: 'move_column', payload: { number: 42, toColumn: 'doing' }, status: 'applied', createdAt: d('2026-07-13T11:00:00Z'), issueUrl: 'http://i/42' },
@@ -25,7 +25,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
     // não busca syncs sem o toggle) → o feed mostra 1 item.
     const feed = buildFeed({
       operations: [{ id: 'o1', kind: 'promote', status: 'done', commitUrl: null, startedAt: d('2026-07-13T10:00:00Z') }],
-      insights: [],
+      insightRuns: [],
       mutations: [],
       syncs: [], // toggle desligado → service não passa syncs
     });
@@ -36,7 +36,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
   it('com syncs (toggle ligado), o noop aparece', () => {
     const feed = buildFeed({
       operations: [],
-      insights: [],
+      insightRuns: [],
       mutations: [],
       syncs: [{ id: 's1', status: 'noop', added: 0, updated: 0, removed: 0, startedAt: d('2026-07-13T10:00:00Z') }],
     });
@@ -47,7 +47,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
   it('operation: título por kind + link do commit como evidência', () => {
     const [item] = buildFeed({
       operations: [{ id: 'o1', kind: 'promote', status: 'done', commitUrl: 'http://commit', startedAt: d('2026-07-13T10:00:00Z') }],
-      insights: [], mutations: [], syncs: [],
+      insightRuns: [], mutations: [], syncs: [],
     });
     expect(item.title).toBe('Promoveu um documento inferido a fonte');
     expect(item.evidenceUrl).toBe('http://commit');
@@ -55,7 +55,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
 
   it('board_mutation move_column: título com número e coluna + link da issue', () => {
     const [item] = buildFeed({
-      operations: [], insights: [],
+      operations: [], insightRuns: [],
       mutations: [{ id: 'm1', type: 'move_column', payload: { number: 7, toColumn: 'done' }, status: 'applied', createdAt: d('2026-07-13T10:00:00Z'), issueUrl: 'http://i/7' }],
       syncs: [],
     });
@@ -66,7 +66,7 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
   it('move_column traduz o valor do enum para o nome de exibição (nunca "todo"/"finalized")', () => {
     const mk = (toColumn: string) =>
       buildFeed({
-        operations: [], insights: [], syncs: [],
+        operations: [], insightRuns: [], syncs: [],
         mutations: [{ id: 'm', type: 'move_column', payload: { number: 1, toColumn }, status: 'applied', createdAt: d('2026-07-13T10:00:00Z'), issueUrl: null }],
       })[0].title;
     expect(mk('todo')).toBe('Moveu a issue #1 para A Fazer');
@@ -74,45 +74,57 @@ describe('buildFeed — projeção do histórico de Atividade', () => {
     expect(mk('finalized')).toBe('Moveu a issue #1 para Finalizado');
   });
 
-  it('insight: mostra provider/model no detalhe, sem link', () => {
+  // SPEC-011: a fonte do feed para IA é o InsightRun (execução), não o artefato.
+  // O feed distingue gerado × reaproveitado — a economia da 7.7 fica visível.
+
+  it('insight_run generated: "Gerou <objeto> por IA", sem link', () => {
     const [item] = buildFeed({
       operations: [], mutations: [], syncs: [],
-      insights: [{ id: 'i1', kind: 'summary', provider: 'anthropic', model: 'x', createdAt: d('2026-07-13T10:00:00Z'), content: {} }],
+      insightRuns: [{ id: 'i1', kind: 'summary', outcome: 'generated', createdAt: d('2026-07-13T10:00:00Z') }],
     });
-    expect(item.detail).toBe('anthropic/x');
+    expect(item.kind).toBe('insight_run');
+    expect(item.title).toBe('Gerou o resumo do projeto por IA');
     expect(item.evidenceUrl).toBeNull();
   });
 
-  it('resultado por linha: classify mostra nº de documentos do content (hits)', () => {
-    const mk = (content: unknown) =>
-      buildFeed({
-        operations: [], mutations: [], syncs: [],
-        insights: [{ id: 'i', kind: 'classify_marker', provider: 'a', model: 'classify', createdAt: d('2026-07-13T10:00:00Z'), content }],
-      })[0].title;
-    expect(mk({ hits: [{}, {}, {}] })).toBe('Classificou 3 documentos por IA');
-    expect(mk({ hits: [{}] })).toBe('Classificou 1 documento por IA'); // singular
-    expect(mk({})).toBe('Classificou documentos por IA'); // sem contagem → texto neutro
+  it('insight_run reused: mostra que reaproveitou sem custo (a economia da 7.7)', () => {
+    const [item] = buildFeed({
+      operations: [], mutations: [], syncs: [],
+      insightRuns: [{ id: 'i1', kind: 'edges_marker', outcome: 'reused', createdAt: d('2026-07-13T10:00:00Z') }],
+    });
+    expect(item.title).toBe('Reaproveitou as ligações entre documentos — nada mudou desde a última vez');
+    expect(item.detail).toBe('Sem chamar a IA (sem custo)');
   });
 
-  it('resultado por linha: edges mostra nº de ligações do content (count)', () => {
-    const mk = (content: unknown) =>
+  it('insight_run failed: sinaliza a falha por objeto', () => {
+    const [item] = buildFeed({
+      operations: [], mutations: [], syncs: [],
+      insightRuns: [{ id: 'i1', kind: 'design_fallback', outcome: 'failed', createdAt: d('2026-07-13T10:00:00Z') }],
+    });
+    expect(item.title).toBe('Falhou ao inferir o Design por IA');
+  });
+
+  it('cada kind tem um objeto em linguagem de gente', () => {
+    const mk = (kind: string) =>
       buildFeed({
         operations: [], mutations: [], syncs: [],
-        insights: [{ id: 'i', kind: 'edges_marker', provider: 'a', model: 'edges', createdAt: d('2026-07-13T10:00:00Z'), content }],
+        insightRuns: [{ id: 'i', kind, outcome: 'generated', createdAt: d('2026-07-13T10:00:00Z') }],
       })[0].title;
-    expect(mk({ count: 14 })).toBe('Inferiu 14 ligações entre documentos por IA');
-    expect(mk({ count: 1 })).toBe('Inferiu 1 ligação entre documentos por IA'); // singular
-    expect(mk({})).toBe('Inferiu ligações entre documentos por IA'); // legado sem count
+    expect(mk('summary')).toBe('Gerou o resumo do projeto por IA');
+    expect(mk('edges_marker')).toBe('Gerou as ligações entre documentos por IA');
+    expect(mk('classify_marker')).toBe('Gerou a classificação de documentos por IA');
+    expect(mk('architecture_fallback')).toBe('Gerou a Arquitetura por IA');
+    expect(mk('design_fallback')).toBe('Gerou o Design por IA');
   });
 
   it('nenhum título tem jargão técnico', () => {
     const feed = buildFeed({
       operations: [{ id: 'o1', kind: 'mapping', status: 'done', commitUrl: null, startedAt: d('2026-07-13T10:00:00Z') }],
-      insights: [{ id: 'i1', kind: 'edges_marker', provider: 'a', model: 'm', createdAt: d('2026-07-13T09:00:00Z'), content: { count: 3 } }],
+      insightRuns: [{ id: 'i1', kind: 'edges_marker', outcome: 'generated', createdAt: d('2026-07-13T09:00:00Z') }],
       mutations: [],
       syncs: [{ id: 's1', status: 'success', added: 1, updated: 0, removed: 0, startedAt: d('2026-07-13T08:00:00Z') }],
     });
     const text = feed.map((f) => f.title + ' ' + (f.detail ?? '')).join(' ');
-    expect(text).not.toMatch(/docsTreeSha|enqueueSync|noop|blobSha|202/i);
+    expect(text).not.toMatch(/docsTreeSha|docsScopeHash|inputHash|enqueueSync|noop|blobSha|202/i);
   });
 });

@@ -7,9 +7,11 @@ const ANTHROPIC_TIMEOUT_MS = 120_000; // job, não request (ARCHITECTURE.md)
 @Injectable()
 export class AnthropicClient implements LlmClient {
   readonly provider = 'anthropic';
+  /** Modelo que SERÁ enviado — entra no inputHash (SPEC-011), resolvido antes da chamada. */
+  readonly model = process.env.LLM_MODEL_ANTHROPIC ?? 'claude-sonnet-5';
 
   async complete(req: LlmRequest): Promise<LlmResponse> {
-    const model = process.env.LLM_MODEL_ANTHROPIC ?? 'claude-sonnet-5';
+    const model = this.model;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {

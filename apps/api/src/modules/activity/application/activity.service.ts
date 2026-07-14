@@ -178,18 +178,21 @@ export class ActivityService {
     const before = opts.cursor ? new Date(opts.cursor) : undefined;
     const take = limit + 1; // por fonte: o suficiente para preencher a página
 
-    const [operations, insights, mutations, syncs] = await Promise.all([
+    const [operations, insightRuns, mutations, syncs] = await Promise.all([
       this.prisma.operation.findMany({
         where: { projectId, ...(before ? { startedAt: { lt: before } } : {}) },
         orderBy: { startedAt: 'desc' },
         take,
         select: { id: true, kind: true, status: true, commitUrl: true, startedAt: true },
       }),
-      this.prisma.insight.findMany({
+      // Fonte do feed para IA (SPEC-011): InsightRun — uma linha por execução,
+      // distingue gerado × reaproveitado (a economia da 7.7 fica visível). Antes
+      // era a tabela Insight (o artefato); trocada para não duplicar o fato "gerou".
+      this.prisma.insightRun.findMany({
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
         orderBy: { createdAt: 'desc' },
         take,
-        select: { id: true, kind: true, provider: true, model: true, createdAt: true, content: true },
+        select: { id: true, kind: true, outcome: true, createdAt: true },
       }),
       this.prisma.boardMutation.findMany({
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
@@ -212,7 +215,7 @@ export class ActivityService {
 
     const all = buildFeed({
       operations,
-      insights,
+      insightRuns,
       mutations: mutations.map((m) => ({
         ...m,
         issueUrl: issueUrl((m.payload as { number?: number } | null)?.number),

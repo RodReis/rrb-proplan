@@ -9,7 +9,7 @@
 
 import { columnTitle } from '../../../shared/convention/columns';
 
-export type ActivityKind = 'operation' | 'insight' | 'board_mutation' | 'sync';
+export type ActivityKind = 'operation' | 'insight_run' | 'board_mutation' | 'sync';
 
 export interface ActivityItem {
   /** id único no feed (prefixado pela fonte, para key estável no front). */
@@ -33,14 +33,11 @@ export interface OperationRow {
   commitUrl: string | null;
   startedAt: Date;
 }
-export interface InsightRow {
+export interface InsightRunRow {
   id: string;
-  kind: string; // summary | architecture_fallback | ...
-  provider: string;
-  model: string;
+  kind: string; // summary | edges_marker | classify_marker | architecture_fallback | ...
+  outcome: string; // generated | reused | failed
   createdAt: Date;
-  /** JSON persistido — de onde sai a contagem do resultado (hits, count). */
-  content: unknown;
 }
 export interface BoardMutationRow {
   id: string;
@@ -65,40 +62,34 @@ const OPERATION_TITLE: Record<string, string> = {
   bootstrap: 'Criou cards no board a partir da documentação',
 };
 
-// Título fixo dos insights que produzem um artefato de texto (o resumo, a aba
-// inferida, o backlog proposto) — o resultado é o próprio artefato, não uma
-// contagem. Os que produzem uma coleção (docs classificados, ligações) carregam
-// o número no título via insightTitle().
-const INSIGHT_TITLE: Record<string, string> = {
-  summary: 'Gerou o resumo do projeto por IA',
-  architecture_fallback: 'Inferiu a Arquitetura por IA',
-  design_fallback: 'Inferiu o Design por IA',
-  status_bootstrap: 'Propôs um backlog por IA',
+// O QUE cada job de insight produz, em linguagem de gente — o objeto direto do
+// verbo (gerou/reaproveitou/falhou). SPEC-011: a fonte do feed passou a ser o
+// InsightRun (uma linha por execução), não mais o artefato Insight — por isso o
+// feed distingue gerado × reaproveitado (a economia da 7.7 precisa ser visível).
+const INSIGHT_NOUN: Record<string, string> = {
+  summary: 'o resumo do projeto',
+  edges_marker: 'as ligações entre documentos',
+  classify_marker: 'a classificação de documentos',
+  architecture_fallback: 'a Arquitetura',
+  design_fallback: 'o Design',
+  status_bootstrap: 'o backlog de cards',
 };
 
-/** Nº de itens do resultado, do content persistido (nunca de nova inferência). */
-function insightCount(kind: string, content: unknown): number | null {
-  const c = (content ?? {}) as { hits?: unknown[]; count?: number };
-  if (kind === 'classify_marker') return Array.isArray(c.hits) ? c.hits.length : null;
-  if (kind === 'edges_marker') return typeof c.count === 'number' ? c.count : null;
-  return null;
-}
-
 /**
- * Título do insight com o resultado embutido. "Classificou N documentos",
- * "Inferiu N ligações" — o número vem do artefato persistido. Sem número (0 ou
- * ausente), cai no texto neutro; nunca "Classificou documentos" sem contagem
- * quando ela existe (SPEC-010: linha sem resultado é log, não evidência).
+ * Título de uma execução de job de insight, por resultado. `generated` = a IA
+ * rodou; `reused` = o input não mudou, reaproveitou sem gastar (a economia da
+ * 7.7); `failed` = a chamada falhou. Sem jargão (SPEC-010).
  */
-function insightTitle(row: InsightRow): string {
-  const n = insightCount(row.kind, row.content);
-  if (row.kind === 'classify_marker') {
-    return n == null ? 'Classificou documentos por IA' : `Classificou ${n} documento${n === 1 ? '' : 's'} por IA`;
+function insightRunTitle(row: InsightRunRow): string {
+  const noun = INSIGHT_NOUN[row.kind] ?? 'uma inferência';
+  switch (row.outcome) {
+    case 'reused':
+      return `Reaproveitou ${noun} — nada mudou desde a última vez`;
+    case 'failed':
+      return `Falhou ao inferir ${noun} por IA`;
+    default:
+      return `Gerou ${noun} por IA`;
   }
-  if (row.kind === 'edges_marker') {
-    return n == null ? 'Inferiu ligações entre documentos por IA' : `Inferiu ${n} ligaç${n === 1 ? 'ão' : 'ões'} entre documentos por IA`;
-  }
-  return INSIGHT_TITLE[row.kind] ?? 'Chamada de IA';
 }
 
 function mutationTitle(type: string, payload: unknown): string {
@@ -137,7 +128,7 @@ function syncTitle(r: SyncRunRow): string {
  */
 export function buildFeed(sources: {
   operations: OperationRow[];
-  insights: InsightRow[];
+  insightRuns: InsightRunRow[];
   mutations: BoardMutationRow[];
   syncs: SyncRunRow[];
 }): ActivityItem[] {
@@ -153,13 +144,14 @@ export function buildFeed(sources: {
       evidenceUrl: o.commitUrl,
     });
   }
-  for (const i of sources.insights) {
+  for (const r of sources.insightRuns) {
     items.push({
-      id: `ai:${i.id}`,
-      kind: 'insight',
-      at: i.createdAt.toISOString(),
-      title: insightTitle(i),
-      detail: `${i.provider}/${i.model}`,
+      id: `ai:${r.id}`,
+      kind: 'insight_run',
+      at: r.createdAt.toISOString(),
+      title: insightRunTitle(r),
+      // Reaproveitamento não custou nada; deixa isso explícito na linha.
+      detail: r.outcome === 'reused' ? 'Sem chamar a IA (sem custo)' : null,
       evidenceUrl: null,
     });
   }
