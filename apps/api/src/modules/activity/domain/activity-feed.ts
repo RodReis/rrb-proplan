@@ -7,6 +7,8 @@
  * ordenada por data (reverso). O service só busca as linhas e chama isto.
  */
 
+import { columnTitle } from '../../../shared/convention/columns';
+
 export type ActivityKind = 'operation' | 'insight' | 'board_mutation' | 'sync';
 
 export interface ActivityItem {
@@ -37,6 +39,8 @@ export interface InsightRow {
   provider: string;
   model: string;
   createdAt: Date;
+  /** JSON persistido — de onde sai a contagem do resultado (hits, count). */
+  content: unknown;
 }
 export interface BoardMutationRow {
   id: string;
@@ -61,32 +65,47 @@ const OPERATION_TITLE: Record<string, string> = {
   bootstrap: 'Criou cards no board a partir da documentação',
 };
 
+// Título fixo dos insights que produzem um artefato de texto (o resumo, a aba
+// inferida, o backlog proposto) — o resultado é o próprio artefato, não uma
+// contagem. Os que produzem uma coleção (docs classificados, ligações) carregam
+// o número no título via insightTitle().
 const INSIGHT_TITLE: Record<string, string> = {
   summary: 'Gerou o resumo do projeto por IA',
   architecture_fallback: 'Inferiu a Arquitetura por IA',
   design_fallback: 'Inferiu o Design por IA',
-  edges_marker: 'Inferiu ligações entre documentos por IA',
-  classify_marker: 'Classificou documentos por IA',
   status_bootstrap: 'Propôs um backlog por IA',
 };
 
-// Nome de exibição das colunas (linguagem de gente, não o valor do enum). Cópia
-// local das 6 colunas — evita o módulo activity importar apresentação do board
-// (constante trivial; o front tem a sua própria em kanban/columns.ts).
-const COLUMN_DISPLAY: Record<string, string> = {
-  backlog: 'Backlog',
-  todo: 'A Fazer',
-  doing: 'Em Andamento',
-  done: 'Feito',
-  finalized: 'Finalizado',
-  discarded: 'Descartado',
-};
+/** Nº de itens do resultado, do content persistido (nunca de nova inferência). */
+function insightCount(kind: string, content: unknown): number | null {
+  const c = (content ?? {}) as { hits?: unknown[]; count?: number };
+  if (kind === 'classify_marker') return Array.isArray(c.hits) ? c.hits.length : null;
+  if (kind === 'edges_marker') return typeof c.count === 'number' ? c.count : null;
+  return null;
+}
+
+/**
+ * Título do insight com o resultado embutido. "Classificou N documentos",
+ * "Inferiu N ligações" — o número vem do artefato persistido. Sem número (0 ou
+ * ausente), cai no texto neutro; nunca "Classificou documentos" sem contagem
+ * quando ela existe (SPEC-010: linha sem resultado é log, não evidência).
+ */
+function insightTitle(row: InsightRow): string {
+  const n = insightCount(row.kind, row.content);
+  if (row.kind === 'classify_marker') {
+    return n == null ? 'Classificou documentos por IA' : `Classificou ${n} documento${n === 1 ? '' : 's'} por IA`;
+  }
+  if (row.kind === 'edges_marker') {
+    return n == null ? 'Inferiu ligações entre documentos por IA' : `Inferiu ${n} ligaç${n === 1 ? 'ão' : 'ões'} entre documentos por IA`;
+  }
+  return INSIGHT_TITLE[row.kind] ?? 'Chamada de IA';
+}
 
 function mutationTitle(type: string, payload: unknown): string {
   const p = (payload ?? {}) as { number?: number; toColumn?: string; title?: string };
   switch (type) {
     case 'move_column': {
-      const col = p.toColumn ? COLUMN_DISPLAY[p.toColumn] ?? p.toColumn : 'outra coluna';
+      const col = p.toColumn ? columnTitle(p.toColumn) : 'outra coluna';
       return `Moveu a issue #${p.number} para ${col}`;
     }
     case 'create_card':
@@ -139,7 +158,7 @@ export function buildFeed(sources: {
       id: `ai:${i.id}`,
       kind: 'insight',
       at: i.createdAt.toISOString(),
-      title: INSIGHT_TITLE[i.kind] ?? 'Chamada de IA',
+      title: insightTitle(i),
       detail: `${i.provider}/${i.model}`,
       evidenceUrl: null,
     });
