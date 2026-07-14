@@ -115,7 +115,7 @@ export interface OperationView {
 }
 
 /** Um item do histórico do painel de Atividade (SPEC-010, projeção de leitura). */
-export type ActivityItemKind = 'operation' | 'insight' | 'board_mutation' | 'sync';
+export type ActivityItemKind = 'operation' | 'insight_run' | 'board_mutation' | 'sync';
 export interface ActivityItem {
   id: string;
   kind: ActivityItemKind;

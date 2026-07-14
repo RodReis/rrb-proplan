@@ -14,7 +14,7 @@ const RUNNING_POLL_MS = 1500;
 /** Grupo visual por tipo de item (SPEC-010 + polish terminal-carbono). */
 type Group = 'ai' | 'write' | 'sync';
 const GROUP_OF: Record<ActivityItemKind, Group> = {
-  insight: 'ai',
+  insight_run: 'ai',
   operation: 'write',
   board_mutation: 'write',
   sync: 'sync',
