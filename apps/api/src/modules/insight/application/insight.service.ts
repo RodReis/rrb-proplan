@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InsightKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettingsService } from '../../settings/application/settings.service';
@@ -6,6 +6,7 @@ import { IngestionService } from '../../ingestion/application/ingestion.service'
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, ENTITIES } from '../../ingestion/domain/entity';
 import { LlmUsageRecorder } from './llm-usage.recorder';
+import { UsageService } from './usage.service';
 import { selectContext } from '../domain/context-budget';
 import { buildSummaryUser, SUMMARY_SYSTEM } from '../domain/summary-prompt';
 import { parseSummary, StateSummary } from '../domain/summary';
@@ -50,6 +51,7 @@ export class InsightService {
     private readonly ingestion: IngestionService,
     private readonly resolution: ResolutionService,
     private readonly usage: LlmUsageRecorder,
+    private readonly usageGate: UsageService,
   ) {}
 
   /**
@@ -120,7 +122,17 @@ export class InsightService {
 
   async regenerate(userId: string, projectId: string): Promise<void> {
     await this.assertOwner(userId, projectId);
+    await this.assertUnderCap(userId); // regenerar manual respeita o teto (SPEC-009)
     await this.generateSummary(projectId, { force: true });
+  }
+
+  /** Barra a ação se o teto de gasto de IA do mês foi atingido (SPEC-009). */
+  private async assertUnderCap(userId: string): Promise<void> {
+    if (!(await this.usageGate.canSpendForUser(userId))) {
+      throw new ForbiddenException(
+        'Teto de gasto de IA atingido neste mês — ajuste em Configurações → Uso de IA',
+      );
+    }
   }
 
   /**
@@ -131,6 +143,7 @@ export class InsightService {
    */
   async proposeCards(userId: string, projectId: string): Promise<CardProposal[]> {
     await this.assertOwner(userId, projectId);
+    await this.assertUnderCap(userId); // bootstrap por IA respeita o teto (SPEC-009)
     const project = await this.prisma.project.findUnique({ where: { id: projectId } });
     if (!project) throw new NotFoundException('Projeto não encontrado');
 

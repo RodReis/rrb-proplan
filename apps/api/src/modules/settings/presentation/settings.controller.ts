@@ -22,4 +22,25 @@ export class SettingsController {
   update(@Req() req: AuthenticatedRequest, @Body() body: UpdateSettingsInput) {
     return this.settings.update(req.userId, body);
   }
+
+  @Get('model-prices')
+  modelPrices() {
+    return this.settings.modelPrices();
+  }
+
+  @Put('model-prices')
+  upsertModelPrice(
+    @Body()
+    body: {
+      provider: string;
+      model: string;
+      inputPer1M: string;
+      outputPer1M: string;
+      cacheWritePer1M?: string;
+      cacheReadPer1M?: string;
+      source?: string;
+    },
+  ) {
+    return this.settings.upsertModelPrice(body);
+  }
 }

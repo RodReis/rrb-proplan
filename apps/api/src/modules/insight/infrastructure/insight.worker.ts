@@ -7,6 +7,7 @@ import {
   DocsSyncedEvent,
 } from '../../ingestion/application/sync.service';
 import { InsightService } from '../application/insight.service';
+import { UsageService } from '../application/usage.service';
 import { INSIGHT_QUEUE } from '../insight.constants';
 
 interface InsightJobData {
@@ -25,10 +26,19 @@ export class InsightEventListener {
 
   constructor(
     @InjectQueue(INSIGHT_QUEUE) private readonly queue: Queue<InsightJobData>,
+    private readonly usage: UsageService,
   ) {}
 
   @OnEvent(DOCS_SYNCED)
   async onDocsSynced(event: DocsSyncedEvent): Promise<void> {
+    // Gate do teto (SPEC-009): barra ANTES de enfileirar. Um loop de sync não
+    // deve queimar a conta — o teto protege às 3h da manhã, o alerta não.
+    if (!(await this.usage.canSpend(event.projectId))) {
+      this.logger.warn(
+        `Teto de gasto de IA atingido — jobs do projeto ${event.projectId} NÃO enfileirados`,
+      );
+      return;
+    }
     this.logger.log(`DocsSynced → enfileira resumo do projeto ${event.projectId}`);
     await this.queue.add(
       'summary',

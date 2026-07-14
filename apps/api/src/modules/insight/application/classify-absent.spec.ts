@@ -1,5 +1,5 @@
 import { InsightService } from './insight.service';
-import { fakeRecorder } from './fake-recorder';
+import { fakeRecorder, fakeUsageGate } from './fake-recorder';
 
 describe('InsightService.classifyAbsent', () => {
   it('idempotente: marker do hash existe → não chama IA nem writeInferredResolution', async () => {
@@ -11,7 +11,7 @@ describe('InsightService.classifyAbsent', () => {
     const ingestion = { writeInferredEdges: jest.fn() } as any;
     const settings = { providerOf: jest.fn() } as any;
     const resolution = { resolutionOf: jest.fn(), writeInferredResolution: jest.fn() } as any;
-    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
+    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder(), fakeUsageGate());
 
     await svc.classifyAbsent('p1');
 
@@ -28,7 +28,7 @@ describe('InsightService.classifyAbsent', () => {
     const ingestion = {} as any;
     const settings = { providerOf: jest.fn() } as any;
     const resolution = { resolutionOf: jest.fn(), writeInferredResolution: jest.fn() } as any;
-    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
+    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder(), fakeUsageGate());
 
     await svc.classifyAbsent('p1');
 
@@ -67,7 +67,7 @@ describe('InsightService.classifyAbsent', () => {
       }),
       writeInferredResolution: jest.fn().mockResolvedValue(undefined),
     } as any;
-    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
+    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder(), fakeUsageGate());
 
     await svc.classifyAbsent('p1');
 
@@ -118,7 +118,7 @@ describe('InsightService.classifyAbsent', () => {
       }),
       writeInferredResolution: jest.fn().mockResolvedValue(undefined),
     } as any;
-    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
+    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder(), fakeUsageGate());
 
     await svc.classifyAbsent('p1');
 
@@ -141,7 +141,7 @@ describe('InsightService.classifyAbsent', () => {
       resolutionOf: jest.fn().mockResolvedValue({ entity: 'x', level: 1, source: 'convention', path: 'docs/x.md', paths: [], confidence: 1 }),
       writeInferredResolution: jest.fn(),
     } as any;
-    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder());
+    const svc = new InsightService(prisma, settings, llmFactory, ingestion, resolution, fakeRecorder(), fakeUsageGate());
 
     await svc.classifyAbsent('p1');
 
@@ -165,7 +165,7 @@ describe('InsightService.latestClassifySpans', () => {
         }),
       },
     } as any;
-    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
     const spans = await svc.latestClassifySpans('p1', 'architecture');
 
@@ -180,7 +180,7 @@ describe('InsightService.latestClassifySpans', () => {
 
   it('nenhum marker → []', async () => {
     const prisma = { insight: { findFirst: jest.fn().mockResolvedValue(null) } } as any;
-    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
     const spans = await svc.latestClassifySpans('p1', 'architecture');
 
@@ -196,7 +196,7 @@ describe('InsightService.latestClassifySpans', () => {
         }),
       },
     } as any;
-    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const svc = new InsightService(prisma, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
     const spans = await svc.latestClassifySpans('p1', 'architecture');
 
