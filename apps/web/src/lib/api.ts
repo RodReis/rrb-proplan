@@ -178,7 +178,30 @@ export const api = {
       `/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`,
     ),
   settings: () => request<Settings>('/settings'),
-  updateSettings: (input: Partial<Pick<Settings, 'llmProvider' | 'docsStalenessThresholdDays'>>) =>
+  usageCurrentMonth: () => request<CurrentMonthUsage>('/usage/llm/current-month'),
+  usageReport: () => request<UsageReport>('/usage/llm'),
+  modelPrices: () => request<ModelPrice[]>('/settings/model-prices'),
+  upsertModelPrice: (input: {
+    provider: string;
+    model: string;
+    inputPer1M: string;
+    outputPer1M: string;
+    cacheWritePer1M?: string;
+    cacheReadPer1M?: string;
+    source?: string;
+  }) =>
+    request<ModelPrice[]>('/settings/model-prices', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  updateSettings: (
+    input: Partial<
+      Pick<
+        Settings,
+        'llmProvider' | 'docsStalenessThresholdDays' | 'llmAlertUsdMonthly' | 'llmHardCapUsdMonthly'
+      >
+    >,
+  ) =>
     request<Settings>('/settings', {
       method: 'PUT',
       body: JSON.stringify(input),
@@ -337,7 +360,46 @@ export type LlmProvider = 'anthropic' | 'openai' | 'openrouter';
 export interface Settings {
   llmProvider: LlmProvider;
   docsStalenessThresholdDays: number;
+  llmAlertUsdMonthly: string;
+  llmHardCapUsdMonthly: string;
   availableProviders: LlmProvider[];
+}
+
+/** Gasto de IA do mês corrente (SPEC-009) — alimenta a barra e a faixa de alerta. */
+export interface CurrentMonthUsage {
+  costUsd: string;
+  alertUsd: string;
+  capUsd: string;
+  blocked: boolean;
+  missingPriceCount: number;
+}
+
+interface UsageBreakdown {
+  costUsd: string;
+  calls: number;
+}
+export interface UsageReport {
+  totalCostUsd: string;
+  totalCalls: number;
+  totalTokens: number;
+  wasteRatePct: string;
+  missingPriceCount: number;
+  byProviderModel: (UsageBreakdown & { provider: string; model: string })[];
+  byKind: (UsageBreakdown & { kind: string })[];
+  byStatus: (UsageBreakdown & { status: string })[];
+  byProject: (UsageBreakdown & { projectId: string | null })[];
+}
+
+export interface ModelPrice {
+  id: string;
+  provider: string;
+  model: string;
+  inputPer1M: string;
+  outputPer1M: string;
+  cacheWritePer1M: string;
+  cacheReadPer1M: string;
+  effectiveFrom: string;
+  source: string | null;
 }
 
 export interface Freshness {
