@@ -15,8 +15,8 @@ describe('operation-steps', () => {
       expect(steps[0].label).not.toContain('{doc}');
     });
 
-    it('board_mutation: 3 passos (não tem propagação/sync de doc)', () => {
-      expect(buildSteps('board_mutation')).toHaveLength(3);
+    it('bootstrap: 3 passos (cria issues + sincroniza board, sem sync de doc)', () => {
+      expect(buildSteps('bootstrap')).toHaveLength(3);
     });
 
     it('sem doc → placeholder vira "o documento", nunca fica {doc} cru', () => {
@@ -25,7 +25,7 @@ describe('operation-steps', () => {
     });
 
     it('nenhum label contém jargão técnico (202, docsTreeSha, enqueueSync)', () => {
-      const all = (['promote', 'mapping', 'bootstrap', 'board_mutation'] as const)
+      const all = (['promote', 'mapping', 'bootstrap'] as const)
         .flatMap((k) => buildSteps(k, 'docs/X.md'))
         .map((s) => s.label)
         .join(' ');

@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "OperationKind" AS ENUM ('promote', 'mapping', 'bootstrap', 'board_mutation');
+CREATE TYPE "OperationKind" AS ENUM ('promote', 'mapping', 'bootstrap');
 
 -- CreateEnum
 CREATE TYPE "OperationStatus" AS ENUM ('running', 'done', 'failed');

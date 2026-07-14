@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { api, CardToCreate } from '../../../lib/api';
 import { COLUMN_LABEL } from './columns';
+import { OperationSteps, useOperation } from '../OperationSteps';
 
 interface Props {
   projectId: string;
@@ -16,7 +17,14 @@ interface Props {
  */
 export function ImportBanner({ projectId, onImported, onBootstrap }: Props) {
   const [preview, setPreview] = useState<CardToCreate[] | null>(null);
-  const [importing, setImporting] = useState(false);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const op = useOperation(operationId, () => {
+    setPreview(null);
+    onImported();
+  });
+  const running = operationId !== null && op?.status !== 'failed';
 
   async function loadPreview() {
     try {
@@ -38,16 +46,14 @@ export function ImportBanner({ projectId, onImported, onBootstrap }: Props) {
 
   async function confirmImport() {
     if (!preview) return;
-    setImporting(true);
+    setStarting(true);
     try {
-      const { created } = await api.applyImport(projectId, preview);
-      toast.success(`${created} issues criadas.`);
-      setPreview(null);
-      onImported();
+      const { operationId } = await api.applyImport(projectId, preview);
+      setOperationId(operationId);
     } catch (err) {
       toast.error(`Falha ao importar: ${err}`);
     } finally {
-      setImporting(false);
+      setStarting(false);
     }
   }
 
@@ -93,50 +99,70 @@ export function ImportBanner({ projectId, onImported, onBootstrap }: Props) {
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-3">
-              {preview.map((c, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 border-b border-border/50 px-2 py-1.5 text-sm last:border-0"
-                >
-                  <input
-                    value={c.title}
-                    onChange={(e) => editTitle(i, e.target.value)}
-                    className="min-w-0 flex-1 bg-transparent outline-none focus:text-brand"
-                  />
-                  <span className="shrink-0 text-xs text-text-muted">
-                    {COLUMN_LABEL[c.column]}
-                    {c.priority ? ` · ${c.priority}` : ''}
-                  </span>
-                  <button
-                    onClick={() => removeCard(i)}
-                    title="Remover da importação"
-                    className="shrink-0 text-text-muted hover:text-error"
-                  >
-                    ✕
-                  </button>
+              {op ? (
+                <div className="p-3">
+                  <OperationSteps op={op} />
                 </div>
-              ))}
-              {preview.length === 0 && (
-                <p className="py-6 text-center text-sm text-text-muted">
-                  Nenhum card selecionado — remova todos ou cancele.
-                </p>
+              ) : (
+                <>
+                  {preview.map((c, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 border-b border-border/50 px-2 py-1.5 text-sm last:border-0"
+                    >
+                      <input
+                        value={c.title}
+                        onChange={(e) => editTitle(i, e.target.value)}
+                        className="min-w-0 flex-1 bg-transparent outline-none focus:text-brand"
+                      />
+                      <span className="shrink-0 text-xs text-text-muted">
+                        {COLUMN_LABEL[c.column]}
+                        {c.priority ? ` · ${c.priority}` : ''}
+                      </span>
+                      <button
+                        onClick={() => removeCard(i)}
+                        title="Remover da importação"
+                        className="shrink-0 text-text-muted hover:text-error"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  {preview.length === 0 && (
+                    <p className="py-6 text-center text-sm text-text-muted">
+                      Nenhum card selecionado — remova todos ou cancele.
+                    </p>
+                  )}
+                </>
               )}
             </div>
-            <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-              <button
-                onClick={() => setPreview(null)}
-                className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => void confirmImport()}
-                disabled={importing || preview.length === 0}
-                className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-              >
-                {importing ? 'Criando…' : 'Criar issues'}
-              </button>
-            </div>
+            {op?.status === 'failed' ? (
+              <div className="flex justify-end border-t border-border px-5 py-3">
+                <button
+                  onClick={() => { setOperationId(null); setPreview(null); }}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg"
+                >
+                  Fechar
+                </button>
+              </div>
+            ) : !op ? (
+              <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+                <button
+                  onClick={() => setPreview(null)}
+                  disabled={running}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-bg disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => void confirmImport()}
+                  disabled={running || starting || preview.length === 0}
+                  className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {starting ? 'Criando…' : 'Criar issues'}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

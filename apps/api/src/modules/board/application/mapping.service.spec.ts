@@ -17,7 +17,7 @@ describe('MappingService.getMapping', () => {
       }),
     } as any;
 
-    const svc = new MappingService(prisma, {} as any, {} as any, {} as any, resolution);
+    const svc = new MappingService(prisma, {} as any, {} as any, {} as any, resolution, {} as any);
     const out = await svc.getMapping('p1');
 
     expect(out.rows).toHaveLength(ENTITIES.length);
@@ -39,7 +39,7 @@ describe('MappingService.getMapping', () => {
       }),
     } as any;
 
-    const svc = new MappingService(prisma, {} as any, {} as any, {} as any, resolution);
+    const svc = new MappingService(prisma, {} as any, {} as any, {} as any, resolution, {} as any);
     const out = await svc.getMapping('p1');
 
     expect(out.proplanConfigInvalid).toBe(true);
@@ -60,7 +60,7 @@ describe('MappingService.getMapping', () => {
       }),
     } as any;
 
-    const svc = new MappingService(prisma, {} as any, {} as any, {} as any, resolution);
+    const svc = new MappingService(prisma, {} as any, {} as any, {} as any, resolution, {} as any);
     const out = await svc.getMapping('p1');
 
     expect(out.proplanConfigInvalid).toBe(false);
@@ -88,8 +88,14 @@ describe('MappingService.putMapping', () => {
     } as any;
     const ingestion = { enqueueSync: jest.fn().mockResolvedValue({ syncRunId: 'run1' }) } as any;
     const resolution = { resolutionOf: jest.fn() } as any;
+    const activity = {
+      start: jest.fn().mockResolvedValue('op1'),
+      advance: jest.fn().mockResolvedValue(undefined),
+      attachArtifacts: jest.fn().mockResolvedValue(undefined),
+      fail: jest.fn().mockResolvedValue(undefined),
+    } as any;
 
-    const svc = new MappingService(prisma, auth, writeback, ingestion, resolution);
+    const svc = new MappingService(prisma, auth, writeback, ingestion, resolution, activity);
     const out = await svc.putMapping('p1', 'deploy', null);
 
     const putArg = writeback.putFile.mock.calls[0][0];
@@ -104,6 +110,9 @@ describe('MappingService.putMapping', () => {
       path: '.proplan/config.yml',
       blobSha: 'sha2',
     });
-    expect(out.syncRunId).toBe('run1');
+    // Operation (SPEC-010): abre kind mapping, anexa o syncRunId, devolve o id.
+    expect(activity.start).toHaveBeenCalledWith('p1', 'mapping', '.proplan/config.yml');
+    expect(activity.attachArtifacts).toHaveBeenCalledWith('op1', { syncRunId: 'run1' });
+    expect(out.operationId).toBe('op1');
   });
 });
