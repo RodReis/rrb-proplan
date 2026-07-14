@@ -342,6 +342,10 @@ model Issue {
   htmlUrl    String        @map("html_url")
   closedAt   DateTime?     @map("closed_at")
   updatedAt  DateTime      @map("updated_at")
+  // Issue `closed` sem label `proplan:*` — fechada fora do fluxo do ProPlan.
+  // Cai em Finalizado com badge "fechada fora do ProPlan" (SPEC-005 linha 119):
+  // a falta de evidência de aceite é sinalizada, nunca disfarçada.
+  closedOutside Boolean    @default(false) @map("closed_outside")
   project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, number])

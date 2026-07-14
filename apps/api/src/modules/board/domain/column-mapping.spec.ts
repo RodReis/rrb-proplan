@@ -1,10 +1,17 @@
 import {
   columnOf,
+  COLUMN_LABEL,
   DISCARDED_LABEL,
   FINALIZED_LABEL,
+  isClosedOutsideProplan,
   priorityOf,
   transitionTo,
 } from './column-mapping';
+
+// ADR-011 (corrigido 2026-07-13) + SPEC-005: as colunas ABERTAS são
+// backlog/todo/doing/**done**; só Finalizado e Descartado fecham a issue.
+// Feito = `open` + `proplan:done` (entregue, aguardando aceite — a issue não
+// fecha por merge; fechar é ato deliberado do dono).
 
 describe('columnOf', () => {
   it('aberta sem label proplan:* → backlog (default da spec)', () => {
@@ -18,12 +25,16 @@ describe('columnOf', () => {
     expect(columnOf('open', ['proplan:doing'])).toBe('doing');
   });
 
-  it('fechada sem label extra → done (entregue, aguardando aceite do PI)', () => {
-    expect(columnOf('closed', [])).toBe('done');
-    expect(columnOf('closed', ['proplan:doing'])).toBe('done'); // label residual não muda
+  it('Feito é ABERTA: open + proplan:done → done (entregue, aguardando aceite)', () => {
+    expect(columnOf('open', [COLUMN_LABEL.done])).toBe('done');
+    expect(columnOf('open', ['proplan:done', 'prio:alta'])).toBe('done');
   });
 
-  it('fechada com finalizado → finalized (aceito pelo PI)', () => {
+  it('done tem precedência sobre doing/todo se coexistirem (label residual)', () => {
+    expect(columnOf('open', ['proplan:doing', 'proplan:done'])).toBe('done');
+  });
+
+  it('fechada com finalizado → finalized (aceito pelo dono)', () => {
     expect(columnOf('closed', [FINALIZED_LABEL])).toBe('finalized');
   });
 
@@ -31,14 +42,32 @@ describe('columnOf', () => {
     expect(columnOf('closed', [DISCARDED_LABEL])).toBe('discarded');
   });
 
-  it('closes #N (issue fechada por PR, sem label) cai em Feito, NUNCA Finalizado', () => {
-    // A razão do mapeamento: nenhuma automação do GitHub pode forjar "aceito pelo PI".
-    expect(columnOf('closed', [])).toBe('done');
-    expect(columnOf('closed', [])).not.toBe('finalized');
+  it('fechada SEM label proplan:* → finalized (fechada fora do ProPlan), NUNCA Feito', () => {
+    // SPEC-005 linha 119: em repo comum, closed significa concluído; forçar um
+    // estado exótico imporia nossa convenção (ADR-014). Cai em Finalizado, mas
+    // sinalizada — nunca em Feito (Feito é aberta, aguardando aceite).
+    expect(columnOf('closed', [])).toBe('finalized');
+    expect(columnOf('closed', ['proplan:doing'])).toBe('finalized'); // label residual não muda
+    expect(columnOf('closed', [])).not.toBe('done');
   });
 
   it('doing tem precedência sobre todo se ambas as labels existirem', () => {
     expect(columnOf('open', ['proplan:todo', 'proplan:doing'])).toBe('doing');
+  });
+});
+
+describe('isClosedOutsideProplan', () => {
+  it('closed sem finalizado/descartado → true (badge "fechada fora do ProPlan")', () => {
+    expect(isClosedOutsideProplan('closed', [])).toBe(true);
+    expect(isClosedOutsideProplan('closed', ['proplan:doing'])).toBe(true); // label residual
+  });
+  it('closed com finalizado ou descartado → false (fechada pelo fluxo)', () => {
+    expect(isClosedOutsideProplan('closed', [FINALIZED_LABEL])).toBe(false);
+    expect(isClosedOutsideProplan('closed', [DISCARDED_LABEL])).toBe(false);
+  });
+  it('aberta → false (nem se aplica)', () => {
+    expect(isClosedOutsideProplan('open', [])).toBe(false);
+    expect(isClosedOutsideProplan('open', [COLUMN_LABEL.done])).toBe(false);
   });
 });
 
@@ -66,12 +95,13 @@ describe('transitionTo', () => {
     expect(t.removeLabels).toContain(DISCARDED_LABEL);
   });
 
-  it('mover para Feito: closed, remove todas as labels de coluna', () => {
+  it('mover para Feito: ABERTA + proplan:done, remove as outras (NÃO fecha a issue)', () => {
     const t = transitionTo('done');
-    expect(t.state).toBe('closed');
-    expect(t.addLabels).toEqual([]);
+    expect(t.state).toBe('open');
+    expect(t.addLabels).toEqual(['proplan:done']);
     expect(t.removeLabels).toContain('proplan:doing');
-    expect(t.removeLabels).toContain(DISCARDED_LABEL);
+    expect(t.removeLabels).toContain(FINALIZED_LABEL);
+    expect(t.removeLabels).not.toContain('proplan:done');
   });
 
   it('finalizar: closed + finalizado, remove as outras labels (nunca open)', () => {
@@ -79,16 +109,16 @@ describe('transitionTo', () => {
     expect(t.state).toBe('closed');
     expect(t.addLabels).toEqual([FINALIZED_LABEL]);
     expect(t.removeLabels).toContain(DISCARDED_LABEL);
-    expect(t.removeLabels).toContain('proplan:doing');
+    expect(t.removeLabels).toContain('proplan:done');
     expect(t.removeLabels).not.toContain(FINALIZED_LABEL);
   });
 
-  it('descartar: closed + descartado, remove finalizado e labels abertas', () => {
+  it('descartar: closed + descartado, remove finalizado e labels abertas (inclui done)', () => {
     const t = transitionTo('discarded');
     expect(t.state).toBe('closed');
     expect(t.addLabels).toEqual([DISCARDED_LABEL]);
     expect(t.removeLabels).toContain(FINALIZED_LABEL);
-    expect(t.removeLabels).toContain('proplan:doing');
+    expect(t.removeLabels).toContain('proplan:done');
     expect(t.removeLabels).not.toContain(DISCARDED_LABEL);
   });
 

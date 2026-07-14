@@ -71,7 +71,12 @@ export class BoardImportService {
 
       for (const card of cards) {
         const labels: string[] = [];
-        if (card.column === 'backlog' || card.column === 'todo' || card.column === 'doing') {
+        if (
+          card.column === 'backlog' ||
+          card.column === 'todo' ||
+          card.column === 'doing' ||
+          card.column === 'done'
+        ) {
           labels.push(COLUMN_LABEL[card.column]);
         }
         if (card.priority) labels.push(PRIORITY_LABELS[card.priority]);

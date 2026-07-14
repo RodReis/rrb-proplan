@@ -24,7 +24,7 @@ Issue tem só `open`/`closed`. As quatro colunas da convenção precisam morar e
 
 ### Módulo `board` (novo)
 
-- **Leitura**: `GET /repos/{o}/{r}/issues?state=all&labels=…` (paginado). Cada issue vira um card; a coluna sai da label `proplan:*` (ou `closed` → Feito). `pull_request` presente no payload ⇒ **é PR, não issue** → descartar (armadilha clássica da REST API).
+- **Leitura**: `GET /repos/{o}/{r}/issues?state=all&labels=…` (paginado). Cada issue vira um card; a coluna sai do estado + label `proplan:*` (aberta com `proplan:done` → Feito; `closed` + `proplan:finalizado` → Finalizado; `closed` sem label → Finalizado com badge "fechada fora do ProPlan"). `pull_request` presente no payload ⇒ **é PR, não issue** → descartar (armadilha clássica da REST API).
 - **Mutações** (todas viram chamada à Issues API, não commit):
 
   | ação | chamada |
@@ -126,9 +126,9 @@ Webhooks/túnel (ADR-009); **GitHub Projects v2**; ordenação manual dentro da 
 - [ ] **Feito × Finalizado**: mover para Finalizado aplica `proplan:finalizado` numa issue já `closed`; a issue **não muda de estado no GitHub** (continua `closed`).
 - [ ] **Nenhuma automação produz "Finalizado".** Só a ação explícita do dono no board (ou aplicar a label à mão no GitHub) leva um card para Finalizado.
 - [ ] **Comentário de carimbo**: mover para Finalizado/Descartado posta um comentário na issue (`proplan: finalizado pelo PI em <data>`), visível no GitHub. Mover de volta **não apaga** o comentário.
-- [ ] As três colunas fechadas (Feito, Finalizado, Descartado) são mutuamente exclusivas: uma issue `closed` com `proplan:finalizado` **não** aparece em Feito nem em Descartado.
+- [ ] Feito (aberta) e as duas colunas fechadas (Finalizado, Descartado) são mutuamente exclusivas: uma issue `closed` com `proplan:finalizado` **não** aparece em Feito nem em Descartado; uma issue `open` com `proplan:done` aparece só em Feito.
 - [ ] Arrastar um card de Descartado para A Fazer **reabre** a issue e remove a label `proplan:descartado`.
-- [ ] Feito e Descartado são distinguíveis: uma issue fechada com a label não aparece em Feito, e vice-versa.
+- [ ] Feito (aberta, `proplan:done`) e Descartado (fechada, `proplan:descartado`) são distinguíveis: nenhuma issue aparece nas duas.
 - [ ] Um PR aberto no repo **não aparece** como card no board (filtro de `pull_request`).
 - [ ] Issue aberta sem label `proplan:*` aparece no Backlog.
 - [ ] Após uma mutação, `.proplan/STATUS.md` é regravado com o cabeçalho de artefato gerado, os números das issues e a mensagem de commit padrão.

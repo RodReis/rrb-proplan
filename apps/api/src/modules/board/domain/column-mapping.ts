@@ -12,10 +12,14 @@ export type BoardColumn =
 export type IssuePriority = 'alta' | 'media' | 'baixa';
 export type IssueState = 'open' | 'closed';
 
-export const COLUMN_LABEL: Record<'backlog' | 'todo' | 'doing', string> = {
+// Colunas ABERTAS têm label própria (a issue continua `open`). Feito entra aqui:
+// ADR-011 (corrigido 2026-07-13) — "Feito é uma fila com dono", trabalho
+// entregue aguardando aceite; a issue só fecha quando o dono aceita (Finalizado).
+export const COLUMN_LABEL: Record<'backlog' | 'todo' | 'doing' | 'done', string> = {
   backlog: 'proplan:backlog',
   todo: 'proplan:todo',
   doing: 'proplan:doing',
+  done: 'proplan:done',
 };
 export const FINALIZED_LABEL = 'proplan:finalizado';
 export const DISCARDED_LABEL = 'proplan:descartado';
@@ -35,25 +39,43 @@ export const COLUMNS: BoardColumn[] = [
   'discarded',
 ];
 
-// Labels de coluna aberta (removidas ao fechar uma issue).
-const OPEN_COLUMN_LABELS = [COLUMN_LABEL.backlog, COLUMN_LABEL.todo, COLUMN_LABEL.doing];
+// Labels de coluna aberta (removidas ao fechar uma issue). Feito é aberta (ADR-011).
+const OPEN_COLUMN_LABELS = [
+  COLUMN_LABEL.backlog,
+  COLUMN_LABEL.todo,
+  COLUMN_LABEL.doing,
+  COLUMN_LABEL.done,
+];
 
 /**
- * Coluna de uma issue a partir do estado nativo e das labels (SPEC-005).
- * Fechada: `proplan:finalizado` → Finalizado (aceito pelo PI); `proplan:descartado`
- * → Descartado; sem label → Feito (entregue, aguardando aceite — é onde `closes #N`
- * cai, nunca em Finalizado). Aberta: segue a label `proplan:*` (sem label = Backlog).
+ * Coluna de uma issue a partir do estado nativo e das labels (SPEC-005, ADR-011
+ * corrigido em 2026-07-13). Aberta: segue a label `proplan:*` — inclusive
+ * **Feito** (`open` + `proplan:done`, *entregue aguardando aceite*); sem label =
+ * Backlog. Fechada: `proplan:finalizado` → Finalizado (aceito pelo dono);
+ * `proplan:descartado` → Descartado; **sem label → Finalizado** ("fechada fora
+ * do ProPlan" — em repo comum `closed` significa concluído; a ausência de
+ * evidência de aceite é sinalizada por badge, não disfarçada — ver `closedOutside`).
  */
 export function columnOf(state: IssueState, labels: string[]): BoardColumn {
   const has = (l: string) => labels.includes(l);
   if (state === 'closed') {
-    if (has(FINALIZED_LABEL)) return 'finalized';
     if (has(DISCARDED_LABEL)) return 'discarded';
-    return 'done';
+    return 'finalized'; // proplan:finalizado OU sem label (fechada fora do ProPlan)
   }
+  if (has(COLUMN_LABEL.done)) return 'done';
   if (has(COLUMN_LABEL.doing)) return 'doing';
   if (has(COLUMN_LABEL.todo)) return 'todo';
   return 'backlog'; // proplan:backlog ou sem label proplan:*
+}
+
+/**
+ * Uma issue `closed` sem label `proplan:*` foi fechada fora do fluxo do ProPlan
+ * (direto no GitHub, ou por `closes #N` de um PR qualquer). Cai em Finalizado,
+ * mas com badge "fechada fora do ProPlan" — a falta de evidência de aceite é
+ * sinalizada, nunca disfarçada (SPEC-005, critério da linha 119).
+ */
+export function isClosedOutsideProplan(state: IssueState, labels: string[]): boolean {
+  return state === 'closed' && !labels.includes(FINALIZED_LABEL) && !labels.includes(DISCARDED_LABEL);
 }
 
 /** Prioridade a partir das labels `prio:*` (a primeira que casar). */
@@ -85,14 +107,14 @@ export function transitionTo(target: BoardColumn): ColumnTransition {
     case 'backlog':
     case 'todo':
     case 'doing':
+    case 'done':
+      // Todas ABERTAS (ADR-011). Feito = `open` + `proplan:done` — entregue,
+      // aguardando aceite; a issue NÃO fecha (só Finalizado/Descartado fecham).
       return {
         state: 'open',
         addLabels: [COLUMN_LABEL[target]],
         removeLabels: allColumnLabels.filter((l) => l !== COLUMN_LABEL[target]),
       };
-    case 'done':
-      // Fechada, sem label de coluna. Aguarda aceite do PI.
-      return { state: 'closed', addLabels: [], removeLabels: allColumnLabels };
     case 'finalized':
       // Fechada + finalizado (aceito pelo PI). Nunca open (senão closes #N mentiria).
       return {
