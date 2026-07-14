@@ -115,7 +115,7 @@ export interface OperationView {
 }
 
 /** Um item do histórico do painel de Atividade (SPEC-010, projeção de leitura). */
-export type ActivityItemKind = 'operation' | 'insight' | 'board_mutation' | 'sync';
+export type ActivityItemKind = 'operation' | 'insight_run' | 'board_mutation' | 'sync';
 export interface ActivityItem {
   id: string;
   kind: ActivityItemKind;
@@ -123,6 +123,8 @@ export interface ActivityItem {
   title: string;
   detail: string | null;
   evidenceUrl: string | null;
+  /** Tokens/custo da chamada de IA (só linhas insight_run `generated`). */
+  cost?: { inputTokens: number; outputTokens: number; costUsd: string | null } | null;
 }
 export interface ActivityFeed {
   items: ActivityItem[];

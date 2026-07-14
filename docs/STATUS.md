@@ -28,12 +28,13 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - **Botão "Regenerar" nos fallbacks de Arquitetura/Design** — cortado da Fatia 7 (2026-07-13). **Só depois da Fatia 7.5**, protegido pelo teto de gasto (ADR-016): hoje seria botão de chamada de IA sem cap, na fatia que mais consome IA. Caso legítimo que o justifica: artefato cacheado por `docs_tree_sha` nunca reaplica um provedor novo (ADR-008) — Regenerar é a única via. `POST /insights/:kind/regenerate` com `force: true` + ConfirmDialog de custo (prio: baixa)
 
 ## A Fazer
-- **Invalidação de inferência granular (ADR-002)** — **decisão do PI pendente** (prio: alta; achado pelo painel de Atividade em 2026-07-13). Hoje **qualquer** commit em `docs/` muda o `docs_tree_sha` e **regenera as três inferências** (`classify` + `edges` + `summary`). Como o Claude Code commita `DEVELOPMENT.md`/`STATUS.md` a **cada entrega**, **cada entrega dele queima 3 chamadas de IA** — e nenhuma ensina nada de novo (o resumo do projeto não muda porque um passo virou `feito`). Proposta: cada inferência declara **de quais documentos depende** e só regenera se **eles** mudarem. **Não é bug — é mudança da regra de invalidação do ADR-002 ⇒ decisão de produto, exige o PI.**
+- (vazio)
 
 ## Em Andamento
 - (vazio)
 
 ## Feito
+- Fatia 7.7 — **Invalidação de inferência por `inputHash` (SPEC-011)**, emenda ao ADR-002: a chave de invalidação deixou de ser o `docs_tree_sha` e passou a ser o **hash do prompt efetivamente enviado** (`SHA-256(system+user+provider+model)`). Alvo **4 chamadas por entrega → 1** — provado ao vivo (editar um heading → só o que consome a mudança regenera; `llm_usage` +1, não +4). Cache-hit é `reused` na nova **`InsightRun`** (append-only), **nunca** entra em `LlmUsage` (ADR-016). Rename `docs_tree_sha`→`docs_scope_hash` (cache-hit **não** sobrescreve — metadado histórico, Decisão 2 do PI). Botão **Regenerar** com `force`. **Painel de Atividade** (3 achados do aceite entregues junto): custo por linha em **tokens** (não em $ — o cifrão assusta; `LlmUsage.inputHash` liga chamada↔artefato), "leu N documentos" (`InsightRun.docsRead`), bloco "Última rodada de IA" com resumo + próximo passo. 290 testes, builds limpos; validado no dogfooding do rrb-proplan. **Aceito pelo PI** (em: 2026-07-14) (spec: SPEC-011 aprovada-pi)
 - Definição de arquitetura, ADRs e convenção de dados (em: 2026-07-12)
 - Fatia 1 — Fundação: monorepo, docker-compose, login GitHub OAuth (OAuth App), Catalog com listagem de repos + marcar gerenciado (em: 2026-07-12)
 - Fatia 2 — Ingestion: sync de docs via Trees/Blobs, hash/diff incremental, no-op idempotente, BullMQ, 4 endpoints, workspace + aba Documentos (react-markdown), 18 testes; aceito runtime pelo PI (em: 2026-07-12)

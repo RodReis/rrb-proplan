@@ -302,6 +302,35 @@ O bug original (promover → `noop` → doc não ingerido até sync manual) **n�
 6. `feito` — Web: tela Configurações → aba **Uso de IA** (`UsageTab`). Mês corrente com barra até alerta/teto (verde→âmbar→vermelho por estado, marcador do alerta), faixa de bloqueio com valores quando estoura, **aviso de preço ausente ao lado da barra** (não escondido). Stats Chamadas/Tokens/**Desperdício** (âmbar), quebra por tipo (rótulos em pt-BR) e por resultado (só se houver erro/descarte), tabela de preços por modelo. Campos de **Alerta/Teto** na aba geral (salva `onBlur`). Faixa de alerta na **Visão Geral** (`UsageAlert`, silenciosa dentro do orçamento). Todos os números vêm do `SUM` do banco — sem conta própria na UI. **PR 3.**
 7. `feito` — Aceite ao vivo (Chrome DevTools): tela bate com `SUM` do banco ($0.07), desperdício 14.8%, preço-ausente sinalizado; editar o teto para abaixo do gasto → barra vermelha + bloqueio com "($gasto/$teto)". Este arquivo + STATUS.md atualizados; tudo commitado.
 
+## Fatia 7.7 — Invalidação de inferência por `inputHash` (SPEC-011, `aprovada-pi`) — `feito` (aceito pelo PI em 2026-07-14)
+
+Emenda ao ADR-002 — troca **a chave** de invalidação (não o princípio): o artefato de IA passa a ser chaveado pelo **hash do prompt efetivamente enviado ao provedor**, não pelo `docs_tree_sha`. Elimina o desperdício medido: cada entrega do Code (commit de `DEVELOPMENT.md`/`STATUS.md`) disparava os 4 jobs; agora só o `summary` regenera (ele legitimamente muda). Alvo **4 → 1**.
+
+1. `feito` — Prisma/migration `fatia_7_7_input_hash`: **rename** `Insight.docs_tree_sha`→`docs_scope_hash` (`ALTER ... RENAME COLUMN`, preserva os dados — vira metadado histórico), `Insight.inputHash` (nullable, índice `[projectId, kind, inputHash]`), tabela **`InsightRun`** append-only (`generated|reused|failed`) + enum `InsightRunOutcome`. Backfill: `inputHash=NULL` nas 65 linhas antigas → cache-miss no 1º sync (1 regeneração por projeto, depois estabiliza) — **não reconstrói o passado com a lógica de hoje** (ADR-016).
+2. `feito` — `insight/domain/input-hash.ts`: `computeInputHash({system,user,provider,model})` puro (SHA-256, campos unidos por `\0` para concatenação injetiva). `LlmClient.model` exposto (resolvido do env) — é o modelo **requisitado**, não o que a resposta relata. 7 testes de determinismo/sensibilidade.
+3. `feito` — Gate por `inputHash` nos 4 geradores (`summary`/`edges`/`classify`/`fallback`): monta o prompt → calcula o hash → busca `Insight(projectId, kind, inputHash)`. **Hit** ⇒ não chama o provedor, registra `InsightRun reused`, **não toca `LlmUsage`** (cache-hit não é gasto) e **não reescreve** as arestas/resolução (o rebuild determinístico do sync preserva `DocLink:inferred` e `DocumentResolution:inference` — verificado). **Miss** ⇒ chama, grava o artefato com os dois hashes, `InsightRun generated`. Cache-hit **não** sobrescreve o `docs_scope_hash` (Decisão 2 do PI).
+4. `feito` — Painel de Atividade: a fonte do feed para IA passou de `Insight` (o artefato) para **`InsightRun`** (a execução) — sem duplicar o fato "gerou" (ADR-017). Distingue **gerado × reaproveitado** em linguagem de gente ("Gerou o resumo por IA" / "Reaproveitou as ligações — nada mudou / sem custo"). Custo: perdeu-se o "N ligações" que a 7.6 mostrava (o `InsightRun` não guarda contagem) — aceito.
+5. `feito` — Botão **Regenerar** com `force`: `POST /projects/:id/insights/:kind/regenerate` (genérico) ignora o `inputHash`, força a IA — único caminho para reaplicar um provedor/modelo novo sobre docs inalterados (ADR-008). Protegido pelo teto (SPEC-009) → `403` com valores. A UI da Visão Geral (summary) já tinha o botão + `ConfirmDialog` de custo + trata o 403; a rota antiga (`insights/summary/regenerate`) segue casando. Botões nos fallbacks Arq/Design ficam no **backlog** (fora dos critérios de aceite da 7.7).
+6. `feito` — Teste de determinismo do prompt (mitiga o risco central da spec): roda cada builder real 2× sobre os mesmos docs e exige hash idêntico — um prompt não-determinístico faria o gate nunca acertar, em silêncio. 286 testes no total (+14), builds API+web limpos.
+
+**Achado técnico (resolvido no aceite):** a spec tinha uma **contradição interna** — Escopo item 2 dizia "hit ⇒ atualiza `docsTreeSha` para o corrente"; a Decisão 2 do PI (2026-07-14) dizia o oposto. **O PI confirmou a Decisão 2** (2026-07-14): cache-hit **não** sobrescreve o `docs_scope_hash` — vira metadado histórico. Implementado assim.
+
+### Aceite runtime (2026-07-14) — validado no dogfooding do próprio rrb-proplan
+
+O teste que prova a fatia rodou ao vivo, em dois syncs:
+- **Aquecimento** (1º sync pós-migration, `inputHash=NULL` → miss em tudo): 3 `generated` (`summary`+`edges`+`classify`; `fallback` não roda — Arq/Design têm doc real). Backfill como a spec previu.
+- **Medição** (2º sync, editando um heading do `DEVELOPMENT.md`): `summary` **reused** (o doc ficou fora do contexto de 12k tokens → prompt idêntico), `classify` **reused**, `edges` **generated** (um heading mudou — o edges consome headings). **`llm_usage` subiu só +1**, não +4. O critério "editar heading → edges regenera" foi provado de brinde.
+
+### Achados do aceite — painel de Atividade (3 melhorias entregues no mesmo PR)
+
+O painel dizia "reaproveitou" mas não deixava crível que reaproveitar custou zero, nem quanto custou quando gerou. Corrigido:
+
+7. `feito` — **Custo por linha de IA**: `LlmUsage.inputHash` (migration aditiva) liga a chamada ao artefato; o feed casa `InsightRun ↔ LlmUsage` por `(projectId, kind, inputHash)`. Cada linha `generated` mostra tokens (entrada/saída); `reused` mostra "Sem chamar a IA (sem custo)". `LlmUsage` segue a única fonte do gasto (ADR-016) — o feed só lê. **Gasto exibido em tokens, não em dinheiro** (decisão do PI: o cifrão no feed assusta; o US$ vive na aba Uso de IA).
+8. `feito` — **"leu N documentos"**: `InsightRun.docsRead` (migration aditiva) — nº de docs que entraram no prompt de cada geração, gravado pelos 4 geradores.
+9. `feito` — **Bloco "Última rodada de IA"** no topo do painel: N geradas × N reaproveitadas + total de tokens + "economizou N chamadas" + o próximo passo em linguagem de gente (Sincronizar → recarregar → ver na aba). Deriva do feed, sem dado novo.
+
+**Bug corrigido no aceite**: ao renomear o `kind` do feed (`insight`→`insight_run`), o front tinha o tipo e o mapa `GROUP_OF` ainda no valor antigo → `undefined.mark` quebrava o painel. Escapou do build porque back e front têm tipos separados (acoplados por string). 290 testes no total, builds API+web limpos.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.

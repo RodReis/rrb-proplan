@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InsightKind, Prisma } from '@prisma/client';
+import { InsightKind, InsightRunOutcome, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
@@ -26,10 +26,22 @@ import {
 } from '../domain/classify-prompt';
 import { summarizeDoc } from '../domain/summarize-doc';
 import { buildFallbackUser, FALLBACK_SYSTEM } from '../domain/fallback-prompt';
+import { computeInputHash } from '../domain/input-hash';
 import { LlmClientFactory } from '../infrastructure/llm-client.factory';
+import { LlmRequest } from '../domain/llm-client';
 
 /** Entidades com fallback inferido quando ausentes (eixo C, Fatia 7). */
 type FallbackEntity = 'architecture' | 'design';
+
+/** Kinds de insight regeneráveis pelo botão "Regenerar" (força IA — SPEC-011). */
+const REGENERABLE_KINDS = [
+  'summary',
+  'edges',
+  'classify',
+  'architecture_fallback',
+  'design_fallback',
+] as const;
+export type RegenerableKind = (typeof REGENERABLE_KINDS)[number];
 
 /** Teto de tokens de entrada por resumo (cap de custo — SPEC-003). */
 const MAX_INPUT_TOKENS = 12_000;
@@ -54,10 +66,47 @@ export class InsightService {
     private readonly usageGate: UsageService,
   ) {}
 
+  // ── Gate por inputHash (SPEC-011, emenda ao ADR-002) ─────────────────────
+  //
+  // Cada gerador monta o prompt, calcula o `inputHash` (SHA-256 de
+  // system+user+provider+model) e consulta o Insight de mesmo
+  // (projectId, kind, inputHash). HIT ⇒ não chama o provedor (registra `reused`
+  // em InsightRun, não toca LlmUsage — cache-hit não é gasto, ADR-016). MISS ⇒
+  // chama, grava o artefato com os dois hashes e registra `generated`.
+  //
+  // O gate substitui a idempotência antiga por `docsScopeHash` (os 4 `where`).
+  // Segurança dos efeitos colaterais em cache-hit: as arestas inferidas
+  // (`DocLink kind:inferred`) e a resolução nível 3 (`source:inference`) NÃO são
+  // apagadas pelo rebuild determinístico do sync (link.service preserva
+  // inferred; resolution.rebuild preserva inference enquanto o doc existir).
+  // Portanto pular o write ao ingestion num hit é correto — o efeito já persiste.
+
+  /** Busca o Insight cacheado para este input exato (ou null). */
+  private async findCached(projectId: string, kind: InsightKind, inputHash: string) {
+    return this.prisma.insight.findFirst({
+      where: { projectId, kind, inputHash },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Registra a execução do job de insight (append-only — SPEC-011, Decisão 1). */
+  private async recordRun(
+    projectId: string,
+    kind: InsightKind,
+    outcome: InsightRunOutcome,
+    inputHash: string,
+    docsRead?: number,
+  ): Promise<void> {
+    await this.prisma.insightRun.create({
+      data: { projectId, kind, outcome, inputHash, docsRead: docsRead ?? null },
+    });
+  }
+
   /**
    * Gera (ou regenera) o resumo de estado de um projeto e persiste como
-   * Insight versionado por docsTreeSha (ADR-002). Idempotente por hash:
-   * se já existe resumo para o hash atual e não é forçado, não re-chama a IA.
+   * Insight chaveado por `inputHash` (SPEC-011). HIT ⇒ reaproveita sem chamar a
+   * IA. Só o `summary` regenera a cada entrega — `ondeParou` é literalmente a
+   * última coisa concluída (decisão do PI).
    */
   async generateSummary(
     projectId: string,
@@ -67,17 +116,10 @@ export class InsightService {
       where: { id: projectId },
     });
     if (!project) throw new NotFoundException('Projeto não encontrado');
-    const docsTreeSha = project.docsScopeHash;
-    if (!docsTreeSha) {
+    const docsScopeHash = project.docsScopeHash;
+    if (!docsScopeHash) {
       this.logger.warn(`Projeto ${projectId} sem sync — resumo ignorado`);
       return;
-    }
-
-    if (!opts.force) {
-      const existing = await this.prisma.insight.findFirst({
-        where: { projectId, kind: 'summary', docsTreeSha },
-      });
-      if (existing) return; // resumo já existe para este hash — ADR-002
     }
 
     const docs = await this.prisma.document.findMany({
@@ -89,8 +131,27 @@ export class InsightService {
     const context = selectContext(docs, MAX_INPUT_TOKENS);
     const provider = await this.settings.providerOf(project.userId);
     const client = this.llmFactory.create(provider);
+    const req: LlmRequest = {
+      system: SUMMARY_SYSTEM,
+      user: buildSummaryUser(context),
+      maxTokens: MAX_OUTPUT_TOKENS,
+    };
+    const inputHash = computeInputHash({
+      system: req.system,
+      user: req.user,
+      provider: client.provider,
+      model: client.model,
+    });
 
-    const summary = await this.completeWithRetry(project.id, client, context);
+    if (!opts.force) {
+      const cached = await this.findCached(projectId, 'summary', inputHash);
+      if (cached) {
+        await this.recordRun(projectId, 'summary', 'reused', inputHash);
+        return; // input idêntico → nada novo a aprender (SPEC-011)
+      }
+    }
+
+    const summary = await this.completeSummary(project.id, client, req, inputHash);
     const content: StateSummary = {
       oQueE: summary.oQueE,
       ondeParou: summary.ondeParou,
@@ -101,7 +162,8 @@ export class InsightService {
       data: {
         projectId,
         kind: 'summary',
-        docsTreeSha,
+        docsScopeHash,
+        inputHash,
         provider: client.provider,
         model: summary.model,
         inputTokens: summary.inputTokens,
@@ -109,6 +171,7 @@ export class InsightService {
         content: content as unknown as Prisma.InputJsonValue,
       },
     });
+    await this.recordRun(projectId, 'summary', 'generated', inputHash, context.length);
   }
 
   /** Resumo mais recente do projeto (leitura para a Visão Geral). */
@@ -120,10 +183,27 @@ export class InsightService {
     });
   }
 
-  async regenerate(userId: string, projectId: string): Promise<void> {
+  /**
+   * Regenera uma inferência forçando a chamada de IA (ignora o `inputHash`),
+   * protegido pelo teto de gasto (SPEC-009/ADR-016). É o único caminho para
+   * reaplicar um provedor novo sobre um input inalterado (ADR-008) — ex.: a
+   * tabela de preços mudou, ou o modelo melhorou (SPEC-011, item 5).
+   */
+  async regenerate(userId: string, projectId: string, kind: RegenerableKind): Promise<void> {
     await this.assertOwner(userId, projectId);
-    await this.assertUnderCap(userId); // regenerar manual respeita o teto (SPEC-009)
-    await this.generateSummary(projectId, { force: true });
+    await this.assertUnderCap(userId);
+    switch (kind) {
+      case 'summary':
+        return this.generateSummary(projectId, { force: true });
+      case 'edges':
+        return this.generateEdges(projectId, { force: true });
+      case 'classify':
+        return this.classifyAbsent(projectId, { force: true });
+      case 'architecture_fallback':
+        return this.generateFallback(projectId, 'architecture', { force: true });
+      case 'design_fallback':
+        return this.generateFallback(projectId, 'design', { force: true });
+    }
   }
 
   /** Barra a ação se o teto de gasto de IA do mês foi atingido (SPEC-009). */
@@ -139,7 +219,8 @@ export class InsightService {
    * Propõe um backlog inicial de cards a partir da documentação (SPEC-005,
    * bootstrap do Kanban). Interface pública consumida pelo board — o board
    * não sabe de LLM, só pede a proposta; a criação de issues é dele. 1 retry
-   * em JSON inválido.
+   * em JSON inválido. Fica FORA do gate por inputHash: é ação manual, sempre
+   * intencional (o usuário clicou), e o teto já a protege.
    */
   async proposeCards(userId: string, projectId: string): Promise<CardProposal[]> {
     await this.assertOwner(userId, projectId);
@@ -166,21 +247,17 @@ export class InsightService {
 
   /**
    * Gera arestas semânticas entre documentos via IA e ENTREGA ao ingestion —
-   * insight nunca escreve no store (ADR-001). Idempotente por docsTreeSha via
-   * marker `edges_marker`. Chamado só pelo worker (ADR-002 — IA nunca no
-   * caminho de render).
+   * insight nunca escreve no store (ADR-001). Idempotente por `inputHash`
+   * (SPEC-011): input idêntico ⇒ HIT ⇒ não chama a IA e não reescreve as
+   * arestas (o rebuild do sync preserva as inferidas). Chamado só pelo worker
+   * (ADR-002 — IA nunca no caminho de render).
    */
-  async generateEdges(projectId: string): Promise<void> {
+  async generateEdges(projectId: string, opts: { force?: boolean } = {}): Promise<void> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
     });
     if (!project?.docsScopeHash) return;
-    const hash = project.docsScopeHash;
-
-    const marker = await this.prisma.insight.findFirst({
-      where: { projectId, kind: 'edges_marker', docsTreeSha: hash },
-    });
-    if (marker) return; // idempotente por hash
+    const docsScopeHash = project.docsScopeHash;
 
     const docs = await this.prisma.document.findMany({
       where: { projectId },
@@ -206,7 +283,32 @@ export class InsightService {
 
     const provider = await this.settings.providerOf(project.userId);
     const client = this.llmFactory.create(provider);
-    const edges = await this.completeEdges(projectId, client, docMeta, explicitPairs);
+    const req: LlmRequest = {
+      system: EDGES_SYSTEM,
+      user: buildEdgesUser(docMeta, explicitPairs),
+      maxTokens: MAX_EDGES_OUTPUT_TOKENS,
+    };
+    const inputHash = computeInputHash({
+      system: req.system,
+      user: req.user,
+      provider: client.provider,
+      model: client.model,
+    });
+
+    if (!opts.force) {
+      const cached = await this.findCached(projectId, 'edges_marker', inputHash);
+      if (cached) {
+        await this.recordRun(projectId, 'edges_marker', 'reused', inputHash);
+        return; // arestas já no store (o rebuild não apaga inferidas) — SPEC-011
+      }
+    }
+
+    const edges = await this.usage.runParsed(
+      client,
+      req,
+      { projectId, kind: 'edges_marker', inputHash },
+      parseEdges,
+    );
 
     await this.ingestion.writeInferredEdges(projectId, edges);
 
@@ -214,7 +316,8 @@ export class InsightService {
       data: {
         projectId,
         kind: 'edges_marker',
-        docsTreeSha: hash,
+        docsScopeHash,
+        inputHash,
         provider: client.provider,
         model: 'edges',
         inputTokens: 0,
@@ -224,6 +327,7 @@ export class InsightService {
         content: { count: edges.length } as unknown as Prisma.InputJsonValue,
       },
     });
+    await this.recordRun(projectId, 'edges_marker', 'generated', inputHash, docMeta.length);
   }
 
   /**
@@ -231,20 +335,16 @@ export class InsightService {
    * ADR-014). Para cada entidade ausente (exceto deploy — CONVENTION.md), pergunta
    * à IA se algum doc livre É essa entidade pelo conteúdo, com spans obrigatórios
    * (ADR-012). Entrega a resolução ao ResolutionService — insight nunca escreve em
-   * documentResolution direto (ADR-001). Idempotente por docsTreeSha via marker
-   * `classify_marker`. Chamado só pelo worker (ADR-002).
+   * documentResolution direto (ADR-001). Idempotente por `inputHash` (SPEC-011):
+   * HIT ⇒ não chama a IA e não reescreve a resolução (o rebuild do sync preserva
+   * a inference nível 3). Chamado só pelo worker (ADR-002).
    */
-  async classifyAbsent(projectId: string): Promise<void> {
+  async classifyAbsent(projectId: string, opts: { force?: boolean } = {}): Promise<void> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
     });
     if (!project?.docsScopeHash) return;
-    const hash = project.docsScopeHash;
-
-    const marker = await this.prisma.insight.findFirst({
-      where: { projectId, kind: 'classify_marker', docsTreeSha: hash },
-    });
-    if (marker) return; // idempotente por hash
+    const docsScopeHash = project.docsScopeHash;
 
     const resolutions = await Promise.all(
       ENTITIES.filter((e) => e !== 'deploy').map((e) => this.resolution.resolutionOf(projectId, e)),
@@ -265,42 +365,70 @@ export class InsightService {
       select: { path: true, content: true },
     });
     const freeDocs = docs.filter((d) => !resolvedPaths.has(d.path));
+    if (freeDocs.length === 0) return; // sem doc livre → nada a inferir
 
-    let hits: ClassifyHit[] = [];
-    if (freeDocs.length > 0) {
-      const context = selectContext(freeDocs, MAX_INPUT_TOKENS);
-      const excerptByPath = new Map(context.map((d) => [d.path, d.content]));
-      const docMeta = context.map((d) => ({
-        path: d.path,
-        ...summarizeDoc(excerptByPath.get(d.path) ?? ''),
-      }));
+    const context = selectContext(freeDocs, MAX_INPUT_TOKENS);
+    const excerptByPath = new Map(context.map((d) => [d.path, d.content]));
+    const docMeta = context.map((d) => ({
+      path: d.path,
+      ...summarizeDoc(excerptByPath.get(d.path) ?? ''),
+    }));
 
-      const provider = await this.settings.providerOf(project.userId);
-      const client = this.llmFactory.create(provider);
-      hits = await this.completeClassify(project.id, client, docMeta, absentEntities);
+    const provider = await this.settings.providerOf(project.userId);
+    const client = this.llmFactory.create(provider);
+    const req: LlmRequest = {
+      system: CLASSIFY_SYSTEM,
+      user: buildClassifyUser(
+        docMeta,
+        absentEntities as (typeof CLASSIFIABLE_ENTITIES)[number][],
+      ),
+      maxTokens: MAX_CLASSIFY_OUTPUT_TOKENS,
+    };
+    const inputHash = computeInputHash({
+      system: req.system,
+      user: req.user,
+      provider: client.provider,
+      model: client.model,
+    });
 
-      for (const hit of hits) {
-        await this.resolution.writeInferredResolution(
-          projectId,
-          hit.entity,
-          hit.path,
-          CLASSIFY_CONFIDENCE,
-        );
+    if (!opts.force) {
+      const cached = await this.findCached(projectId, 'classify_marker', inputHash);
+      if (cached) {
+        await this.recordRun(projectId, 'classify_marker', 'reused', inputHash);
+        return; // resolução nível 3 já preservada pelo rebuild — SPEC-011
       }
+    }
+
+    const hits = await this.usage.runParsed(
+      client,
+      req,
+      { projectId, kind: 'classify_marker', inputHash },
+      parseClassify,
+    );
+
+    for (const hit of hits) {
+      await this.resolution.writeInferredResolution(
+        projectId,
+        hit.entity,
+        hit.path,
+        CLASSIFY_CONFIDENCE,
+      );
     }
 
     await this.prisma.insight.create({
       data: {
         projectId,
         kind: 'classify_marker',
-        docsTreeSha: hash,
-        provider: 'anthropic',
+        docsScopeHash,
+        inputHash,
+        provider: client.provider,
         model: 'classify',
         inputTokens: 0,
         outputTokens: 0,
         content: { hits } as unknown as Prisma.InputJsonValue,
       },
     });
+    await this.recordRun(projectId, 'classify_marker', 'generated', inputHash, docMeta.length);
   }
 
   /**
@@ -325,21 +453,20 @@ export class InsightService {
    * projeto genuinamente não tem esse documento (nem convenção/alias/config,
    * nem classificação nível 3 achou um doc — ver ResolutionService.resolutionOf).
    * Markdown livre, sem parse estrito: o texto do LLM é o próprio conteúdo
-   * persistido. Idempotente por docsTreeSha via kind `${entity}_fallback`.
-   * Chamado só pelo worker (ADR-002).
+   * persistido. Idempotente por `inputHash` (SPEC-011), um hash por sub-chamada
+   * (architecture e design são chaves distintas). Chamado só pelo worker (ADR-002).
    */
-  async generateFallback(projectId: string, entity: FallbackEntity): Promise<void> {
+  async generateFallback(
+    projectId: string,
+    entity: FallbackEntity,
+    opts: { force?: boolean } = {},
+  ): Promise<void> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
     });
     if (!project?.docsScopeHash) return;
-    const hash = project.docsScopeHash;
+    const docsScopeHash = project.docsScopeHash;
     const kind = `${entity}_fallback` as InsightKind;
-
-    const marker = await this.prisma.insight.findFirst({
-      where: { projectId, kind, docsTreeSha: hash },
-    });
-    if (marker) return; // idempotente por hash
 
     const r = await this.resolution.resolutionOf(projectId, entity);
     if (r.source !== 'absent') return; // já tem doc real ou já inferida (nível 3)
@@ -353,26 +480,41 @@ export class InsightService {
     const context = selectContext(docs, MAX_INPUT_TOKENS);
     const provider = await this.settings.providerOf(project.userId);
     const client = this.llmFactory.create(provider);
-    const req = {
+    const req: LlmRequest = {
       system: FALLBACK_SYSTEM,
       user: buildFallbackUser(context, entity),
       maxTokens: MAX_FALLBACK_OUTPUT_TOKENS,
     };
+    const inputHash = computeInputHash({
+      system: req.system,
+      user: req.user,
+      provider: client.provider,
+      model: client.model,
+    });
+
+    if (!opts.force) {
+      const cached = await this.findCached(projectId, kind, inputHash);
+      if (cached) {
+        await this.recordRun(projectId, kind, 'reused', inputHash);
+        return; // markdown inferido já persistido para este input — SPEC-011
+      }
+    }
 
     let res;
     try {
-      res = await this.usage.run(client, req, { projectId, kind, attempt: 1 });
+      res = await this.usage.run(client, req, { projectId, kind, attempt: 1, inputHash });
     } catch (err) {
       this.logger.warn(`Fallback de ${entity} falhou (tentativa 1): ${err instanceof Error ? err.message : err}`);
       // 1 retry só em erro de chamada (não há parse) — linha própria com attempt 2.
-      res = await this.usage.run(client, req, { projectId, kind, attempt: 2 });
+      res = await this.usage.run(client, req, { projectId, kind, attempt: 2, inputHash });
     }
 
     await this.prisma.insight.create({
       data: {
         projectId,
         kind,
-        docsTreeSha: hash,
+        docsScopeHash,
+        inputHash,
         provider: client.provider,
         model: res.model,
         inputTokens: res.inputTokens,
@@ -380,6 +522,7 @@ export class InsightService {
         content: { markdown: res.text } as unknown as Prisma.InputJsonValue,
       },
     });
+    await this.recordRun(projectId, kind, 'generated', inputHash, context.length);
   }
 
   /** Fallback inferido mais recente de `entity` no projeto (ou null). Consumido pelo board. */
@@ -400,53 +543,14 @@ export class InsightService {
     });
   }
 
-  /** Chama o LLM e valida o JSON de classificação; 1 retry em JSON inválido. */
-  private async completeClassify(
+  /** Chama o LLM e valida o JSON do resumo; 1 retry em JSON inválido (SPEC-003). */
+  private async completeSummary(
     projectId: string,
     client: ReturnType<LlmClientFactory['create']>,
-    docs: { path: string; title: string; headings: string[]; excerpt: string }[],
-    absentEntities: (typeof CLASSIFIABLE_ENTITIES)[number][],
-  ): Promise<ClassifyHit[]> {
-    const req = {
-      system: CLASSIFY_SYSTEM,
-      user: buildClassifyUser(docs, absentEntities),
-      maxTokens: MAX_CLASSIFY_OUTPUT_TOKENS,
-    };
-    return this.usage.runParsed(
-      client,
-      req,
-      { projectId, kind: 'classify_marker' },
-      parseClassify,
-    );
-  }
-
-  /** Chama o LLM e valida o JSON de arestas; 1 retry em JSON inválido. */
-  private async completeEdges(
-    projectId: string,
-    client: ReturnType<LlmClientFactory['create']>,
-    docs: { path: string; title: string; headings: string[]; excerpt: string }[],
-    explicitPairs: { source: string; target: string }[],
-  ): Promise<InferredEdge[]> {
-    const req = {
-      system: EDGES_SYSTEM,
-      user: buildEdgesUser(docs, explicitPairs),
-      maxTokens: MAX_EDGES_OUTPUT_TOKENS,
-    };
-    return this.usage.runParsed(client, req, { projectId, kind: 'edges_marker' }, parseEdges);
-  }
-
-  /** Chama o LLM e valida o JSON; 1 retry em JSON inválido (SPEC-003). */
-  private async completeWithRetry(
-    projectId: string,
-    client: ReturnType<LlmClientFactory['create']>,
-    context: { path: string; content: string }[],
+    req: LlmRequest,
+    inputHash: string,
   ): Promise<StateSummary & { model: string; inputTokens: number; outputTokens: number }> {
-    const req = {
-      system: SUMMARY_SYSTEM,
-      user: buildSummaryUser(context),
-      maxTokens: MAX_OUTPUT_TOKENS,
-    };
-    return this.usage.runParsed(client, req, { projectId, kind: 'summary' }, (text, res) => {
+    return this.usage.runParsed(client, req, { projectId, kind: 'summary', inputHash }, (text, res) => {
       const parsed = parseSummary(text);
       return {
         ...parsed,

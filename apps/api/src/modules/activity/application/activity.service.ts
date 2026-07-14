@@ -178,18 +178,21 @@ export class ActivityService {
     const before = opts.cursor ? new Date(opts.cursor) : undefined;
     const take = limit + 1; // por fonte: o suficiente para preencher a página
 
-    const [operations, insights, mutations, syncs] = await Promise.all([
+    const [operations, insightRuns, mutations, syncs] = await Promise.all([
       this.prisma.operation.findMany({
         where: { projectId, ...(before ? { startedAt: { lt: before } } : {}) },
         orderBy: { startedAt: 'desc' },
         take,
         select: { id: true, kind: true, status: true, commitUrl: true, startedAt: true },
       }),
-      this.prisma.insight.findMany({
+      // Fonte do feed para IA (SPEC-011): InsightRun — uma linha por execução,
+      // distingue gerado × reaproveitado (a economia da 7.7 fica visível). Antes
+      // era a tabela Insight (o artefato); trocada para não duplicar o fato "gerou".
+      this.prisma.insightRun.findMany({
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
         orderBy: { createdAt: 'desc' },
         take,
-        select: { id: true, kind: true, provider: true, model: true, createdAt: true, content: true },
+        select: { id: true, kind: true, outcome: true, inputHash: true, docsRead: true, createdAt: true },
       }),
       this.prisma.boardMutation.findMany({
         where: { projectId, ...(before ? { createdAt: { lt: before } } : {}) },
@@ -210,9 +213,32 @@ export class ActivityService {
     const issueUrl = (number?: number) =>
       number ? `https://github.com/${project.owner}/${project.name}/issues/${number}` : null;
 
+    // Custo por linha de IA (SPEC-011): casa cada InsightRun `generated` com a
+    // chamada que ela disparou, por (kind, inputHash). LlmUsage é a fonte do
+    // gasto (ADR-016) — aqui só lemos. `reused` não tem chamada → sem linha.
+    const hashes = insightRuns.map((r) => r.inputHash);
+    const usageRows = hashes.length
+      ? await this.prisma.llmUsage.findMany({
+          where: { projectId, status: 'ok', inputHash: { in: hashes } },
+          select: { kind: true, inputHash: true, inputTokens: true, outputTokens: true, costUsd: true },
+        })
+      : [];
+    // Uma chamada por (kind, inputHash) no fluxo de gate — mapa direto.
+    const costByRun = new Map<string, { inputTokens: number; outputTokens: number; costUsd: string | null }>();
+    for (const u of usageRows) {
+      costByRun.set(`${u.kind}:${u.inputHash}`, {
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        costUsd: u.costUsd ? u.costUsd.toString() : null,
+      });
+    }
+
     const all = buildFeed({
       operations,
-      insights,
+      insightRuns: insightRuns.map((r) => ({
+        ...r,
+        cost: r.outcome === 'generated' ? costByRun.get(`${r.kind}:${r.inputHash}`) ?? null : null,
+      })),
       mutations: mutations.map((m) => ({
         ...m,
         issueUrl: issueUrl((m.payload as { number?: number } | null)?.number),

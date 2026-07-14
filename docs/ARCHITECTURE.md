@@ -78,7 +78,9 @@ Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb
 - **GitHub rate limit**: cache condicional com ETag; backoff exponencial em 403/429; orçamento de requests por sync.
 - **Timeouts** em todos os clients externos (GitHub 10s, Anthropic 120s em job).
 - **Circuit breaker** leve (opossum) nos clients GitHub e Anthropic — falha rápida e job re-agendado.
-- **Idempotência**: sync e insight-jobs idempotentes por (`project_id`, `docs_tree_sha`); reprocessar é seguro.
+- **Idempotência**: o **sync** é idempotente por (`project_id`, `docs_scope_hash`). Os **insight-jobs** passaram a ser idempotentes por (`project_id`, `kind`, `input_hash`) — o hash do prompt efetivamente enviado ao provedor (Fatia 7.7 / SPEC-011, emenda ao ADR-002): uma inferência só regenera quando o que **ela consome** muda, não quando qualquer coisa em `docs/` muda. Cache-hit registra `InsightRun reused` e não chama o provedor; reprocessar é seguro e barato.
+
+  > **Equivalência histórica de nomes** (Decisão 3 da SPEC-011): `Insight.docs_tree_sha` foi renomeado para `docs_scope_hash` — é o **mesmo valor** que `Project.docs_scope_hash`, com dois nomes por acidente histórico; agora unificado. As menções a `docs_tree_sha` neste documento e nas specs/ADRs anteriores à 7.7 referem-se ao atual `docs_scope_hash`. Após a 7.7, ele é **metadado** do artefato ("gerado quando a árvore era X" — insumo do drift no MVP2), não mais a chave de invalidação do insight.
 - **Conflito de write-back**: commit de card usa SHA base do arquivo; 409 → re-sync, reaplicar mudança, um retry; persiste o conflito → aba mostra "conflito, resolva no repo".
 - **`noop` nunca pode vir de leitura obsoleta** (regra de 2026-07-13). A **Git Trees API do GitHub tem consistência eventual**: por alguns segundos após um commit, `listTree` ainda serve a árvore **anterior**. Todo write-back do ProPlan é seguido de um re-sync imediato (bootstrap, promote, `.proplan/config.yml`, projeção `.proplan/STATUS.md`) — e um re-sync que lê a árvore velha calcula o **mesmo hash**, grava **`noop`**, e a mudança recém-commitada **não é ingerida**.
 
