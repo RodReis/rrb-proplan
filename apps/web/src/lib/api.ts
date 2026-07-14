@@ -309,6 +309,8 @@ export interface BoardCard {
   assignee: { login: string; avatarUrl: string } | null;
   htmlUrl: string;
   closedAt: string | null;
+  /** Fechada fora do ProPlan (closed sem label) — badge em Finalizado. */
+  closedOutside: boolean;
 }
 
 export interface BoardView {

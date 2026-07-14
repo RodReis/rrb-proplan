@@ -5,6 +5,7 @@ import {
   BoardColumn,
   COLUMNS,
   columnOf,
+  isClosedOutsideProplan,
   priorityOf,
 } from '../domain/column-mapping';
 import { isGeneratedProjection } from '../domain/status-parser';
@@ -18,6 +19,8 @@ export interface BoardCard {
   assignee: { login: string; avatarUrl: string } | null;
   htmlUrl: string;
   closedAt: string | null;
+  /** Fechada fora do ProPlan (closed sem label) — badge em Finalizado (SPEC-005). */
+  closedOutside: boolean;
 }
 
 export type BoardMode = 'active' | 'degraded' | 'no-installation';
@@ -67,6 +70,7 @@ export class BoardService {
         title: i.title,
         state: i.state,
         column: columnOf(i.state, labels),
+        closedOutside: isClosedOutsideProplan(i.state, labels),
         priority: priorityOf(labels),
         assigneeLogin: assignee?.login ?? null,
         assigneeAvatarUrl: assignee?.avatar_url ?? null,
@@ -137,6 +141,7 @@ export class BoardService {
           : null,
         htmlUrl: i.htmlUrl,
         closedAt: i.closedAt?.toISOString() ?? null,
+        closedOutside: i.closedOutside,
       });
     }
 

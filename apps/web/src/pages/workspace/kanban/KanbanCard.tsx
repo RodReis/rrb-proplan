@@ -46,10 +46,19 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
         (discarded ? 'opacity-70' : '')
       }
     >
-      {/* Finalizado: selo de aceite (verde = conquista) */}
-      {finalized && (
+      {/* Finalizado: selo de aceite (verde = conquista) — mas se foi fechada
+          fora do ProPlan, não há evidência de aceite: badge âmbar, não selo. */}
+      {finalized && !card.closedOutside && (
         <span className="absolute right-1.5 top-1.5 text-[10px] text-success" title="Aceito pelo PI">
           ✓
+        </span>
+      )}
+      {finalized && card.closedOutside && (
+        <span
+          className="absolute right-1.5 top-1.5 rounded bg-warning/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning"
+          title="Fechada no GitHub sem passar pelo aceite do ProPlan — sem evidência de aceite do PI"
+        >
+          fora
         </span>
       )}
       {/* Faixa de prioridade (variação B) */}

@@ -5,6 +5,7 @@ import {
   COLUMN_LABEL,
   columnOf,
   DISCARDED_LABEL,
+  FINALIZED_LABEL,
   priorityOf,
   PRIORITY_LABELS,
   STAMPED_COLUMNS,
@@ -62,7 +63,12 @@ export class MutationApplierService {
     input: Extract<MutationInput, { type: 'create_card' }>,
   ): Promise<void> {
     const labels: string[] = [];
-    if (input.column === 'todo' || input.column === 'doing' || input.column === 'backlog') {
+    if (
+      input.column === 'todo' ||
+      input.column === 'doing' ||
+      input.column === 'backlog' ||
+      input.column === 'done'
+    ) {
       labels.push(COLUMN_LABEL[input.column]);
     }
     if (input.priority) labels.push(PRIORITY_LABELS[input.priority]);
@@ -149,11 +155,19 @@ export class MutationApplierService {
     if (!cached) return [];
     const labels: string[] = [];
     if (cached.state === 'open') {
-      if (cached.column === 'todo' || cached.column === 'doing' || cached.column === 'backlog') {
+      // Feito é aberta (ADR-011) — `proplan:done` entra aqui como as demais.
+      if (
+        cached.column === 'todo' ||
+        cached.column === 'doing' ||
+        cached.column === 'backlog' ||
+        cached.column === 'done'
+      ) {
         labels.push(COLUMN_LABEL[cached.column]);
       }
     } else if (cached.column === 'discarded') {
       labels.push(DISCARDED_LABEL);
+    } else if (cached.column === 'finalized') {
+      labels.push(FINALIZED_LABEL);
     }
     if (cached.priority) labels.push(PRIORITY_LABELS[cached.priority]);
     return labels;
