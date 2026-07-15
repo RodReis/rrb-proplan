@@ -25,6 +25,8 @@ const WRITE_ALLOWLIST = [
   join('board', 'application', 'tabs.service.ts'), // commita o doc real revisado (bot)
   // Fatia 10 (SPEC-015): captura/revalidação de asserção commita docs/CONTEXT.md.
   join('context', 'application', 'context.service.ts'), // commita docs/CONTEXT.md (bot)
+  // Fatia 13.5 (SPEC-018): write-back do handoff commita .proplan/HANDOFF.md.
+  join('handoff', 'application', 'handoff-commit.service.ts'), // commita .proplan/HANDOFF.md (bot)
 ];
 
 function tsFiles(dir: string): string[] {

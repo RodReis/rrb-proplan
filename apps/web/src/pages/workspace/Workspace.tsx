@@ -14,6 +14,7 @@ import { DeployTab } from './tabs/DeployTab';
 import { DesignTab } from './tabs/DesignTab';
 import { SkillsTab } from './tabs/SkillsTab';
 import { TestsTab } from './tabs/TestsTab';
+import { HandoffTab } from './tabs/HandoffTab';
 import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
 
 /** Shape mínimo para abrir o workspace (repo do catálogo ou projeto gerenciado). */
@@ -204,6 +205,9 @@ export function Workspace({ project, onBack }: Props) {
         )}
         {activeTab === 'context' && (
           <ContextTab projectId={projectId} syncNonce={syncNonce} />
+        )}
+        {activeTab === 'handoff' && (
+          <HandoffTab projectId={projectId} syncNonce={syncNonce} />
         )}
       </div>
 

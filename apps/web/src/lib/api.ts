@@ -319,6 +319,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ cards }),
     }),
+  // Handoff exportável (SPEC-018)
+  handoff: (projectId: string) =>
+    request<HandoffResponse>(`/projects/${projectId}/handoff`),
+  commitHandoff: (projectId: string) =>
+    request<{ committed: boolean }>(`/projects/${projectId}/handoff/commit`, {
+      method: 'POST',
+    }),
 };
 
 export type BoardColumn =
@@ -494,6 +501,57 @@ export interface SkillEntry {
   name: string;
   description: string | null;
   path: string;
+}
+
+/** Handoff exportável (SPEC-018, Fatia 13.5). */
+export type HandoffProvenance = 'fato' | 'inferencia' | 'hipotese' | 'assercao';
+
+export interface HandoffConfidenceMath {
+  stalenessDays: number;
+  cobertura: number;
+  contradicao: number;
+  drift: number;
+}
+
+export interface HandoffIssueRef {
+  number: number;
+  url: string;
+  title: string;
+  capturedAt: string;
+}
+
+export type HandoffBlockBody =
+  | {
+      refused: false;
+      value: string;
+      provenance: HandoffProvenance;
+      provenanceRef: unknown;
+      confidence: number;
+      math: HandoffConfidenceMath;
+    }
+  | {
+      refused: true;
+      reason: string;
+      missing: unknown;
+      confidence: number;
+      math: HandoffConfidenceMath;
+    };
+
+export interface HandoffBlock {
+  key: string;
+  title: string;
+  body: HandoffBlockBody;
+  refs?: HandoffIssueRef[];
+}
+
+export interface Handoff {
+  header: { generatedAt: string; docsScopeHash: string; notice: string };
+  blocks: HandoffBlock[];
+}
+
+export interface HandoffResponse {
+  structure: Handoff;
+  markdown: string;
 }
 
 export interface WorkflowInfo {
