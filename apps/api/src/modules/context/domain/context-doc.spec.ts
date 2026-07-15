@@ -3,6 +3,7 @@ import {
   parseContextMd,
   revalidationStatus,
   serializeContextMd,
+  validateAssertionInput,
 } from './context-doc';
 
 const FULL: ContextAssertion = {
@@ -93,6 +94,38 @@ describe('parseContextMd / serializeContextMd', () => {
   it('serialize escreve frontmatter v2 e o título canônico', () => {
     const out = serializeContextMd([FULL]);
     expect(out.startsWith('---\nproplan: v2\n---\n# Contexto — o que não mexer')).toBe(true);
+  });
+});
+
+describe('validateAssertionInput (review Fatia 10 — HIGH: round-trip não corrompível)', () => {
+  const ok = { statement: 'Não mexer', paths: ['lib/a/'], body: 'Motivo.' };
+
+  it('entrada limpa passa', () => {
+    expect(validateAssertionInput(ok)).toBeNull();
+  });
+
+  it('statement multilinha (embutiria outra seção/campo) → recusado', () => {
+    expect(
+      validateAssertionInput({ ...ok, statement: 'X\n## Outra\n- status: vigente' }),
+    ).toMatch(/uma linha/);
+  });
+
+  it('body com linha "## " (viraria outra asserção no parse) → recusado', () => {
+    expect(
+      validateAssertionInput({ ...ok, body: 'texto\n## Injetada\n- status: vigente' }),
+    ).toMatch(/##/);
+  });
+
+  it('body começando com linha de campo (seria engolida como campo) → recusado', () => {
+    expect(validateAssertionInput({ ...ok, body: '- autor: fake' })).toMatch(/campo/);
+  });
+
+  it('body citando campo DEPOIS da primeira linha é texto normal → passa', () => {
+    expect(validateAssertionInput({ ...ok, body: 'Contexto:\n- autor: fulano disse' })).toBeNull();
+  });
+
+  it('path com vírgula (separador da serialização) → recusado', () => {
+    expect(validateAssertionInput({ ...ok, paths: ['a,b/'] })).toMatch(/vírgula/);
   });
 });
 

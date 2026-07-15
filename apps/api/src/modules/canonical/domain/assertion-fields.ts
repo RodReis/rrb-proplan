@@ -39,6 +39,10 @@ export function assertionsToCanonicalFields(
   assertions: AssertionInput[],
   docsScopeHash: string,
 ): ExtractedField[] {
+  // CONTEXT.md editado à mão pode ter duas seções com o mesmo statement — o
+  // parser tolera (nunca quebra o sync), então o slug precisa desambiguar aqui,
+  // senão o @@unique(projectId, entity, field) derruba o rebuild inteiro.
+  const seen = new Map<string, number>();
   return assertions.map((a) => {
     const cobertura = a.status === 'vigente' ? 1.0 : 0.5;
     const { score, math } = computeConfidence({
@@ -47,9 +51,12 @@ export function assertionsToCanonicalFields(
       contradicao: 0,
       drift: 0,
     });
+    const base = assertionFieldKey(a.statement);
+    const count = (seen.get(base) ?? 0) + 1;
+    seen.set(base, count);
     return {
       entity: 'constraints',
-      field: assertionFieldKey(a.statement),
+      field: count === 1 ? base : `${base}-${count}`,
       value: { statement: a.statement, paths: a.paths },
       provenanceClass: 'assercao',
       provenanceRef: {

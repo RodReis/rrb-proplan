@@ -99,6 +99,20 @@ describe('CanonicalService.rebuild', () => {
     expect(constraints[1].confidence).toBe(0.5);
     expect(constraints[1].provenanceRef).toMatchObject({ status: 'a-revalidar' });
   });
+
+  it('statements duplicados (CONTEXT.md editado à mão) → slugs desambiguados, rebuild não quebra', async () => {
+    const dup = { paths: ['x/'], author: 'r', assertedAt: '2026-01-01', assertedSha: 's', status: 'vigente' };
+    const { svc, created } = makeSvc({
+      resolutions: [],
+      assertions: [
+        { ...dup, statement: 'Mesmo texto' },
+        { ...dup, statement: 'Mesmo texto' },
+      ],
+    });
+    await svc.rebuild('p1');
+    const keys = created.filter((f) => f.entity === 'constraints').map((f) => f.field);
+    expect(new Set(keys).size).toBe(2); // @@unique(projectId, entity, field) preservado
+  });
 });
 
 describe('CanonicalService.getCanonicalModel', () => {

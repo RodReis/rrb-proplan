@@ -126,6 +126,37 @@ export function serializeContextMd(assertions: ContextAssertion[]): string {
 }
 
 /**
+ * Valida a entrada de uma captura ANTES de serializar (SPEC-015). O formato é
+ * markdown estrutural — conteúdo que imita a estrutura corromperia o round-trip
+ * (um `## ` no meio do body viraria outra asserção no próximo parse, e um campo
+ * embutido poderia forçar `status: vigente` por fora da derivação do ProPlan).
+ * Devolve o motivo da recusa, ou null se válida.
+ */
+export function validateAssertionInput(input: {
+  statement: string;
+  paths: string[];
+  body: string;
+}): string | null {
+  if (/[\r\n]/.test(input.statement)) {
+    return 'A asserção deve ter uma linha só (o detalhe vai no campo próprio)';
+  }
+  for (const p of input.paths) {
+    if (/[\r\n]/.test(p)) return `Path com quebra de linha: "${p}"`;
+    // paths são serializados com vírgula como separador — vírgula no path
+    // seria silenciosamente partida em dois paths errados no próximo parse.
+    if (p.includes(',')) return `Path com vírgula não é suportado: "${p}"`;
+  }
+  const bodyLines = input.body.split(/\r?\n/);
+  if (bodyLines.some((l) => l.startsWith('## '))) {
+    return 'O detalhe não pode conter linha começando com "## " (viraria outra asserção)';
+  }
+  if (input.body && FIELD_RE.test(bodyLines[0].trim())) {
+    return 'O detalhe não pode começar com uma linha de campo (- paths:, - autor:, …)';
+  }
+  return null;
+}
+
+/**
  * Validade datada (SPEC-015): algum path citado recebeu commit DEPOIS da data
  * da asserção → `a-revalidar`. Rebaixa, nunca apaga. Sem data ou sem commits →
  * mantém `vigente` (degradação sinalizada no parse, não aqui).

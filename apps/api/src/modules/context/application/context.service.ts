@@ -19,6 +19,7 @@ import {
   parseContextMd,
   revalidationStatus,
   serializeContextMd,
+  validateAssertionInput,
 } from '../domain/context-doc';
 
 const CONTEXT_PATH = 'docs/CONTEXT.md';
@@ -106,9 +107,14 @@ export class ContextService {
   ): Promise<{ operationId: string }> {
     const statement = input.statement?.trim();
     const paths = (input.paths ?? []).map((p) => p.trim()).filter(Boolean);
+    const body = input.body?.trim() ?? '';
     if (!statement) throw new BadRequestException('Asserção sem texto');
     if (paths.length === 0)
       throw new BadRequestException('Asserção sem paths citados');
+    // Round-trip: conteúdo que imita a estrutura do markdown corromperia o
+    // próximo parse (review Fatia 10 — HIGH). Rejeita com motivo claro.
+    const invalid = validateAssertionInput({ statement, paths, body });
+    if (invalid) throw new BadRequestException(invalid);
 
     const project = await this.assertOwner(userId, projectId);
     const user = await this.prisma.user.findUnique({
@@ -131,7 +137,7 @@ export class ContextService {
       date: new Date().toISOString().slice(0, 10),
       sha: headSha ? headSha.slice(0, 7) : '',
       status: 'vigente',
-      body: input.body?.trim() ?? '',
+      body,
     };
 
     return this.writeContext(projectId, project, (current) => {
