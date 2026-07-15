@@ -68,7 +68,7 @@ export function Home({ user, onLogout }: Props) {
   return (
     <div className="flex h-screen bg-bg">
       {/* Rail de ícones */}
-      <aside className="flex w-14 flex-col items-center border-r border-border bg-surface py-4">
+      <aside className="flex w-14 shrink-0 flex-col items-center border-r border-border bg-surface py-4">
         <div className="mb-6 flex h-8 w-8 items-center justify-center rounded-md bg-brand text-sm font-bold text-white">
           P
         </div>
@@ -104,7 +104,7 @@ export function Home({ user, onLogout }: Props) {
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
 
       {/* Sidebar contextual: projetos gerenciados */}
-      <aside className="flex w-64 flex-col border-r border-border bg-surface">
+      <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
         <div className="border-b border-border p-4">
           <div className="text-sm font-semibold">Projetos gerenciados</div>
           <div className="text-xs text-text-muted">{projects.length} projetos</div>
@@ -184,7 +184,7 @@ export function Home({ user, onLogout }: Props) {
 
       {/* Conteúdo: workspace do projeto aberto ou catálogo por instalação */}
       {openProject ? (
-        <main className="min-h-0 flex-1">
+        <main className="min-h-0 min-w-0 flex-1">
           <Workspace
             key={openProject.id}
             project={{
@@ -196,7 +196,7 @@ export function Home({ user, onLogout }: Props) {
           />
         </main>
       ) : (
-        <main className="flex-1 overflow-y-auto">
+        <main className="min-w-0 flex-1 overflow-y-auto">
           <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg/80 px-8 py-5 backdrop-blur">
             <div>
               <h1 className="text-lg font-semibold">Catálogo</h1>

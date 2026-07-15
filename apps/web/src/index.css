@@ -45,6 +45,9 @@ button:active {
   font-size: 14px;
   line-height: 1.7;
   color: var(--color-text);
+  /* Token sem espaço (URL, hash, identificador) quebra em vez de estourar a
+     largura — doc largo nunca deve espremer o shell (sidebar/menu). */
+  overflow-wrap: break-word;
 }
 .prose-doc h1 { font-size: 24px; font-weight: 600; margin: 1.2em 0 0.5em; }
 .prose-doc h2 { font-size: 19px; font-weight: 600; margin: 1.2em 0 0.5em; }
@@ -83,6 +86,10 @@ button:active {
   width: 100%;
   margin: 0.8em 0;
   font-size: 13px;
+  /* Tabela mais larga que a coluna rola no próprio container (nunca estoura
+     a página — a viewport faz parte do design). */
+  display: block;
+  overflow-x: auto;
 }
 .prose-doc th,
 .prose-doc td {
