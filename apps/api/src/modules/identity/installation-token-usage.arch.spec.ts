@@ -23,6 +23,8 @@ const WRITE_ALLOWLIST = [
   join('board', 'application', 'mapping.service.ts'), // commita .proplan/config.yml (bot)
   // Fatia 7, Task 11: promove fallback inferido a docs/ARCHITECTURE.md ou docs/DESIGN.md.
   join('board', 'application', 'tabs.service.ts'), // commita o doc real revisado (bot)
+  // Fatia 10 (SPEC-015): captura/revalidação de asserção commita docs/CONTEXT.md.
+  join('context', 'application', 'context.service.ts'), // commita docs/CONTEXT.md (bot)
 ];
 
 function tsFiles(dir: string): string[] {

@@ -66,6 +66,7 @@ const OPERATION_TITLE: Record<string, string> = {
   promote: 'Promoveu um documento inferido a fonte',
   mapping: 'Salvou o mapeamento de documentos',
   bootstrap: 'Criou cards no board a partir da documentação',
+  assertion: 'Registrou contexto em docs/CONTEXT.md',
 };
 
 // O QUE cada job de insight produz, em linguagem de gente — o objeto direto do

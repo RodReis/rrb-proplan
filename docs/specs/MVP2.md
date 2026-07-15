@@ -3,7 +3,7 @@ proplan: v1
 spec: MVP2
 fatia: 9+
 status: rascunho # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
-updated: 2026-07-12
+updated: 2026-07-15
 ---
 # MVP2 — Memória operacional verificável
 
@@ -156,7 +156,7 @@ O guarda-costas do handoff — é o que impede o handoff de mentir.
 
 O *output* do produto. Contexto mínimo para um agente retomar: estado atual + próxima ação + arquivos a ler + DoD + testes + **restrições (o que não mexer)** + confiança de cada bloco.
 
-Consumível por MCP (agente) e exportável em markdown (humano).
+Consumível por MCP (agente) e exportável em markdown (humano). **Especificado na `SPEC-018` (Fatia 13.5, `aprovada-pi` 2026-07-15)** — sequenciada **antes** da Fatia 11, que herda a montagem `assembleHandoff`.
 
 ---
 
@@ -180,15 +180,16 @@ São *consequência* dos itens 1–6, não features independentes: o dado já va
 
 ## Ordem sugerida das fatias
 
-1. **Fatia 9** — Modelo canônico + proveniência + confiança determinística (ADR-012). *É a fundação: sem isso o MCP não tem o que servir.*
-2. **Fatia 10** — `docs/CONTEXT.md` + captura de asserção humana (ADR-013). *O fosso.*
-3. **Fatia 11** — MCP Server com contrato de evidência e as 6 tools.
-4. **Fatia 12** — ~~Migração Issues↔`STATUS.md` (ADR-011)~~ → **antecipada para a Fatia 5** (decisão do PI, 2026-07-12). Sobra no MVP2, e **só sob condição**:
+1. **Fatia 9** — Modelo canônico + proveniência + confiança determinística (ADR-012). *A fundação: sem isso o MCP não tem o que servir.* **(entregue — SPEC-014)**
+2. **Fatia 10** — `docs/CONTEXT.md` + captura de asserção humana (ADR-013). *O fosso.* (SPEC-015, `aprovada-pi`)
+3. **Fatia 13.5** — Handoff exportável (SPEC-018, `aprovada-pi`). *Reposicionada em 2026-07-15: vem **antes** da 11 porque constrói o `assembleHandoff` — o domínio de montagem que o `get_handoff_context` da Fatia 11 herda (ADR-001; "adaptador, não reimplementação", SPEC-016). Depende só da 9; os blocos de 10/11 recusam honestamente até elas entregarem.*
+4. **Fatia 11** — MCP Server com contrato de evidência e as 6 tools (SPEC-016, `aprovada-pi`). *Herda o `assembleHandoff` da 13.5.*
+5. **Fatia 12** — ~~Migração Issues↔`STATUS.md` (ADR-011)~~ → **antecipada para a Fatia 5** (decisão do PI, 2026-07-12). Sobra no MVP2, e **só sob condição**:
    - **GitHub Projects v2** (campo Status nativo, ordenação manual) — só se a ordenação determinística do board incomodar na prática.
    - **Sub-issues** — **rejeitadas no ADR-011** (2026-07-13). O board é grade plana; sub-issue obriga a escolher entre mostrar a mãe (perde granularidade), as filhas (perde a fatia) ou as duas (duplica na tela). O único ganho real (barra `3/7`) o `DEVELOPMENT.md` já dá. **Reabrir só se** o board plano (`card = fatia`) se provar grosso demais **na prática** — não por antecipação.
    - **Issue types** — sem caso de uso hoje.
-5. **Fatia 13** — Drift + handoff exportável.
-6. **Fatia 14** — Views; portfólio primeiro.
+6. ~~**Fatia 13** — Drift + handoff exportável.~~ → **Drift entregue** (SPEC-013 v2.1) + **probe HTTP entregue** (SPEC-013.6); o **handoff foi desmembrado para a Fatia 13.5** (item 3, reposicionada antes da 11).
+7. **Fatia 14** — Views; portfólio primeiro.
 
 ---
 

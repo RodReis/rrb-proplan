@@ -7,6 +7,7 @@ function makeSvc(over: {
   threshold?: number;
   fieldRows?: any[];
   owner?: any;
+  assertions?: any[];
 } = {}) {
   const created: any[] = [];
   const prisma = {
@@ -34,7 +35,10 @@ function makeSvc(over: {
   const settings = {
     canonicalThresholdOf: jest.fn().mockResolvedValue(over.threshold ?? 0.4),
   } as any;
-  return { svc: new CanonicalService(prisma, resolution, settings), prisma, created };
+  const context = {
+    assertionsOf: jest.fn().mockResolvedValue((over as any).assertions ?? []),
+  } as any;
+  return { svc: new CanonicalService(prisma, resolution, settings, context), prisma, created };
 }
 
 describe('CanonicalService.rebuild', () => {
@@ -73,6 +77,41 @@ describe('CanonicalService.rebuild', () => {
     const b = makeSvc(args); await b.svc.rebuild('p1');
     // ignora nada volátil: docsDate vem de lastDocsCommitAt (fixo no mock)
     expect(a.created).toEqual(b.created);
+  });
+
+  it('projeta asserções em entity=constraints (SPEC-015): vigente 1.0, a-revalidar rebaixada', async () => {
+    const { svc, created } = makeSvc({
+      resolutions: [],
+      assertions: [
+        { statement: 'Não mexer no motor de folha', paths: ['lib/folha/'], author: 'rodrigo', assertedAt: '2026-06-12', assertedSha: 'a1b2c3d', status: 'vigente' },
+        { statement: 'Módulo parece morto e não é', paths: ['src/legacy/'], author: 'rodrigo', assertedAt: '2026-05-01', assertedSha: 'ffff111', status: 'a-revalidar' },
+      ],
+    });
+    await svc.rebuild('p1');
+    const constraints = created.filter((f) => f.entity === 'constraints');
+    expect(constraints).toHaveLength(2);
+    expect(constraints[0]).toMatchObject({
+      provenanceClass: 'assercao',
+      confidence: 1,
+    });
+    expect(constraints[0].provenanceRef).toMatchObject({ author: 'rodrigo', sha: 'a1b2c3d', status: 'vigente' });
+    // a-revalidar NUNCA é omitida — aparece rebaixada, com a marca na proveniência
+    expect(constraints[1].confidence).toBe(0.5);
+    expect(constraints[1].provenanceRef).toMatchObject({ status: 'a-revalidar' });
+  });
+
+  it('statements duplicados (CONTEXT.md editado à mão) → slugs desambiguados, rebuild não quebra', async () => {
+    const dup = { paths: ['x/'], author: 'r', assertedAt: '2026-01-01', assertedSha: 's', status: 'vigente' };
+    const { svc, created } = makeSvc({
+      resolutions: [],
+      assertions: [
+        { ...dup, statement: 'Mesmo texto' },
+        { ...dup, statement: 'Mesmo texto' },
+      ],
+    });
+    await svc.rebuild('p1');
+    const keys = created.filter((f) => f.entity === 'constraints').map((f) => f.field);
+    expect(new Set(keys).size).toBe(2); // @@unique(projectId, entity, field) preservado
   });
 });
 

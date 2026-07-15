@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ContextService } from '../../context/application/context.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { SettingsService } from '../../settings/application/settings.service';
+import { assertionsToCanonicalFields } from '../domain/assertion-fields';
 import {
   assembleCanonicalModel,
   CanonicalFieldRow,
@@ -29,6 +31,7 @@ export class CanonicalService {
     private readonly prisma: PrismaService,
     private readonly resolution: ResolutionService,
     private readonly settings: SettingsService,
+    private readonly context: ContextService,
   ) {}
 
   /** Ownership id+userId (mesmo padrão de TabsService/BoardService). */
@@ -79,6 +82,14 @@ export class CanonicalService {
         ? project.lastDocsCommitAt.toISOString().slice(0, 10)
         : null,
     });
+
+    // SPEC-015: `constraints` é projeção sobre Assertion (fonte: docs/CONTEXT.md).
+    // Consumido pela interface pública do context (ADR-001) — o listener garante
+    // que o context.rebuild rodou antes deste rebuild (ordem determinística).
+    const assertions = await this.context.assertionsOf(projectId);
+    fields.push(
+      ...assertionsToCanonicalFields(assertions, project.docsScopeHash ?? ''),
+    );
 
     // Replace-all em transação (padrão resolution.rebuild).
     await this.prisma.$transaction([

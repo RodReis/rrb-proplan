@@ -8,6 +8,7 @@ import { ActivityPanel } from './ActivityPanel';
 import { OverviewTab } from './OverviewTab';
 import { KanbanTab } from './kanban/KanbanTab';
 import { ArchitectureTab } from './tabs/ArchitectureTab';
+import { ContextTab } from './tabs/ContextTab';
 import { DecisionsTab } from './tabs/DecisionsTab';
 import { DeployTab } from './tabs/DeployTab';
 import { DesignTab } from './tabs/DesignTab';
@@ -200,6 +201,9 @@ export function Workspace({ project, onBack }: Props) {
             syncNonce={syncNonce}
             onCorrect={() => setMapping({ open: true, focus: 'skills' })}
           />
+        )}
+        {activeTab === 'context' && (
+          <ContextTab projectId={projectId} syncNonce={syncNonce} />
         )}
       </div>
 

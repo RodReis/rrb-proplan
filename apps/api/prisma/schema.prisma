@@ -62,6 +62,7 @@ model Project {
   llmUsage       LlmUsage[]
   insightRuns    InsightRun[]
   canonicalFields CanonicalField[]
+  assertions     Assertion[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -150,6 +151,29 @@ model CanonicalField {
 
   @@unique([projectId, entity, field])
   @@map("canonical_fields")
+}
+
+// Asserção humana (SPEC-015, ADR-013): índice reconstruível de docs/CONTEXT.md
+// — a fonte viva é o repo; apagar o banco e re-sync reconstrói. Modelo próprio
+// (não só CanonicalField) porque a asserção tem ciclo de vida: captura →
+// revalidação. O CanonicalField de `constraints` é projeção sobre isto.
+model Assertion {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  statement   String
+  paths       String[]
+  author      String
+  // YYYY-MM-DD como no arquivo ('' = sem data, degradado)
+  assertedAt  String   @map("asserted_at")
+  assertedSha String   @map("asserted_sha")
+  status      String   // vigente | a-revalidar
+  body        String   @default("")
+  contextPath String   @default("docs/CONTEXT.md") @map("context_path")
+  createdAt   DateTime @default(now()) @map("created_at")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("assertions")
 }
 
 enum SyncStatus {
@@ -421,6 +445,7 @@ enum OperationKind {
   promote
   mapping
   bootstrap
+  assertion
 }
 
 enum OperationStatus {

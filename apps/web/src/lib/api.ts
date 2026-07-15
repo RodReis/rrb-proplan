@@ -94,7 +94,7 @@ export interface DocumentContent extends DocumentSummary {
 }
 
 /** Operação assíncrona de escrita (SPEC-010): passos nomeados + polling por id. */
-export type OperationKind = 'promote' | 'mapping' | 'bootstrap' | 'board_mutation';
+export type OperationKind = 'promote' | 'mapping' | 'bootstrap' | 'assertion' | 'board_mutation';
 export type OperationStatus = 'running' | 'done' | 'failed';
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed';
 export interface OperationStep {
@@ -144,6 +144,19 @@ export interface SyncRun {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+}
+
+/** Asserção humana (SPEC-015, ADR-013): fonte = docs/CONTEXT.md; a marca
+ *  `a-revalidar` é obrigatória em toda exposição — nunca omitida. */
+export interface Assertion {
+  id: string;
+  statement: string;
+  paths: string[];
+  author: string;
+  assertedAt: string;
+  assertedSha: string;
+  status: 'vigente' | 'a-revalidar';
+  body: string;
 }
 
 export const api = {
@@ -251,6 +264,23 @@ export const api = {
     const qs = q.toString();
     return request<ActivityFeed>(`/projects/${projectId}/activity${qs ? `?${qs}` : ''}`);
   },
+  // Contexto/asserção humana (SPEC-015)
+  assertions: (projectId: string) =>
+    request<{ assertions: Assertion[] }>(`/projects/${projectId}/assertions`),
+  captureAssertion: (
+    projectId: string,
+    input: { statement: string; paths: string[]; body?: string },
+  ) =>
+    request<{ operationId: string }>(`/projects/${projectId}/assertions`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  revalidateAssertion: (projectId: string, assertionId: string) =>
+    request<{ operationId: string }>(
+      `/projects/${projectId}/assertions/${assertionId}/revalidate`,
+      { method: 'POST' },
+    ),
+
   mapping: (projectId: string) =>
     request<{ rows: MappingRow[]; proplanConfigInvalid: boolean }>(
       `/projects/${projectId}/tabs/mapping`,
