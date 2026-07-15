@@ -10,6 +10,9 @@
   --color-text-muted: #475467;
   --color-brand: #1d2939;
   --color-warning: #f79009;
+  /* Texto âmbar legível sobre fundo claro (Untitled UI warning-700) — o
+     warning-500 puro reprova contraste em texto pequeno (≈2.2:1). */
+  --color-warning-strong: #b54708;
   --color-success: #12b76a;
   --color-error: #f04438;
 
