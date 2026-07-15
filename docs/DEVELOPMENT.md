@@ -387,6 +387,29 @@ Estende o confronto da Fatia 13 com a **única fonte que toca a realidade**: GET
 
 **Aceite runtime do PI (pendente):** olho ao vivo com URL de domínio próprio declarada (`gestao.epgtrindade.com.br` se `rrb-escola` for gerenciado) → probe identifica a plataforma pelos headers; confirmar a faixa `BlockedNote` na UI com uma URL que aponta para IP interno.
 
+## Fatia 9 — Modelo canônico + proveniência + confiança determinística (SPEC-014, `aprovada-pi`) — `feito` (validado ao vivo; aguardando aceite do PI)
+
+Fundação do núcleo do MVP2 (9→10→11). O **objeto consultável** que o resto do MVP2 serve: cada campo carrega **sua própria proveniência** + **confiança determinística** (ADR-012). Granularidade é o **campo, não o documento**. **100% determinística, zero IA, zero teto SPEC-009.**
+
+1. `feito` — **Domínio puro** `canonical/domain/`: `computeConfidence` (score = cobertura × stalenessFactor, decaimento exponencial meia-vida 90d alinhado ao ADR-010; contradição/drift = slots peso zero, decisão 2 do PI; determinístico, clamp [0,1]); `belowThreshold` (recusa; limiar 0 desliga); `assembleCanonicalModel` (projeção pura entidades→campos + recusa, padrão activity-feed); `extractCanonicalFields` (fato por entidade, cobertura modulada por nível de resolução 1.0/0.8/0.6/0, proveniência `fato`/`inferencia`, data vem de `lastDocsCommitAt` — **nunca** a data de extração, senão quebraria o rebuild). 28 testes.
+2. `feito` — Prisma: `CanonicalField` (reconstruível, padrão DocumentResolution; `@@unique[projectId,entity,field]`) + `Settings.canonicalRefusalThreshold` (padrão 0.4, decisão 4 do PI). Migration `fatia_9_canonical_field` aplicada.
+3. `feito` — `SettingsService`: expõe `canonicalRefusalThreshold` (get/put, validação 0..1) + getter público `canonicalThresholdOf`.
+4. `feito` — **Módulo `canonical` novo** (decisão do Code — não polui `insight`/IA): `CanonicalService.rebuild` (replace-all determinístico, populado no sync) + `getCanonicalModel` (projeção pura, ADR-002). Controller `GET /projects/:id/canonical` (ownership id+userId). `ResolutionService.allResolutionsOf`/`docShasOf` novos (interface pública, ADR-001 — canonical nunca lê document_resolutions/document direto).
+5. `feito` — **Rebuild por evento**: `CanonicalListener` escuta `SYNC_COMPLETED` — ingestion **não conhece** canonical (ADR-001, desacoplamento ADR-004). Determinístico, fora do BullMQ e do teto SPEC-009. Tolerante a falha (não derruba o sync). `SyncService` **intacto**.
+6. `feito` — 410 testes no total (+34), `tsc` + `nest build` + `vite build` limpos.
+
+### Aceite runtime executado pelo Code (2026-07-15) — dogfooding no `rrb-organize`
+
+Os 6 critérios da SPEC-014 provados ao vivo (migration aplicada, sync real):
+- **Por campo**: `GET /canonical` → 6 entidades, cada uma com `presence`/proveniência `fato`/confiança + a **conta** (`math`). Nunca score uniforme de documento.
+- **Determinístico**: 2 syncs seguidos → hash das confianças **idêntico** (`028a54f2…`).
+- **Auditável**: o payload traz `{stalenessDays, cobertura, contradicao, drift}` que soma no número.
+- **Recusa**: limiar 0.9 → entidades por alias (conf 0.8) recusam "ausente ou defasado"; por convenção (conf 1.0) passam. Limiar 0.4 restaurado.
+- **Reconstruível**: apagar as 6 linhas + re-sync → hash **idêntico** (`b154a927…`). Cache derivado, fonte é o repo (ADR-014).
+- **Zero IA**: 3× `GET /canonical` → `llm_usage` inalterado (28 linhas). Sem inferência no render (ADR-002).
+
+**Aceite runtime do PI (pendente):** olho na tela (a fatia entrega só a API `GET /canonical`; a UI da Visão Geral consumindo o modelo é fatia de refino/parte da 11). Idealmente ver a recusa e a conta clicável num repo com entidades ausentes (`landpage` só tem README → maioria nível 4).
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
