@@ -11,7 +11,7 @@
 // O board_mutation ficou de fora de propósito: o Kanban já é otimista (SPEC-005),
 // não tem o sintoma do silêncio, e tem seu próprio estado (BoardMutation +
 // mutationId) — envolvê-lo criaria a segunda fonte que o ADR-017 proíbe.
-export type OperationKind = 'promote' | 'mapping' | 'bootstrap';
+export type OperationKind = 'promote' | 'mapping' | 'bootstrap' | 'assertion';
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed';
 
 export interface Step {
@@ -38,6 +38,14 @@ const STEP_TEMPLATES: Record<OperationKind, { key: string; label: string }[]> = 
     { key: 'propagate', label: 'Aguardando o GitHub propagar…' },
     { key: 'sync', label: 'Sincronizando a documentação…' },
     { key: 'done', label: 'Pronto — o mapeamento está ativo' },
+  ],
+  // Asserção humana (SPEC-015): captura ou revalidação escreve docs/CONTEXT.md
+  // e re-sincroniza — mesmo shape do promote/mapping.
+  assertion: [
+    { key: 'commit', label: 'Salvando o contexto em {doc}…' },
+    { key: 'propagate', label: 'Aguardando o GitHub propagar…' },
+    { key: 'sync', label: 'Sincronizando a documentação…' },
+    { key: 'done', label: 'Pronto — o contexto está registrado' },
   ],
   // Bootstrap de cards: cria N issues no GitHub e sincroniza o board — NÃO
   // commita doc nem faz sync de documentação (o STATUS.md legado virou fluxo de

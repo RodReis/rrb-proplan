@@ -11,6 +11,7 @@ import { BoardModule } from './modules/board/board.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { ActivityModule } from './modules/activity/activity.module';
 import { CanonicalModule } from './modules/canonical/canonical.module';
+import { ContextModule } from './modules/context/context.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
@@ -33,6 +34,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
     CatalogModule,
     ActivityModule,
     CanonicalModule,
+    ContextModule,
   ],
 })
 export class AppModule {}

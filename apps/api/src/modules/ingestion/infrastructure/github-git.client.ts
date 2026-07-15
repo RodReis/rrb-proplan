@@ -166,6 +166,24 @@ export class GithubGitClient {
   }
 
   /**
+   * SHA do head do branch (SPEC-015 — carimbo da asserção no momento da
+   * captura). Só metadado de commit, nunca diff/conteúdo (ADR-010).
+   */
+  async getHeadSha(
+    token: string,
+    owner: string,
+    repo: string,
+    branch: string,
+  ): Promise<string | null> {
+    const url = new URL(`https://api.github.com/repos/${owner}/${repo}/commits`);
+    url.searchParams.set('per_page', '1');
+    url.searchParams.set('sha', branch);
+    const res = await this.fetchGithub(token, url.toString());
+    const commits = (await res.json()) as Array<{ sha?: string }>;
+    return commits[0]?.sha ?? null;
+  }
+
+  /**
    * Deployments recentes do repo (SPEC-013). Só metadados GitHub-side, sem
    * conteúdo de código (ADR-003 adendo). Para cada deployment recente busca o
    * status mais recente e extrai o host do `environment_url` — a plataforma é

@@ -410,6 +410,19 @@ Os 6 critérios da SPEC-014 provados ao vivo (migration aplicada, sync real):
 
 **Aceite runtime do PI (pendente):** olho na tela (a fatia entrega só a API `GET /canonical`; a UI da Visão Geral consumindo o modelo é fatia de refino/parte da 11). Idealmente ver a recusa e a conta clicável num repo com entidades ausentes (`landpage` só tem README → maioria nível 4).
 
+## Fatia 10 — `docs/CONTEXT.md` + captura de asserção humana (SPEC-015, `aprovada-pi`) — `feito` (PR aberto; aguardando merge + aceite do PI)
+
+O **fosso** (ADR-013): cofre versionado da asserção humana ("o que não mexer"), escrita de volta no repo como conteúdo humano. Preenche o slot `asserção` da Fatia 9. **Zero IA.** As 3 decisões do PI incorporadas (cadência conservadora; validade no sync com cap; modelo próprio `Assertion`).
+
+1. `feito` — **Domínio puro** `context/domain/context-doc.ts`: `parseContextMd` (tolera edição humana — campo ausente degrada com warning, nunca quebra o sync; frontmatter v2), `serializeContextMd` (round-trip **provado por teste**: parse∘serialize = identidade), `revalidationStatus` (commit em path citado depois da data → `a-revalidar`; mesmo dia não rebaixa; sem data → mantém). 12 testes.
+2. `feito` — Prisma: `model Assertion` (índice reconstruível de CONTEXT.md — apagar + re-sync reconstrói; `assertedAt` como **string YYYY-MM-DD** igual ao arquivo, sem drift de TZ) + `OperationKind.assertion`. Migration `fatia_10_assertions` aplicada.
+3. `feito` — **Módulo `context` novo**: `ContextService.capture` (autor+data+sha preenchidos pelo ProPlan; head SHA via `GithubGitClient.getHeadSha` novo, user token; write-back `docs/CONTEXT.md` com installation token + baseSha retry + re-sync SHA-aware — shape idêntico ao `putMapping`), `revalidate` (renova data+sha, volta `vigente`; asserção removida à mão → 400, o repo é a fonte), `rebuild` (ingestão no sync: parse do Document + validade datada via Commits API `?path=&per_page=1`, só re-checa `vigente`, cap 30 checks/sync, falha de rede tolerada → mantém status do arquivo), `assertionsOf` (interface pública p/ canonical, ADR-001). Controller `GET/POST /projects/:id/assertions` + `POST :aid/revalidate` (202 + operationId, SPEC-010). Allowlist do teste de arquitetura ADR-015 atualizada com justificativa.
+4. `feito` — **Projeção `constraints`** (canonical): `assertionsToCanonicalFields` puro (`entity=constraints`, `provenanceClass=assercao`, `provenanceRef={author,date,sha,paths,status}`; confiança determinística: `vigente` 1.0 · `a-revalidar` 0.5 — a marca também move o número). `CanonicalListener` orquestra a ordem `context.rebuild` → `canonical.rebuild` (dois listeners independentes correriam; falha no context não derruba as 6 entidades).
+5. `feito` — **UI**: aba **Contexto** nova no workspace (lista com badge `a revalidar` âmbar **sempre visível**, captura com statement+paths+detalhe, botão "Ainda vale — confirmar" nas rebaixadas, `OperationSteps` com polling SPEC-010, recarrega no sync). `CURRENT_SLICE` → 10.
+6. `feito` — 434 testes no total (+22), `tsc` + `nest build` + `vite build` limpos; boot da API com `ContextModule` inicializado e rotas mapeadas.
+
+**Aceite runtime do PI (pendente):** capturar uma asserção num repo real → conferir o commit do `proplan[bot]` em `docs/CONTEXT.md`, o card no painel de Atividade, a ingestão no re-sync (badge `vigente`), e depois commitar num path citado + sync → badge `a revalidar` + confirmar. Commit de CONTEXT.md conta como frescor (ADR-010) por construção — vai para `docs/`.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.

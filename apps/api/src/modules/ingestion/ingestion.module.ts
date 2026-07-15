@@ -23,6 +23,8 @@ import { IngestionController } from './presentation/ingestion.controller';
     HttpProbe,
     SyncWorker,
   ],
-  exports: [IngestionService, ResolutionService],
+  // GithubGitClient exportado para o context (SPEC-015): head SHA na captura e
+  // Commits API na validade datada — mesma máquina do ADR-010, sem duplicar client.
+  exports: [IngestionService, ResolutionService, GithubGitClient],
 })
 export class IngestionModule {}
