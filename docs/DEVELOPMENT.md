@@ -363,7 +363,7 @@ Parar de dar crédito institucional a doc de deploy possivelmente defasada — *
 
 **Aceite runtime do PI (pendente):** olho ao vivo, idealmente com o `rrb-escola` gerenciado (não está neste banco) para o caso canônico `discordam` (config+GitHub Vercel × URL Netlify+Railway) e `concordam`/`omissa` com deployments GitHub-side reais.
 
-## Fatia 13.5 — Handoff exportável: o instantâneo que se leva embora (SPEC-018, `aprovada-pi`) — `feito` (mergeado PR #52 refs #51; validação runtime OK; aguardando aceite do PI)
+## Fatia 13.5 — Handoff exportável: o instantâneo que se leva embora (SPEC-018, `aprovada-pi`) — **aceita pelo PI em 2026-07-15** (mergeado PR #52 refs #51; validação runtime OK; #51 fechada + `proplan:finalizado`)
 
 Congela o modelo canônico (Fatia 9) + board (Fatia 5) num pacote de contexto portátil — legível por humano, parseável por agente. Cada bloco carrega valor **ou** recusa + proveniência + confiança + a conta; bloco abaixo do limiar **recusa** ("não sei — ausente/defasado"), nunca some. **Zero IA** (ADR-002), determinístico (mesmo input → bytes idênticos). Compõe e serializa — não recalcula julgamento (ADR-001).
 
