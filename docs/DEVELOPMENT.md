@@ -342,7 +342,7 @@ Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parse
 
 Risco baixo: mudança aditiva no payload + render, nenhuma escrita no repo, nenhuma IA, nenhum job. Alvo real: `rrb-organize` (deploy `source: config`).
 
-## Fatia 6.2 — Formato de Deploy: 3 eixos (SPEC-017, `aprovada-pi`) — `feito` (aguardando aceite do PI)
+## Fatia 6.2 — Formato de Deploy: 3 eixos (SPEC-017, `aprovada-pi`) — `finalizado` (mergeado PR #54 merge `8beab73`; validado ao vivo; aceito pelo PI em 2026-07-15)
 
 Fecha o furo do `CONVENTION.md`: a tabela canônica de Deploy tinha **um eixo (ambiente)**; a realidade tem **três** (ambiente × componente × infra de apoio). Destrava a honestidade da SPEC-013 — o CTA "corrija a doc" passa a apontar para um formato que comporta front-Netlify + API-Railway. Zero IA; formato segue convite (ADR-014).
 
@@ -352,6 +352,8 @@ Fecha o furo do `CONVENTION.md`: a tabela canônica de Deploy tinha **um eixo (a
 4. `feito` — `CONVENTION.md`: exemplo de Deploy vira 3 eixos (Netlify+Railway+Supabase+redis, sem `Vercel + Supabase` numa célula), versão da convenção de Deploy **v1 → v2**, nota de compat de um ciclo.
 
 458 testes no total (+5), tsc web+api limpos. Risco baixo e controlado (ADR-014): universo é os `rrb-*`, formato é convite, compat de um ciclo obrigatória.
+
+**Validação runtime (aceite do PI, 2026-07-15):** API real (`node dist/main.js`, endpoint `GET /projects/:id/tabs/deploy`, cookie `proplan_session`), projeto seedado com DEPLOY.md e revertido depois. Capturado do response real: **5-col** → `environments` com `componente` populado (web/API/banco/cache), `produção` com Netlify+Railway como componentes distintos, `cache (redis-volume)` linha própria sem `+`, `—`→`url:null`; **4-col** → sem `componente` (compat provada ao vivo, não só no fixture); **ordem de colunas trocada** → mapeada por nome (header-aware confirmado). Achado: instância órfã na 3311 (secret/código velho) dava 401 num token válido — matar todas antes (ver nota de watchers órfãos).
 
 ## Fatia 13 — Drift de deploy: confronto de fontes (SPEC-013 v2.1, `aprovada-pi`) — `feito` (mergeado PR #40; validado ao vivo; aguardando aceite do PI)
 
