@@ -5,9 +5,11 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:api": "npm run start:dev -w apps/api",
-    "dev:web": "npm run dev -w apps/web",
-    "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "prisma:migrate": "npm run prisma:migrate -w apps/api"
+    "dev": "pnpm -r --parallel dev",
+    "dev:api": "pnpm --filter @proplan/api start:dev",
+    "dev:web": "pnpm --filter @proplan/web dev",
+    "build": "pnpm --filter @proplan/api build && pnpm --filter @proplan/web build",
+    "prisma:migrate": "pnpm --filter @proplan/api prisma:migrate",
+    "prisma:seed": "pnpm --filter @proplan/api prisma:seed"
   }
 }

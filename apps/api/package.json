@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "nest build",
+    "dev": "nest start --watch",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "prisma:migrate": "prisma migrate dev",
