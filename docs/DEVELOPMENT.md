@@ -387,7 +387,7 @@ Estende o confronto da Fatia 13 com a **única fonte que toca a realidade**: GET
 
 **Aceite runtime do PI (pendente):** olho ao vivo com URL de domínio próprio declarada (`gestao.epgtrindade.com.br` se `rrb-escola` for gerenciado) → probe identifica a plataforma pelos headers; confirmar a faixa `BlockedNote` na UI com uma URL que aponta para IP interno.
 
-## Fatia 9 — Modelo canônico + proveniência + confiança determinística (SPEC-014, `aprovada-pi`) — `feito` (validado ao vivo; aguardando aceite do PI)
+## Fatia 9 — Modelo canônico + proveniência + confiança determinística (SPEC-014, `aprovada-pi`) — `finalizado` (aceito pelo PI em 2026-07-15; PR #45 mergeado)
 
 Fundação do núcleo do MVP2 (9→10→11). O **objeto consultável** que o resto do MVP2 serve: cada campo carrega **sua própria proveniência** + **confiança determinística** (ADR-012). Granularidade é o **campo, não o documento**. **100% determinística, zero IA, zero teto SPEC-009.**
 
