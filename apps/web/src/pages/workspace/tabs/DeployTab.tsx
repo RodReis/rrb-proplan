@@ -213,46 +213,72 @@ export function DeployTab({ projectId, syncNonce, onCorrect }: Props) {
       )}
 
       {/* SPEC-012: o painel de ambientes é ENRIQUECIMENTO — só aparece se a doc
-          seguiu a tabela do CONVENTION.md. Fica ACIMA do documento. */}
-      {envs.length > 0 && (
-        <table className="mb-6 w-full text-sm">
-          <thead className="text-left text-xs text-text-muted">
-            <tr>
-              <th className="pb-2">Ambiente</th>
-              <th className="pb-2">Status</th>
-              <th className="pb-2">Plataforma</th>
-              <th className="pb-2">URL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {envs.map((e) => (
-              <tr key={e.env} className="border-t border-border">
-                <td className="py-2 font-medium">{e.env}</td>
-                <td className="py-2">
-                  <span
-                    className={
-                      'rounded-full px-2 py-0.5 text-xs ' +
-                      (active(e.status) ? 'bg-success/10 text-success' : 'bg-border/50 text-text-muted')
-                    }
-                  >
-                    {e.status}
-                  </span>
-                </td>
-                <td className="py-2 text-text-muted">{e.platform}</td>
-                <td className="py-2">
-                  {e.url ? (
-                    <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">
-                      {e.url}
-                    </a>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+          seguiu a tabela do CONVENTION.md. Fica ACIMA do documento.
+          SPEC-017: eixo Componente — coluna só aparece quando algum ambiente tem
+          componentes; ambiente é agrupado por rowSpan. Monolito (4 colunas) fica
+          idêntico ao de antes. */}
+      {envs.length > 0 &&
+        (() => {
+          const hasComponent = envs.some((e) => e.componente);
+          // Agrupa por ambiente preservando a ordem de aparição.
+          const order: string[] = [];
+          const byEnv = new Map<string, DeployEnv[]>();
+          for (const e of envs) {
+            if (!byEnv.has(e.env)) {
+              byEnv.set(e.env, []);
+              order.push(e.env);
+            }
+            byEnv.get(e.env)!.push(e);
+          }
+          return (
+            <table className="mb-6 w-full text-sm">
+              <thead className="text-left text-xs text-text-muted">
+                <tr>
+                  <th className="pb-2">Ambiente</th>
+                  {hasComponent && <th className="pb-2">Componente</th>}
+                  <th className="pb-2">Status</th>
+                  <th className="pb-2">Plataforma</th>
+                  <th className="pb-2">URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {order.map((env) => {
+                  const rows = byEnv.get(env)!;
+                  return rows.map((e, i) => (
+                    <tr key={`${env}-${e.componente ?? ''}-${i}`} className="border-t border-border">
+                      {i === 0 && (
+                        <td className="py-2 align-top font-medium" rowSpan={rows.length}>
+                          {env}
+                        </td>
+                      )}
+                      {hasComponent && <td className="py-2 text-text-muted">{e.componente ?? '—'}</td>}
+                      <td className="py-2">
+                        <span
+                          className={
+                            'rounded-full px-2 py-0.5 text-xs ' +
+                            (active(e.status) ? 'bg-success/10 text-success' : 'bg-border/50 text-text-muted')
+                          }
+                        >
+                          {e.status}
+                        </span>
+                      </td>
+                      <td className="py-2 text-text-muted">{e.platform}</td>
+                      <td className="py-2">
+                        {e.url ? (
+                          <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">
+                            {e.url}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  ));
+                })}
+              </tbody>
+            </table>
+          );
+        })()}
 
       {/* O documento mapeado SEMPRE aparece (ADR-014). Mesmo viewer de
           Arquitetura/Design — react-markdown + Mermaid lazy (Fatia 6). */}
