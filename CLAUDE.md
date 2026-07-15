@@ -64,6 +64,14 @@ NestJS + TypeScript · React + Vite (react-flow, dnd-kit) · PostgreSQL/Supabase
 - Testes junto ao módulo (`*.spec.ts`); e2e em `test/`.
 - Commits em português, imperativo, prefixo do módulo: `catalog: adiciona listagem de repos`.
 
+## Grafo de conhecimento (graphify)
+
+O repo tem um grafo de conhecimento persistente em `graphify-out/` (gerado pela skill `/graphify` — https://github.com/Graphify-Labs/graphify). Ele indexa código + docs (1.9k nós, 192 comunidades) e responde perguntas sobre o codebase gastando muito menos tokens que ler arquivos.
+
+- **Antes de explorar o codebase** para entender arquitetura, fluxos ou "quem chama o quê": consulte o grafo primeiro — `/graphify query "<pergunta>"` (ou `graphify query` via CLI). Só leia arquivos direto quando precisar do conteúdo exato.
+- **Ao final de cada entrega** (junto com STATUS.md/DEVELOPMENT.md): rode `/graphify . --update` — incremental, re-extrai só arquivos novos/alterados via manifest. Não recrie o grafo do zero.
+- `graphify-out/` é artefato local (cache), não entra em commit.
+
 ## Documentos-chave
 
 - `docs/DEVELOPMENT.md` — **sua ordem de execução e status por item (você é o dono; atualize a cada entrega junto com STATUS.md)**
