@@ -410,7 +410,7 @@ Os 6 critérios da SPEC-014 provados ao vivo (migration aplicada, sync real):
 
 **Aceite runtime do PI (pendente):** olho na tela (a fatia entrega só a API `GET /canonical`; a UI da Visão Geral consumindo o modelo é fatia de refino/parte da 11). Idealmente ver a recusa e a conta clicável num repo com entidades ausentes (`landpage` só tem README → maioria nível 4).
 
-## Fatia 10 — `docs/CONTEXT.md` + captura de asserção humana (SPEC-015, `aprovada-pi`) — `feito` (PR aberto; aguardando merge + aceite do PI)
+## Fatia 10 — `docs/CONTEXT.md` + captura de asserção humana (SPEC-015, `aprovada-pi`) — `feito` (mergeado — PR #47; aguardando aceite runtime do PI)
 
 O **fosso** (ADR-013): cofre versionado da asserção humana ("o que não mexer"), escrita de volta no repo como conteúdo humano. Preenche o slot `asserção` da Fatia 9. **Zero IA.** As 3 decisões do PI incorporadas (cadência conservadora; validade no sync com cap; modelo próprio `Assertion`).
 
