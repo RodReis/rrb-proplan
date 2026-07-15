@@ -53,4 +53,4 @@ Nenhum endpoint novo; consome `/installations`, `/projects`, fluxo OAuth existen
 
 ## Perguntas abertas
 
-Nenhuma. Resolvidas com o PI em 2026-07-15: imagens IA de `docs/design/assets/` **aprovadas como finais** (regenerar depois é troca de arquivo, não retrabalho) · card gerenciado mantém `✓ Gerenciado` (d
+Nenhuma. Resolvidas com o PI em 2026-07-15: imagens IA de `docs/design/assets/` **aprovadas como finais** (regenerar depois é troca de arquivo, não retrabalho) · card gerenciado mantém `✓ Gerenciado` (desgerenciar) **com confirmação** ao lado de `Abrir workspace`.

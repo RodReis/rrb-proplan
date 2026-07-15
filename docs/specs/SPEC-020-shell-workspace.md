@@ -68,4 +68,12 @@ Protótipos de referência: `docs/design/ProPlan Workspace.dc.html` (+ `support.
 - **Tema em localStorage diverge do design system** (que manda API). Decisão do PI (2026-07-15): endpoint de preferências só quando houver uma segunda preferência a guardar. Registrar comentário no código apontando esta spec.
 - **Sem pacote `libs/ui-tokens` por ora.** O design system sugere workspace lib; com um único consumidor (`apps/web`), tokens vivem em `apps/web/src` (`tokens.css` + `stageTint.ts`). Extrair quando existir o segundo consumidor — YAGNI, coerente com monolito modular (ADR-001).
 - **Fontes self-hosted** (`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-mono`), não Google Fonts CDN — ambiente 100% local (CLAUDE.md) não pode depender de rede em runtime.
-- **Tailwind v4
+- **Tailwind v4**: manter `@theme` mas referenciando as custom properties dos temas (ex.: `--color-bg: var(--bg)`), para que a troca de `data-theme` no `<html>` re-pinte utilitários sem rebuild.
+- **Toaster (sonner)**: hoje `theme="light"` fixo e `position="top-right"`; passa a seguir o tema ativo e a posição do DESIGN.md (inferior direita).
+- **`prefers-reduced-motion`** continua valendo para todas as animações novas (dropIn, fadeUp etc.).
+- **Risco principal**: re-tokenização é transversal — a fatia toca todas as abas. Mitigação: migrar tokens primeiro (mapeando nomes antigos → novos para os utilitários Tailwind existentes), depois o shell; abas só mudam classe onde o nome do token mudou.
+- O protótipo é referência de layout/estética; onde ele conflitar com regra de comportamento do DESIGN.md (ex.: política de toasts), **o DESIGN.md vence**.
+
+## Perguntas abertas
+
+Nenhuma. Resolvidas com o PI em 2026-07-15: 404 amigável com copy padrão + link ao catálogo · ordem do combo por **último acesso** · aba **Decisões** permanece no grupo `PROJETO`.

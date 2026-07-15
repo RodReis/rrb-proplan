@@ -161,4 +161,105 @@ Prioridade = **borda esquerda 3 px** no card: ALTA `#e08a80`/`#c65a4e`, MÉDIA `
 
 ### Faixa de aba (hero das abas de documento)
 
-Abas que renderizam um do
+Abas que renderizam um documento de convenção (Arquitetura, Decisões, Skills, Testes, Design, Deploy, Contexto…) abrem com uma **faixa hero** acima do conteúdo:
+
+- Contêiner raio 18px, borda `--border`, imagem `workspace-vista*` do tema com **gradiente de leitura** + Ken Burns (regras do §10).
+- **Ícone-chip** central (40px, fundo `--card`, borda `--border2`) ancorado na base da imagem, com o ícone da aba.
+- Abaixo: título da aba (Sans 600) + descrição de valor em 1–2 linhas (para quem chega sem contexto: o que esta visão responde).
+- **Rótulo Mono de estado**: `SINCRONIZADO DO REPOSITÓRIO · <quando>` quando o documento existe; quando **ausente**, o rótulo diz de qual arquivo a aba se alimenta (ex.: `AGUARDA docs/ARCHITECTURE.md`) — ausência é informação, não falha (ADR-014), então a faixa nunca usa cor de erro.
+- Com documento presente, a faixa antecede o conteúdo renderizado; sem documento, a faixa **é** o empty state da aba (nada mais abaixo).
+
+### Documentos
+- Árvore: pastas com chevron rotacionando 90° (`.15s`), arquivos Mono 12.5px, badge `CONV`; selecionado = fundo `--card` + peso 600.
+- Leitor: título + caminho Mono + chip de estado (`sincronizado` verde / `convenção` neutro / `desatualizado` acento) + alerta de drift em card suave.
+
+### Visão Geral
+- **Faixa de frescor** (ADR-010) no topo, acima de tudo: `Docs: há X · Código: há Y`. Dentro do limiar → `--surface` + `--muted`, sem ícone. Acima → fundo âmbar 10%, borda âmbar 30%, ⚠️ "Documentação possivelmente defasada" + tooltip do cálculo. **Nunca vermelha**, nunca bloqueia conteúdo. Entrada: fade, sem slide.
+- Blocos "O que é / Onde parou / O que falta" com chip IA + `Regenerar`.
+
+### Deploy
+- Tabela de ambientes idêntica ao formato do `DEPLOY.md` — renderização direta, sem transformação.
+
+## 7. Operações assíncronas (SPEC-010)
+
+Toda escrita do ProPlan no repo (`ação → commit → propagação → sync → recarregar`) leva segundos. **Silêncio nesse intervalo é bug.**
+
+- **Passos nomeados, em linguagem de gente**: `Commitando docs/ARCHITECTURE.md…` → `Aguardando o GitHub propagar…` → `Sincronizando…` → `Pronto`. Nunca jargão (`202`, `docsTreeSha`).
+- **A tela nunca fica igual e muda.** Se algo está acontecendo, aparece (pílula → gaveta → toast).
+- **Falha é um passo que falha**, com motivo e ação (`Tentar de novo` / `Resolver no repo`) — nunca um toast que some.
+- **A operação sobrevive à navegação**: progresso segue visível na gaveta de Atividade.
+- **Estado mora no servidor**: F5 no meio volta mostrando o passo atual.
+
+## 8. Política de toasts
+
+**Toast comunica resultado do que o usuário não está vendo; estado inline comunica o que ele está vendo.**
+
+| Evento | Feedback |
+|---|---|
+| Mover card (otimista) | Inline: borda pulsante no card — sem toast |
+| Commit confirmado pelo webhook | Toast success "Alterações salvas no repo" |
+| Falha/conflito de commit | Toast error persistente (não auto-fecha) com ação "Resolver" |
+| Sync concluído em background | Toast info com resumo ("3 docs atualizados") |
+| Bootstrap IA pronto para revisão | Toast com ação "Revisar proposta" |
+| Trocar aba, filtrar, colapsar | Nada — a própria UI é o feedback |
+
+Racional: toast em toda ação treina o usuário a ignorá-los e mascara o canal quando um erro real aparece.
+
+## 9. Movimento
+
+```css
+@keyframes fadeUp   { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes dropIn   { from { opacity:0; transform:translateY(-6px) scale(.98); } to { opacity:1; transform:none; } }
+@keyframes drawerIn { from { transform:translateX(102%); } to { transform:none; } }        /* .3s cubic-bezier(.2,.8,.2,1) */
+@keyframes stepIn   { from { opacity:0; transform:translateX(16px); } to { opacity:1; transform:none; } }
+@keyframes popIn    { from { opacity:0; transform:scale(.5); } to { opacity:1; transform:scale(1); } }
+@keyframes toastLife{ 0%{opacity:0;transform:translateY(16px) scale(.96);} 8%{opacity:1;transform:none;} 86%{opacity:1;} 100%{opacity:0;transform:translateY(10px);} } /* 4.2s */
+@keyframes actPulse { 0%,100%{ box-shadow:0 0 0 0 var(--pulse, rgba(74,222,128,.4)); } 70%{ box-shadow:0 0 0 7px transparent; } }
+@keyframes spin     { to { transform:rotate(360deg); } }                                    /* spinner .7s linear */
+@keyframes heroZoom { from { transform:scale(1); } to { transform:scale(1.12); } }          /* imagens, 20–28s */
+```
+
+- Entradas de página: `fadeUp` escalonado (delays 0/.05/.1/.15/.2 s), só na primeira montagem — refetch não re-anima.
+- Hovers: `transition: .15s ease` em borda/cor; cards do Kanban sobem 1px.
+- Skeletons (não spinners) em toda carga de aba, shimmer 1.5s.
+- **Regra de ouro**: efeito responde a ação do usuário ou mudança de estado; nada anima em loop parado (exceções: pulso de atividade e Ken Burns de imagem).
+- **Limites**: sem parallax, sem scroll-jacking, sem gradientes animados de fundo, sem confete. Densidade de informação primeiro — é ferramenta de gestão, não landing page.
+- Animar apenas `transform`/`opacity`; nunca `width/height/top` em listas grandes. Framer Motion para orquestração; CSS puro para hover/focus/press.
+
+## 10. Imagens (IA)
+
+Estilo único: **render 3D abstrato, vidro fosco prata sobre grafite (ou marfim no claro), monocromático, sem texto, um único acento verde**, luz volumétrica da esquerda, profundidade de campo rasa, muito espaço negativo.
+
+| Asset | Uso | Tema |
+|---|---|---|
+| `hero-grafo.jpg` / `hero-grafo-claro.png` | hero do login | carbono / claro |
+| `catalogo-banner.png` / `catalogo-banner-claro.jpg` | banner do catálogo | carbono / claro |
+| `workspace-vista.png` / `workspace-vista-claro.png` | faixa de aba (hero/empty state das abas de documento, §6) | carbono / claro |
+
+- Sempre em contêiner raio 18px, `border var(--border)`, **gradiente de leitura** por cima.
+- **Ken Burns** contínuo: `heroZoom 20–28s ease-in-out infinite alternate` (estático sob `prefers-reduced-motion`).
+- Em React, `background-image` com URL vinda do estado do tema (nunca `<img src>` tardio).
+- Prompt-base (ajustar sujeito): *"Premium dark abstract 3D render… deep graphite charcoal background (#0c0d0f), frosted-glass [sujeito] connected by thin glowing silver lines, one small green accent, strictly monochrome silver/graphite palette, soft volumetric light from the left, shallow depth of field, enterprise SaaS aesthetic, no text, no logos, generous negative space"*.
+
+## 11. Acessibilidade
+
+- Contraste AA nos dois temas (texto ≥ `--muted` sobre `--surface`).
+- Foco visível universal: `outline: 2px solid var(--accent)` — nunca remover sem substituto.
+- Toasts anunciados via `aria-live="polite"`; fechar modal/gaveta com Esc sempre.
+- Tudo atrás de `prefers-reduced-motion`: transições instantâneas (opacity ainda permitida).
+
+## 12. Implementação (estado atual do repo)
+
+```tsx
+// ThemeProvider: data-theme no <html>
+<html data-theme="carbono">
+:root[data-theme="carbono"] { --bg:#0c0d0f; /* …tabelas §4 */ }
+:root[data-theme="claro"]   { --bg:#f2f2f0; /* … */ }
+```
+
+- Componentes usam **somente** `var(--token)` (via utilitários Tailwind mapeados em `@theme` para as custom properties). Cores semânticas do Kanban/atividade via mapa TS `stageTint(theme, stage)`.
+- **Tokens vivem em `apps/web/src`** (`tokens.css` + `stageTint.ts`) enquanto houver um único consumidor; extrair para `libs/ui-tokens` só quando surgir o segundo (decisão SPEC-020 — o design de referência sugeria a lib desde já; YAGNI venceu).
+- **Tema persistido em `localStorage`** — dívida registrada na SPEC-020: migrar para preferências via API quando existir uma segunda preferência de usuário.
+- **Atividade**: o backend emite eventos (`sync.step`, `repo.write`, `ia.call`, `ia.reuse`) → pílula/gaveta/toast apenas renderizam o stream. Toda escrita no repo gera evento com `url` do GitHub (SPEC-010).
+- **Kanban**: mover para *Finalizado* é bloqueado no cliente e no servidor para não-donos (aceite humano, ADR-011).
+- Base de componentes: shadcn/ui (Tabs, Dialog, Badge, Sonner) + dnd-kit + react-flow + Framer Motion. Sem biblioteca de UI pesada por cima.
