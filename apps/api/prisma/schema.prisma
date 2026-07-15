@@ -61,6 +61,7 @@ model Project {
   operations     Operation[]
   llmUsage       LlmUsage[]
   insightRuns    InsightRun[]
+  canonicalFields CanonicalField[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -129,6 +130,28 @@ model DocumentResolution {
   @@map("document_resolutions")
 }
 
+// Modelo canônico (SPEC-014, Fatia 9): uma linha por (projeto, entidade, campo),
+// com valor + classe de proveniência + confiança determinística e a conta.
+// Reconstruível (padrão DocumentResolution, ADR-014): apagar + re-sync reproduz
+// idêntico — a fonte é o repo, isto é índice.
+model CanonicalField {
+  id              String   @id @default(uuid())
+  projectId       String   @map("project_id")
+  entity          String   // architecture | decisions | design | testing | deploy | skills
+  field           String   // nome do campo dentro da entidade (ex.: presence)
+  value           Json?    // valor extraído (null = ausente)
+  provenanceClass String   @map("provenance_class") // fato | inferencia | hipotese | assercao
+  provenanceRef   Json     @map("provenance_ref")   // {path, sha, date} | {absent:true} | ...
+  confidence      Float
+  confidenceMath  Json     @map("confidence_math")  // {stalenessDays, cobertura, contradicao, drift}
+  docsScopeHash   String   @map("docs_scope_hash")
+  resolvedAt      DateTime @default(now()) @map("resolved_at")
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, entity, field])
+  @@map("canonical_fields")
+}
+
 enum SyncStatus {
   queued
   running
@@ -152,6 +175,9 @@ model Settings {
   // Alerta = faixa âmbar; teto = nenhum job de IA enfileirado. 0 desliga o teto.
   llmAlertUsdMonthly        Decimal     @default(5)  @map("llm_alert_usd_monthly")  @db.Decimal(10, 4)
   llmHardCapUsdMonthly      Decimal     @default(20) @map("llm_hard_cap_usd_monthly") @db.Decimal(10, 4)
+  // Limiar de recusa do modelo canônico (SPEC-014). Campo com confiança abaixo
+  // disto responde "não sei" em vez de palpite. 0 desliga (mostra tudo cru).
+  canonicalRefusalThreshold Float       @default(0.4) @map("canonical_refusal_threshold")
   updatedAt                 DateTime    @updatedAt @map("updated_at")
 
   @@map("settings")

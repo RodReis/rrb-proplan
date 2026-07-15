@@ -106,6 +106,32 @@ export class ResolutionService {
     });
   }
 
+  /** Lê todas as resoluções persistidas de um projeto (interface pública,
+   *  ADR-001 — o módulo canonical consome isto, nunca prisma.documentResolution). */
+  async allResolutionsOf(projectId: string): Promise<Resolution[]> {
+    const rows = await this.prisma.documentResolution.findMany({
+      where: { projectId },
+    });
+    return rows.map((row) => ({
+      entity: row.entity as Entity,
+      level: row.level as 1 | 2 | 3 | 4,
+      source: row.source as Resolution['source'],
+      path: row.path,
+      paths: row.paths,
+      confidence: row.confidence,
+    }));
+  }
+
+  /** Mapa path→blobSha dos documentos de um projeto (interface pública, ADR-001).
+   *  A proveniência `fato` do modelo canônico precisa do SHA do doc resolvido. */
+  async docShasOf(projectId: string): Promise<Map<string, string>> {
+    const docs = await this.prisma.document.findMany({
+      where: { projectId },
+      select: { path: true, blobSha: true },
+    });
+    return new Map(docs.map((d) => [d.path, d.blobSha]));
+  }
+
   /** Lê a resolução persistida de uma entidade (cache). */
   async resolutionOf(projectId: string, entity: Entity): Promise<Resolution> {
     const row = await this.prisma.documentResolution.findUnique({

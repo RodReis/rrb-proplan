@@ -25,7 +25,45 @@ Painel de gestão visual do ciclo de vida dos projetos da fábrica de software. 
 
 ## Stack
 
-Monolito modular **NestJS** (módulos DDD extraíveis) · **React** (react-flow para grafo, dnd-kit para Kanban) · **PostgreSQL (Supabase)** · **Redis + BullMQ** (jobs de sync/ingestão/IA) · **GitHub App** via `fetch` (Octokit é ESM-only e conflita com o build CJS do Nest) · **Anthropic API** (bootstrap e inferência).
+Monorepo **pnpm** (`apps/api`, `apps/web`). Monolito modular **NestJS** (módulos DDD extraíveis) · **React + Vite** (react-flow para grafo, dnd-kit para Kanban) · **PostgreSQL (Supabase)** + **Prisma** · **Redis + BullMQ** (jobs de sync/ingestão/IA) · **GitHub App** via `fetch` (Octokit é ESM-only e conflita com o build CJS do Nest) · **Anthropic API** (bootstrap e inferência).
+
+## Subir o projeto localmente
+
+Monorepo pnpm (`apps/api` NestJS, `apps/web` React/Vite). Ambiente 100% local até o fim do MVP: o **Postgres e o Redis rodam no docker-compose**; a **API e o front rodam no host** (com watch/HMR). Portas: web `5180`, API `3311`, Postgres host `5433`, Redis host `6380` (host bindings remapeados por colisão com outros stacks — a rede interna do compose segue 5432/6379).
+
+**Pré-requisitos**: Node 20+ (testado no 24), pnpm 10+, Docker.
+
+```bash
+# 1. Dependências
+pnpm install
+
+# 2. Postgres + Redis (só a infra; a API/web sobem no host)
+docker compose up -d postgres redis
+
+# 3. Configurar o ambiente da API
+cp .env.example apps/api/.env       # a API lê apps/api/.env, não o da raiz
+#    Preencha as chaves do GitHub App e os segredos (ver seção abaixo):
+#      openssl rand -hex 32   → JWT_SECRET e TOKEN_ENCRYPTION_KEY (este último = 32 bytes exatos)
+#    O front lê VITE_API_URL; localmente o default http://localhost:3311 já basta.
+
+# 4. Banco: aplicar migrations (gera o Prisma Client) e semear dados de dev
+pnpm prisma:migrate
+pnpm prisma:seed
+
+# 5. Subir API e front juntos (um comando, logs intercalados)
+pnpm dev            # NestJS :3311 (watch) + Vite :5180 (HMR) em paralelo
+#    ou separadamente, em dois terminais:
+#      pnpm dev:api   # NestJS em :3311 (watch)
+#      pnpm dev:web   # Vite em :5180 (strictPort — falha se a porta estiver ocupada)
+```
+
+Abra `http://localhost:5180` e faça login pelo GitHub App. Sem as chaves do App preenchidas, o login não completa — configure-o antes (abaixo).
+
+> **`.env`**: a API carrega `apps/api/.env` (não o `.env` da raiz). `DATABASE_URL`/`REDIS_URL` já apontam para as portas de host remapeadas (`5433`/`6380`).
+>
+> **Watchers órfãos**: `pnpm dev:api` usa `nest --watch`; instâncias antigas acumulam e uma porta ocupada falha em silêncio. Se a API responder com código pré-alteração, mate todos os `node`/`nest` antes de subir de novo.
+>
+> **Compose completo** (smoke prod-like, sem watch): `docker compose up` sobe os quatro serviços (postgres, redis, api, web) construindo as imagens — use para validar o build, não para o dia a dia.
 
 ## Autenticação — GitHub App
 

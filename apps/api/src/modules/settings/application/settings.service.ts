@@ -8,6 +8,8 @@ export interface SettingsView {
   /** Teto de gasto de IA (SPEC-009), USD/mês. String para preservar Decimal no JSON. */
   llmAlertUsdMonthly: string;
   llmHardCapUsdMonthly: string;
+  /** Limiar de recusa do modelo canônico (SPEC-014). 0..1; 0 desliga. */
+  canonicalRefusalThreshold: number;
   /** Provedores com chave no .env — os demais ficam desabilitados na UI. */
   availableProviders: LlmProvider[];
 }
@@ -17,6 +19,7 @@ export interface UpdateSettingsInput {
   docsStalenessThresholdDays?: number;
   llmAlertUsdMonthly?: string;
   llmHardCapUsdMonthly?: string;
+  canonicalRefusalThreshold?: number;
 }
 
 @Injectable()
@@ -35,6 +38,7 @@ export class SettingsService {
       docsStalenessThresholdDays: s.docsStalenessThresholdDays,
       llmAlertUsdMonthly: s.llmAlertUsdMonthly.toString(),
       llmHardCapUsdMonthly: s.llmHardCapUsdMonthly.toString(),
+      canonicalRefusalThreshold: s.canonicalRefusalThreshold,
       availableProviders: availableProviders(),
     };
   }
@@ -61,8 +65,13 @@ export class SettingsService {
     if (threshold !== undefined && (threshold < 0 || !Number.isInteger(threshold))) {
       throw new Error('Limiar de defasagem deve ser inteiro >= 0');
     }
+    const canonThreshold = input.canonicalRefusalThreshold;
+    if (canonThreshold !== undefined && (canonThreshold < 0 || canonThreshold > 1)) {
+      throw new Error('Limiar de recusa deve estar entre 0 e 1');
+    }
     const alert = parseUsd(input.llmAlertUsdMonthly, 'Alerta de gasto');
     const hardCap = parseUsd(input.llmHardCapUsdMonthly, 'Teto de gasto');
+    const canon = canonThreshold !== undefined ? { canonicalRefusalThreshold: canonThreshold } : {};
     await this.prisma.settings.upsert({
       where: { userId },
       create: {
@@ -71,12 +80,14 @@ export class SettingsService {
         docsStalenessThresholdDays: threshold,
         ...(alert !== undefined ? { llmAlertUsdMonthly: alert } : {}),
         ...(hardCap !== undefined ? { llmHardCapUsdMonthly: hardCap } : {}),
+        ...canon,
       },
       update: {
         llmProvider: input.llmProvider,
         docsStalenessThresholdDays: threshold,
         ...(alert !== undefined ? { llmAlertUsdMonthly: alert } : {}),
         ...(hardCap !== undefined ? { llmHardCapUsdMonthly: hardCap } : {}),
+        ...canon,
       },
     });
     return this.get(userId);
@@ -90,6 +101,11 @@ export class SettingsService {
   /** Interface pública: provedor ativo (insight usa ao inferir). */
   async providerOf(userId: string): Promise<LlmProvider> {
     return (await this.get(userId)).llmProvider;
+  }
+
+  /** Interface pública: limiar de recusa do modelo canônico (SPEC-014). */
+  async canonicalThresholdOf(userId: string): Promise<number> {
+    return (await this.get(userId)).canonicalRefusalThreshold;
   }
 
   /** Preços de modelo cadastrados (mais recente por modelo). Tela de Uso de IA. */
