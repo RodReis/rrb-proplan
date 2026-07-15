@@ -38,6 +38,7 @@ _(vazio)_
 - Correção — tela de Mapeamento exibe coleção como "ausente" (#36, prio: media, finalizado em: 2026-07-15)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (#12, prio: baixa, finalizado em: 2026-07-13)
 - Fatia 6 — Resolução de documentos (ADR-014) + abas: DocumentResolver (convenção → alias → .proplan/config.yml → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção adr/), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (#11, prio: baixa, finalizado em: 2026-07-13)
+- Fatia 13.5 — Handoff exportável (#51, finalizado em: 2026-07-15)
 - Fatia 10 — docs/CONTEXT.md + captura de asserção humana (SPEC-015) (#46, finalizado em: 2026-07-15)
 - Fatia 7.6 — Operação assíncrona visível + painel de Atividade (#19, finalizado em: 2026-07-14)
 - Fatia 7.5 — Consumo de IA: ledger, custo e teto de gasto (#25, finalizado em: 2026-07-14)
