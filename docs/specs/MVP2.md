@@ -164,7 +164,7 @@ Consumível por MCP (agente) e exportável em markdown (humano). **Especificado 
 
 Radar de risco, linha do tempo, mapa de confiança, matriz de prontidão, **portfólio da fábrica** (quais projetos estão parados há N dias, com CI vermelho, com doc apodrecida).
 
-São *consequência* dos itens 1–6, não features independentes: o dado já vai existir. Entram por último. **Exceção**: a view de **portfólio** sobe de prioridade — com múltiplos repos, ela vira o ponto de entrada diário do produto.
+São *consequência* dos itens 1–6, não features independentes: o dado já vai existir. Entram por último. **Exceção**: a view de **portfólio** sobe de prioridade — com múltiplos repos, ela vira o ponto de entrada diário do produto. **Portfólio + radar de risco especificados na `SPEC-019` (Fatia 14, `aprovada-pi` 2026-07-15)** — sobre sinais já entregues (staleness/cobertura/deploy) + CI novo, com slots peso-zero para 10/11; timeline e matriz de prontidão ficam para fatia posterior.
 
 ---
 
@@ -201,4 +201,4 @@ São *consequência* dos itens 1–6, não features independentes: o dado já va
 2. **Limiar de recusa do MCP**: abaixo de qual `confidence` a tool recusa em vez de responder? Sugestão: configurável, padrão `0.5`.
 3. **Convenção v2**: `docs/CONTEXT.md` e a proveniência por campo exigem `proplan: v2`. Confirmar que o parser mantém compat com v1 por um ciclo (regra atual da `CONVENTION.md`).
 4. **Cadência de pergunta ao humano** (ADR-013): quando o ProPlan pergunta "isso aqui é intencional?" — no sync? Ao detectar drift? Sob demanda? Perguntar demais mata o canal.
-5. **Portfólio**: quantos repos você realmente pretende gerenciar? Se forem ≤ 5, a view de portfólio desce de prioridade e a Fatia 14 pode nem existir.
+5. ~~**Portfólio**: quantos repos você realmente pretende gerenciar?~~ **RESOLVIDA (PI, 2026-07-15): 6–20.** Volume onde o portfólio vira ponto de entrada diário — justifica a Fatia 14 (portfólio + radar, `SPEC-019` `aprovada-pi`).
