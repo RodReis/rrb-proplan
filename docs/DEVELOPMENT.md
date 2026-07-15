@@ -342,6 +342,17 @@ Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parse
 
 Risco baixo: mudança aditiva no payload + render, nenhuma escrita no repo, nenhuma IA, nenhum job. Alvo real: `rrb-organize` (deploy `source: config`).
 
+## Fatia 6.2 — Formato de Deploy: 3 eixos (SPEC-017, `aprovada-pi`) — `feito` (aguardando aceite do PI)
+
+Fecha o furo do `CONVENTION.md`: a tabela canônica de Deploy tinha **um eixo (ambiente)**; a realidade tem **três** (ambiente × componente × infra de apoio). Destrava a honestidade da SPEC-013 — o CTA "corrija a doc" passa a apontar para um formato que comporta front-Netlify + API-Railway. Zero IA; formato segue convite (ADR-014).
+
+1. `feito` — `parseDeploy` (`board/domain/deploy-doc.ts`) reescrito **header-aware**: mapeia colunas pelos nomes do cabeçalho, não por posição. `DeployEnv` ganha `componente?` (opcional). Formato de 4 colunas continua parseando (compat v1); 5 colunas com `Componente` ganha o eixo. Célula/coluna ausente tolerada; ordem de colunas trocada mapeia igual.
+2. `feito` — Testes (`deploy-doc.spec`): fixture antigo de 4 colunas **passa sem alteração** (prova de compat); novo de 5 colunas cobre `rrb-escola` (web/Netlify + API/Railway, 1 ambiente) e `rrb-organize` (app + 2× redis, sem `+` colando provedores); ordem trocada; componente vazio → sem componente. 7 testes de deploy.
+3. `feito` — `DeployTab.tsx`: agrupa por ambiente com `rowSpan`; coluna `Componente` só aparece quando algum ambiente a usa (monolito = tabela idêntica à anterior). `DeployEnv` no `api.ts` (web) ganha `componente?`.
+4. `feito` — `CONVENTION.md`: exemplo de Deploy vira 3 eixos (Netlify+Railway+Supabase+redis, sem `Vercel + Supabase` numa célula), versão da convenção de Deploy **v1 → v2**, nota de compat de um ciclo.
+
+458 testes no total (+5), tsc web+api limpos. Risco baixo e controlado (ADR-014): universo é os `rrb-*`, formato é convite, compat de um ciclo obrigatória.
+
 ## Fatia 13 — Drift de deploy: confronto de fontes (SPEC-013 v2.1, `aprovada-pi`) — `feito` (mergeado PR #40; validado ao vivo; aguardando aceite do PI)
 
 Parar de dar crédito institucional a doc de deploy possivelmente defasada — **sem afirmar qual plataforma é a verdadeira**. Confronta 4 fontes (doc · config no repo · GitHub Deployments · URL declarada pelo dono); quando discordam, mostra cada uma com natureza + data; quando só há sinal GitHub-side, admite que não há fonte fresca e **pede a URL**. **Zero IA, zero chamada externa** (a plataforma sai do domínio da URL por parse de string), zero credencial de plataforma. ADR-018/probe negado (→ Fatia 13.6); handoff → 13.5.

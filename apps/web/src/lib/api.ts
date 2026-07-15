@@ -474,6 +474,8 @@ export interface DecisionItem {
 
 export interface DeployEnv {
   env: string;
+  /** SPEC-017: componente (web, API, banco, cache…). Ausente → monolito. */
+  componente?: string;
   status: string;
   platform: string;
   url: string | null;

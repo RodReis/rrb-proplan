@@ -137,17 +137,32 @@ Commit da projeção: `proplan: atualiza STATUS.md (projeção das Issues)`.
 
 ```markdown
 ---
-proplan: v1
-updated: 2026-07-12
+proplan: v2
+updated: 2026-07-15
 ---
 # Deploy
 
 ## Ambientes
-| Ambiente | Status | Plataforma | URL |
-|---|---|---|---|
-| produção | ativo | Vercel + Supabase | https://app.exemplo.com |
-| homolog | inativo | — | — |
+| Ambiente | Componente | Status | Plataforma | URL |
+|---|---|---|---|---|
+| produção | web | ativo | Netlify | https://app.exemplo.com |
+| produção | API | ativo | Railway | https://api.exemplo.com |
+| produção | banco | ativo | Supabase | — |
+| produção | cache (redis-volume) | ativo | Railway | — |
+| homolog | web | inativo | — | — |
 ```
+
+**Três eixos: ambiente × componente × infra de apoio.** A chave de uma linha é
+`(ambiente, componente)`. Front e API em plataformas distintas no mesmo ambiente
+viram **linhas separadas** (não `produção (web)` no campo ambiente); infra de apoio
+(Redis, banco) é uma **linha de componente**, não um `+` colando provedores numa
+célula. `Componente` é **texto livre**.
+
+**Compat (SPEC-017):** o parser é *header-aware* — casa colunas pelo nome do
+cabeçalho. O formato antigo de **4 colunas** (`| Ambiente | Status | Plataforma | URL |`,
+sem `Componente`) **continua parseando** por ≥1 ciclo → monolito não é obrigado a
+preencher componente. A coluna `Componente` só aparece na tela quando algum
+ambiente a usa.
 
 ## `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, `docs/TESTING.md`
 
@@ -167,4 +182,4 @@ A aba **Documentos** lista **todo** arquivo de `docs/**` (e do escopo), em árvo
 
 ## Versionamento da convenção
 
-`proplan: v1`. Mudanças de formato incrementam a versão; o parser mantém compatibilidade com a anterior por, no mínimo, um ciclo.
+`proplan: v1` (Deploy: **v2** desde a SPEC-017 — eixo Componente). Mudanças de formato incrementam a versão; o parser mantém compatibilidade com a anterior por, no mínimo, um ciclo.
