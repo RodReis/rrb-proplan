@@ -70,6 +70,13 @@ export class TabsService {
         const markdown = (fallback?.content as { markdown?: string } | undefined)?.markdown;
         if (markdown) return { source, payload: { markdown, inferred: true } };
       }
+      // SPEC-013: deploy ausente (nível 4) ainda pode ter drift a mostrar —
+      // `omissa`/`so_github_side` são justamente "sem doc de deploy". Sem este
+      // ramo o DriftBanner sumiria no caso mais importante.
+      if (tab === 'deploy') {
+        const drift = await this.deployDrift(projectId);
+        if (drift.deployVerdict) return { source, payload: { environments: [], markdown: null, path: null, ...drift } };
+      }
       return { source, payload: null };
     }
 
@@ -94,9 +101,16 @@ export class TabsService {
         // CONVENTION.md, nunca pedágio de quem não segue. parseDeploy NÃO mudou.
         // Coleção suportada (decisão do PI): concatena os N docs de `paths`.
         const { markdown, path } = await this.deployDoc(projectId, r);
+        const drift = await this.deployDrift(projectId);
         return {
           source,
-          payload: { environments: parseDeploy(markdown), markdown: markdown || null, path, ...inference },
+          payload: {
+            environments: parseDeploy(markdown),
+            markdown: markdown || null,
+            path,
+            ...drift,
+            ...inference,
+          },
         };
       }
       case 'skills': {
@@ -186,6 +200,22 @@ export class TabsService {
       );
       throw err;
     }
+  }
+
+  /**
+   * SPEC-013: veredito de drift de deploy já persistido pelo sync. Só lê o cache
+   * (nunca recomputa no render — nada de chamada externa numa request, ADR-002).
+   */
+  private async deployDrift(projectId: string) {
+    const drift = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { deployVerdict: true, deploySignals: true, deployObservedAt: true },
+    });
+    return {
+      deployVerdict: drift?.deployVerdict ?? null,
+      deploySignals: drift?.deploySignals ?? null,
+      deployObservedAt: drift?.deployObservedAt ?? null,
+    };
   }
 
   private async markdownOf(projectId: string, path: string | null): Promise<string> {

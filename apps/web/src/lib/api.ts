@@ -442,6 +442,21 @@ export interface DeployEnv {
   url: string | null;
 }
 
+/** SPEC-013 — drift de deploy: confronto de fontes, sem coroar verdade. */
+export type DeploySource = 'doc' | 'repoConfig' | 'githubDeployments' | 'declaredUrl';
+export type DeployVerdictState =
+  | 'concordam'
+  | 'discordam'
+  | 'so_github_side'
+  | 'omissa'
+  | 'silencio';
+export interface DeploySignal {
+  source: DeploySource;
+  platforms: string[];
+  observedAt: string;
+  evidenceRef: string;
+}
+
 export interface SkillEntry {
   name: string;
   description: string | null;
@@ -468,4 +483,6 @@ export interface Project {
   needsIssueImport: boolean;
   docsScopeHash: string | null;
   lastSyncAt: string | null;
+  /** SPEC-013 — veredito de drift de deploy (null enquanto nunca coletado). */
+  deployVerdict: DeployVerdictState | null;
 }

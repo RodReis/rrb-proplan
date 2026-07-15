@@ -272,7 +272,7 @@ Alternativas rejeitadas: (a) *resolver inteiro no `insight`* — deixa a cauda b
 **Consequências boas**:
 
 - **Identidade de bot**: todo commit e toda issue criada pelo ProPlan sai como `proplan[bot]` — nunca como Rodrigo. Auditoria limpa: dá para separar "o que o ProPlan fez" de "o que o humano fez" **por autor**, não por heurística de mensagem. Isso **não** revoga a decisão do `.proplan/` (ADR-011) — a separação de diretório continua sendo a defesa primária do ADR-010; o autor bot é um **segundo sinal**, redundante de propósito.
-- **Permissão mínima**: `Contents: read+write` (só para `.proplan/`), `Issues: read+write`, `Metadata: read`, `Actions: read`. Nada de `Administration`, nada de acesso a código além do que o ADR-003 já permite.
+- **Permissão mínima**: `Contents: read+write` (só para `.proplan/`), `Issues: read+write`, `Metadata: read`, `Actions: read`, `Deployments: read` (SPEC-013, concedida em 2026-07-14 — só leitura de metadados de deployment GitHub-side, nunca conteúdo de código). Nada de `Administration`, nada de acesso a código além do que o ADR-003 já permite. A leitura de deployments usa **user-to-server token** (respeita a visibilidade do usuário), não o installation token — leitura com installation token permanece proibida.
 - **Escritas sem o usuário presente**: installation token é server-to-server. Habilita jobs agendados no futuro (sync noturno) sem guardar token de usuário vivo.
 - **Rate limit por instalação**, não por usuário — escala para multi-tenant sem mudança.
 - **Webhooks nativos do App** quando o ADR-009 for revisto (deploy em nuvem).

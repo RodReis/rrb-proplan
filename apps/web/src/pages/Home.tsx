@@ -146,6 +146,23 @@ export function Home({ user, onLogout }: Props) {
                       importar
                     </span>
                   )}
+                  {p.deployVerdict === 'discordam' && (
+                    <span
+                      title="As fontes de deploy discordam sobre a plataforma — ver aba Deploy"
+                      className="rounded-full bg-error/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-error"
+                    >
+                      deploy divergente
+                    </span>
+                  )}
+                  {(p.deployVerdict === 'so_github_side' ||
+                    p.deployVerdict === 'omissa') && (
+                    <span
+                      title="Sinal de deploy no GitHub sem fonte fresca ou sem doc — ver aba Deploy"
+                      className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning"
+                    >
+                      deploy?
+                    </span>
+                  )}
                 </div>
                 <div className="truncate text-xs text-text-muted">{p.owner}</div>
               </button>

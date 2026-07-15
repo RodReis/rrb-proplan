@@ -61,6 +61,29 @@ export class GithubGitClient {
   }
 
   /**
+   * Nomes dos arquivos na raiz do repo (não-recursivo). Só metadado de path
+   * (ADR-003) — usado pela SPEC-013 para detectar config de deploy (`vercel.json`,
+   * `netlify.toml`, `Procfile`, …), que ficam fora do escopo `docs/`. Degrada
+   * para lista vazia em erro.
+   */
+  async listRootFiles(
+    token: string,
+    owner: string,
+    repo: string,
+    branch: string,
+  ): Promise<string[]> {
+    const res = await this.fetchGithubOptional(
+      token,
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}`,
+    );
+    if (!res) return [];
+    const body = (await res.json()) as { tree?: TreeItem[] };
+    return (body.tree ?? [])
+      .filter((it) => it.type === 'blob')
+      .map((it) => it.path);
+  }
+
+  /**
    * Conteúdo de um blob (base64 via Git Blobs API, sem o limite de 1MB da
    * Contents API). Blob acima do cap → null (caller marca como skipped).
    */
@@ -143,6 +166,46 @@ export class GithubGitClient {
   }
 
   /**
+   * Deployments recentes do repo (SPEC-013). Só metadados GitHub-side, sem
+   * conteúdo de código (ADR-003 adendo). Para cada deployment recente busca o
+   * status mais recente e extrai o host do `environment_url` — a plataforma é
+   * decidida no domínio puro (parse de sufixo). Degrada em silêncio quando o
+   * App não tem a permissão `Deployments: read` (403/404) → `denied: true`.
+   */
+  async listDeploymentUrls(
+    token: string,
+    owner: string,
+    repo: string,
+    max = 10,
+  ): Promise<{ environmentUrls: string[]; count: number; denied: boolean }> {
+    const url = new URL(
+      `https://api.github.com/repos/${owner}/${repo}/deployments`,
+    );
+    url.searchParams.set('per_page', String(max));
+    const res = await this.fetchGithubOptional(token, url.toString());
+    if (!res) return { environmentUrls: [], count: 0, denied: true };
+
+    const deployments = (await res.json()) as Array<{ id: number }>;
+    if (!deployments.length)
+      return { environmentUrls: [], count: 0, denied: false };
+
+    const urls = new Set<string>();
+    for (const d of deployments) {
+      const stRes = await this.fetchGithubOptional(
+        token,
+        `https://api.github.com/repos/${owner}/${repo}/deployments/${d.id}/statuses?per_page=1`,
+      );
+      if (!stRes) continue;
+      const statuses = (await stRes.json()) as Array<{
+        environment_url?: string;
+      }>;
+      const envUrl = statuses[0]?.environment_url;
+      if (envUrl) urls.add(envUrl);
+    }
+    return { environmentUrls: [...urls], count: deployments.length, denied: false };
+  }
+
+  /**
    * GET com timeout, tratamento de 401 e backoff em 403/429 respeitando
    * `x-ratelimit-reset` (ARCHITECTURE.md — resiliência).
    */
@@ -170,6 +233,47 @@ export class GithubGitClient {
       return res;
     }
     throw new Error('GitHub API: limite de tentativas excedido (rate limit)');
+  }
+
+  /**
+   * Variante tolerante para recursos que o App pode não ter permissão de ler
+   * (SPEC-013 — `Deployments: read` pode faltar). 403 por falta de permissão ou
+   * 404 → null (degrada). 403 por rate-limit segue o backoff normal. Nunca
+   * derruba o sync.
+   */
+  private async fetchGithubOptional(
+    token: string,
+    url: string,
+  ): Promise<Response | null> {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+          },
+          signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+        });
+      } catch {
+        return null; // timeout/rede: degrada, não derruba o sync
+      }
+
+      const rateLimited =
+        (res.status === 403 || res.status === 429) &&
+        res.headers.get('x-ratelimit-remaining') === '0';
+
+      if (rateLimited && attempt < MAX_RETRIES) {
+        await sleep(rateLimitDelayMs(res.headers, attempt));
+        continue;
+      }
+      if (res.status === 401 || res.status === 403 || res.status === 404) {
+        return null; // sem permissão → degrada
+      }
+      if (!res.ok) return null;
+      return res;
+    }
+    return null;
   }
 }
 

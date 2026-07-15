@@ -11,6 +11,14 @@ import { computeScopeHash } from '../domain/scope-hash';
 import { isInScope } from '../domain/scope-filter';
 import { GithubGitClient } from '../infrastructure/github-git.client';
 import { classifyKind } from '../domain/document-kind';
+import { parseProplanConfig } from '../domain/proplan-config';
+import {
+  DeploySignal,
+  extractDeclaredPlatforms,
+  platformsFromRepoConfig,
+  platformFromDeclaredUrl,
+  reconcile,
+} from '../domain/deploy-drift';
 
 /** Evento de domínio: docs de um projeto foram sincronizados com hash novo. */
 export class DocsSyncedEvent {
@@ -90,6 +98,13 @@ export class SyncService {
         // ainda não têm arestas; recompute é barato e idempotente.
         await this.links.rebuildLinks(project.id);
         await this.resolution.rebuild(project.id);
+        await this.updateDeploySignals(
+          project.id,
+          token,
+          project.owner,
+          project.name,
+          project.defaultBranch,
+        );
         await this.finish(run.id, 'noop', scopeHash, {
           added: 0,
           updated: 0,
@@ -193,6 +208,13 @@ export class SyncService {
       });
 
       await this.updateCommitMeta(project.id, token, project.owner, project.name);
+      await this.updateDeploySignals(
+        project.id,
+        token,
+        project.owner,
+        project.name,
+        project.defaultBranch,
+      );
 
       await this.finish(run.id, 'success', scopeHash, {
         added: added.length,
@@ -293,6 +315,120 @@ export class SyncService {
       const message = err instanceof Error ? err.message : 'erro';
       this.logger.warn(
         `Coleta de metadados de commit falhou (projeto ${projectId}): ${message}`,
+      );
+    }
+  }
+
+  /**
+   * Drift de deploy (SPEC-013): coleta as 4 fontes (doc de deploy, config no
+   * repo, GitHub Deployments, URL declarada), reconcilia e persiste veredito +
+   * sinais. NUNCA coroa uma fonte como verdade — só classifica o padrão. Falha
+   * aqui NÃO derruba o sync (mesma regra do updateCommitMeta): os campos ficam
+   * como estavam e a UI omite a faixa. Só metadados GitHub-side, zero IA, zero
+   * chamada externa ao ProPlan (a plataforma sai do domínio da URL, por texto).
+   */
+  private async updateDeploySignals(
+    projectId: string,
+    token: string,
+    owner: string,
+    name: string,
+    branch: string,
+  ): Promise<void> {
+    try {
+      const observedAt = new Date();
+      const iso = observedAt.toISOString();
+      const signals: DeploySignal[] = [];
+
+      // Fonte 1 — doc de deploy resolvido (pode silenciar).
+      const deployRes = await this.resolution.resolutionOf(projectId, 'deploy');
+      const deployPaths =
+        deployRes.paths.length > 0
+          ? deployRes.paths
+          : deployRes.path
+            ? [deployRes.path]
+            : [];
+      if (deployPaths.length > 0) {
+        const docs = await this.prisma.document.findMany({
+          where: { projectId, path: { in: deployPaths } },
+          select: { content: true },
+        });
+        const platforms = extractDeclaredPlatforms(
+          docs.map((d) => d.content).join('\n'),
+        );
+        signals.push({
+          source: 'doc',
+          platforms,
+          observedAt: iso,
+          evidenceRef: deployPaths.join(', '),
+        });
+      }
+
+      // Fonte 2 — config de deploy na raiz do repo (declaração de intenção).
+      const rootFiles = await this.git.listRootFiles(token, owner, name, branch);
+      const configHits = platformsFromRepoConfig(rootFiles);
+      if (configHits.length > 0) {
+        signals.push({
+          source: 'repoConfig',
+          platforms: [...new Set(configHits.map((h) => h.platform))],
+          observedAt: iso,
+          evidenceRef: configHits.map((h) => h.file).join(', '),
+        });
+      }
+
+      // Fonte 3 — GitHub Deployments (degrada sem a permissão Deployments:read).
+      const deployments = await this.git.listDeploymentUrls(token, owner, name);
+      if (!deployments.denied && deployments.count > 0) {
+        const platforms = [
+          ...new Set(
+            deployments.environmentUrls
+              .map((u) => platformFromDeclaredUrl(u))
+              .filter((p): p is string => p !== null),
+          ),
+        ];
+        signals.push({
+          source: 'githubDeployments',
+          platforms,
+          observedAt: iso,
+          evidenceRef: `${deployments.count} deployment(s)`,
+        });
+      }
+
+      // Fonte 4 — URL de produção declarada pelo dono (.proplan/config.yml).
+      const configDoc = await this.prisma.document.findFirst({
+        where: { projectId, path: '.proplan/config.yml' },
+        select: { content: true },
+      });
+      const { config } = parseProplanConfig(configDoc?.content ?? null);
+      const prodUrls = config?.deployProdUrls ?? [];
+      if (prodUrls.length > 0) {
+        const platforms = [
+          ...new Set(
+            prodUrls
+              .map((u) => u.platform ?? platformFromDeclaredUrl(u.url))
+              .filter((p): p is string => p !== null),
+          ),
+        ];
+        signals.push({
+          source: 'declaredUrl',
+          platforms,
+          observedAt: iso,
+          evidenceRef: prodUrls.map((u) => u.url).join(', '),
+        });
+      }
+
+      const verdict = reconcile(signals);
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: {
+          deployVerdict: verdict.state,
+          deploySignals: verdict.signals as unknown as Prisma.InputJsonValue,
+          deployObservedAt: observedAt,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'erro';
+      this.logger.warn(
+        `Coleta de drift de deploy falhou (projeto ${projectId}): ${message}`,
       );
     }
   }
