@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr *)",
+      "mcp__plugin_github_github__list_issues",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./apps/api/package.json'\\).scripts,null,1\\)\\)\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./apps/web/package.json'\\).scripts,null,1\\)\\)\")",
+      "Bash(gh issue create --repo RodReis/rrb-proplan --title 'Fatia 10 — docs/CONTEXT.md + captura de asserção humana \\(SPEC-015\\)' --body 'Spec: [docs/specs/SPEC-015-contexto-assercao.md]\\(https://github.com/RodReis/rrb-proplan/blob/main/docs/specs/SPEC-015-contexto-assercao.md\\) \\(`aprovada-pi` em 2026-07-14\\) *)",
+      "Bash(pnpm dev:api)",
+      "Bash(tee /tmp/api.log)",
+      "Bash(node -e *jsonwebtoken*)"
+    ]
+  }
+}
