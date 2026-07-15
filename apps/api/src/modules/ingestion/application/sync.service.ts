@@ -20,6 +20,7 @@ import {
   reconcile,
 } from '../domain/deploy-drift';
 import { platformFromProbe } from '../domain/deploy-probe';
+import { ciStatusOf } from '../domain/ci-status';
 import { HttpProbe } from '../infrastructure/http-probe';
 
 /** Evento de domínio: docs de um projeto foram sincronizados com hash novo. */
@@ -111,6 +112,7 @@ export class SyncService {
           project.name,
           project.defaultBranch,
         );
+        await this.updateCiStatus(project.id, token, project.owner, project.name);
         await this.finish(run.id, 'noop', scopeHash, {
           added: 0,
           updated: 0,
@@ -221,6 +223,7 @@ export class SyncService {
         project.name,
         project.defaultBranch,
       );
+      await this.updateCiStatus(project.id, token, project.owner, project.name);
 
       await this.finish(run.id, 'success', scopeHash, {
         added: added.length,
@@ -432,6 +435,38 @@ export class SyncService {
       const message = err instanceof Error ? err.message : 'erro';
       this.logger.warn(
         `Coleta de drift de deploy falhou (projeto ${projectId}): ${message}`,
+      );
+    }
+  }
+
+  /**
+   * CI (SPEC-019): coleta o último workflow run (Actions API) e persiste o
+   * status derivado + URL + data como cache no Project. Tolerante a falha (mesma
+   * regra do updateDeploySignals): falhar aqui NÃO derruba o sync — os campos
+   * ficam como estavam e o portfólio omite/neutraliza o sinal. Só metadados
+   * GitHub-side, zero IA. Repo sem Actions → `sem-ci` (não erro).
+   */
+  private async updateCiStatus(
+    projectId: string,
+    token: string,
+    owner: string,
+    name: string,
+  ): Promise<void> {
+    try {
+      const run = await this.git.listLatestWorkflowRun(token, owner, name);
+      const status = ciStatusOf(run);
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: {
+          ciStatus: status,
+          ciConclusionUrl: run.url,
+          ciObservedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'erro';
+      this.logger.warn(
+        `Coleta de CI falhou (projeto ${projectId}): ${message}`,
       );
     }
   }

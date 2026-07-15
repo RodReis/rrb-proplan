@@ -174,6 +174,7 @@ export const api = {
   removeProject: (id: string) =>
     request<void>(`/catalog/projects/${id}`, { method: 'DELETE' }),
   projects: () => request<Project[]>('/catalog/projects'),
+  portfolio: () => request<PortfolioRow[]>('/portfolio'),
   sync: (projectId: string) =>
     request<{ syncRunId: string }>(`/projects/${projectId}/sync`, {
       method: 'POST',
@@ -569,4 +570,23 @@ export interface Project {
   lastSyncAt: string | null;
   /** SPEC-013 — veredito de drift de deploy (null enquanto nunca coletado). */
   deployVerdict: DeployVerdictState | null;
+}
+
+/** SPEC-019 — um sinal cru do radar: em vermelho? + quando foi lido. */
+export interface PortfolioSignal {
+  red: boolean;
+  observedAt: string | null;
+}
+
+/** SPEC-019 — uma linha do portfólio, já ordenada pelo radar. */
+export interface PortfolioRow {
+  projectId: string;
+  name: string;
+  owner: string;
+  stalenessDays: number | null;
+  staleness: PortfolioSignal | null;
+  coverage: PortfolioSignal | null;
+  deploy: PortfolioSignal | null;
+  ci: PortfolioSignal | null;
+  redCount: number;
 }

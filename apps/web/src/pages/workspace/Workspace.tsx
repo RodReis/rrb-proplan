@@ -27,11 +27,13 @@ export interface WorkspaceTarget {
 interface Props {
   project: WorkspaceTarget; // gerenciado (managedProjectId garantido não-nulo)
   onBack: () => void;
+  /** Aba inicial (deep-link do portfólio); default 'overview'. */
+  initialTab?: string;
 }
 
-export function Workspace({ project, onBack }: Props) {
+export function Workspace({ project, onBack, initialTab }: Props) {
   const projectId = project.managedProjectId!;
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(initialTab ?? 'overview');
   const [syncNonce, setSyncNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);

@@ -111,6 +111,33 @@ export class CanonicalService {
   }
 
   /**
+   * SPEC-019: cobertura "vermelha" por projeto para o radar (interface pública,
+   * ADR-001 — o portfolio nunca lê canonical_fields direto). Um projeto está
+   * vermelho quando tem ao menos um campo abaixo do limiar de recusa (a mesma
+   * recusa do getCanonicalModel, só agregada). Determinístico, zero IA. Uma
+   * query só sobre os N projetos. Projeto sem nenhum campo → não vermelho
+   * (ausência de dado não é falha — mesma lógica do "não documentado").
+   */
+  async coverageRedByProject(
+    userId: string,
+    projectIds: string[],
+  ): Promise<Map<string, boolean>> {
+    const result = new Map<string, boolean>();
+    if (projectIds.length === 0) return result;
+    const threshold = await this.settings.canonicalThresholdOf(userId);
+    // Limiar 0 desliga a recusa → nada é vermelho por cobertura.
+    if (threshold <= 0) return result;
+    const rows = await this.prisma.canonicalField.findMany({
+      where: { projectId: { in: projectIds } },
+      select: { projectId: true, confidence: true },
+    });
+    for (const r of rows) {
+      if (r.confidence < threshold) result.set(r.projectId, true);
+    }
+    return result;
+  }
+
+  /**
    * Projeção de leitura: monta o objeto entidades→campos aplicando o limiar de
    * recusa. Sem IA (ADR-002) — só lê o CanonicalField já persistido.
    */

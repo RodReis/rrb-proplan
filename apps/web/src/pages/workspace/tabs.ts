@@ -21,4 +21,4 @@ export const WORKSPACE_TABS: TabDef[] = [
   { id: 'handoff', label: 'Handoff', enabledIn: 13 },
 ];
 
-export const CURRENT_SLICE = 13;
+export const CURRENT_SLICE = 14;

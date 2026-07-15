@@ -457,6 +457,20 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 1. `feito` — Removida a cadeia morta inteira (não só o botão): `pages/workspace/BootstrapDialog.tsx` deletado; `OverviewTab` perdeu o CTA `!hasStatusDoc`, o state `bootstrapOpen` e as props `hasStatusDoc`/`onSynced` (só serviam o dialog); `Workspace` perdeu o state `hasStatusDoc` + o `refreshDocsList`/`useEffect` que só o alimentavam; `api.ts` perdeu `proposeStatus`+`commitStatus`. `tsc` + `vite build` limpos. Sem teste (remoção pura de UI, sem lógica). **Validado ao vivo** (`agency-agents-app`): aba Visão Geral sem o CTA morto, resto intacto.
 
+## Fatia 14 — Portfólio da fábrica + Radar de risco (SPEC-019, `aprovada-pi`) — `feito` (aguardando aceite runtime do PI)
+
+**A tela inicial diária.** View cross-projeto sobre os repos gerenciados, cada linha com os 4 sinais entregues (staleness, cobertura, deploy, CI) **crus e datados**, ordenados pelo radar. Molde direto da Fatia 13 (coleta no sync, cache no `Project`, projeção pura). **Zero IA** (ADR-002), determinístico, **nenhum score de saúde composto** (ADR-012). Slots peso-zero de 10/11 declarados, não calculados (decisão 3 do PI).
+
+1. `feito` — Prisma: `Project` ganha `ciStatus`/`ciConclusionUrl`/`ciObservedAt` (cache derivado, padrão do `deployVerdict`). Migration `fatia_14_ci_status`. **Nenhuma tabela nova** — portfólio e radar são projeção sobre `Project` + `CanonicalField`.
+2. `feito` — Coleta de CI: `GithubGitClient.listLatestWorkflowRun` (Actions API `/actions/runs?per_page=1`, gêmeo do `listDeploymentUrls` — via `fetchGithubOptional`, degrada em `denied` sem `Actions: read`). Domínio puro `ingestion/domain/ci-status.ts`: `ciStatusOf` (sem Actions → `sem-ci`, sem run → `sem-run`, em andamento → `em-andamento`, senão a conclusion) + `ciIsRed` (`failure`/`timed_out`/`cancelled`; ausência de CI = neutro — decisão 2 do PI). `SyncService.updateCiStatus` nos **dois** caminhos (noop + success), tolerante a falha (regra do `updateCommitMeta`).
+3. `feito` — Domínio puro `portfolio/domain/portfolio.ts`: `assemblePortfolio` (projeção, conta os vermelhos) + `rankByRisk` (contagem de sinais vermelhos desc, desempate por staleness, então nome — determinístico). **Pesos por sinal**: os 4 entregues pesam 1; os slots de 10/11 pesam **0** — extensível sem reescrita (só subir o peso quando a fatia entregar).
+4. `feito` — Módulo `portfolio` novo: `PortfolioService.getPortfolio` (lê `Project` + freshness/threshold via Settings + cobertura via `CanonicalService.coverageRedByProject` — interface pública, ADR-001; canonical nunca lido direto). `GET /portfolio` (só repos gerenciados do usuário; **sem IA** — não cria `LlmUsage`). Cobertura agregada numa query só sobre os N projetos.
+5. `feito` — Web: nova entrada **top-level "Portfólio"** no rail (decisão 4 do PI — separada do catálogo, não é a home ainda). `PortfolioView`: linhas densas 6–20, chips de sinal **datados e clicáveis** (staleness/cobertura → Visão Geral · deploy/CI → Deploy), marcador com nº de sinais em alerta. Deep-link via `initialTab` novo no `Workspace`.
+6. `feito` — `Actions: read` **já concedido** na instalação `RodReis` (Fatia 4.5 aceite: installation token emitido com `actions:read`); ADR-015 já listava a permissão. Nada a reconsentir.
+7. `feito` — 473 testes no total (+15: portfolio 10, ci-status 5), `tsc` API + `nest build` + `tsc`/`vite build` web limpos; API sobe com `GET /portfolio` mapeada.
+
+**Aceite runtime do PI (pendente):** olho ao vivo com os `rrb-*` reais (`rrb-escola` deploy discordante, `rrb-organize` só-github-side) — o portfólio já nasce com casos ricos. Roteiro: linha por repo gerenciado com os 4 sinais datados; ordenação por nº de vermelhos (desempate staleness); chip de CI datado linkando o GitHub Actions; repo sem Actions → `sem CI` neutro (não vermelho); clicar chip abre a aba certa. **Provar que o radar não inventa**: sinal de 10/11 não aparece (peso zero); 2× o mesmo estado → mesma ordem.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
