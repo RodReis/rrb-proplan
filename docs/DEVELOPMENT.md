@@ -342,7 +342,7 @@ Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parse
 
 Risco baixo: mudança aditiva no payload + render, nenhuma escrita no repo, nenhuma IA, nenhum job. Alvo real: `rrb-organize` (deploy `source: config`).
 
-## Fatia 13 — Drift de deploy: confronto de fontes (SPEC-013 v2.1, `aprovada-pi`) — `em-andamento`
+## Fatia 13 — Drift de deploy: confronto de fontes (SPEC-013 v2.1, `aprovada-pi`) — `feito` (mergeado PR #40; validado ao vivo; aguardando aceite do PI)
 
 Parar de dar crédito institucional a doc de deploy possivelmente defasada — **sem afirmar qual plataforma é a verdadeira**. Confronta 4 fontes (doc · config no repo · GitHub Deployments · URL declarada pelo dono); quando discordam, mostra cada uma com natureza + data; quando só há sinal GitHub-side, admite que não há fonte fresca e **pede a URL**. **Zero IA, zero chamada externa** (a plataforma sai do domínio da URL por parse de string), zero credencial de plataforma. ADR-018/probe negado (→ Fatia 13.6); handoff → 13.5.
 
@@ -355,7 +355,13 @@ Parar de dar crédito institucional a doc de deploy possivelmente defasada — *
 7. `feito` — Web: `DeployTab` faixa de confronto no topo (`DriftBanner`) — cada fonte com **natureza + plataforma + "observado em <data>"**, CTA "declare a URL" no `so_github_side`, **nunca** "roda em X" nem rótulo "congelado/resíduo". Badge no catálogo (`Home.tsx`): "deploy divergente" (discordam) / "deploy?" (so_github_side/omissa).
 8. `feito` — ADR-015: `Deployments: read` adicionado à permissão mínima. `Deployments: read` já concedida na instalação `RodReis` (2026-07-14).
 
-**Aceite runtime (pendente do PI):** precisa login no GitHub App + olho no `rrb-escola` (declarar `escola-erp.netlify.app` + `...railway.app` em `.proplan/config.yml` → `discordam`; sem declarar → `so_github_side` com CTA) e num repo sem deploy (`rrb-adv` → silencioso). Verificar zero chamada externa e degradação sem permissão.
+**Validação ao vivo executada pelo Code (2026-07-14)** — migration `fatia_13_deploy_drift` aplicada, sync real (token do usuário no banco):
+- `rrb-adv` → **`silencio`** (sinais `[]`) — nenhuma fonte aponta nada; "não documentado" é a resposta correta.
+- `rrb-organize` → **`so_github_side`** — doc (`docs/runbooks/deploy-railway.md`) cita Railway, mas nenhuma fonte fresca → **pede a URL, não crava**. Payload da aba idem; DriftBanner âmbar.
+- **`discordam`** provado com URL netlify **efêmera** injetada no config do banco (revertida depois): `doc: railway` × `declaredUrl: netlify` → discordam, cada fonte com natureza+data. Prova o parse de domínio real (`netlify.app` → netlify) e o confronto sem coroar fonte — mesmo mecanismo do `rrb-escola`.
+- Zero warns/erros no log da coleta (degradação limpa); banco restaurado ao estado real.
+
+**Aceite runtime do PI (pendente):** olho ao vivo, idealmente com o `rrb-escola` gerenciado (não está neste banco) para o caso canônico `discordam` (config+GitHub Vercel × URL Netlify+Railway) e `concordam`/`omissa` com deployments GitHub-side reais.
 
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
