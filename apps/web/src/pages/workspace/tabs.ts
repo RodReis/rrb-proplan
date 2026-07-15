@@ -18,6 +18,7 @@ export const WORKSPACE_TABS: TabDef[] = [
   { id: 'design', label: 'Design', enabledIn: 6 },
   { id: 'deploy', label: 'Deploy', enabledIn: 6 },
   { id: 'context', label: 'Contexto', enabledIn: 10 },
+  { id: 'handoff', label: 'Handoff', enabledIn: 13 },
 ];
 
-export const CURRENT_SLICE = 10;
+export const CURRENT_SLICE = 13;
