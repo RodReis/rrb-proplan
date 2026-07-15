@@ -49,6 +49,9 @@ model Project {
   deployVerdict    String?   @map("deploy_verdict")
   deploySignals    Json?     @map("deploy_signals")
   deployObservedAt DateTime? @map("deploy_observed_at")
+  ciStatus         String?   @map("ci_status")
+  ciConclusionUrl  String?   @map("ci_conclusion_url")
+  ciObservedAt     DateTime? @map("ci_observed_at")
   createdAt    DateTime @default(now()) @map("created_at")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents    Document[]

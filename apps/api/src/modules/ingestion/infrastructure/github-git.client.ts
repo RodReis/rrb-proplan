@@ -224,6 +224,56 @@ export class GithubGitClient {
   }
 
   /**
+   * Último workflow run do repo (SPEC-019 — Actions API). Só metadados
+   * GitHub-side (conclusion + URL + data), sem conteúdo de código (ADR-003).
+   * Degrada em silêncio sem a permissão `Actions: read` (403/404) → `denied`.
+   * Repo sem Actions → `status: null` (o call site traduz para `sem-ci`).
+   * `conclusion` é null enquanto o run não terminou (in_progress/queued).
+   */
+  async listLatestWorkflowRun(
+    token: string,
+    owner: string,
+    repo: string,
+  ): Promise<{
+    status: string | null;
+    conclusion: string | null;
+    url: string | null;
+    updatedAt: string | null;
+    denied: boolean;
+  }> {
+    const url = new URL(
+      `https://api.github.com/repos/${owner}/${repo}/actions/runs`,
+    );
+    url.searchParams.set('per_page', '1');
+    const res = await this.fetchGithubOptional(token, url.toString());
+    if (!res)
+      return {
+        status: null,
+        conclusion: null,
+        url: null,
+        updatedAt: null,
+        denied: true,
+      };
+
+    const body = (await res.json()) as {
+      workflow_runs?: Array<{
+        status?: string;
+        conclusion?: string | null;
+        html_url?: string;
+        updated_at?: string;
+      }>;
+    };
+    const run = body.workflow_runs?.[0];
+    return {
+      status: run?.status ?? null,
+      conclusion: run?.conclusion ?? null,
+      url: run?.html_url ?? null,
+      updatedAt: run?.updated_at ?? null,
+      denied: false,
+    };
+  }
+
+  /**
    * GET com timeout, tratamento de 401 e backoff em 403/429 respeitando
    * `x-ratelimit-reset` (ARCHITECTURE.md — resiliência).
    */
