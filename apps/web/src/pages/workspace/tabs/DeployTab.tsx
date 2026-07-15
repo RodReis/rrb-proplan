@@ -48,6 +48,41 @@ function platformsText(platforms: string[]): string {
   return platforms.join(' + ');
 }
 
+/** SPEC-013.6: sufixo de natureza conforme o modo da URL declarada. */
+function modeSuffix(s: DeploySignal): string {
+  if (s.source !== 'declaredUrl') return SOURCE_NATURE[s.source];
+  if (s.mode === 'probe') return 'confirmada ao vivo';
+  return SOURCE_NATURE.declaredUrl; // 'string' → declaração do dono (parse de domínio)
+}
+
+/** URLs declaradas que o probe recusou sondar por segurança (ADR-018). */
+function blockedSignals(signals: DeploySignal[]): DeploySignal[] {
+  return signals.filter(
+    (s) => s.source === 'declaredUrl' && s.mode === 'bloqueada_por_seguranca',
+  );
+}
+
+/**
+ * Nota transparente (ADR-018): URLs declaradas que o probe recusou sondar
+ * porque o destino não é público. Nunca silenciosa — o dono precisa saber que
+ * aquela URL não foi verificada, e por quê.
+ */
+function BlockedNote({ signals, inline }: { signals: DeploySignal[]; inline?: boolean }) {
+  if (signals.length === 0) return null;
+  const body = (
+    <p className="text-xs text-text-muted">
+      <span className="font-medium text-warning">URL não sondada por segurança:</span>{' '}
+      {signals.map((s) => s.evidenceRef).join(', ')} — o destino resolve para um endereço
+      não-público; o probe não faz a requisição (ADR-018).
+    </p>
+  );
+  return inline ? (
+    <div className="mt-3 border-t border-border/50 pt-2">{body}</div>
+  ) : (
+    <div className="mb-6 rounded-lg border border-warning/40 bg-warning/5 p-4">{body}</div>
+  );
+}
+
 /**
  * Faixa de confronto (SPEC-013). NUNCA diz "roda em X" — só "a fonte Y aponta X,
  * observado em <data>". Não rotula fonte como "congelada/resíduo". O humano
@@ -62,7 +97,11 @@ function DriftBanner({
   signals: DeploySignal[];
   observedAt: string | null;
 }) {
-  if (verdict === 'concordam' || verdict === 'silencio') return null;
+  if (verdict === 'concordam' || verdict === 'silencio') {
+    // Mesmo concordando/em silêncio, um bloqueio de segurança é transparente.
+    const blocked = blockedSignals(signals);
+    return blocked.length > 0 ? <BlockedNote signals={blocked} /> : null;
+  }
 
   const stamp = `observado em ${fmtDate(observedAt)}`;
 
@@ -78,16 +117,17 @@ function DriftBanner({
         <ul className="space-y-1 text-sm">
           {signals
             .filter((s) => s.platforms.length > 0)
-            .map((s) => (
-              <li key={s.source} className="flex flex-wrap items-baseline gap-x-2">
+            .map((s, i) => (
+              <li key={`${s.source}-${i}`} className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-medium">{SOURCE_LABEL[s.source]}:</span>
                 <span>{platformsText(s.platforms)}</span>
                 <span className="text-xs text-text-muted">
-                  ({SOURCE_NATURE[s.source]} · {stamp})
+                  ({modeSuffix(s)} · {stamp})
                 </span>
               </li>
             ))}
         </ul>
+        <BlockedNote signals={blockedSignals(signals)} inline />
       </div>
     );
   }

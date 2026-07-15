@@ -11,7 +11,7 @@ import { computeScopeHash } from '../domain/scope-hash';
 import { isInScope } from '../domain/scope-filter';
 import { GithubGitClient } from '../infrastructure/github-git.client';
 import { classifyKind } from '../domain/document-kind';
-import { parseProplanConfig } from '../domain/proplan-config';
+import { DeclaredProdUrl, parseProplanConfig } from '../domain/proplan-config';
 import {
   DeploySignal,
   extractDeclaredPlatforms,
@@ -19,6 +19,8 @@ import {
   platformFromDeclaredUrl,
   reconcile,
 } from '../domain/deploy-drift';
+import { platformFromProbe } from '../domain/deploy-probe';
+import { HttpProbe } from '../infrastructure/http-probe';
 
 /** Evento de domínio: docs de um projeto foram sincronizados com hash novo. */
 export class DocsSyncedEvent {
@@ -52,6 +54,9 @@ export interface SyncResult {
 const TREE_PROPAGATION_BACKOFF_MS = [1000, 2000, 4500];
 const TREE_PROPAGATION_RETRIES = TREE_PROPAGATION_BACKOFF_MS.length;
 
+/** Teto de URLs de produção sondadas por sync (ADR-018 guarda 5 — rate-limit). */
+const MAX_PROBED_URLS = 10;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -67,6 +72,7 @@ export class SyncService {
     private readonly events: EventEmitter2,
     private readonly links: LinkService,
     private readonly resolution: ResolutionService,
+    private readonly httpProbe: HttpProbe,
   ) {}
 
   /**
@@ -394,26 +400,23 @@ export class SyncService {
       }
 
       // Fonte 4 — URL de produção declarada pelo dono (.proplan/config.yml).
+      // SPEC-013.6: cada URL vira um sinal com seu modo (string/probe/bloqueada).
       const configDoc = await this.prisma.document.findFirst({
         where: { projectId, path: '.proplan/config.yml' },
         select: { content: true },
       });
       const { config } = parseProplanConfig(configDoc?.content ?? null);
-      const prodUrls = config?.deployProdUrls ?? [];
-      if (prodUrls.length > 0) {
-        const platforms = [
-          ...new Set(
-            prodUrls
-              .map((u) => u.platform ?? platformFromDeclaredUrl(u.url))
-              .filter((p): p is string => p !== null),
-          ),
-        ];
-        signals.push({
-          source: 'declaredUrl',
-          platforms,
-          observedAt: iso,
-          evidenceRef: prodUrls.map((u) => u.url).join(', '),
-        });
+      const allUrls = config?.deployProdUrls ?? [];
+      // Guarda 5 do ADR-018 (rate-limit por sync): teto de URLs sondadas. Um
+      // config.yml com centenas de prodUrls não vira centenas de probes.
+      const prodUrls = allUrls.slice(0, MAX_PROBED_URLS);
+      if (allUrls.length > MAX_PROBED_URLS) {
+        this.logger.warn(
+          `Projeto ${projectId}: ${allUrls.length} prodUrls declaradas; sondando só as ${MAX_PROBED_URLS} primeiras (ADR-018).`,
+        );
+      }
+      for (const u of prodUrls) {
+        signals.push(await this.probeDeclaredUrl(u, iso));
       }
 
       const verdict = reconcile(signals);
@@ -431,6 +434,44 @@ export class SyncService {
         `Coleta de drift de deploy falhou (projeto ${projectId}): ${message}`,
       );
     }
+  }
+
+  /**
+   * SPEC-013.6: obtém a plataforma de UMA URL declarada, com o modo usado.
+   *  - `platform` declarada à mão pelo dono → usa, sem probe (mode string).
+   *  - probe bloqueado por segurança (destino não-público) → sinal
+   *    `bloqueada_por_seguranca`, transparente, platforms vazio.
+   *  - probe respondeu com fingerprint → mode probe.
+   *  - probe falhou/sem fingerprint → cai no parse de domínio (mode string,
+   *    decisão do PI: probe falho ≠ inseguro; domínio próprio → desconhecida).
+   */
+  private async probeDeclaredUrl(
+    u: DeclaredProdUrl,
+    iso: string,
+  ): Promise<DeploySignal> {
+    const base = { source: 'declaredUrl' as const, observedAt: iso, evidenceRef: u.url };
+
+    // Plataforma declarada à mão vence (domínio próprio resolvido pelo dono).
+    if (u.platform) {
+      return { ...base, platforms: [u.platform], mode: 'string' };
+    }
+
+    const result = await this.httpProbe.probe(u.url);
+    if (result.blocked) {
+      if (result.reason === 'destino_nao_publico') {
+        return { ...base, platforms: [], mode: 'bloqueada_por_seguranca' };
+      }
+      // Timeout/DNS/http/etc — não é bloqueio de segurança: cai no parse de domínio.
+      const fromDomain = platformFromDeclaredUrl(u.url);
+      return { ...base, platforms: fromDomain ? [fromDomain] : [], mode: 'string' };
+    }
+
+    const fromProbe = platformFromProbe(result.headers, result.finalUrl, result.bodySlice);
+    if (fromProbe) return { ...base, platforms: [fromProbe], mode: 'probe' };
+
+    // Probe respondeu mas sem fingerprint reconhecido → parse de domínio.
+    const fromDomain = platformFromDeclaredUrl(u.url);
+    return { ...base, platforms: fromDomain ? [fromDomain] : [], mode: 'string' };
   }
 
   private async finish(

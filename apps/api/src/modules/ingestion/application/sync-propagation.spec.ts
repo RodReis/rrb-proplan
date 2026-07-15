@@ -24,7 +24,7 @@ describe('SyncService.listScope — propagação do write-back', () => {
   const DOC = 'docs/DESIGN.md';
 
   function makeSvc(git: any) {
-    return new SyncService({} as any, {} as any, git, {} as any, {} as any, {} as any);
+    return new SyncService({} as any, {} as any, git, {} as any, {} as any, {} as any, {} as any);
   }
 
   it('sem expectativa → uma única leitura, sem esperar', async () => {
