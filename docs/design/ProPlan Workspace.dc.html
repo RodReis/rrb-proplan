@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0c0d0f;}
+a{color:inherit;text-decoration:none;}
+a:hover{color:var(--accent,#c9ced8);}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:var(--border3,#26282e);border-radius:99px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes dropIn{from{opacity:0;transform:translateY(-6px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes drawerIn{from{transform:translateX(102%);}to{transform:translateX(0);}}
+@keyframes stepIn{from{opacity:0;transform:translateX(16px);}to{opacity:1;transform:translateX(0);}}
+@keyframes toastLife{0%{opacity:0;transform:translateY(16px) scale(.96);}8%{opacity:1;transform:translateY(0) scale(1);}86%{opacity:1;}100%{opacity:0;transform:translateY(10px);}}
+@keyframes actPulse{0%,100%{box-shadow:0 0 0 0 var(--pulse,rgba(74,222,128,.4));}70%{box-shadow:0 0 0 7px transparent;}}
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes popIn{from{opacity:0;transform:scale(.5);}to{opacity:1;transform:scale(1);}}
+@keyframes heroZoom{from{transform:scale(1);}to{transform:scale(1.1);}}
+</style>
+</helmet>
+<div style="{{ themeVars }}">
+<div data-screen-label="Workspace" style="display:grid;grid-template-columns:270px 1fr;height:100vh;overflow:hidden;background:var(--bg,#0c0d0f);color:var(--text,#f5f4f1);font-family:'IBM Plex Sans',sans-serif;transition:background .3s ease,color .3s ease;">
+  <aside style="display:flex;flex-direction:column;border-right:1px solid var(--border,#1e2025);background:var(--panel,#0e0f12);min-height:0;transition:background .3s ease;">
+    <div style="position:relative;padding:14px 14px 10px;">
+      <button onClick="{{ toggleCombo }}" style="display:flex;align-items:center;gap:11px;width:100%;padding:10px;border-radius:12px;border:1px solid var(--border2,#24262c);background:var(--surface,#141519);cursor:pointer;text-align:left;font-family:inherit;transition:border-color .15s ease;" style-hover="border-color:var(--hoverb,#3a3d45);">
+        <span style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#eceef2,#98a0ac);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#16171b;flex-shrink:0;">P</span>
+        <span style="display:flex;flex-direction:column;flex:1;min-width:0;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;color:var(--faint,#8b8e96);">WORKSPACE</span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text,#f5f4f1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ projectName }}</span>
+        </span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--faint,#8b8e96);"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg>
+      </button>
+      <sc-if value="{{ comboOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:14px;right:14px;top:66px;z-index:50;border-radius:14px;border:1px solid var(--border3,#2a2c33);background:var(--pop,#16171b);box-shadow:0 24px 60px var(--shadow,rgba(0,0,0,.6));animation:dropIn .16s ease both;overflow:hidden;">
+          <div style="padding:12px 14px 8px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--faint,#8b8e96);">PROJETOS GERENCIADOS</span>
+            <span style="font-size:11px;color:var(--dim,#6c6f77);">{{ projectCount }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;padding:4px 6px 6px;">
+            <sc-for list="{{ projects }}" as="p" hint-placeholder-count="6">
+              <button onClick="{{ p.onClick }}" style="display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:9px;border:none;background:{{ p.bg }};cursor:pointer;text-align:left;font-family:inherit;" style-hover="background:var(--card,#1e2025);">
+                <span style="width:7px;height:7px;border-radius:50%;background:{{ p.dot }};flex-shrink:0;"></span>
+                <span style="display:flex;flex-direction:column;flex:1;min-width:0;">
+                  <span style="font-size:13px;font-weight:500;color:var(--text2,#e8e7e3);">{{ p.name }}</span>
+                  <span style="font-size:11px;color:var(--dim,#6c6f77);">RodReis</span>
+                </span>
+                <sc-if value="{{ p.badge }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.06em;padding:3px 7px;border-radius:99px;background:{{ p.badgeBg }};color:{{ p.badgeFg }};white-space:nowrap;">{{ p.badge }}</span>
+                </sc-if>
+              </button>
+            </sc-for>
+          </div>
+          <div style="border-top:1px solid var(--border2,#24262c);padding:9px 14px;">
+            <a href="ProPlan Catalogo.dc.html" style="font-size:12px;color:var(--muted,#9a9da5);" style-hover="color:var(--accent,#c9ced8);">← Voltar ao catálogo</a>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+    <nav style="flex:1;overflow-y:auto;padding:6px 14px 12px;display:flex;flex-direction:column;gap:18px;min-height:0;">
+      <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.16em;color:var(--dimmer,#5d6068);padding:0 10px 7px;">{{ g.label }}</span>
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="5">
+            <button onClick="{{ it.onClick }}" style="display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:9px;border:none;background:{{ it.bg }};color:{{ it.fg }};cursor:pointer;text-align:left;font-family:inherit;font-size:13px;font-weight:500;position:relative;transition:background .12s ease;" style-hover="background:var(--card,#1a1c21);color:var(--text,#f5f4f1);">
+              <span style="position:absolute;left:-14px;top:8px;bottom:8px;width:2.5px;border-radius:99px;background:{{ it.bar }};"></span>
+              <span style="width:16px;height:16px;display:inline-flex;flex-shrink:0;color:{{ it.iconFg }};"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ it.icon }}"></path></svg></span>
+              {{ it.label }}
+              <sc-if value="{{ it.count }}" hint-placeholder-val="{{ false }}">
+                <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:1px 7px;border-radius:99px;background:var(--accentSoft,rgba(201,206,216,.14));color:var(--accent,#c9ced8);">{{ it.count }}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </nav>
+    <div style="border-top:1px solid var(--border,#1e2025);padding:12px 14px;display:flex;align-items:center;gap:10px;">
+      <span style="width:32px;height:32px;border-radius:50%;background:var(--card,#26282e);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--body2,#c9c8c3);">R</span>
+      <span style="display:flex;flex-direction:column;flex:1;">
+        <span style="font-size:13px;font-weight:500;">Rodrigo Reis</span>
+        <span style="font-size:11px;color:var(--dim,#6c6f77);">rodreisdev@gmail.com</span>
+      </span>
+      <a href="ProPlan Login.dc.html" title="Sair" style="display:flex;padding:6px;border-radius:8px;color:var(--faint,#8b8e96);" style-hover="color:var(--accent,#c9ced8);background:var(--card,#1a1c21);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path></svg></a>
+    </div>
+  </aside>
+  <main style="display:flex;flex-direction:column;min-width:0;min-height:0;position:relative;overflow:hidden;">
+    <header style="display:flex;align-items:center;gap:14px;height:60px;padding:0 24px;border-bottom:1px solid var(--border,#1e2025);background:var(--panel,#0e0f12);flex-shrink:0;transition:background .3s ease;">
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">
+        <span style="color:var(--dim,#6c6f77);">RodReis</span>
+        <span style="color:var(--hoverb,#3a3d45);">/</span>
+        <span style="color:var(--muted,#9a9da5);">{{ projectName }}</span>
+        <span style="color:var(--hoverb,#3a3d45);">/</span>
+        <span style="font-weight:600;">{{ tabLabel }}</span>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex;gap:8px;min-width:0;flex-shrink:1;">
+        <button onClick="{{ toggleTheme }}" title="Alternar tema" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;border:1px solid var(--border2,#24262c);background:transparent;color:var(--muted,#9a9da5);cursor:pointer;" style-hover="border-color:var(--hoverb,#3a3d45);color:var(--text,#f5f4f1);">
+          <sc-if value="{{ isDark }}" hint-placeholder-val="{{ true }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+          </sc-if>
+          <sc-if value="{{ isLight }}" hint-placeholder-val="{{ false }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+          </sc-if>
+        </button>
+        <button onClick="{{ toggleAct }}" title="Atividade" style="position:relative;display:flex;align-items:center;gap:8px;height:34px;padding:0 13px;max-width:280px;min-width:0;flex-shrink:1;overflow:hidden;border-radius:99px;border:1px solid {{ actBorder }};background:{{ actBg }};color:var(--body2,#c9c8c3);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s ease;" style-hover="border-color:var(--hoverb,#3a3d45);color:var(--text,#f5f4f1);">
+          <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:{{ actDot }};animation:actPulse 2s infinite;"></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ actLabel }}</span>
+          <sc-if value="{{ actCount }}" hint-placeholder-val="{{ false }}">
+            <span style="min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--success,#4ade80);color:#0c0d0f;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;animation:popIn .25s ease both;">{{ actCount }}</span>
+          </sc-if>
+        </button>
+        <button style="height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--border2,#24262c);background:transparent;color:var(--body2,#c9c8c3);font-family:inherit;font-size:12.5px;font-weight:500;cursor:pointer;" style-hover="border-color:var(--hoverb,#3a3d45);color:var(--text,#f5f4f1);">Mapeamento</button>
+        <button onClick="{{ startSync }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:9px;border:none;background:var(--btnbg,#e2e5ea);color:var(--btnfg,#101114);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:filter .15s ease;" style-hover="filter:brightness(1.08);">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"></path></svg>
+          Sincronizar
+        </button>
+      </div>
+    </header>
+    <sc-if value="{{ actOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;top:60px;right:0;bottom:0;width:390px;z-index:60;display:flex;flex-direction:column;border-left:1px solid var(--border2,#24262c);background:var(--pop,#101114);box-shadow:-28px 0 70px var(--shadow,rgba(0,0,0,.55));animation:drawerIn .3s cubic-bezier(.2,.8,.2,1) both;">
+        <div style="display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--border,#1e2025);flex-shrink:0;">
+          <span style="width:8px;height:8px;border-radius:50%;background:{{ actDot }};animation:actPulse 2s infinite;"></span>
+          <span style="display:flex;flex-direction:column;flex:1;">
+            <span style="font-size:14px;font-weight:600;">Atividade</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim,#6c6f77);">proplan ~ {{ projectName }}</span>
+          </span>
+          <button onClick="{{ toggleAct }}" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;border:none;background:transparent;color:var(--dim,#6c6f77);cursor:pointer;font-size:15px;font-family:inherit;" style-hover="background:var(--card,#1c1e23);color:var(--text,#f5f4f1);">×</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;min-height:0;padding:16px 18px 24px;display:flex;flex-direction:column;gap:18px;">
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--faint,#8b8e96);">{{ nowTitle }}</span>
+            <sc-if value="{{ syncing }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:12px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);">
+                <sc-for list="{{ actSteps }}" as="s" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:10px;animation:stepIn .3s ease both;">
+                    <sc-if value="{{ s.done }}" hint-placeholder-val="{{ false }}">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success,#4ade80);flex-shrink:0;"><path d="M20 6 9 17l-5-5"></path></svg>
+                    </sc-if>
+                    <sc-if value="{{ s.active }}" hint-placeholder-val="{{ false }}">
+                      <span style="width:11px;height:11px;border-radius:50%;border:2px solid {{ s.fg }};border-top-color:transparent;flex-shrink:0;animation:spin .7s linear infinite;"></span>
+                    </sc-if>
+                    <span style="font-size:12px;line-height:1.45;color:{{ s.tone }};">{{ s.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:12px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                  <div style="padding:11px 12px;border-radius:10px;background:var(--surface2,#16171b);border:1px solid var(--border,#1e2025);display:flex;flex-direction:column;gap:3px;">
+                    <span style="font-size:19px;font-weight:600;">1</span>
+                    <span style="font-size:11px;color:var(--muted,#9a9da5);">inferência gerada</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--dim,#6c6f77);">23.281 tokens</span>
+                  </div>
+                  <div style="padding:11px 12px;border-radius:10px;background:var(--surface2,#16171b);border:1px solid var(--border,#1e2025);display:flex;flex-direction:column;gap:3px;">
+                    <span style="font-size:19px;font-weight:600;color:var(--success,#4ade80);">1</span>
+                    <span style="font-size:11px;color:var(--muted,#9a9da5);">reaproveitada</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--success,#4ade80);">sem novo gasto</span>
+                  </div>
+                </div>
+                <span style="font-size:11.5px;line-height:1.55;color:var(--success,#4ade80);">Economizou 1 chamada — esses documentos não mudaram desde a última vez.</span>
+                <span style="font-size:11.5px;line-height:1.55;color:var(--dim,#6c6f77);">Edite os docs e <strong style="color:var(--muted,#9a9da5);">Sincronize</strong> — este painel acompanha sozinho e mostra cada passo assim que acontece.</span>
+              </div>
+            </sc-if>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--faint,#8b8e96);">O QUE O PROPLAN FEZ NO SEU REPOSITÓRIO</span>
+            <sc-for list="{{ actHistory }}" as="h" hint-placeholder-count="6">
+              <div style="display:flex;flex-direction:column;gap:6px;padding:11px 13px;border-radius:11px;border:1px solid var(--border,#1e2025);border-left:3px solid {{ h.edge }};background:var(--surface,#131418);animation:stepIn .3s ease both;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;padding:2px 7px;border-radius:6px;background:{{ h.chipBg }};color:{{ h.chipFg }};">{{ h.kind }}</span>
+                  <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim,#6c6f77);">{{ h.when }}</span>
+                </div>
+                <span style="font-size:12.5px;line-height:1.5;color:var(--text2,#e8e7e3);">{{ h.t }}</span>
+                <sc-if value="{{ h.meta }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim,#6c6f77);">{{ h.meta }}</span>
+                </sc-if>
+                <sc-if value="{{ h.link }}" hint-placeholder-val="{{ false }}">
+                  <a href="#" style="display:flex;align-items:center;gap:5px;font-size:11px;color:{{ h.chipFg }};">ver no GitHub <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"></path></svg></a>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;right:22px;bottom:22px;z-index:70;display:flex;align-items:center;gap:11px;padding:13px 17px;border-radius:13px;border:1px solid var(--border2,#24262c);border-left:3px solid var(--success,#4ade80);background:var(--pop,#101114);box-shadow:0 20px 50px var(--shadow,rgba(0,0,0,.55));animation:toastLife 4.2s ease both;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success,#4ade80);"><path d="M20 6 9 17l-5-5"></path></svg>
+        <span style="display:flex;flex-direction:column;gap:1px;">
+          <span style="font-size:12.5px;font-weight:600;">{{ toast }}</span>
+          <span style="font-size:11px;color:var(--dim,#6c6f77);">Registrado no histórico de atividade</span>
+        </span>
+      </div>
+    </sc-if>
+    <div style="flex:1;overflow-y:auto;min-height:0;">
+      <div style="max-width:1060px;margin:0 auto;padding:28px 32px 48px;display:flex;flex-direction:column;gap:20px;">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;animation:fadeUp .4s ease both;">
+          <div>
+            <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em;">{{ tabLabel }}</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:var(--muted,#9a9da5);">{{ tabDesc }}</p>
+          </div>
+          <a href="#" style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted,#9a9da5);white-space:nowrap;padding-bottom:2px;">Abrir no GitHub <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"></path></svg></a>
+        </div>
+        <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+          <sc-if value="{{ showKpis }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;animation:fadeUp .4s .05s ease both;">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="padding:16px 18px;border-radius:14px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);display:flex;flex-direction:column;gap:8px;">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.13em;color:var(--faint,#8b8e96);">{{ k.label }}</span>
+                  <span style="font-size:20px;font-weight:600;letter-spacing:-.01em;color:{{ k.fg }};">{{ k.value }}</span>
+                  <span style="font-size:11.5px;color:var(--dim,#6c6f77);">{{ k.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;border:1px solid var(--accentBorder,rgba(201,206,216,.25));background:var(--accentFaint,rgba(201,206,216,.05));animation:fadeUp .4s .1s ease both;">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;padding:4px 10px;border-radius:99px;border:1px solid var(--accentBorder,rgba(201,206,216,.45));color:var(--accent,#c9ced8);white-space:nowrap;">INFERIDO POR IA · ANTHROPIC</span>
+            <span style="font-size:12.5px;color:var(--muted,#9a9da5);flex:1;">Resumo gerado a partir da documentação do repositório. O que o humano escreveu tem prioridade sobre o que a máquina inferiu.</span>
+            <button style="height:30px;padding:0 13px;border-radius:8px;border:1px solid var(--border2,#24262c);background:var(--surface2,#16171b);color:var(--body2,#c9c8c3);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;" style-hover="border-color:var(--accent,#c9ced8);color:var(--accent,#c9ced8);">Regenerar</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;animation:fadeUp .4s .15s ease both;">
+            <div style="padding:22px 24px;border-radius:16px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;">
+                <span style="width:26px;height:26px;border-radius:8px;background:var(--card,#1c1e23);display:flex;align-items:center;justify-content:center;color:var(--accent,#c9ced8);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path></svg></span>
+                <h2 style="margin:0;font-size:15px;font-weight:600;">O que é</h2>
+              </div>
+              <p style="margin:0;font-size:13.5px;line-height:1.65;color:var(--body,#b8b7b2);text-wrap:pretty;">RRB ProPlan é um painel de gestão visual do ciclo de vida de projetos de software: seleciona um repositório GitHub, ingere apenas sua documentação e monta um workspace com visões (Visão Geral, Kanban, Grafo, Arquitetura, Skills, Testes, Design, Deploy) que respondem o que é o projeto, onde parou e o que falta.</p>
+            </div>
+            <div style="padding:22px 24px;border-radius:16px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;">
+                <span style="width:26px;height:26px;border-radius:8px;background:var(--card,#1c1e23);display:flex;align-items:center;justify-content:center;color:var(--accent,#c9ced8);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg></span>
+                <h2 style="margin:0;font-size:15px;font-weight:600;">Onde parou</h2>
+              </div>
+              <p style="margin:0;font-size:13.5px;line-height:1.65;color:var(--body,#b8b7b2);text-wrap:pretty;">O núcleo do MVP2 (fatias 9 a 13.6, incluindo modelo canônico, contexto/asserção humana, handoff exportável, drift de deploy e probe HTTP) já foi implementado, mergeado e majoritariamente aceito pelo PI; a coluna "Em Andamento" está vazia e a próxima entrega prevista é a Fatia 14 (Portfólio + Radar de risco, spec aprovada), ainda não iniciada.</p>
+            </div>
+          </div>
+          <div style="padding:22px 24px;border-radius:16px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);animation:fadeUp .4s .2s ease both;">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px;">
+              <span style="width:26px;height:26px;border-radius:8px;background:var(--card,#1c1e23);display:flex;align-items:center;justify-content:center;color:var(--accent,#c9ced8);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M7 12h14M11 18h10"></path></svg></span>
+              <h2 style="margin:0;font-size:15px;font-weight:600;">O que falta</h2>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;">
+              <sc-for list="{{ pendings }}" as="p" hint-placeholder-count="6">
+                <div style="display:flex;gap:11px;align-items:flex-start;padding:10px 12px;border-radius:10px;background:var(--surface2,#16171b);border:1px solid var(--border,#1e2025);">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent,#c9ced8);margin-top:2px;">{{ p.n }}</span>
+                  <span style="font-size:12.5px;line-height:1.55;color:var(--body,#b8b7b2);">{{ p.t }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isKanban }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-radius:12px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent,#c9ced8);"><path d="M20 6 9 17l-5-5"></path></svg>
+            <span style="font-size:12.5px;color:var(--muted,#9a9da5);"><strong style="color:var(--text2,#e8e7e3);">Feito</strong> = entregue pelo desenvolvedor, aguardando validação · <strong style="color:var(--text2,#e8e7e3);">Finalizado</strong> = aceito pelo dono do projeto. Só você dá o aceite.</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) 34px;gap:12px;align-items:start;">
+            <sc-for list="{{ kanbanCols }}" as="col" hint-placeholder-count="5">
+              <div style="display:flex;flex-direction:column;gap:9px;padding:12px 10px;border-radius:14px;border:1px solid var(--border,#1e2025);background:var(--colbg,#101114);min-height:260px;">
+                <div style="display:flex;align-items:center;gap:8px;padding:0 4px 2px;">
+                  <span style="width:8px;height:8px;border-radius:50%;background:{{ col.dot }};flex-shrink:0;"></span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.11em;color:var(--text2,#e8e7e3);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ col.label }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;padding:1px 7px;border-radius:99px;background:{{ col.countBg }};color:{{ col.dot }};">{{ col.count }}</span>
+                  <button title="Nova tarefa" style="margin-left:auto;display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;border:none;background:transparent;color:var(--dim,#6c6f77);cursor:pointer;font-size:14px;line-height:1;font-family:inherit;" style-hover="background:var(--card,#1c1e23);color:var(--text,#f5f4f1);">+</button>
+                </div>
+                <sc-for list="{{ col.cards }}" as="c" hint-placeholder-count="3">
+                  <div style="padding:11px 12px 10px;border-radius:10px;border:1px solid var(--border2,#24262c);border-left:3px solid {{ c.edge }};background-color:var(--surface2,#16171b);background-image:{{ c.tint }};display:flex;flex-direction:column;gap:9px;transition:border-color .15s ease,transform .12s ease;cursor:default;" style-hover="border-color:var(--hoverb,#3a3d45);border-left-color:{{ c.edge }};transform:translateY(-1px);">
+                    <div style="display:flex;align-items:flex-start;gap:8px;">
+                      <span style="flex:1;font-size:12.5px;line-height:1.5;color:var(--text2,#e8e7e3);font-weight:500;text-wrap:pretty;">{{ c.t }}</span>
+                      <sc-if value="{{ c.done }}" hint-placeholder-val="{{ false }}">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="color:{{ col.dot }};flex-shrink:0;margin-top:2px;"><path d="M20 6 9 17l-5-5"></path></svg>
+                      </sc-if>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:7px;">
+                      <sc-if value="{{ c.pr }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.08em;padding:2.5px 7px;border-radius:6px;background:{{ c.prBg }};color:{{ c.prFg }};">{{ c.pr }}</span>
+                      </sc-if>
+                      <sc-if value="{{ c.av }}" hint-placeholder-val="{{ false }}">
+                        <span style="width:17px;height:17px;border-radius:50%;background:var(--card,#26282e);border:1px solid var(--border3,#2a2c33);display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:600;color:var(--body2,#c9c8c3);">R</span>
+                      </sc-if>
+                      <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim,#6c6f77);">{{ c.n }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ col.empty }}" hint-placeholder-val="{{ false }}">
+                  <div style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:10px;border:1px dashed var(--border3,#26282e);font-size:11.5px;color:var(--dimmer,#5d6068);min-height:120px;">vazio</div>
+                </sc-if>
+                <sc-if value="{{ col.more }}" hint-placeholder-val="{{ false }}">
+                  <button style="padding:8px;border-radius:9px;border:1px dashed var(--border3,#2a2c33);background:transparent;color:var(--dim,#6c6f77);font-family:'IBM Plex Mono',monospace;font-size:10.5px;cursor:pointer;" style-hover="color:var(--text,#f5f4f1);border-color:var(--hoverb,#3a3d45);">{{ col.more }}</button>
+                </sc-if>
+              </div>
+            </sc-for>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0;border-radius:14px;border:1px solid var(--border,#1e2025);background:var(--colbg,#101114);min-height:260px;cursor:pointer;" title="Expandir Descartado">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--dim,#6c6f77);"><path d="m15 18-6-6 6-6"></path></svg>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;padding:1px 6px;border-radius:99px;background:var(--card,#1c1e23);color:var(--dim,#6c6f77);">0</span>
+              <span style="writing-mode:vertical-rl;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--dim,#6c6f77);">DESCARTADO</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isDocs }}" hint-placeholder-val="{{ false }}">
+          <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start;">
+            <div style="display:flex;flex-direction:column;border-radius:16px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border,#1e2025);">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.13em;color:var(--faint,#8b8e96);">DOCUMENTOS</span>
+                <span style="font-size:11px;color:var(--dim,#6c6f77);">{{ docCount }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;padding:6px;">
+                <sc-for list="{{ treeItems }}" as="n" hint-placeholder-count="10">
+                  <button onClick="{{ n.onClick }}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;padding-left:{{ n.pad }};border-radius:9px;border:none;background:{{ n.bg }};cursor:pointer;text-align:left;font-family:inherit;min-width:0;" style-hover="background:var(--card,#1a1c21);">
+                    <sc-if value="{{ n.isFolder }}" hint-placeholder-val="{{ false }}">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--dim,#6c6f77);flex-shrink:0;transform:rotate({{ n.chev }});transition:transform .15s ease;"><path d="m9 6 6 6-6 6"></path></svg>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--faint,#8b8e96);flex-shrink:0;"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path></svg>
+                    </sc-if>
+                    <sc-if value="{{ n.isFile }}" hint-placeholder-val="{{ true }}">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:{{ n.iconFg }};flex-shrink:0;margin-left:15px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"></path></svg>
+                    </sc-if>
+                    <span style="flex:1;min-width:0;font-size:12.5px;font-weight:{{ n.fw }};color:{{ n.fg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ n.name }}</span>
+                    <sc-if value="{{ n.badge }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.08em;padding:2px 6px;border-radius:6px;background:{{ n.badgeBg }};color:{{ n.badgeFg }};flex-shrink:0;">{{ n.badge }}</span>
+                    </sc-if>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+            <div style="border-radius:16px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--border,#1e2025);">
+                <span style="display:flex;flex-direction:column;flex:1;min-width:0;">
+                  <span style="font-size:16px;font-weight:600;">{{ selTitle }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--dim,#6c6f77);margin-top:2px;">{{ selPath }} · {{ selMeta }}</span>
+                </span>
+                <sc-if value="{{ selChip }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:10px;padding:3px 9px;border-radius:99px;background:{{ selChipBg }};color:{{ selChipFg }};white-space:nowrap;">{{ selChip }}</span>
+                </sc-if>
+                <a href="#" style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted,#9a9da5);white-space:nowrap;">GitHub <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"></path></svg></a>
+              </div>
+              <sc-if value="{{ selWarn }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:flex-start;gap:10px;margin:16px 22px 0;padding:11px 14px;border-radius:10px;border:1px solid var(--accentBorder,rgba(201,206,216,.3));background:var(--accentFaint,rgba(201,206,216,.05));">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent,#c9ced8);flex-shrink:0;margin-top:1px;"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>
+                  <span style="font-size:12px;line-height:1.55;color:var(--muted,#9a9da5);">{{ selWarn }}</span>
+                </div>
+              </sc-if>
+              <div style="padding:20px 22px 24px;display:flex;flex-direction:column;gap:11px;max-width:760px;">
+                <sc-for list="{{ selBody }}" as="b" hint-placeholder-count="5">
+                  <sc-if value="{{ b.h }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:14px;font-weight:600;color:var(--text,#f5f4f1);margin-top:8px;padding-bottom:7px;border-bottom:1px solid var(--border,#1e2025);">{{ b.h }}</span>
+                  </sc-if>
+                  <sc-if value="{{ b.isText }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;gap:10px;align-items:flex-start;">
+                      <sc-if value="{{ b.n }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent,#c9ced8);margin-top:3px;flex-shrink:0;">{{ b.n }}</span>
+                      </sc-if>
+                      <span style="font-size:13px;line-height:1.75;color:var(--body,#b8b7b2);text-wrap:pretty;">
+                        <sc-for list="{{ b.seg }}" as="s" hint-placeholder-count="3">
+                          <sc-if value="{{ s.code }}" hint-placeholder-val="{{ false }}">
+                            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:1.5px 6px;border-radius:6px;background:var(--card,#1c1e23);border:1px solid var(--border2,#24262c);color:var(--text2,#e8e7e3);white-space:nowrap;">{{ s.t }}</span>
+                          </sc-if>
+                          <sc-if value="{{ s.plain }}" hint-placeholder-val="{{ true }}">
+                            <span style="font-weight:{{ s.fw }};color:{{ s.fg }};">{{ s.t }}</span>
+                          </sc-if>
+                        </sc-for>
+                      </span>
+                    </div>
+                  </sc-if>
+                </sc-for>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:14px;border-top:1px solid var(--border,#1e2025);">
+                  <span style="width:22px;height:22px;border-radius:50%;background:var(--card,#26282e);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--body2,#c9c8c3);">R</span>
+                  <span style="font-size:11.5px;color:var(--dim,#6c6f77);">Última edição por RodReis · {{ selMeta }} · fonte de verdade: repositório</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isGeneric }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:16px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding-bottom:40px;">
+            <div style="position:relative;width:100%;height:200px;margin-bottom:6px;">
+              <div style="position:absolute;inset:0;background-image:url('{{ vistaImg }}');background-size:cover;background-position:center 55%;animation:heroZoom 28s ease-in-out infinite alternate;"></div>
+              <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 35%,var(--surface,#131418));"></div>
+            </div>
+            <span style="width:44px;height:44px;border-radius:12px;background:var(--card,#1c1e23);display:flex;align-items:center;justify-content:center;color:var(--accent,#c9ced8);margin-top:-64px;position:relative;border:1px solid var(--border2,#24262c);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ tabIcon }}"></path></svg></span>
+            <h2 style="margin:0;font-size:17px;font-weight:600;">{{ tabLabel }}</h2>
+            <p style="margin:0;max-width:520px;font-size:13.5px;line-height:1.65;color:var(--muted,#9a9da5);text-wrap:pretty;">{{ tabLong }}</p>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.1em;color:var(--dimmer,#5d6068);">SINCRONIZADO DO REPOSITÓRIO · HOJE</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;carbono&quot;,&quot;claro&quot;],&quot;default&quot;:&quot;claro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Tema&quot;},&quot;showKpis&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Visão Geral&quot;}}">
+class Component extends DCLogic {
+  state = { tab: "visao", comboOpen: false, projIdx: 5, theme: null, docSel: "CLAUDE.md", openF: { docs: true, specs: false, superpowers: false },
+    actOpen: false, syncing: false, actSteps: [], toast: null, newWrites: 0, lastSync: "há 2 h",
+    history: [
+      { k: "E", t: "Moveu a issue #53 para Finalizado", when: "2 h", link: 1 },
+      { k: "R", t: "Reaproveitou as ligações entre documentos — nada mudou desde a última vez", when: "2 h", meta: "sem chamar a IA (sem custo)" },
+      { k: "I", t: "Gerou o resumo do projeto por IA", when: "2 h", meta: "leu 3 documentos · 22.330 tokens de entrada · 951 de saída" },
+      { k: "R", t: "Reaproveitou o resumo do projeto — nada mudou desde a última vez", when: "2 h", meta: "sem chamar a IA (sem custo)" },
+      { k: "E", t: "Moveu a issue #51 para Finalizado", when: "3 h", link: 1 },
+      { k: "R", t: "Reaproveitou as ligações entre documentos — nada mudou desde a última vez", when: "3 h", meta: "sem chamar a IA (sem custo)" }
+    ] };
+  syncPlan = [
+    { type: "read", label: "Lendo documentação do repositório…", doneLabel: "Documentação lida (9 arquivos)", dur: 1000 },
+    { type: "reuso", label: "Comparando com a última sincronização…", doneLabel: "3 documentos inalterados — inferências reaproveitadas", dur: 1100 },
+    { type: "ia", label: "IA gerando o resumo do projeto…", doneLabel: "Resumo gerado (23.281 tokens)", dur: 1800 },
+    { type: "escrita", label: "Escrevendo resumo atualizado no repositório…", doneLabel: "Escrita concluída — resumo atualizado", dur: 1000 }
+  ];
+  startSync = () => {
+    if (this.state.syncing) return;
+    this.setState({ syncing: true, actSteps: [{ i: 0 }] });
+    let t = 0;
+    this.syncPlan.forEach((st, i) => {
+      t += st.dur;
+      this.timers = this.timers || [];
+      this.timers.push(setTimeout(() => {
+        const steps = this.syncPlan.slice(0, i + 1).map((_, k) => ({ i: k, done: true }));
+        if (i + 1 < this.syncPlan.length) steps.push({ i: i + 1 });
+        this.setState({ actSteps: steps });
+        if (i + 1 === this.syncPlan.length) this.finishSync();
+      }, t));
+    });
+  };
+  finishSync() {
+    const entries = [
+      { k: "E", t: "Atualizou o resumo do projeto (Visão Geral)", when: "agora", link: 1 },
+      { k: "I", t: "Gerou o resumo do projeto por IA", when: "agora", meta: "leu 9 documentos · 23.281 tokens" },
+      { k: "R", t: "Reaproveitou as ligações entre documentos — nada mudou", when: "agora", meta: "sem chamar a IA (sem custo)" }
+    ];
+    this.setState(s => ({
+      syncing: false, actSteps: [], lastSync: "agora",
+      history: entries.concat(s.history),
+      toast: "Sincronização concluída — 1 inferência, 1 escrita",
+      newWrites: s.actOpen ? 0 : s.newWrites + 1
+    }));
+    this.timers.push(setTimeout(() => this.setState({ toast: null }), 4400));
+  }
+  componentWillUnmount() { (this.timers || []).forEach(clearTimeout); }
+  docTree = [
+    { f: "docs", depth: 0 },
+    { f: "specs", depth: 1, parent: "docs" },
+    { file: "fatia-14-portfolio.md", depth: 2, parent: "specs" },
+    { file: "fatia-13.6-probe-http.md", depth: 2, parent: "specs" },
+    { f: "superpowers", depth: 1, parent: "docs" },
+    { file: "impeccable.md", depth: 2, parent: "superpowers" },
+    { file: "ARCHITECTURE.md", depth: 1, parent: "docs" },
+    { file: "CONVENTION.md", depth: 1, parent: "docs" },
+    { file: "DECISIONS.md", depth: 1, parent: "docs" },
+    { file: "DESIGN.md", depth: 1, parent: "docs", badge: "CONV" },
+    { file: "DEVELOPMENT.md", depth: 1, parent: "docs", badge: "CONV" },
+    { file: "LANDSCAPE.md", depth: 1, parent: "docs", badge: "CONV" },
+    { file: "STATUS.md", depth: 1, parent: "docs", warn: true },
+    { file: "CLAUDE.md", depth: 0 },
+    { file: "README.md", depth: 0 }
+  ];
+  docBodies = {
+    "CLAUDE.md": {
+      title: "CLAUDE.md — RRB ProPlan", path: "CLAUDE.md", meta: "atualizado hoje",
+      body: [
+        { h: "Papéis e governança" },
+        { seg: [{ t: "Rodrigo Reis (PI)", b: 1 }, { t: " — decide escopo, prioridades e trade-offs; aprova specs e aceita entregas." }] },
+        { seg: [{ t: "Claude Cowork (planejamento)", b: 1 }, { t: " — especifica e mantém " }, { t: "docs/", c: 1 }, { t: " e as specs em " }, { t: "docs/specs/", c: 1 }, { t: ". Spec só vira " }, { t: "aprovada-pi", c: 1 }, { t: " com todas as dúvidas resolvidas. " }, { t: "Nunca implementa código.", b: 1 }] },
+        { seg: [{ t: "Claude Code", b: 1 }, { t: " — planeja, codifica e testa; atualiza a documentação e " }, { t: "sempre commita os documentos de ", b: 1 }, { t: "docs/", c: 1 }, { t: " junto da entrega. Sem spec para a tarefa → perguntar ao PI, nunca assumir." }] },
+        { h: "Ciclo de vida de uma fatia" },
+        { seg: [{ t: "Convenção do trio, executada via GitHub MCP. " }, { t: "Nada disso vira código do ProPlan", b: 1 }, { t: " — o ADR-014 é explícito: o ProPlan se adapta ao repo, nunca impõe convenção." }] },
+        { n: "1.", seg: [{ t: "Spec vira " }, { t: "aprovada-pi", c: 1 }, { t: " → o Code cria a issue no board: coluna " }, { t: "A Fazer", b: 1 }, { t: " (" }, { t: "proplan:todo", c: 1 }, { t: ")." }] },
+        { n: "2.", seg: [{ t: "Code começa → move para " }, { t: "Em Andamento", b: 1 }, { t: " (" }, { t: "proplan:doing", c: 1 }, { t: ") e se atribui." }] },
+        { n: "3.", seg: [{ t: "Code entrega → abre PR; só " }, { t: "depois do merge", b: 1 }, { t: " o card vai para " }, { t: "Feito", b: 1 }, { t: " (" }, { t: "proplan:done", c: 1 }, { t: "). Declarar \u201cterminei\u201d sem PR mergeado é o fechamento frágil que este produto existe para detectar." }] },
+        { n: "4.", seg: [{ t: "PI aceita", b: 1 }, { t: " → só o PI fecha a issue e aplica " }, { t: "proplan:finalizado", c: 1 }, { t: ". " }, { t: "Nenhuma automação pode forjar aceite", b: 1 }, { t: " (ADR-011)." }] }
+      ]
+    },
+    "README.md": { title: "README.md", path: "README.md", meta: "atualizado hoje", body: [
+      { seg: [{ t: "RRB ProPlan", b: 1 }, { t: " — painel de gestão visual do ciclo de vida de projetos de software. Conecta ao repositório GitHub, lê apenas a documentação e monta um workspace com visões que respondem: o que é o projeto, onde parou e o que falta." }] },
+      { seg: [{ t: "O estado do trabalho vive no repositório, em formato aberto — sem aprisionamento. Setup, arquitetura e convenções em " }, { t: "docs/", c: 1 }, { t: "." }] }
+    ] },
+    "ARCHITECTURE.md": { title: "ARCHITECTURE.md", path: "docs/ARCHITECTURE.md", meta: "atualizado há 3 dias", body: [
+      { seg: [{ t: "Como o sistema é desenhado por dentro: módulos de ingestão (documentação-somente), modelo canônico, inferência assistida por IA e write-back para o repositório. Base para avaliar impacto de mudanças e integrar novos desenvolvedores." }] }
+    ] },
+    "CONVENTION.md": { title: "CONVENTION.md", path: "docs/CONVENTION.md", meta: "atualizado há 1 semana", body: [
+      { seg: [{ t: "Convenções do fluxo de trabalho: labels " }, { t: "proplan:todo", c: 1 }, { t: " / " }, { t: "proplan:doing", c: 1 }, { t: " / " }, { t: "proplan:done", c: 1 }, { t: " / " }, { t: "proplan:finalizado", c: 1 }, { t: ", card = fatia, aceite exclusivo do PI." }] }
+    ] },
+    "DECISIONS.md": { title: "DECISIONS.md", path: "docs/DECISIONS.md", meta: "atualizado há 2 dias", body: [
+      { seg: [{ t: "Registro de decisões (ADRs) com o porquê de cada uma. Destaques: " }, { t: "ADR-011", b: 1 }, { t: " — nenhuma automação forja aceite; " }, { t: "ADR-014", b: 1 }, { t: " — o ProPlan se adapta ao repo, nunca impõe convenção." }] }
+    ] },
+    "DESIGN.md": { title: "DESIGN.md", path: "docs/DESIGN.md", meta: "atualizado há 5 dias", body: [
+      { seg: [{ t: "Padrões visuais e de interface: identidade, componentes e regras de usabilidade que garantem consistência nas telas do produto." }] }
+    ] },
+    "DEVELOPMENT.md": { title: "DEVELOPMENT.md", path: "docs/DEVELOPMENT.md", meta: "atualizado há 5 dias", body: [
+      { seg: [{ t: "Guia de desenvolvimento: setup local, ciclo de testes e o processo de entrega — PR com " }, { t: "refs #N", c: 1 }, { t: " no corpo; a issue só fecha com o aceite do PI." }] }
+    ] },
+    "LANDSCAPE.md": { title: "LANDSCAPE.md", path: "docs/LANDSCAPE.md", meta: "atualizado há 5 dias", body: [
+      { seg: [{ t: "Mapa do território: sistemas vizinhos, integrações (GitHub MCP) e limites do produto — o que o ProPlan lê, o que nunca toca (código-fonte) e onde a fonte de verdade vive." }] }
+    ] },
+    "STATUS.md": { title: "STATUS.md", path: "docs/STATUS.md", meta: "atualizado há 2 meses",
+      warn: "Documentação parada há 2 meses enquanto o código continua mudando — candidato a revisão ou remoção (a Visão Geral já cumpre esse papel).",
+      body: [ { seg: [{ t: "Instantâneo manual de status do projeto, anterior à Visão Geral automática. Mantido por compatibilidade." }] } ] },
+    "fatia-14-portfolio.md": { title: "Spec — Fatia 14: Portfólio", path: "docs/specs/fatia-14-portfolio.md", meta: "aprovada-pi · há 4 dias", body: [
+      { seg: [{ t: "Visão de portfólio cross-projeto com radar de risco (staleness, cobertura, deploy, CI), " }, { t: "sem", b: 1 }, { t: " health score composto. Status: " }, { t: "aprovada-pi", c: 1 }, { t: ", aguardando início." }] }
+    ] },
+    "fatia-13.6-probe-http.md": { title: "Spec — Fatia 13.6: Probe HTTP", path: "docs/specs/fatia-13.6-probe-http.md", meta: "entregue · hoje", body: [
+      { seg: [{ t: "Verificação ativa de sistemas em produção via probe HTTP, alimentando o alerta de drift de deploy. Entregue — aguardando aceite do PI." }] }
+    ] },
+    "impeccable.md": { title: "Superpower — impeccable", path: "docs/superpowers/impeccable.md", meta: "atualizado há 2 semanas", body: [
+      { seg: [{ t: "Skill de qualidade de UI/UX usada pelo Claude Code nas telas do produto. Transparência: o que é feito por humanos e o que é apoiado por máquina." }] }
+    ] }
+  };
+  tabs = [
+    { id: "visao", label: "Visão Geral", group: "PROJETO", icon: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z", desc: "O resumo executivo: o que é o projeto, onde parou e o que falta.", long: "" },
+    { id: "docs", label: "Documentos", group: "PROJETO", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h6", desc: "Toda a documentação reunida e navegável em um só lugar.", long: "Toda a documentação do projeto reunida e navegável, com indicação do que existe, do que está desatualizado e do que ainda não foi documentado." },
+    { id: "kanban", label: "Kanban", group: "PROJETO", icon: "M4 4h5v12H4zM10 4h5v8h-5zM16 4h5v16h-5z", desc: "O quadro oficial de tarefas — a validação final é sempre sua.", long: "" },
+    { id: "grafo", label: "Grafo", group: "PROJETO", icon: "M6 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M18 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M8.5 8.5l7 7M8.8 6.5l5.4-.3", desc: "Mapa visual de como os documentos se conectam entre si.", long: "Um mapa visual de como os documentos se conectam entre si. Mostra o encadeamento das informações e revela documentos isolados ou esquecidos." },
+    { id: "decisoes", label: "Decisões", group: "PROJETO", icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11", desc: "O histórico das decisões importantes com o porquê de cada uma.", long: "O histórico das decisões importantes do projeto com o porquê de cada uma. Evita rediscutir o que já foi decidido e explica escolhas para quem chega depois." },
+    { id: "arq", label: "Arquitetura", group: "ENGENHARIA", icon: "M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6", desc: "Como o sistema é desenhado por dentro, em uma visão organizada.", long: "Como o sistema é desenhado por dentro — útil para avaliar impacto de mudanças e para integrar novos fornecedores ou desenvolvedores." },
+    { id: "skills", label: "Skills & Agentes", group: "ENGENHARIA", icon: "M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8", desc: "Quais ferramentas e assistentes de IA o projeto utiliza.", long: "Quais ferramentas e assistentes de IA o projeto utiliza no desenvolvimento — transparência sobre o que é feito por humanos e o que é apoiado por máquina." },
+    { id: "testes", label: "Testes", group: "ENGENHARIA", icon: "M9 2v6L4 20a1.5 1.5 0 0 0 1.4 2h13.2a1.5 1.5 0 0 0 1.4-2L15 8V2M7 2h10", desc: "A estratégia de qualidade e os ciclos automáticos de verificação.", long: "O projeto foi testado? Como e com que frequência? Mostra a estratégia de qualidade e os ciclos automáticos de verificação." },
+    { id: "design", label: "Design", group: "ENGENHARIA", icon: "M12 19l7-7 3 3-7 7-3-3zM18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5zM2 2l7.586 7.586M11 11m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0", desc: "Padrões visuais e de interface que garantem consistência.", long: "Os padrões visuais e de interface do produto: identidade, componentes e regras de usabilidade que garantem consistência nas telas." },
+    { id: "deploy", label: "Deploy", group: "ENGENHARIA", icon: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5", desc: "Onde o produto vive de verdade — e alertas de divergência.", long: "O sistema está em produção? Em quais plataformas roda? Responde onde o produto vive de verdade — e alerta quando há sistema no ar sem documentação disso." },
+    { id: "contexto", label: "Contexto", group: "GOVERNANÇA", icon: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", desc: "O que só existia na cabeça de quem desenvolve, com autor e data.", long: "O que só existia na cabeça de quem desenvolve — \u201cpor que paramos\u201d, \u201cno que não mexer\u201d — registrado com autor e data. É o seguro contra a saída de pessoas-chave." },
+    { id: "handoff", label: "Handoff", group: "GOVERNANÇA", icon: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3", desc: "Instantâneo completo e exportável do estado do projeto.", long: "Um instantâneo completo e exportável do estado do projeto, pronto para entregar a um novo fornecedor, sócio ou equipe — a transição sem refém." }
+  ];
+  projects = [
+    { name: "rrb-escola", badge: "DEPLOY DIVERGENTE", warn: true },
+    { name: "rrb-organize", badge: "DEPLOY?", warn: true },
+    { name: "construtor-erp" },
+    { name: "rrb-adv" },
+    { name: "landpage", badge: "IMPORTAR" },
+    { name: "rrb-proplan" }
+  ];
+  getTheme() { return this.state.theme || this.props.theme || "carbono"; }
+  actVals(P, light) {
+    const kinds = {
+      E: { label: "ESCRITA", fg: light ? "#6b5aa8" : "#a596d8", bg: light ? "rgba(107,90,168,.12)" : "rgba(165,150,216,.15)" },
+      I: { label: "IA", fg: light ? "#3f6aa5" : "#7ea6d8", bg: light ? "rgba(63,106,165,.12)" : "rgba(126,166,216,.14)" },
+      R: { label: "REUSO", fg: P.success, bg: light ? "rgba(21,128,61,.10)" : "rgba(74,222,128,.12)" }
+    };
+    const stepFg = { read: light ? "#3f6aa5" : "#7ea6d8", reuso: P.success, ia: light ? "#3f6aa5" : "#7ea6d8", escrita: light ? "#6b5aa8" : "#a596d8" };
+    const active = this.state.actSteps.find(s => !s.done);
+    const activePlan = active ? this.syncPlan[active.i] : null;
+    return {
+      actOpen: this.state.actOpen,
+      toggleAct: () => this.setState(s => ({ actOpen: !s.actOpen, newWrites: 0 })),
+      startSync: this.startSync,
+      syncing: this.state.syncing,
+      idle: !this.state.syncing,
+      nowTitle: this.state.syncing ? "NESTA SINCRONIZAÇÃO" : "ÚLTIMA SINCRONIZAÇÃO · " + this.state.lastSync.toUpperCase(),
+      actLabel: this.state.syncing ? (activePlan ? activePlan.label : "Sincronizando…") : "Em dia · sync " + this.state.lastSync,
+      actDot: this.state.syncing ? (stepFg[activePlan ? activePlan.type : "ia"]) : P.success,
+      actBorder: this.state.syncing ? (light ? "rgba(63,106,165,.4)" : "rgba(126,166,216,.35)") : (light ? "#dcdcd8" : "#24262c"),
+      actBg: this.state.syncing ? (light ? "rgba(63,106,165,.07)" : "rgba(126,166,216,.07)") : "transparent",
+      actCount: this.state.newWrites > 0 && !this.state.actOpen ? String(this.state.newWrites) : false,
+      toast: this.state.toast || false,
+      actSteps: this.state.actSteps.map(s => {
+        const p = this.syncPlan[s.i];
+        return {
+          label: s.done ? p.doneLabel : p.label,
+          done: !!s.done, active: !s.done,
+          fg: stepFg[p.type],
+          tone: s.done ? (light ? "#5f6268" : "#9a9da5") : (light ? "#191a1d" : "#f5f4f1")
+        };
+      }),
+      actHistory: this.state.history.map(h => {
+        const k = kinds[h.k];
+        return { kind: k.label, t: h.t, when: h.when, meta: h.meta || false, link: !!h.link,
+          edge: k.fg, chipBg: k.bg, chipFg: k.fg };
+      })
+    };
+  }
+  kanbanVals(light) {
+    const prio = {
+      "ALTA": light ? { fg: "#a33c31", bg: "rgba(163,60,49,.10)", edge: "#c65a4e" } : { fg: "#e08a80", bg: "rgba(224,138,128,.12)", edge: "#a85248" },
+      "MÉDIA": light ? { fg: "#8a621d", bg: "rgba(138,98,29,.12)", edge: "#c29a4a" } : { fg: "#d9a05b", bg: "rgba(217,160,91,.12)", edge: "#a8793c" },
+      "BAIXA": light ? { fg: "#5f6268", bg: "rgba(20,22,26,.06)", edge: "#c2c2be" } : { fg: "#9a9da5", bg: "rgba(255,255,255,.07)", edge: "#3a3d45" }
+    };
+    const hue = (dot, tint, count) => ({ dot, bg: tint.replace(/,\.0\d\)/, light ? ",.09)" : ",.10)"), countBg: count });
+    const cols = [
+      Object.assign(hue(light ? "#6b7280" : "#8a90a0", light ? "rgba(107,114,128,.05)" : "rgba(138,144,160,.04)", light ? "rgba(107,114,128,.12)" : "rgba(138,144,160,.14)"), { label: "BACKLOG", count: "6", cards: [
+        { t: "Observabilidade: métricas de sync/jobs, alertas de rate limit", pr: "MÉDIA", n: "#10" },
+        { t: "Defasagem por documento (badge por aba) — só se o alerta do ADR-010 se provar útil", pr: "BAIXA", n: "#9" },
+        { t: "Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy", pr: "BAIXA", n: "#8" },
+        { t: "Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão", pr: "BAIXA", n: "#6" },
+        { t: "Definição de arquitetura, ADRs e convenção de dados", av: 1, n: "#13" },
+        { t: "Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011)", n: "#4" }
+      ] }),
+      Object.assign(hue(light ? "#3f6aa5" : "#7ea6d8", light ? "rgba(63,106,165,.06)" : "rgba(126,166,216,.05)", light ? "rgba(63,106,165,.12)" : "rgba(126,166,216,.14)"), { label: "A FAZER", count: "3", cards: [
+        { t: "Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools", pr: "ALTA", n: "#3" },
+        { t: "Fatia 10 — docs/CONTEXT.md: captura de asserção humana, \u201co que não mexer\u201d, validade por SHA (ADR-013)", pr: "ALTA", n: "#2" },
+        { t: "Fatia 8 — Multi-tenant: RBAC, organizações, billing", pr: "BAIXA", n: "#7" }
+      ] }),
+      Object.assign(hue(light ? "#96691c" : "#d9a05b", light ? "rgba(150,105,28,.06)" : "rgba(217,160,91,.05)", light ? "rgba(150,105,28,.12)" : "rgba(217,160,91,.14)"), { label: "EM ANDAMENTO", count: "0", cards: [], empty: true }),
+      Object.assign(hue(light ? "#6b5aa8" : "#a596d8", light ? "rgba(107,90,168,.06)" : "rgba(165,150,216,.05)", light ? "rgba(107,90,168,.12)" : "rgba(165,150,216,.14)"), { label: "FEITO", count: "0", cards: [], empty: true }),
+      Object.assign(hue(light ? "#15803d" : "#4ade80", light ? "rgba(21,128,61,.06)" : "rgba(74,222,128,.05)", light ? "rgba(21,128,61,.12)" : "rgba(74,222,128,.14)"), { label: "FINALIZADO", count: "13", more: "+ 8 mais", cards: [
+        { t: "Fatia 9 — Modelo canônico + proveniência por campo + confiança determinística (SPEC-014)", pr: "ALTA", n: "#1", av: 1, done: 1 },
+        { t: "Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6)", pr: "ALTA", n: "#42", av: 1, done: 1 },
+        { t: "Fatia 13 — Drift de deploy: confronto de fontes, sem coroar verdade (SPEC-013 v2.1)", pr: "ALTA", n: "#5", av: 1, done: 1 },
+        { t: "Fatia 7.7 — Invalidação de inferência por inputHash (SPEC-011)", pr: "ALTA", n: "#31", av: 1, done: 1 },
+        { t: "Fatia 6.2 — Formato de Deploy: 3 eixos (ambiente × componente × infra de apoio)", pr: "MÉDIA", n: "#53", av: 1, done: 1 }
+      ] })
+    ];
+    return {
+      kanbanCols: cols.map(c => ({
+        label: c.label, count: c.count, dot: c.dot, countBg: c.countBg,
+        empty: !!c.empty, more: c.more || false,
+        cards: c.cards.map(k => {
+          const p = k.pr ? prio[k.pr] : null;
+          return { t: k.t, n: k.n, av: !!k.av, done: !!k.done,
+            tint: "linear-gradient(" + c.bg + "," + c.bg + ")",
+            pr: k.pr || false, prBg: p ? p.bg : "", prFg: p ? p.fg : "",
+            edge: p ? p.edge : "transparent" };
+        })
+      }))
+    };
+  }
+  docsVals(P, light) {
+    const visible = this.docTree.filter(n => !n.parent || this.state.openF[n.parent]);
+    const files = this.docTree.filter(n => n.file).length;
+    const sel = this.docBodies[this.state.docSel] || this.docBodies["CLAUDE.md"];
+    const selNode = this.docTree.find(n => n.file === this.state.docSel) || {};
+    return {
+      docCount: files + " arquivos",
+      treeItems: visible.map(n => {
+        const isSel = n.file === this.state.docSel;
+        return {
+          name: n.f || n.file,
+          isFolder: !!n.f, isFile: !!n.file,
+          chev: n.f && this.state.openF[n.f] ? "90deg" : "0deg",
+          pad: (10 + n.depth * 16) + "px",
+          bg: isSel ? P.itemOn : "transparent",
+          fg: isSel ? P.fgOn : (n.f ? P.fgOn : P.fgOff),
+          fw: isSel || n.f ? "600" : "400",
+          iconFg: n.warn ? P.accent : P.iconOff,
+          badge: n.badge || false,
+          badgeBg: P.neutralBg, badgeFg: P.neutralFg,
+          onClick: n.f
+            ? () => this.setState(s => ({ openF: Object.assign({}, s.openF, { [n.f]: !s.openF[n.f] }) }))
+            : () => this.setState({ docSel: n.file })
+        };
+      }),
+      selTitle: sel.title, selPath: sel.path, selMeta: sel.meta,
+      selChip: selNode.warn ? "desatualizado" : (selNode.badge ? "convenção" : "sincronizado"),
+      selChipBg: selNode.warn ? P.accentSoft : (selNode.badge ? P.neutralBg : P.successSoft),
+      selChipFg: selNode.warn ? P.accent : (selNode.badge ? P.neutralFg : P.success),
+      selWarn: sel.warn || false,
+      selBody: (sel.body || []).map(b => ({
+        h: b.h || false,
+        isText: !b.h,
+        n: b.n || false,
+        seg: (b.seg || []).map(s => ({
+          t: s.t,
+          code: !!s.c, plain: !s.c,
+          fw: s.b ? "600" : "400",
+          fg: s.b ? P.fgOn : "inherit"
+        }))
+      }))
+    };
+  }
+  renderVals() {
+    const light = this.getTheme() === "claro";
+    const P = light ? {
+      accent: "#5b616c", accentSoft: "rgba(91,97,108,.10)", warnBg: "rgba(91,97,108,.12)",
+      neutralBg: "rgba(20,22,26,.06)", neutralFg: "#5f6268",
+      success: "#15803d", successSoft: "rgba(21,128,61,.10)",
+      dotOff: "#c9c9c5", itemOn: "#e8e8e5", fgOn: "#191a1d", fgOff: "#5f6268",
+      iconOff: "#8a8d93", text: "#191a1d"
+    } : {
+      accent: "#c9ced8", accentSoft: "rgba(201,206,216,.14)", warnBg: "rgba(201,206,216,.14)",
+      neutralBg: "rgba(255,255,255,.07)", neutralFg: "#9a9da5",
+      success: "#4ade80", successSoft: "rgba(74,222,128,.12)",
+      dotOff: "#3a3d45", itemOn: "#1c1e23", fgOn: "#f5f4f1", fgOff: "#9a9da5",
+      iconOff: "#6c6f77", text: "#f5f4f1"
+    };
+    const vars = light ? {
+      "--bg": "#f2f2f0", "--panel": "#fafaf8", "--surface": "#ffffff", "--surface2": "#f6f6f4",
+      "--card": "#eeeeec", "--colbg": "#f0f0ee", "--pop": "#ffffff",
+      "--border": "#e5e5e1", "--border2": "#dcdcd8", "--border3": "#d3d3cf", "--hoverb": "#b9b9b5",
+      "--text": "#191a1d", "--text2": "#26272b", "--body": "#3f4147", "--body2": "#33353a",
+      "--muted": "#5f6268", "--faint": "#74777d", "--dim": "#8a8d93", "--dimmer": "#9a9da1",
+      "--accent": "#5b616c", "--accentBorder": "rgba(91,97,108,.35)", "--accentSoft": "rgba(91,97,108,.10)",
+      "--accentFaint": "rgba(91,97,108,.05)", "--btnbg": "#1f2126", "--btnfg": "#ffffff",
+      "--shadow": "rgba(25,26,30,.16)"
+    } : {};
+    const t = this.tabs.find(x => x.id === this.state.tab) || this.tabs[0];
+    const groups = ["PROJETO", "ENGENHARIA", "GOVERNANÇA"];
+    return {
+      themeVars: Object.assign({ display: "block", height: "100vh", background: light ? "#f2f2f0" : "#0c0d0f" }, vars),
+      isDark: !light, isLight: light,
+      toggleTheme: () => this.setState({ theme: light ? "carbono" : "claro" }),
+      projectName: this.projects[this.state.projIdx].name,
+      projectCount: this.projects.length + " projetos",
+      comboOpen: this.state.comboOpen,
+      toggleCombo: () => this.setState(s => ({ comboOpen: !s.comboOpen })),
+      projects: this.projects.map((p, i) => ({
+        name: p.name,
+        badge: p.badge || false,
+        badgeBg: p.warn ? P.warnBg : P.neutralBg,
+        badgeFg: p.warn ? P.accent : P.neutralFg,
+        dot: i === this.state.projIdx ? P.accent : P.dotOff,
+        bg: i === this.state.projIdx ? P.itemOn : "transparent",
+        onClick: () => this.setState({ projIdx: i, comboOpen: false })
+      })),
+      navGroups: groups.map(g => ({
+        label: g,
+        items: this.tabs.filter(x => x.group === g).map(x => {
+          const on = x.id === this.state.tab;
+          return {
+            label: x.label, icon: x.icon, count: x.count || false,
+            bg: on ? P.itemOn : "transparent",
+            fg: on ? P.fgOn : P.fgOff,
+            iconFg: on ? P.accent : P.iconOff,
+            bar: on ? P.accent : "transparent",
+            onClick: () => this.setState({ tab: x.id, comboOpen: false })
+          };
+        })
+      })),
+      tabLabel: t.label, tabDesc: t.desc, tabLong: t.long, tabIcon: t.icon,
+      vistaImg: light ? "assets/workspace-vista-claro.png" : "assets/workspace-vista.png",
+      isOverview: t.id === "visao",
+      isKanban: t.id === "kanban",
+      isDocs: t.id === "docs",
+      isGeneric: t.id !== "visao" && t.id !== "kanban" && t.id !== "docs",
+      ...this.docsVals(P, light),
+      ...this.kanbanVals(light),
+      ...this.actVals(P, light),
+      showKpis: this.props.showKpis ?? true,
+      kpis: [
+        { label: "DOCS · CÓDIGO", value: "hoje · hoje", sub: "sem divergência detectada", fg: P.text },
+        { label: "AGUARDANDO SEU ACEITE", value: "0 entregas", sub: "coluna Feito vazia", fg: P.accent },
+        { label: "ÚLTIMA SINCRONIZAÇÃO", value: "há 12 min", sub: "automática, do repositório", fg: P.text },
+        { label: "DRIFT DE DEPLOY", value: "nenhum", sub: "produção documentada", fg: P.success }
+      ],
+      pendings: [
+        { n: "01", t: "Implementar a Fatia 14 — visão de portfólio cross-projeto com radar de risco (staleness, cobertura, deploy, CI), sem health score composto." },
+        { n: "02", t: "Corrigir bug documentado no write-back: o retry de conflito reusa conteúdo velho em vez de reler e reaplicar o merge (3 call sites)." },
+        { n: "03", t: "Remover o botão morto (BootstrapDialog/commitStatus) da aba Visão Geral, que aponta para endpoint já removido." },
+        { n: "04", t: "Obter o carimbo formal (fechar issue + label proplan:finalizado) de fatias já aceitas pelo PI (ex.: 6.2, 13.5, 10, 13.6, 13)." },
+        { n: "05", t: "Avaliar itens de backlog não priorizados: multi-tenant (Fatia 8), stack via SBOM, observabilidade, botão de regenerar inferência." },
+        { n: "06", t: "Decidir e especificar melhorias futuras: GitHub Projects v2, sub-issues/issue types e timeline/matriz de prontidão." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

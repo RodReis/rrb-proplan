@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0c0d0f;}
+a{color:inherit;text-decoration:none;}
+a:hover{color:var(--accent,#c9ced8);}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:var(--border3,#26282e);border-radius:99px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes heroZoom{from{transform:scale(1);}to{transform:scale(1.1);}}
+</style>
+</helmet>
+<div style="{{ themeVars }}">
+<div data-screen-label="Catálogo" style="display:flex;flex-direction:column;min-height:100vh;background:var(--bg,#0c0d0f);color:var(--text,#f5f4f1);font-family:'IBM Plex Sans',sans-serif;transition:background .3s ease,color .3s ease;">
+  <header style="display:flex;align-items:center;gap:14px;height:60px;padding:0 28px;border-bottom:1px solid var(--border,#1e2025);background:var(--panel,#0e0f12);flex-shrink:0;transition:background .3s ease;">
+    <div style="display:flex;align-items:center;gap:11px;">
+      <span style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#eceef2,#98a0ac);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#16171b;">P</span>
+      <span style="display:flex;flex-direction:column;">
+        <span style="font-size:14px;font-weight:600;">ProPlan</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;color:var(--faint,#8b8e96);">CATÁLOGO</span>
+      </span>
+    </div>
+    <div style="flex:1;"></div>
+    <button onClick="{{ toggleTheme }}" title="Alternar tema" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;border:1px solid var(--border2,#24262c);background:transparent;color:var(--muted,#9a9da5);cursor:pointer;" style-hover="border-color:var(--hoverb,#3a3d45);color:var(--text,#f5f4f1);">
+      <sc-if value="{{ isDark }}" hint-placeholder-val="{{ true }}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+      </sc-if>
+      <sc-if value="{{ isLight }}" hint-placeholder-val="{{ false }}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+      </sc-if>
+    </button>
+    <div style="display:flex;align-items:center;gap:10px;padding-left:14px;border-left:1px solid var(--border,#1e2025);">
+      <span style="width:30px;height:30px;border-radius:50%;background:var(--card,#26282e);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--body2,#c9c8c3);">R</span>
+      <span style="font-size:13px;font-weight:500;">Rodrigo Reis</span>
+      <a href="ProPlan Login.dc.html" style="font-size:12px;color:var(--muted,#9a9da5);">Sair</a>
+    </div>
+  </header>
+  <div style="flex:1;overflow-y:auto;">
+    <div style="max-width:920px;margin:0 auto;padding:36px 32px 64px;display:flex;flex-direction:column;gap:22px;">
+      <div style="position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--border,#1e2025);min-height:160px;display:flex;align-items:flex-end;box-shadow:0 24px 60px var(--shadow,rgba(0,0,0,.45));animation:fadeUp .4s ease both;">
+        <div style="position:absolute;inset:0;background-image:url('{{ bannerImg }}');background-size:cover;background-position:center 42%;animation:heroZoom 26s ease-in-out infinite alternate;"></div>
+        <div style="position:absolute;inset:0;background:{{ bannerOverlay }};"></div>
+        <div style="position:relative;flex:1;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:28px 24px 22px;">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-.01em;color:{{ bannerFg }};">Catálogo</h1>
+            <p style="margin:7px 0 0;font-size:13.5px;color:{{ bannerSub }};max-width:460px;">Repositórios onde o ProPlan (GitHub App) está instalado. Escolha quais serão gerenciados.</p>
+          </div>
+          <button style="display:flex;align-items:center;gap:8px;height:36px;padding:0 16px;border-radius:9px;border:1px solid {{ bannerBtnBorder }};background:{{ bannerBtnBg }};color:{{ bannerFg }};font-family:inherit;font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;backdrop-filter:blur(8px);transition:filter .15s ease;" style-hover="filter:brightness(1.12);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+            Instalar em mais repositórios
+          </button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:6px;animation:fadeUp .4s .05s ease both;">
+        <span style="font-size:15px;font-weight:600;">RodReis</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;padding:3px 8px;border-radius:99px;border:1px solid var(--border2,#24262c);color:var(--faint,#8b8e96);">PESSOAL</span>
+        <span style="flex:1;"></span>
+        <span style="font-size:12px;color:var(--dim,#6c6f77);">{{ summary }}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;animation:fadeUp .4s .1s ease both;">
+        <sc-for list="{{ repos }}" as="r" hint-placeholder-count="8">
+          <div style="display:flex;align-items:center;gap:16px;padding:15px 18px;border-radius:14px;border:1px solid {{ r.border }};background:var(--surface,#131418);transition:border-color .15s ease;" style-hover="border-color:var(--hoverb,#3a3d45);">
+            <span style="width:8px;height:8px;border-radius:50%;background:{{ r.dot }};flex-shrink:0;"></span>
+            <span style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0;">
+              <span style="display:flex;align-items:center;gap:8px;min-width:0;">
+                <span style="font-size:13.5px;color:var(--muted,#9a9da5);white-space:nowrap;">RodReis/</span><span style="font-size:13.5px;font-weight:600;color:var(--text,#f5f4f1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:-8px;">{{ r.name }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.08em;padding:2px 7px;border-radius:99px;border:1px solid var(--border2,#24262c);color:var(--dim,#6c6f77);flex-shrink:0;">privado</span>
+              </span>
+              <span style="font-size:12px;color:var(--dim,#6c6f77);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.desc }} · último push {{ r.push }}</span>
+            </span>
+            <sc-if value="{{ r.managed }}" hint-placeholder-val="{{ false }}">
+              <a href="ProPlan Workspace.dc.html" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted,#9a9da5);white-space:nowrap;">Abrir workspace <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></a>
+            </sc-if>
+            <button onClick="{{ r.onToggle }}" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 14px;border-radius:9px;border:1px solid {{ r.btnBorder }};background:{{ r.btnBg }};color:{{ r.btnFg }};font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s ease;" style-hover="border-color:var(--hoverb,#3a3d45);">
+              <sc-if value="{{ r.managed }}" hint-placeholder-val="{{ false }}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              </sc-if>
+              {{ r.btnLabel }}
+            </button>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:4px 0 0;font-size:12px;color:var(--dim,#6c6f77);text-align:center;">Somente leitura de documentação — o ProPlan nunca clona seu código. Gerenciar um repositório cria o workspace dele.</p>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;carbono&quot;,&quot;claro&quot;],&quot;default&quot;:&quot;carbono&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Tema&quot;}}">
+class Component extends DCLogic {
+  state = { theme: null, managed: { "landpage": 1, "construtor-erp": 1, "rrb-escola": 1, "rrb-organize": 1, "rrb-adv": 1, "rrb-proplan": 1 } };
+  repoList = [
+    { name: "amazon-dashboard", desc: "Sem descrição", push: "24/04/2026" },
+    { name: "landpage", desc: "Landpage da empresa", push: "14/07/2026" },
+    { name: "construtor-erp", desc: "Uma plataforma para construtores", push: "14/07/2026" },
+    { name: "app-consulta", desc: "Consulta Medicas - CODEX", push: "09/05/2026" },
+    { name: "rrb-crm", desc: "crm", push: "23/05/2026" },
+    { name: "rrb-squad", desc: "Sistema Para Profissional Autonomo de Aluno", push: "29/05/2026" },
+    { name: "rrb-escola", desc: "Getão de Escola", push: "15/07/2026" },
+    { name: "escola-site", desc: "Site da Escola", push: "09/06/2026" },
+    { name: "rrb-organize", desc: "rrb-organize", push: "14/07/2026" },
+    { name: "RRB-Trading-Site", desc: "Sem descrição", push: "02/03/2026" },
+    { name: "rrb-adv", desc: "Gestão para advocacia", push: "30/06/2026" },
+    { name: "rrb-proplan", desc: "Painel de governança de projetos", push: "15/07/2026" }
+  ];
+  getTheme() { return this.state.theme || this.props.theme || "carbono"; }
+  renderVals() {
+    const light = this.getTheme() === "claro";
+    const vars = light ? {
+      "--bg": "#f2f2f0", "--panel": "#fafaf8", "--surface": "#ffffff", "--card": "#eeeeec",
+      "--border": "#e5e5e1", "--border2": "#dcdcd8", "--border3": "#d3d3cf", "--hoverb": "#b9b9b5",
+      "--text": "#191a1d", "--body2": "#33353a", "--muted": "#5f6268", "--faint": "#74777d",
+      "--dim": "#8a8d93", "--accent": "#5b616c",
+      "--success": "#15803d"
+    } : {};
+    const P = light
+      ? { accent: "#5b616c", accentSoft: "rgba(91,97,108,.10)", accentBorder: "rgba(91,97,108,.35)", success: "#15803d", dotOff: "#c9c9c5", border: "#dcdcd8", fgOn: "#191a1d", ghostFg: "#5f6268" }
+      : { accent: "#c9ced8", accentSoft: "rgba(201,206,216,.12)", accentBorder: "rgba(201,206,216,.35)", success: "#4ade80", dotOff: "#3a3d45", border: "#24262c", fgOn: "#f5f4f1", ghostFg: "#c9c8c3" };
+    const n = Object.keys(this.state.managed).filter(k => this.state.managed[k]).length;
+    return {
+      themeVars: Object.assign({ display: "block", minHeight: "100vh", background: light ? "#f2f2f0" : "#0c0d0f" }, vars),
+      isDark: !light, isLight: light,
+      toggleTheme: () => this.setState({ theme: light ? "carbono" : "claro" }),
+      bannerImg: light ? "assets/catalogo-banner-claro.jpg" : "assets/catalogo-banner.png",
+      bannerOverlay: light
+        ? "linear-gradient(90deg,rgba(250,250,248,.92),rgba(250,250,248,.55) 55%,rgba(250,250,248,.15))"
+        : "linear-gradient(90deg,rgba(12,13,15,.9),rgba(12,13,15,.5) 55%,rgba(12,13,15,.15))",
+      bannerFg: light ? "#191a1d" : "#f5f4f1",
+      bannerSub: light ? "#5f6268" : "#b4b7bd",
+      bannerBtnBorder: light ? "rgba(25,26,29,.25)" : "rgba(201,206,216,.3)",
+      bannerBtnBg: light ? "rgba(255,255,255,.6)" : "rgba(16,17,20,.6)",
+      summary: this.repoList.length + " repositórios · " + n + " gerenciados",
+      repos: this.repoList.map(r => {
+        const on = !!this.state.managed[r.name];
+        return {
+          name: r.name, desc: r.desc, push: r.push, managed: on,
+          dot: on ? P.success : P.dotOff,
+          border: on ? P.accentBorder : P.border,
+          btnLabel: on ? "Gerenciado" : "Gerenciar",
+          btnBg: on ? P.accentSoft : "transparent",
+          btnBorder: on ? P.accentBorder : P.border,
+          btnFg: on ? P.fgOn : P.ghostFg,
+          onToggle: () => this.setState(s => ({ managed: Object.assign({}, s.managed, { [r.name]: !s.managed[r.name] }) }))
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

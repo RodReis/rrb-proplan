@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0c0d0f;}
+a{color:inherit;text-decoration:none;}
+a:hover{color:var(--accent,#c9ced8);}
+@keyframes floatA{0%,100%{transform:translateY(0px);}50%{transform:translateY(-14px);}}
+@keyframes floatB{0%,100%{transform:translateY(0px);}50%{transform:translateY(10px);}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
+@keyframes dashMove{to{stroke-dashoffset:-24;}}
+@keyframes heroZoom{from{transform:scale(1);}to{transform:scale(1.12);}}
+@keyframes barGrow{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+@keyframes dotPing{0%{box-shadow:0 0 0 0 rgba(150,156,168,.5);}70%{box-shadow:0 0 0 8px rgba(150,156,168,0);}100%{box-shadow:0 0 0 0 rgba(150,156,168,0);}}
+</style>
+</helmet>
+<div style="{{ themeVars }}">
+<div data-screen-label="Login" style="position:relative;display:grid;grid-template-columns:1fr 460px;min-height:100vh;background:var(--bg,#0c0d0f);color:var(--text,#f5f4f1);font-family:'IBM Plex Sans',sans-serif;transition:background .3s ease,color .3s ease;">
+  <button onClick="{{ toggleTheme }}" title="Alternar tema" style="position:absolute;top:18px;right:18px;z-index:20;display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--border2,#24262c);background:var(--surface,#131418);color:var(--muted,#9a9da5);cursor:pointer;transition:all .2s ease;" style-hover="color:var(--text,#f5f4f1);border-color:var(--hoverb,#3a3d45);">
+    <sc-if value="{{ isDark }}" hint-placeholder-val="{{ true }}">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+    </sc-if>
+    <sc-if value="{{ isLight }}" hint-placeholder-val="{{ false }}">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+    </sc-if>
+  </button>
+  <div style="position:relative;overflow:hidden;display:flex;flex-direction:column;background:radial-gradient(900px 600px at 75% 20%,var(--glow,rgba(200,206,216,.07)),transparent 60%),var(--bg,#0c0d0f);transition:background .3s ease;">
+    <div style="position:absolute;inset:0;background-image:linear-gradient(var(--gridln,rgba(255,255,255,.025)) 1px,transparent 1px),linear-gradient(90deg,var(--gridln,rgba(255,255,255,.025)) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse at 60% 40%,black 30%,transparent 75%);"></div>
+    <div style="position:relative;padding:56px 64px 0;max-width:640px;">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;color:var(--accent2,#9aa1ad);animation:fadeUp .6s .1s ease both;">TRANSPARÊNCIA E GOVERNANÇA</span>
+      <h2 style="margin:14px 0 0;font-size:34px;line-height:1.2;font-weight:600;letter-spacing:-.02em;text-wrap:pretty;animation:fadeUp .6s .2s ease both;">Veja em que pé o seu projeto está — sem depender de reunião de status.</h2>
+    </div>
+    <div style="position:relative;flex:1;min-height:320px;margin:20px 44px 0;border-radius:18px;overflow:hidden;border:1px solid var(--border,#1e2025);box-shadow:0 30px 80px var(--shadow,rgba(0,0,0,.5));">
+      <div role="img" aria-label="Grafo de documentos do projeto" style="position:absolute;inset:0;background-image:url('{{ heroImg }}');background-size:cover;background-position:center 45%;animation:heroZoom 24s ease-in-out infinite alternate;"></div>
+      <div style="position:absolute;inset:0;background:{{ heroOverlay }};"></div>
+      <div style="position:absolute;left:20px;top:18px;padding:9px 13px;border-radius:11px;background:var(--cardGlass,rgba(16,17,20,.72));border:1px solid var(--border3,rgba(201,206,216,.18));display:flex;align-items:center;gap:9px;backdrop-filter:blur(8px);animation:floatA 7s ease-in-out infinite;">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--accent,#c9ced8);animation:dotPing 2.4s infinite;"></span>
+        <span style="font-size:11.5px;color:var(--body2,#c9c8c3);">Docs × código: <strong style="color:var(--text,#f5f4f1);">sem divergência</strong></span>
+      </div>
+      <div style="position:absolute;right:20px;bottom:18px;padding:9px 13px;border-radius:11px;background:var(--cardGlass,rgba(16,17,20,.72));border:1px solid var(--border3,rgba(201,206,216,.18));display:flex;align-items:center;gap:9px;backdrop-filter:blur(8px);animation:floatB 8s 1s ease-in-out infinite;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success,#4ade80);"><path d="M20 6 9 17l-5-5"></path></svg>
+        <span style="font-size:11.5px;color:var(--body2,#c9c8c3);">Aceite: <strong style="color:var(--text,#f5f4f1);">sempre humano</strong></span>
+      </div>
+    </div>
+    <div style="position:relative;padding:0 64px 48px;max-width:560px;">
+      <div style="border-top:1px solid var(--border,#1e2025);padding-top:24px;min-height:96px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;color:var(--accent2,#9aa1ad);">{{ featIndexLabel }}</span>
+          <span style="font-size:15px;font-weight:600;">{{ featTitle }}</span>
+        </div>
+        <p style="margin:0;font-size:13.5px;line-height:1.6;color:var(--muted,#9a9da5);text-wrap:pretty;">{{ featDesc }}</p>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:18px;">
+        <sc-for list="{{ featDots }}" as="d" hint-placeholder-count="4">
+          <button onClick="{{ d.onClick }}" style="height:4px;border:none;padding:0;border-radius:99px;cursor:pointer;transition:all .3s ease;width:{{ d.w }};background:{{ d.bg }};"></button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;padding:44px 48px;border-left:1px solid var(--border,#1e2025);background:var(--panel,#0e0f12);transition:background .3s ease;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#eceef2,#98a0ac);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;color:#16171b;">P</div>
+      <div style="display:flex;flex-direction:column;">
+        <span style="font-weight:600;font-size:16px;letter-spacing:-.01em;">ProPlan</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;color:var(--faint,#8b8e96);">GOVERNANÇA DE PROJETOS</span>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:0;max-width:340px;">
+      <h1 style="margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-.02em;animation:fadeUp .6s ease both;">Entrar no painel</h1>
+      <p style="margin:0 0 32px;font-size:14px;line-height:1.6;color:var(--muted,#9a9da5);animation:fadeUp .6s .08s ease both;">Acompanhe seus projetos com estado visível, entregas validadas por você e conhecimento registrado.</p>
+      <a href="ProPlan Catalogo.dc.html" style="display:flex;align-items:center;justify-content:center;gap:10px;height:48px;border-radius:10px;background:var(--btnbg,#e2e5ea);color:var(--btnfg,#101114);font-weight:600;font-size:14px;animation:fadeUp .6s .16s ease both;transition:transform .15s ease,box-shadow .15s ease;" style-hover="transform:translateY(-1px);box-shadow:0 8px 24px rgba(120,128,142,.25);color:var(--btnfg,#101114);">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
+        Entrar com GitHub
+      </a>
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-top:20px;padding:14px 16px;border:1px solid var(--border2,#24262c);border-radius:10px;background:var(--surface,#131418);animation:fadeUp .6s .24s ease both;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;color:var(--accent,#c9ced8);"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+        <span style="font-size:12.5px;line-height:1.55;color:var(--muted,#9a9da5);">Somente leitura de documentação — o ProPlan <strong style="color:var(--body2,#d9d8d4);font-weight:600;">nunca clona seu código</strong>. A fonte de verdade continua sendo o seu repositório.</span>
+      </div>
+      <sc-if value="{{ showPrinciples }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:32px;animation:fadeUp .6s .32s ease both;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;color:var(--dim,#6c6f77);">TRÊS PRINCÍPIOS</span>
+          <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--body2,#c9c8c3);"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent,#c9ced8);"></span>O aceite é sempre humano</div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--body2,#c9c8c3);"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent,#c9ced8);"></span>IA identificada e revisável</div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--body2,#c9c8c3);"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent,#c9ced8);"></span>Seus dados continuam seus</div>
+        </div>
+      </sc-if>
+    </div>
+    <div style="font-size:12px;color:var(--dim,#6c6f77);">Rodrigo Reis · <a href="mailto:rodreisdev@gmail.com" style="color:var(--muted,#9a9da5);">rodreisdev@gmail.com</a></div>
+  </div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:860},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;carbono&quot;,&quot;claro&quot;],&quot;default&quot;:&quot;carbono&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Tema&quot;},&quot;autoRotate&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Hero&quot;},&quot;showPrinciples&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Painel de login&quot;}}">
+class Component extends DCLogic {
+  state = { idx: 0, heroScale: 1, theme: null };
+  feats = [
+    { t: "Transparência contínua", d: "Acompanhe o andamento a qualquer momento, em linguagem de negócio — sem esperar a próxima reunião de status." },
+    { t: "Entregas com validação formal", d: "O quadro separa \u201cFeito\u201d de \u201cFinalizado\u201d: cada entrega passa pelo seu aceite. O \u201cterminei\u201d sem validação deixa de existir." },
+    { t: "Menos dependência de pessoas", d: "O conhecimento do projeto fica registrado e organizado no repositório — não na memória de um desenvolvedor." },
+    { t: "Alerta antes do prejuízo", d: "Documentação defasada e projetos à deriva são sinalizados cedo, quando ainda é barato corrigir." }
+  ];
+  heroRef = (el) => {
+    if (this.ro) { this.ro.disconnect(); this.ro = null; }
+    if (el) {
+      this.ro = new ResizeObserver(() => {
+        const s = Math.min(1, el.clientWidth / 900, el.clientHeight / 390);
+        if (Math.abs(s - this.state.heroScale) > 0.01) this.setState({ heroScale: s });
+      });
+      this.ro.observe(el);
+    }
+  };
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      if (this.props.autoRotate ?? true) this.setState(s => ({ idx: (s.idx + 1) % this.feats.length }));
+    }, 4500);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  getTheme() { return this.state.theme || this.props.theme || "carbono"; }
+  renderVals() {
+    const i = this.state.idx, f = this.feats[i];
+    const light = this.getTheme() === "claro";
+    const vars = light ? {
+      "--bg": "#f2f2f0", "--panel": "#fafaf8", "--surface": "#ffffff", "--card": "#eeeeec",
+      "--border": "#e5e5e1", "--border2": "#dcdcd8", "--border3": "#d3d3cf", "--hoverb": "#b9b9b5",
+      "--text": "#191a1d", "--body2": "#33353a", "--muted": "#5f6268", "--faint": "#74777d",
+      "--dim": "#8a8d93", "--accent": "#5b616c", "--accent2": "#4b515c",
+      "--accentBorder": "rgba(91,97,108,.35)", "--accentSoft": "rgba(91,97,108,.10)",
+      "--success": "#15803d", "--successSoft": "rgba(21,128,61,.10)",
+      "--btnbg": "#1f2126", "--btnfg": "#ffffff",
+      "--glow": "rgba(120,128,142,.10)", "--gridln": "rgba(20,22,26,.05)",
+      "--cardGlass": "rgba(255,255,255,.92)", "--shadow": "rgba(25,26,30,.14)", "--track": "#e0e0dc"
+    } : {};
+    return {
+      themeVars: Object.assign({ display: "block", minHeight: "100vh", background: light ? "#f2f2f0" : "#0c0d0f" }, vars),
+      isDark: !light, isLight: light,
+      heroImg: light ? "assets/hero-grafo-claro.png" : "assets/hero-grafo.jpg",
+      heroOverlay: light
+        ? "linear-gradient(180deg,rgba(242,242,240,.2),transparent 30%,transparent 70%,rgba(242,242,240,.35))"
+        : "linear-gradient(180deg,rgba(12,13,15,.25),transparent 30%,transparent 70%,rgba(12,13,15,.45))",
+      toggleTheme: () => this.setState({ theme: light ? "carbono" : "claro" }),
+      heroRef: this.heroRef,
+      heroScale: this.state.heroScale,
+      showPrinciples: this.props.showPrinciples ?? true,
+      featTitle: f.t, featDesc: f.d,
+      featIndexLabel: "0" + (i + 1) + " / 04",
+      featDots: this.feats.map((_, k) => ({
+        w: k === i ? "28px" : "12px",
+        bg: k === i ? (light ? "#5b616c" : "#c9ced8") : (light ? "#d3d3cf" : "#2a2c33"),
+        onClick: () => this.setState({ idx: k })
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

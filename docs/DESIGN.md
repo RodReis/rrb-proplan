@@ -1,146 +1,164 @@
 ---
 proplan: v1
-updated: 2026-07-12
+updated: 2026-07-15
 ---
 # Design — RRB ProPlan
 
-Referência visual: Untitled UI (layout enviado pelo dono em 2026-07-12). O que se aproveita é o **shell de navegação e a linguagem visual**, não a tela de settings do exemplo.
+> Painel de governança de projetos · tema **Carbono** (padrão) e **Claro** · fonte visual: protótipos em `docs/design/` (Login, Catálogo, Workspace — 2026-07-15).
+>
+> Este arquivo é a **fonte única** de design: tokens, componentes E regras de comportamento. Substitui o par DESIGN.md/DESIGN-SYSTEM.md anterior (referência Untitled UI, 2026-07-12). Onde protótipo e este documento divergirem, **este documento vence**.
 
-## Shell da aplicação
+## 1. Princípios
+
+1. **Carbono + prata, uma cor por vez.** A base é monocromática (grafite/prata). Cor só carrega **significado**: verde = aceito/sem custo, violeta = escrita no repositório, azul = leitura/IA, âmbar = em andamento/atenção, vermelho dessaturado = prioridade alta/erro.
+2. **O aceite é sempre humano.** Estados que dependem do dono ("aguarda seu aceite") usam prata + verde e nunca são fechados por automação (ADR-011).
+3. **Sem buraco de silêncio.** Toda operação de escrita tem presença visual em 3 camadas: pílula viva (topbar) → gaveta de atividade → toast. Ver §7.
+4. **IA sempre distinguível.** Conteúdo inferido leva o chip `INFERIDO POR IA · <provedor>` com ação `Regenerar`; arestas inferidas no grafo são tracejadas. Regra de produto, não estética (ADR-002).
+5. **Movimento discreto e funcional.** 150–300 ms para UI; 20–28 s para imagens (Ken Burns). Nada pisca, nada gira sem motivo. Ver §9.
+
+## 2. Shell da aplicação (padrão workspace)
+
+Um projeto por vez. A sidebar serve ao projeto aberto; a troca de projeto é ato deliberado via combo.
 
 ```
-┌──┬────────────┬──────────────────────────────────────┐
-│R │ Sidebar    │ Header: nome do projeto · ações       │
-│a │ contextual │ ┌──────────────────────────────────┐  │
-│i │            │ │ Abas: Visão Geral | Kanban |     │  │
-│l │ Projetos   │ │ Grafo | Arquitetura | Skills |   │  │
-│  │ (lista de  │ │ Testes | Design | Deploy         │  │
-│í │ repos      │ ├──────────────────────────────────┤  │
-│c │ gerenciados│ │                                  │  │
-│o │ + busca)   │ │ Conteúdo da aba ativa            │  │
-│n │            │ │                                  │  │
-│e │ ──────     │ └──────────────────────────────────┘  │
-│s │ Config     │                                       │
-└──┴────────────┴──────────────────────────────────────┘
+┌────────────┬─────────────────────────────────────────────┐
+│ Sidebar    │ Topbar 60px: breadcrumb · tema · Atividade  │
+│ 270px      │              · Mapeamento · Sincronizar     │
+│            ├─────────────────────────────────────────────┤
+│ [Combo     │                                             │
+│  WORKSPACE]│  Conteúdo da aba ativa                      │
+│ PROJETO    │  max-width 1060px · padding 28px 32px       │
+│ ENGENHARIA │                                             │
+│ GOVERNANÇA │        (gaveta de atividade: 390px,         │
+│            │         overlay à direita, sob a topbar)    │
+│ [usuário]  │                                             │
+└────────────┴─────────────────────────────────────────────┘
+grid-template-columns: 270px 1fr;
 ```
 
-- **Rail de ícones** (colapsável, como no exemplo): Projetos, Sync, Configurações. Avatar embaixo.
-- **Sidebar contextual**: lista de projetos gerenciados com indicador de estado (● sincronizado, ◐ sync em andamento, ○ nunca ingerido, ⚠ conflito). Busca no topo.
-- **Barra de abas** no padrão do exemplo (pills horizontais com contador quando aplicável — ex.: "Kanban 12"): é o mapa 1:1 das abas do workspace definidas em `CONVENTION.md`.
-- **Header do workspace**: nome do repo, link pro GitHub, badge de origem do dado da aba ativa — `convenção` (sólido) vs `inferido por IA` (outline âmbar) + botão "promover a documento" quando inferido.
+- **Combo de workspace** (topo da sidebar): logo "P" 34px + rótulo mono `WORKSPACE` + nome do projeto. Dropdown lista `PROJETOS GERENCIADOS` (ponto de estado + no máx. 1 badge de alerta por item — o mais grave: `sem instalação` > `deploy divergente` > `deploy?` > `importar`) e rodapé `← Voltar ao catálogo`.
+- **Navegação em grupos** (rótulos Mono caixa-alta): `PROJETO` (Visão Geral, Documentos, Kanban, Grafo, Decisões) · `ENGENHARIA` (Arquitetura, Skills & Agentes, Testes, Design, Deploy) · `GOVERNANÇA` (Contexto, Handoff). Item ativo: fundo `--card`, barra esquerda 2.5px `--accent`, ícone `--accent`.
+- **Rodapé de usuário**: avatar + nome + e-mail; menu com Configurações e Sair.
+- **Topbar**: breadcrumb `conta / projeto / aba` · toggle de tema · ações do projeto. Badge de origem do dado da aba ativa quando aplicável (`convenção` vs `INFERIDO POR IA`).
+- **Catálogo** é página cheia (rota `/`), fora do shell de workspace — porta de entrada, com header próprio.
+- **Rotas**: `/` (catálogo) · `/p/:projectId/:tab`. F5 e link direto preservam projeto/aba.
 
-## Linguagem visual (tokens)
+## 3. Tipografia
 
-- **Paleta**: neutros quentes do Untitled UI — fundo `#FCFCFD`, superfícies `#FFFFFF`, bordas `#EAECF0`, texto `#101828`/`#475467`. **Marca carbono, sem cor vibrante** (decisão do PI 2026-07-12): estados ativos e CTAs usam carbono `#1D2939` (grafite escuro), com fundos sutis em cinza claro (`#F9FAFB`). Cor só aparece em sinais semânticos (âmbar IA, verde sucesso, vermelho erro).
-- **Tipografia**: Inter; títulos 18/16 semibold, corpo 14, metadados 12.
-- **Densidade**: espaçosa como o exemplo (padding 16–24px, divisores 1px em vez de cards com sombra).
-- **Estados de IA sempre distinguíveis**: qualquer conteúdo inferido leva o badge âmbar e arestas inferidas no grafo são tracejadas. Regra de produto, não só estética (ADR-002).
+| Uso | Fonte | Peso | Tamanho |
+|---|---|---|---|
+| UI geral, corpo | `IBM Plex Sans` | 400 / 500 | 12.5–14 px |
+| Títulos de página | `IBM Plex Sans` | 600 | 22–28 px, `letter-spacing: -0.01em` |
+| Rótulos técnicos, seções, contadores, caminhos | `IBM Plex Mono` | 400–600 | 9–11 px, `letter-spacing: .11–.16em`, CAIXA ALTA |
+| Código inline (labels `proplan:*`) | `IBM Plex Mono` | 400 | 11 px, chip com borda |
 
-## Operações assíncronas — regra geral (SPEC-010)
+Regra: todo rótulo de **seção/estrutura** é Mono caixa-alta espaçado (`PROJETO`, `HISTÓRICO`, `BACKLOG`); todo **conteúdo** é Sans. Fontes **self-hosted** (`@fontsource/*`) — nunca CDN em runtime (ambiente 100% local).
 
-Toda escrita do ProPlan no repo do usuário (`ação → commit → propagação → sync → recarregar`) leva segundos. **Silêncio nesse intervalo é bug, não detalhe.**
+## 4. Tokens de cor
 
-- **Passos nomeados, em linguagem de gente**: `Commitando docs/ARCHITECTURE.md no repo…` → `Aguardando o GitHub propagar…` → `Sincronizando a documentação…` → `Pronto`. **Nunca** jargão (`202`, `docsTreeSha`, `enqueueSync`).
-- **A tela nunca fica igual e muda.** Se algo está acontecendo, aparece.
-- **Falha é um passo que falha**, com motivo e ação (`Tentar de novo` / `Resolver no repo`) — nunca um toast que some.
-- **A operação sobrevive à navegação**: o usuário sai da aba e continua vendo o progresso no **painel de Atividade** (rail). Feedback preso ao botão não basta.
-- **Estado mora no servidor**: F5 no meio volta mostrando o passo atual.
+CSS custom properties em `:root[data-theme]`. O tema troca **apenas** as variáveis — nenhum componente conhece cor absoluta.
 
-## Notas por aba
+### 4.1 Superfícies e texto
 
-- **Kanban**: 6 colunas fixas (`CONVENTION.md`): Backlog · A Fazer · Em Andamento · **Feito** · **Finalizado** · **Descartado**. **Feito é fila de aceite** — dá destaque (é ação pendente do PI, não conquista): contador em âmbar quando > 0. **Finalizado** é a conquista (verde). **Descartado** colapsada por padrão, cinza/riscado — é decisão, não fracasso.
-  - **Card**: `#número` · título · label de prioridade · **avatar do assignee** no rodapé. **Sem assignee = espaço vazio**, nunca um placeholder cinza — ausência deve ser *visível*, não decorada. **Autor não é exibido** (sempre `proplan[bot]`/PI — avatar idêntico em todo card é ruído).
-  - **Badge "sem dono"** (âmbar, discreto): card em **Em Andamento** sem assignee. Trabalho em curso sem responsável é a semente do projeto esquecido. Card mostra `#número` da issue, título, prioridade e link "abrir no GitHub". Ao mover: estado otimista + borda pulsante até a Issues API confirmar (ADR-011) — toast só no resultado, nunca no gesto. Sem `STATUS.md` importado: banner de importação no topo do board.
-- **Grafo**: react-flow, nós = documentos (cor por tipo: convenção/livre/README), minimapa, clique abre o doc no viewer lateral.
-- **Visão Geral**: **faixa de frescor** no topo (acima de tudo) + resumo IA em blocos "O que é / Onde parou / O que falta" + metadados do repo.
-- **Faixa de frescor** (ADR-010): faixa horizontal full-width, altura de uma linha, cantos `md`. Sempre exibe `Docs: há X · Código: há Y` (datas relativas). Dentro do limiar → fundo `surface`, texto `muted`, sem ícone — informação, não aviso. Acima do limiar → fundo âmbar 10%, borda âmbar 30%, ícone ⚠️ e "Documentação possivelmente defasada", com tooltip explicando o cálculo e onde mudar o limiar. **Nunca é vermelha** — não é erro, é um sinal; e nunca bloqueia ou esconde o conteúdo abaixo. Entrada: fade, sem slide (não competir com o stagger dos blocos).
-- **Deploy**: tabela de ambientes idêntica ao formato do `DEPLOY.md` — renderização direta, sem transformação.
+| Token | Carbono (padrão) | Claro | Uso |
+|---|---|---|---|
+| `--bg` | `#0c0d0f` | `#f2f2f0` | fundo da página |
+| `--panel` | `#0e0f12` | `#fafaf8` | sidebar, topbar |
+| `--surface` | `#131418` | `#ffffff` | cards, painéis |
+| `--surface2` | `#16171b` | `#f6f6f4` | cards internos, inputs |
+| `--card` | `#1c1e23` | `#eeeeec` | hover, ícones-chip, item ativo |
+| `--colbg` | `#101114` | `#f0f0ee` | fundo de coluna Kanban |
+| `--pop` | `#101114` | `#ffffff` | dropdown, gaveta, toast |
+| `--border` | `#1e2025` | `#e5e5e1` | divisores |
+| `--border2` | `#24262c` | `#dcdcd8` | borda de card/botão |
+| `--border3` | `#2a2c33` | `#d3d3cf` | borda forte, tracejados |
+| `--hoverb` | `#3a3d45` | `#b9b9b5` | borda em hover |
+| `--text` | `#f5f4f1` | `#191a1d` | título |
+| `--text2` | `#e8e7e3` | `#26272b` | texto de card |
+| `--body` | `#b8b7b2` | `#3f4147` | parágrafo |
+| `--body2` | `#c9c8c3` | `#33353a` | texto secundário |
+| `--muted` | `#9a9da5` | `#5f6268` | apoio |
+| `--faint` | `#8b8e96` | `#74777d` | rótulos mono |
+| `--dim` | `#6c6f77` | `#8a8d93` | metadados |
+| `--dimmer` | `#5d6068` | `#9a9da1` | placeholder |
+| `--shadow` | `rgba(0,0,0,.5)` | `rgba(25,26,30,.16)` | sombras |
 
-## Design system (extraído do layout de referência)
+### 4.2 Acento e semânticas
 
-Tokens formalizados como CSS variables + Tailwind config — nenhum valor hardcoded em componente.
+| Token | Carbono | Claro | Significado |
+|---|---|---|---|
+| `--accent` | `#c9ced8` (prata) | `#5b616c` (aço) | marca, ativo, foco |
+| `--accentSoft` | `rgba(201,206,216,.12)` | `rgba(91,97,108,.10)` | fundo de chip ativo |
+| `--accentBorder` | `rgba(201,206,216,.35)` | `rgba(91,97,108,.35)` | borda de destaque |
+| `--btnbg` / `--btnfg` | `#e2e5ea` / `#101114` | `#1f2126` / `#ffffff` | botão primário (Sincronizar, Entrar) |
+| `--success` | `#4ade80` | `#15803d` | aceito, finalizado, sem custo |
+| Azul (leitura/IA) | `#7ea6d8` | `#3f6aa5` | eventos de IA, coluna A Fazer |
+| Violeta (escrita) | `#a596d8` | `#6b5aa8` | escrita no repositório, coluna Feito |
+| Âmbar (andamento) | `#d9a05b` | `#96691c` | Em Andamento, prioridade média, alertas |
+| Vermelho (alta/erro) | `#e08a80` | `#a33c31` | prioridade ALTA, falhas |
+| Cinza-ardósia | `#8a90a0` | `#6b7280` | Backlog, neutro |
 
-| Grupo | Tokens |
-|---|---|
-| Cor | `bg: #FCFCFD` · `surface: #FFFFFF` · `surface-hover: #F9FAFB` · `border: #EAECF0` · `text: #101828` · `text-muted: #475467` · `brand: #1D2939` (carbono — ativos/CTAs) · `warning: #F79009` (badge IA) · `success: #12B76A` · `error: #F04438` |
-| Raio | `sm: 6px` (inputs, badges) · `md: 8px` (cards) · `lg: 12px` (modais, painéis) · `full` (pills de aba) |
-| Sombra | `xs` (cards em hover) · `md` (dropdown, popover) · `lg` (modal). Repouso = borda 1px, sem sombra |
-| Espaço | Escala 4px; padding de seção 16–24px |
-| Tipo | Inter · display 18/16 semibold · corpo 14 · meta 12 |
-| Motion | `fast: 150ms` (hover, focus) · `base: 200ms` (abas, toast, dropdown) · `slow: 250ms` (painel lateral, modal) · easing `cubic-bezier(0.16, 1, 0.3, 1)` |
+Gradiente da marca (logo "P", igual nos dois temas): `linear-gradient(135deg, #eceef2, #98a0ac); color: #16171b;`
 
-## Animações e efeitos
+### 4.3 Tintas por etapa do Kanban (fundo do **card**, não da coluna)
 
-Motion com propósito — comunica mudança de estado, nunca decoração gratuita. Regra de ouro: efeito responde a uma ação do usuário ou a uma mudança de estado do sistema; nada anima em loop parado (exceção única: pulso de "commitando").
+`background-color: var(--surface2)` + `background-image: linear-gradient(tinta, tinta)`:
 
-### Micro-interações por componente
+| Etapa | Carbono | Claro |
+|---|---|---|
+| Backlog | `rgba(138,144,160,.10)` | `rgba(107,114,128,.09)` |
+| A Fazer | `rgba(126,166,216,.10)` | `rgba(63,106,165,.09)` |
+| Em Andamento | `rgba(217,160,91,.10)` | `rgba(150,105,28,.09)` |
+| Feito | `rgba(165,150,216,.10)` | `rgba(107,90,168,.09)` |
+| Finalizado | `rgba(74,222,128,.10)` | `rgba(21,128,61,.09)` |
 
-**Cards** (Kanban, projeto na sidebar, blocos da Visão Geral)
+Prioridade = **borda esquerda 3 px** no card: ALTA `#e08a80`/`#c65a4e`, MÉDIA `#d9a05b`/`#c29a4a`, BAIXA `#3a3d45`/`#c2c2be`.
 
-- Hover: lift de 2px (`translateY(-2px)`) + sombra `xs` + borda `border → brand/30%` (`fast`).
-- Entrada em lista: fade + slide-up 12px com stagger de 40ms entre cards (`base`), só na primeira montagem — refetch não re-anima.
-- Drag (Kanban): tilt 2°, sombra `md`, escala 1.02; placeholder tracejado na posição de origem; soltar = spring curto (stiffness 400, damping 30).
-- Estado "commitando": borda pulsando `brand → transparent` em 1.2s até o webhook confirmar.
+## 5. Forma, espaçamento e elevação
 
-**Botões**
+- **Raios:** botões/inputs `9–10px` · cards `14–16px` · banners/hero `18px` · chips/pílulas `99px` · chips de código `6px`.
+- **Espaço:** escala de 4 (4/8/12/16/20/24/28). Gap entre cards `12–16px`; padding de card `16–24px`.
+- **Bordas antes de sombras:** todo card tem `1px solid var(--border2)`; sombra só em flutuantes (`0 24px 60px var(--shadow)` dropdown · `-28px 0 70px` gaveta · `0 20px 50px` toast).
+- **Altura de controles:** botões topbar `34px` · botão primário grande `48px` · linhas de lista `~56px`.
 
-- Hover: fundo escurece um passo (`fast`); primário ganha sombra `xs`.
-- Press: escala 0.97 (`fast`) — feedback tátil.
-- Loading: label desliza pra cima e entra spinner de 14px no lugar; largura do botão fixa (sem "pulo" de layout).
-- Sucesso pontual (ex.: "Copiar"): ícone troca por check com micro-scale, volta em 1.5s.
+## 6. Componentes
 
-**Links e itens de navegação**
+### Botões
+- **Primário** (`Sincronizar`, `Entrar com GitHub`): `background var(--btnbg)`, texto `var(--btnfg)`, sem borda; hover `filter: brightness(1.08)`.
+- **Fantasma**: transparente + `border var(--border2)`, texto `--body2`; hover muda só borda (`--hoverb`) e texto (`--text`).
+- **Toggle Gerenciar/Gerenciado**: fantasma → ativo com fundo `--accentSoft`, borda `--accentBorder`, check e ponto verde.
+- Press: escala 0.97; loading: spinner 14px no lugar do label com largura fixa (sem pulo de layout).
 
-- Links inline: underline animado da esquerda pra direita no hover (`fast`), cor `brand`.
-- Abas: indicador ativo desliza entre pills (layout animation do Framer Motion, `base`) — não pisca de uma pra outra.
-- Itens do rail/sidebar: fundo `surface → #F9FAFB` (`fast`); ícone com micro-scale 1.05; item ativo com barra lateral de 2px `brand` que cresce de baixo pra cima (`fast`).
+### Chips
+- **Estado**: pílula `99px`, fundo semântico suave + texto na cor plena (`aguarda seu aceite` = accentSoft/accent; `aceito` = success).
+- **Técnico** (`privado`, `PESSOAL`, prioridades): Mono 8.5px, caixa alta, `letter-spacing .06–.1em`.
+- **IA**: contorno `--accentBorder`, texto `--accent`, rótulo `INFERIDO POR IA · <provedor>` — sempre acompanhado de `Regenerar`.
 
-**Bordas e focus**
+### Pílula de atividade (topbar) — o "sem silêncio"
+- Ociosa: ponto verde pulsante + `Em dia · sync há 2 h`.
+- Sincronizando: borda/fundo azulados, ponto na cor da etapa, texto Mono narra o passo atual.
+- Escrita com gaveta fechada: badge verde com `popIn`.
 
-- Focus visível universal: ring de 4px `brand/25%` + borda `brand` (padrão Untitled UI), transição `fast`. Nunca remover outline sem substituto.
-- Inputs: borda `border → brand` no focus com o ring acima; erro = borda `error` + shake horizontal de 4px, 2 ciclos, 300ms.
-- Borda-destaque de conteúdo IA: badge âmbar com shimmer sutil único na entrada (1 passada, não loop).
-- Divisores de seção: sem animação — âncora visual estável.
+### Gaveta de Atividade (390px, direita)
+- `NESTA SINCRONIZAÇÃO`: passos com spinner (borda girando) → check verde; ativo `--text`, concluído `--muted`.
+- `O QUE O PROPLAN FEZ NO SEU REPOSITÓRIO`: entradas com chip `ESCRITA` (violeta) / `IA` (azul) / `REUSO` (verde), borda esquerda 3px na mesma cor, meta Mono (tokens/custo) e link `ver no GitHub ↗`.
 
-**Menus, dropdowns e popovers**
+### Toast (canto inferior direito)
+- `--pop` + borda `--border2` + **borda esquerda 3px** na cor semântica + ícone.
+- Ciclo ~4.2 s numa única animação (`toastLife`); erro não auto-fecha. Título 12.5px 600 + subtexto 11px `--dim`. Máx. 3 empilhados. Política de uso: §8.
 
-- Abertura: origin no trigger, scale 0.96 → 1 + fade (`base`); fechamento mais rápido (`fast`) — sair deve ser mais ágil que entrar.
-- Itens: highlight instantâneo no hover (0ms — menu lento irrita), check de seleção com micro-fade.
-- Submenu: desliza 4px da direção de origem.
-- Modal/painel lateral: overlay fade (`base`) + painel slide/scale (`slow`); fechar com Esc sempre.
+### Kanban (dnd-kit)
+- 6 colunas fixas (`CONVENTION.md`): Backlog · A Fazer · Em Andamento · **Feito** · **Finalizado** · **Descartado**. **Feito é fila de aceite** — destaque de ação pendente do PI (contador âmbar quando > 0), não conquista. **Finalizado** é a conquista (verde). **Descartado** = trilho recolhido (34px, texto vertical Mono) — é decisão, não fracasso.
+- Colunas `--colbg` neutras com header: ponto 8px na cor da etapa + rótulo Mono + contador (pílula na cor da etapa a 12–14%) + botão `+`. Coluna vazia: caixa tracejada `--border3`, texto `vazio`.
+- **Card**: tinta da etapa + borda esquerda de prioridade + título 12.5px 500 + rodapé (chip prioridade · avatar 17px · `#issue` Mono). **Sem assignee = espaço vazio**, nunca placeholder — ausência deve ser *visível*, não decorada. Autor não é exibido. **Badge "sem dono"** (âmbar, discreto) em card **Em Andamento** sem assignee.
+- Ao mover: estado otimista + borda pulsante até a Issues API confirmar (ADR-011) — toast só no resultado, nunca no gesto. Sem `STATUS.md` importado: banner de importação no topo.
+- Drag: `DragOverlay` com o mesmo card + `rotate(2deg)`, sombra `0 24px 60px var(--shadow)`; drop target = coluna com borda `--accentBorder`.
 
-### Efeitos de superfície
+### Grafo (react-flow)
+- Nós = documento: `--surface`, borda `--border2` 1px, raio 12px, título Mono 11px; nó desatualizado ganha borda/ícone `--accent` (carbono) ou âmbar (claro). Arestas **inferidas por IA são tracejadas** (ADR-002).
+- Arestas: `stroke: var(--border3)` 1.5px; ativo/hover: `var(--accent)` com `stroke-dasharray: 4 8` animado. Hover destaca vizinhos e esmaece o resto.
+- Fundo: `--bg` + `<Background variant="dots" gap={48} size={1}>` em `--border`. MiniMap/Controls: `--pop` + `--border2`.
 
-- **Skeletons** (não spinners) em toda carga de aba, com shimmer de 1.5s.
-- **Grafo**: nós entram com stagger de 30ms; hover destaca vizinhos e esmaece o resto (`fast`); pan/zoom com inércia leve.
-- **Sidebar/rail**: colapso animado (`slow`) com fade dos labels antes da largura, como no layout de referência.
-- **Empty states**: ilustração + CTA entram com fade + slide-up (`base`).
+### Faixa de aba (hero das abas de documento)
 
-### Limites (o que "moderno" não significa aqui)
-
-Sem parallax, sem animação de scroll-jacking, sem gradientes animados de fundo, sem confete. Densidade de informação vem primeiro — é uma ferramenta de gestão, não uma landing page.
-
-### Acessibilidade e implementação
-
-- Tudo atrás de `prefers-reduced-motion`: usuário com motion reduzido recebe transições instantâneas (opacity ainda permitida).
-- Animar apenas `transform` e `opacity` (compositor); nunca `width/height/top` em listas grandes.
-- Framer Motion para orquestração (abas, layout animations, stagger, presença de modais); CSS puro para hover/focus/press.
-
-## Política de toasts
-
-Regra: **toast comunica resultado do que o usuário não está vendo; estado inline comunica o que ele está vendo.**
-
-| Evento | Feedback |
-|---|---|
-| Mover card (otimista) | Inline: borda pulsante no card — sem toast |
-| Commit confirmado pelo webhook | Toast success "Alterações salvas no repo" (padrão `Changes saved` da referência) |
-| Falha/conflito de commit | Toast error persistente (não auto-fecha) com ação "Resolver" |
-| Sync concluído em background | Toast info com resumo ("3 docs atualizados") |
-| Bootstrap IA pronto para revisão | Toast com ação "Revisar proposta" |
-| Trocar aba, filtrar, buscar, colapsar sidebar | Nada — a própria UI é o feedback |
-
-Racional: toast em toda ação treina o usuário a ignorá-los (fadiga de notificação) e mascara o canal quando um erro real aparece. Toasts empilham no canto inferior direito, máx. 3 visíveis, auto-fecham em 5s exceto erros.
-
-## Componentes
-
-shadcn/ui como base (Tabs, Dialog, Badge, Sonner para toasts) com os tokens acima; dnd-kit no Kanban; react-flow no grafo; Framer Motion. Sem biblioteca de UI pesada por cima.
+Abas que renderizam um do
