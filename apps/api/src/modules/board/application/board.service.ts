@@ -57,6 +57,9 @@ export class BoardService {
     const enabled = await this.issues.issuesEnabled(token, project.owner, project.name);
     if (!enabled) {
       this.logger.warn(`Projeto ${projectId}: Issues desabilitada — modo degradado`);
+      // Modo degradado não pode deixar cache órfão de sync anterior (banco = cache,
+      // repo é fonte de verdade): sem issues no repo, o board tem de refletir vazio.
+      await this.prisma.issue.deleteMany({ where: { projectId } });
       return;
     }
 
