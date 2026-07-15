@@ -331,7 +331,7 @@ O painel dizia "reaproveitou" mas não deixava crível que reaproveitar custou z
 
 **Bug corrigido no aceite**: ao renomear o `kind` do feed (`insight`→`insight_run`), o front tinha o tipo e o mapa `GROUP_OF` ainda no valor antigo → `undefined.mark` quebrava o painel. Escapou do build porque back e front têm tipos separados (acoplados por string). 290 testes no total, builds API+web limpos.
 
-## Fatia 6.1 — Aba Deploy: documento primeiro (SPEC-012, `aprovada-pi`) — `feito` (aguardando merge + aceite runtime do PI)
+## Fatia 6.1 — Aba Deploy: documento primeiro (SPEC-012, `aprovada-pi`) — `feito` (mergeado PR #38/merge #39; aguardando aceite runtime do PI)
 
 Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parser estrutural rígido: `tabs.service` rodava `parseDeploy(md)` e **descartava o documento**. Doc mapeado sem a tabela do `CONVENTION.md` (achado no dogfooding do `rrb-organize`: `docs/runbooks/deploy-railway.md`, prosa) → aba desenhava cabeçalho de tabela vazio. O ProPlan exigindo o próprio formato — violando o ADR-014 na renderização, depois de o mapeamento ter feito a coisa certa.
 
