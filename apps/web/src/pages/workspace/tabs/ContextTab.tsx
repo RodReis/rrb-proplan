@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { api, Assertion } from '../../../lib/api';
 import { OperationSteps, useOperation } from '../OperationSteps';
 
@@ -7,10 +8,13 @@ interface Props {
   syncNonce: number;
 }
 
+const EASE_OUT_EXPO: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
 /**
  * Aba Contexto (SPEC-015, Fatia 10): o cofre do "o que não mexer" (ADR-013).
  * Lista as asserções de docs/CONTEXT.md, captura novas (write-back via bot) e
- * oferece a revalidação leve. A marca `a-revalidar` NUNCA é omitida.
+ * oferece a revalidação leve. A marca `a-revalidar` NUNCA é omitida — e, como o
+ * Feito no Kanban, é fila de ação do dono: destaque âmbar (DESIGN.md).
  */
 export function ContextTab({ projectId, syncNonce }: Props) {
   const [assertions, setAssertions] = useState<Assertion[]>([]);
@@ -22,6 +26,8 @@ export function ContextTab({ projectId, syncNonce }: Props) {
   const [paths, setPaths] = useState('');
   const [body, setBody] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Stagger só na primeira montagem (DESIGN.md) — refetch não re-anima.
+  const animatedOnce = useRef(false);
 
   const reload = useCallback(() => {
     let active = true;
@@ -76,139 +82,300 @@ export function ContextTab({ projectId, syncNonce }: Props) {
     }
   }
 
-  if (loading) return <p className="p-6 text-sm text-text-muted">Carregando…</p>;
-  if (error) return <p className="p-6 text-sm text-error">{error}</p>;
-
   const busy = op !== null && op.status === 'running';
+  const staleCount = assertions.filter((a) => a.status === 'a-revalidar').length;
+  const currentCount = assertions.length - staleCount;
+  if (!loading && !animatedOnce.current) animatedOnce.current = true;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold">Contexto — o que não mexer</h2>
-          <p className="mt-1 text-xs text-text-muted">
-            Asserções do dono, versionadas em <code>docs/CONTEXT.md</code>. Quando um
-            path citado muda, a asserção vira <em>a revalidar</em> — nunca é apagada.
-          </p>
+    <MotionConfig reducedMotion="user">
+      <div className="mx-auto max-w-3xl px-8 py-6">
+        {/* Header: título + contadores à esquerda, CTA primário carbono à direita */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-text">
+              Contexto — o que não mexer
+            </h2>
+            <p className="mt-1 max-w-[58ch] text-xs leading-relaxed text-text-muted">
+              Asserções do dono, versionadas em{' '}
+              <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-[11px]">
+                docs/CONTEXT.md
+              </code>
+              . Quando um path citado muda, a asserção vira <em>a revalidar</em> —
+              nunca é apagada.
+            </p>
+          </div>
+          {!formOpen && !busy && (
+            <button
+              onClick={() => setFormOpen(true)}
+              className="shrink-0 rounded-md bg-brand px-3.5 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97]"
+            >
+              Registrar asserção
+            </button>
+          )}
         </div>
-        {!formOpen && (
-          <button
-            onClick={() => setFormOpen(true)}
-            className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand"
+
+        {/* Contadores — a-revalidar é fila de ação do dono (âmbar, como Feito no Kanban) */}
+        {!loading && assertions.length > 0 && (
+          <div className="mt-4 flex items-center gap-2 text-[11px]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-text-muted">
+              <span className="size-1.5 rounded-full bg-success" aria-hidden />
+              {currentCount} vigente{currentCount === 1 ? '' : 's'}
+            </span>
+            {staleCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 font-semibold text-warning-strong">
+                <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+                {staleCount} a revalidar
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Operação em curso: passos nomeados (SPEC-010) */}
+        <AnimatePresence>
+          {op && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+              className="mt-5 rounded-lg border border-border bg-surface p-4"
+            >
+              <OperationSteps op={op} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {submitError && (
+          <div className="mt-5 rounded-md border border-error/30 bg-error/5 px-4 py-3 text-sm text-error">
+            {submitError}
+          </div>
+        )}
+
+        {/* Formulário de captura */}
+        <AnimatePresence initial={false}>
+          {formOpen && !busy && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.2, ease: EASE_OUT_EXPO }}
+              className="mt-5 rounded-lg border border-border bg-surface p-5"
+            >
+              <h3 className="text-sm font-semibold text-text">Nova asserção</h3>
+              <p className="mt-0.5 text-[11px] text-text-muted">
+                Autor, data e SHA do repositório são preenchidos automaticamente.
+              </p>
+
+              <label className="mt-4 block">
+                <span className="text-xs font-medium text-text">
+                  O que não mexer (uma frase)
+                </span>
+                <input
+                  value={statement}
+                  onChange={(e) => setStatement(e.target.value)}
+                  placeholder="Não refatorar o motor de folha v1 antes do corte com o contador"
+                  className="mt-1.5 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-all duration-150 placeholder:text-text-muted/80 focus:border-brand focus:ring-4 focus:ring-brand/25"
+                />
+              </label>
+
+              <label className="mt-3.5 block">
+                <span className="text-xs font-medium text-text">Paths citados</span>
+                <input
+                  value={paths}
+                  onChange={(e) => setPaths(e.target.value)}
+                  placeholder="lib/folha/engine/, supabase/migrations/…"
+                  className="mt-1.5 w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-[13px] text-text outline-none transition-all duration-150 placeholder:font-sans placeholder:text-sm placeholder:text-text-muted/80 focus:border-brand focus:ring-4 focus:ring-brand/25"
+                />
+                <span className="mt-1 block text-[11px] text-text-muted">
+                  Separe por vírgula ou quebra de linha. São eles que datam a validade.
+                </span>
+              </label>
+
+              <label className="mt-3.5 block">
+                <span className="text-xs font-medium text-text">
+                  Detalhe <span className="font-normal text-text-muted">(opcional)</span>
+                </span>
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={3}
+                  placeholder="Por quê? O que acontece se mexerem?"
+                  className="mt-1.5 w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-text outline-none transition-all duration-150 placeholder:text-text-muted/80 focus:border-brand focus:ring-4 focus:ring-brand/25"
+                />
+              </label>
+
+              <div className="mt-4 flex items-center gap-2 border-t border-border pt-4">
+                <button
+                  onClick={() => void submit()}
+                  disabled={!statement.trim() || !paths.trim()}
+                  className="rounded-md bg-brand px-3.5 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+                >
+                  Salvar no repositório
+                </button>
+                <button
+                  onClick={() => setFormOpen(false)}
+                  className="rounded-md px-3.5 py-2 text-xs font-semibold text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
+                >
+                  Cancelar
+                </button>
+                <span className="ml-auto text-[11px] text-text-muted">
+                  Vira commit do <span className="font-mono">proplan[bot]</span>
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Carga: skeleton, nunca spinner (DESIGN.md) */}
+        {loading && (
+          <div className="mt-5 space-y-3" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-24 animate-pulse rounded-lg bg-border/50" />
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-5 rounded-md border border-error/30 bg-error/5 px-4 py-3 text-sm text-error">
+            {error}
+          </div>
+        )}
+
+        {/* Empty state que ensina (DESIGN.md: ilustração + CTA, fade + slide-up) */}
+        {!loading && !error && assertions.length === 0 && !formOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
+            className="mt-10 flex flex-col items-center px-6 text-center"
           >
-            Registrar asserção
-          </button>
+            <div className="flex size-12 items-center justify-center rounded-full border border-border bg-surface text-text-muted">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z" />
+                <path d="M12 8v4" />
+                <circle cx="12" cy="15" r="0.5" fill="currentColor" />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-sm font-semibold text-text">
+              Nenhuma asserção registrada
+            </h3>
+            <p className="mt-1.5 max-w-[46ch] text-sm leading-relaxed text-text-muted">
+              O que só existe na sua cabeça — a gambiarra intencional, o módulo que
+              parece morto e não é — morre com o contexto. Registre aqui e vira
+              documentação versionada.
+            </p>
+            <button
+              onClick={() => setFormOpen(true)}
+              className="mt-5 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97]"
+            >
+              Registrar a primeira
+            </button>
+          </motion.div>
+        )}
+
+        {/* Lista de asserções */}
+        {!loading && assertions.length > 0 && (
+          <ul className="mt-5 space-y-3">
+            {assertions.map((a, i) => {
+              const stale = a.status === 'a-revalidar';
+              return (
+                <motion.li
+                  key={a.id}
+                  initial={
+                    animatedOnce.current ? false : { opacity: 0, y: 12 }
+                  }
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.2,
+                    delay: Math.min(i * 0.04, 0.4),
+                    ease: EASE_OUT_EXPO,
+                  }}
+                  className={
+                    'group rounded-lg border bg-surface p-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm ' +
+                    (stale
+                      ? 'border-warning/40 bg-warning/[0.04] hover:border-warning/60'
+                      : 'border-border hover:border-brand/30')
+                  }
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold leading-snug text-text">
+                      {a.statement}
+                    </p>
+                    {/* A marca a-revalidar é OBRIGATÓRIA em toda exposição (SPEC-015) */}
+                    {stale ? (
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning-strong">
+                        <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+                        a revalidar
+                      </span>
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted">
+                        <span className="size-1.5 rounded-full bg-success/70" aria-hidden />
+                        vigente
+                      </span>
+                    )}
+                  </div>
+
+                  {a.body && (
+                    <p className="mt-1.5 max-w-[68ch] text-[13px] leading-relaxed text-text-muted">
+                      {a.body}
+                    </p>
+                  )}
+
+                  {a.paths.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {a.paths.map((p) => (
+                        <code
+                          key={p}
+                          className="rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-[11px] text-text-muted"
+                        >
+                          {p}
+                        </code>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-2.5">
+                    <span className="text-[11px] text-text-muted">
+                      {a.author}
+                      {a.assertedAt && (
+                        <>
+                          {' · '}
+                          <time dateTime={a.assertedAt}>{a.assertedAt}</time>
+                        </>
+                      )}
+                      {a.assertedSha && (
+                        <>
+                          {' · '}
+                          <span className="font-mono">{a.assertedSha}</span>
+                        </>
+                      )}
+                    </span>
+                    {stale && !busy && (
+                      <button
+                        onClick={() => void revalidate(a.id)}
+                        className="rounded-md border border-warning/50 px-2.5 py-1 text-[11px] font-semibold text-warning-strong transition-all duration-150 hover:bg-warning/10 active:scale-[0.97]"
+                      >
+                        Ainda vale — confirmar
+                      </button>
+                    )}
+                  </div>
+                </motion.li>
+              );
+            })}
+          </ul>
         )}
       </div>
-
-      {op && (
-        <div className="mb-4 rounded-md border border-border p-4">
-          <OperationSteps op={op} />
-        </div>
-      )}
-      {submitError && <p className="mb-4 text-sm text-error">{submitError}</p>}
-
-      {formOpen && !busy && (
-        <div className="mb-6 rounded-md border border-border p-4">
-          <label className="block text-xs font-medium">
-            O que não mexer (e por quê, em uma frase)
-            <input
-              value={statement}
-              onChange={(e) => setStatement(e.target.value)}
-              placeholder="Não refatorar o motor de folha v1 antes do corte com o contador"
-              className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="mt-3 block text-xs font-medium">
-            Paths citados (vírgula ou linha)
-            <input
-              value={paths}
-              onChange={(e) => setPaths(e.target.value)}
-              placeholder="lib/folha/engine/, supabase/migrations/…"
-              className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="mt-3 block text-xs font-medium">
-            Detalhe (opcional)
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={3}
-              className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm"
-            />
-          </label>
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={() => void submit()}
-              disabled={!statement.trim() || !paths.trim()}
-              className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              Salvar no repositório
-            </button>
-            <button
-              onClick={() => setFormOpen(false)}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {assertions.length === 0 && !formOpen && (
-        <div className="rounded-md border border-dashed border-border p-8 text-center text-sm text-text-muted">
-          Nenhuma asserção registrada. O que só existe na sua cabeça — a gambiarra
-          intencional, o módulo que parece morto e não é — morre com o contexto.
-          Registre aqui e vira documentação versionada.
-        </div>
-      )}
-
-      <ul className="space-y-3">
-        {assertions.map((a) => (
-          <li key={a.id} className="rounded-md border border-border p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="text-sm font-medium">{a.statement}</div>
-              {/* A marca a-revalidar é OBRIGATÓRIA em toda exposição (SPEC-015) */}
-              {a.status === 'a-revalidar' ? (
-                <span
-                  className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold"
-                  style={{
-                    borderColor: 'var(--color-warning)',
-                    color: 'var(--color-warning)',
-                    backgroundColor:
-                      'color-mix(in oklab, var(--color-warning) 8%, transparent)',
-                  }}
-                >
-                  a revalidar
-                </span>
-              ) : (
-                <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted">
-                  vigente
-                </span>
-              )}
-            </div>
-            {a.body && <p className="mt-2 text-xs text-text-muted">{a.body}</p>}
-            <div className="mt-2 text-[11px] text-text-muted">
-              {a.paths.join(' · ')}
-            </div>
-            <div className="mt-1 flex items-center justify-between text-[11px] text-text-muted">
-              <span>
-                {a.author}
-                {a.assertedAt ? ` · ${a.assertedAt}` : ''}
-                {a.assertedSha ? ` · ${a.assertedSha}` : ''}
-              </span>
-              {a.status === 'a-revalidar' && !busy && (
-                <button
-                  onClick={() => void revalidate(a.id)}
-                  className="rounded-md border border-border px-2 py-1 font-semibold hover:border-brand hover:text-brand"
-                >
-                  Ainda vale — confirmar
-                </button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+    </MotionConfig>
   );
 }
