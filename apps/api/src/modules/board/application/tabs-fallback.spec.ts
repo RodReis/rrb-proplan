@@ -34,9 +34,13 @@ describe('TabsService.getTab — fallback inferido (architecture/design)', () =>
     expect(out.payload).toBeNull();
   });
 
-  it('entidade não-arch/design ausente (ex.: deploy) → não consulta fallback, payload null', async () => {
+  it('entidade não-arch/design ausente (ex.: deploy) → não consulta fallback de IA, payload null', async () => {
     const resolution = { entity: 'deploy', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
-    const prisma = { document: { findUnique: jest.fn(), findMany: jest.fn() } } as any;
+    const prisma = {
+      document: { findUnique: jest.fn(), findMany: jest.fn() },
+      // SPEC-013: deploy nível 4 consulta o drift (nunca IA); sem drift → payload null.
+      project: { findUnique: jest.fn().mockResolvedValue({ deployVerdict: null, deploySignals: null, deployObservedAt: null }) },
+    } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = {
       latestClassifySpans: jest.fn(),

@@ -272,7 +272,7 @@ Alternativas rejeitadas: (a) *resolver inteiro no `insight`* — deixa a cauda b
 **Consequências boas**:
 
 - **Identidade de bot**: todo commit e toda issue criada pelo ProPlan sai como `proplan[bot]` — nunca como Rodrigo. Auditoria limpa: dá para separar "o que o ProPlan fez" de "o que o humano fez" **por autor**, não por heurística de mensagem. Isso **não** revoga a decisão do `.proplan/` (ADR-011) — a separação de diretório continua sendo a defesa primária do ADR-010; o autor bot é um **segundo sinal**, redundante de propósito.
-- **Permissão mínima**: `Contents: read+write` (só para `.proplan/`), `Issues: read+write`, `Metadata: read`, `Actions: read`. Nada de `Administration`, nada de acesso a código além do que o ADR-003 já permite.
+- **Permissão mínima**: `Contents: read+write` (só para `.proplan/`), `Issues: read+write`, `Metadata: read`, `Actions: read`, `Deployments: read` (SPEC-013, concedida em 2026-07-14 — só leitura de metadados de deployment GitHub-side, nunca conteúdo de código). Nada de `Administration`, nada de acesso a código além do que o ADR-003 já permite. A leitura de deployments usa **user-to-server token** (respeita a visibilidade do usuário), não o installation token — leitura com installation token permanece proibida.
 - **Escritas sem o usuário presente**: installation token é server-to-server. Habilita jobs agendados no futuro (sync noturno) sem guardar token de usuário vivo.
 - **Rate limit por instalação**, não por usuário — escala para multi-tenant sem mudança.
 - **Webhooks nativos do App** quando o ADR-009 for revisto (deploy em nuvem).
@@ -347,3 +347,29 @@ O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013)
 **Contexto**: a arquitetura previa webhook `push` do GitHub para sync incremental, mas GitHub não alcança `localhost` — exigiria túnel (smee/ngrok), que é infraestrutura frágil e contradiz a regra "100% local até o fim do MVP".
 **Decisão**: nenhum webhook no MVP. Reconciliação: (a) re-sync automático após cada commit feito pelo próprio ProPlan (bootstrap, Kanban); (b) botão Sincronizar para mudanças externas; (c) opcional futuro: polling agendado por projeto. Webhook volta quando existir endpoint público (deploy em nuvem), reaproveitando o desenho da ARCHITECTURE.md.
 **Consequências**: mudanças feitas fora do ProPlan só aparecem em sync manual — aceitável para usuário único que sabe quando mexeu no repo. O código de sync não muda; só o gatilho.
+
+## ADR-018 — Probe HTTP não-autenticado de URL declarada como sinal de deploy
+
+**Status**: **aprovado pelo PI em 2026-07-14**. Rege a **Fatia 13.6** (probe do drift de deploy). Complementa a **SPEC-013 v2.1**, que embarca **sem** probe. As 7 guardas SSRF-safe abaixo são **condição de aceite da 13.6**, não recomendação.
+
+**Contexto**: a SPEC-013 confronta 4 fontes de plataforma de deploy (doc, config no repo, GitHub Deployments, URL declarada). Três são **registro ou asserção**; nenhuma toca a realidade. O caso `rrb-escola` provou o custo disso (2026-07-14): toda fonte GitHub-side aponta Vercel — por resíduo e congelamento — enquanto a produção real (Netlify+Railway) é **invisível** a elas. A v2.1 extrai a plataforma do **domínio** da URL declarada por parse de string (sem chamada externa), o que resolve URLs com domínio-de-plataforma (`*.netlify.app`), mas **não** domínio próprio (`gestao.epgtrindade.com.br`) e **não confirma liveness** (a URL declarada pode estar velha).
+
+**O que o probe adiciona, e por que é on-thesis**: um GET HTTP à URL declarada é a **única fonte que confronta o mundo** — confirma que aquela URL **está no ar servindo aquela plataforma agora**, e identifica plataforma de **domínio próprio** pelos headers de resposta (`x-vercel-id`, `x-nf-request-id`, `server`, `via`, `x-railway-*`). É a materialização da tese do `LANDSCAPE.md` (*"falta o confronto com o mundo"*).
+
+**Por que não entrou na SPEC-013**: o probe é o **único ponto da fatia que abre superfície de segurança séria** — **SSRF** (o servidor busca uma URL fornecida pelo usuário). Um probe ingênuo permite apontar o backend do ProPlan para `169.254.169.254` (metadata de cloud), `localhost` ou IP interno. A instância de deploy não é a hora de improvisar isso; o probe recebe fatia e revisão de segurança próprias.
+
+**Decisão**: autorizar o probe **somente** na forma de **fetch endurecido (SSRF-safe)**, com todas as guardas abaixo — não-negociáveis:
+
+1. **Só `https`** (rejeita `http`, `file:`, `gopher:`, `ftp:`, etc.).
+2. **Resolver o DNS e rejeitar destino não-público**: privado (RFC1918), loopback (`127/8`, `::1`), link-local (`169.254/16` — mata o metadata endpoint), CGNAT (`100.64/10`), `fc00::/7`. Checagem **após** resolução, não sobre o hostname.
+3. **Re-validar a cada redirect** (mesma checagem de IP), **teto de 3 saltos**, sem troca de esquema. Rebind/redirect para IP interno é bloqueado no salto.
+4. **`HEAD` primeiro; `GET` com corpo limitado** (teto ~64KB), **timeout curto** (~5s).
+5. **Só URLs declaradas pelo dono** no `.proplan/config.yml` — **nunca** URL descoberta, extraída de doc, ou arbitrária. Rate-limit por sync.
+6. **Zero credencial na saída** — sem header de auth, sem cookie. O probe é anônimo.
+7. **Persistir só o veredito** (plataforma + data), **nunca o corpo** da resposta (ADR-017). Roda no **sync-job**, nunca no caminho de render (ADR-002).
+
+**Fronteira que permanece**: isto autoriza **probe HTTP público anônimo**, não integração com **API de plataforma** (Railway/Netlify/Vercel com credencial) — essa continua fora (o "outro produto"); o ProPlan roda para qualquer repo e não pode assumir provedores conectados.
+
+**Relação com o ADR-003**: observar a **resposta pública** de uma URL não é ler código nem clonar repo — o tabu do ADR-003 (blob de código-fonte, Code Search, diffs) permanece intacto. É superfície **externa nova** (daí exigir ADR próprio), da natureza dos metadados já autorizados nos adendos ao ADR-003, mas dirigida à plataforma, não ao GitHub.
+
+**Consequências**: com o probe, o `rrb-escola` vira `discordam` mesmo em domínio próprio, e o produto ganha a única fonte que reflete a realidade. Custo: uma superfície SSRF que **exige** as 7 guardas acima e manutenção de segurança contínua. Sem aprovação do PI a este ADR, a Fatia 13.6 não codifica e a SPEC-013 v2.1 (sem probe) é o teto.

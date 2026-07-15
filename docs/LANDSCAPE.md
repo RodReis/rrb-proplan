@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-13
+updated: 2026-07-14
 ---
 # Cenário Competitivo — memória do que sabíamos e quando
 
@@ -80,6 +80,53 @@ Fontes: https://www.cortex.io/post/mcp-server · https://www.port.io/blog/integr
 
 - **Como produto comercial**: o mercado que o ProPlan mira (dev solo, projeto parado) historicamente **não paga**; o mercado que paga (empresa) já tem Cortex/Port/Unblocked. **Não construir com tese de venda.**
 - **Como ferramenta pessoal + prova de tese**: **vale** — com o recorte de doc-drift determinístico + asserção humana. Decisão do PI mantida.
+
+---
+
+## Candidato de MVP2 — drift spec↔entrega (registrado em 2026-07-14)
+
+**Origem**: o PI rodou um prompt no repo-alvo do WhatsApp pedindo um resumo das specs, e obteve dois markdowns — `TEST.md` (cobertura de testes) e `REVIEW.md` (status por spec: entregue / parcial / pendente, com o PR correspondente).
+
+**O `REVIEW.md` não vira documento mapeado no ProPlan** — e a razão é o próprio produto:
+
+- Ele é uma **projeção de status do trabalho**, que já tem dono: as Issues (ADR-011), projetadas em `.proplan/STATUS.md`. Mapeá-lo criaria a segunda fonte do mesmo fato que o **ADR-017** proíbe.
+- Ele deriva "✅ entregue" de **PR mergeado**, sem aceite de ninguém — o *fechamento frágil* que o ProPlan existe para **detectar**, não para produzir.
+- Ele erra a própria contagem: as linhas somam **45 ✅ / 3 🟡 / 2 📄**; o bloco "Resumo" afirma 42 / 4 / 0 / 4. Um retrato de status feito à mão desalinha de si mesmo em uma única passada.
+
+**O que sobrevive dele é a *feature*, não o documento.** O `REVIEW.md` é um protótipo manual — e funcional — de uma classe de drift que o **ADR-012** já prevê como sinal (*"doc afirma artefato que o sinal do GitHub não confirma"*), mas ilustra só com infra (workflow, release, check). A classe valiosa é outra: **a spec afirma um escopo — o repo confirma que ele foi entregue?**
+
+### As quatro regras (determinísticas, sem IA, sem clonar código)
+
+| regra | detecta | fonte |
+|---|---|---|
+| **spec órfã** | spec sem issue nem PR que a referencie | Contents + Issues + PRs |
+| **entrega órfã** | PR mergeado sem spec e sem `refs #N` | PRs |
+| **entrega não aceita** | issue em `proplan:done` há N dias sem aceite | Issues (`closed_at` × label) |
+| **spec sem teste** | spec entregue sem arquivo de teste correspondente | Git Trees |
+
+As linhas 🟡 e 📄 do `REVIEW.md` são exatamente a saída dessas regras — `pipeline-kanban-flow-ia` (spec órfã), `mover-numero` (sem PR), `avatar-usuario` (sem teste). A feature já rodou; rodou no braço.
+
+Cai dentro do recorte que este documento diz ser o único que sobreviveu: **drift da doc humana, determinístico, sem LLM. Ninguém no mercado faz.**
+
+### A regra estrutural que sai daqui
+
+Toda regra depende de um **elo spec ↔ issue ↔ PR**. No `REVIEW.md` esse elo não existia e foi **chutado por nome e data** (`~#40–#50`, *"confirmar no git log antes de citar"*) — é a origem de todo o erro. A ferramenta reproduziria o mesmo erro pela mesma razão.
+
+> **O drift nunca infere o elo spec↔entrega.** Ele o lê como **`fato`** (`refs #N` no PR), o recebe como **`asserção`** (ADR-013 — o dono confirmou, com autor, data e `sha`), ou o declara **`não rastreável`**. **Nunca como `inferência`.** A heurística de nome/data pode alimentar a **pergunta** ("o PR #103 foi este?"), jamais a **resposta** exibida como status.
+
+Isso reaproveita o ADR-013 sem inventar nada: reconstruir um elo perdido é um clique, e o resultado é asserção versionada em `docs/CONTEXT.md` — que apodrece com validade explícita ("a revalidar") em vez de mentir em silêncio.
+
+### Granularidade: por fatia, não por repo
+
+**Decisão do PI (2026-07-14): drift é feature de repo gerenciado** — o elo só é fato onde o processo (`refs #N`) foi seguido.
+
+**Correção necessária**: se o gate for o **repo**, o produto nasce sem nenhum lugar onde rodar (só o `rrb-proplan` é gerenciado hoje) e exclui justamente o **projeto parado**, que é o alvo declarado do produto. O gate é a **fatia**: o mesmo repo pode ter 12 fatias rastreáveis e 38 não. Daí sai a métrica exibida — **"Rastreabilidade: 12 de 50 fatias"**, com CTA de reconstrução do elo. O número **sobe conforme o dono responde**: é o ativo do ADR-013 com um medidor, e transforma o legado de lixo em fila de trabalho finita e opcional.
+
+### Pendências antes de virar spec
+
+- Formalizar a regra do elo (`fato` | `asserção` | `não rastreável`) — **ADR novo ou adendo ao ADR-012**? Decisão do PI.
+- Onde a rastreabilidade aparece: Visão Geral (alerta) ou aba própria.
+- O `REVIEW.md` do repo-alvo tem um segundo uso, independente deste: **insumo de importação única do board** (os ✅ entram como **Feito** = `open` + `proplan:done`, *nunca* Finalizado — ninguém aceitou nada). Fluxo já previsto para `STATUS.md` legado na `CONVENTION.md`.
 
 ---
 

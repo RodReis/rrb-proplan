@@ -72,9 +72,12 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
     expect(out.source.level).toBe(4); // resolução ainda é ausente; payload é fallback
   });
 
-  it('deploy: ausente e sem CI → payload null (nunca IA)', async () => {
+  it('deploy: ausente, sem CI e sem drift → payload null (nunca IA)', async () => {
     const resolution = { entity: 'deploy', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
-    const prisma = { document: { findUnique: jest.fn(), findMany: jest.fn() } } as any;
+    const prisma = {
+      document: { findUnique: jest.fn(), findMany: jest.fn() },
+      project: { findUnique: jest.fn().mockResolvedValue({ deployVerdict: null, deploySignals: null, deployObservedAt: null }) },
+    } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn(), latestFallbackInternal: jest.fn().mockResolvedValue(null) } as any;
     const out = await new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any).getTab('p1', 'deploy');
@@ -86,7 +89,10 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
   it('deploy: doc mapeado sem tabela → markdown não-vazio + environments []', async () => {
     const resolution = { entity: 'deploy', level: 2, source: 'config', path: 'docs/runbooks/deploy-railway.md', paths: [], confidence: 1 };
     const runbook = '# Deploy Railway\n\nSubir com `railway up`. Sem tabela de ambientes.';
-    const prisma = { document: { findUnique: jest.fn().mockResolvedValue({ content: runbook }) } } as any;
+    const prisma = {
+      document: { findUnique: jest.fn().mockResolvedValue({ content: runbook }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ deployVerdict: null, deploySignals: null, deployObservedAt: null }) },
+    } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn() } as any;
     const out = await new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any).getTab('p1', 'deploy');
@@ -98,7 +104,10 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
   it('deploy: doc COM a tabela → painel de ambientes E markdown juntos', async () => {
     const resolution = { entity: 'deploy', level: 1, source: 'convention', path: 'docs/DEPLOY.md', paths: [], confidence: 1 };
     const doc = '# Deploy\n\n| Ambiente | Status | Plataforma | URL |\n| prod | ativo | Railway | https://x |';
-    const prisma = { document: { findUnique: jest.fn().mockResolvedValue({ content: doc }) } } as any;
+    const prisma = {
+      document: { findUnique: jest.fn().mockResolvedValue({ content: doc }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ deployVerdict: null, deploySignals: null, deployObservedAt: null }) },
+    } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn() } as any;
     const out = await new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any).getTab('p1', 'deploy');
@@ -115,6 +124,7 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
           { path: 'docs/runbooks/a.md', content: 'conteúdo A' },
         ]),
       },
+      project: { findUnique: jest.fn().mockResolvedValue({ deployVerdict: null, deploySignals: null, deployObservedAt: null }) },
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn() } as any;
@@ -125,5 +135,20 @@ describe('TabsService.getTab — decisions/testing/deploy/skills', () => {
     expect(md).toContain('conteúdo A');
     expect(md).toContain('## docs/runbooks/b.md');
     expect(md.indexOf('a.md')).toBeLessThan(md.indexOf('b.md'));
+  });
+
+  // SPEC-013: o payload carrega o veredito de drift persistido (aditivo).
+  it('deploy: expõe deployVerdict/deploySignals persistidos no payload', async () => {
+    const resolution = { entity: 'deploy', level: 4, source: 'absent', path: null, paths: [], confidence: 1 };
+    const signals = [{ source: 'repoConfig', platforms: ['vercel'], observedAt: '2026-07-14T00:00:00Z', evidenceRef: 'vercel.json' }];
+    const prisma = {
+      document: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      project: { findUnique: jest.fn().mockResolvedValue({ deployVerdict: 'so_github_side', deploySignals: signals, deployObservedAt: new Date('2026-07-14') }) },
+    } as any;
+    const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
+    const insight = { latestClassifySpans: jest.fn() } as any;
+    const out = await new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any).getTab('p1', 'deploy');
+    expect((out.payload as any).deployVerdict).toBe('so_github_side');
+    expect((out.payload as any).deploySignals).toEqual(signals);
   });
 });

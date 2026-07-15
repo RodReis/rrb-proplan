@@ -331,7 +331,7 @@ O painel dizia "reaproveitou" mas não deixava crível que reaproveitar custou z
 
 **Bug corrigido no aceite**: ao renomear o `kind` do feed (`insight`→`insight_run`), o front tinha o tipo e o mapa `GROUP_OF` ainda no valor antigo → `undefined.mark` quebrava o painel. Escapou do build porque back e front têm tipos separados (acoplados por string). 290 testes no total, builds API+web limpos.
 
-## Fatia 6.1 — Aba Deploy: documento primeiro (SPEC-012, `aprovada-pi`) — `feito` (aguardando merge + aceite runtime do PI)
+## Fatia 6.1 — Aba Deploy: documento primeiro (SPEC-012, `aprovada-pi`) — `feito` (mergeado PR #38/merge #39; aguardando aceite runtime do PI)
 
 Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parser estrutural rígido: `tabs.service` rodava `parseDeploy(md)` e **descartava o documento**. Doc mapeado sem a tabela do `CONVENTION.md` (achado no dogfooding do `rrb-organize`: `docs/runbooks/deploy-railway.md`, prosa) → aba desenhava cabeçalho de tabela vazio. O ProPlan exigindo o próprio formato — violando o ADR-014 na renderização, depois de o mapeamento ter feito a coisa certa.
 
@@ -341,6 +341,21 @@ Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parse
 4. `feito` — Testes da fatia (`tabs.service.spec`): doc sem tabela → `markdown` não-vazio + `environments: []`; doc com tabela → painel **e** markdown; coleção → concatena na ordem. `parseDeploy` inalterado (15 testes de deploy/tabs passam sem mudança — prova). 298 testes no total, builds limpos.
 
 Risco baixo: mudança aditiva no payload + render, nenhuma escrita no repo, nenhuma IA, nenhum job. Alvo real: `rrb-organize` (deploy `source: config`).
+
+## Fatia 13 — Drift de deploy: confronto de fontes (SPEC-013 v2.1, `aprovada-pi`) — `em-andamento`
+
+Parar de dar crédito institucional a doc de deploy possivelmente defasada — **sem afirmar qual plataforma é a verdadeira**. Confronta 4 fontes (doc · config no repo · GitHub Deployments · URL declarada pelo dono); quando discordam, mostra cada uma com natureza + data; quando só há sinal GitHub-side, admite que não há fonte fresca e **pede a URL**. **Zero IA, zero chamada externa** (a plataforma sai do domínio da URL por parse de string), zero credencial de plataforma. ADR-018/probe negado (→ Fatia 13.6); handoff → 13.5.
+
+1. `feito` — **Domínio puro** `ingestion/domain/deploy-drift.ts`: `extractDeclaredPlatforms` (texto, word-boundary), `platformsFromRepoConfig` (presença de `vercel.json`/`netlify.toml`/`Procfile`/…), `platformFromDeclaredUrl` (sufixo de domínio → plataforma; domínio próprio → null, **nunca chuta**), `reconcile` (os 5 estados: concordam/discordam/so_github_side/omissa/silencio — coroa nenhuma fonte). 26 testes, incl. o caso `rrb-escola` real (config+GitHub Vercel × URL Netlify+Railway → `discordam`) e "migramos da Vercel" não vira falso discordam.
+2. `feito` — Prisma: `Project.deployVerdict`/`deploySignals`(Json)/`deployObservedAt`; migration `fatia_13_deploy_drift`.
+3. `feito` — `parseProplanConfig`: lê `deploy.prodUrls` (lista — string ou `{url, platform}`; platform à mão cobre domínio próprio). `merge`/`serialize` **preservam** as URLs (salvar mapeamento não pode apagá-las). 12 testes.
+4. `feito` — `GithubGitClient`: `listDeploymentUrls` (deployments + status → `environment_url`) e `listRootFiles` (config de deploy fica fora de `docs/`). **`fetchGithubOptional`** degrada em 401/403/404 → sem `Deployments: read` retorna `denied`, sem derrubar o sync. Só metadado (ADR-003), user-to-server token (ADR-015).
+5. `feito` — `SyncService.updateDeploySignals`: coleta as 4 fontes → `reconcile` → persiste, nos **dois** caminhos (noop + success), **tolerante a falha** (mesma regra do `updateCommitMeta` — falhar não derruba o sync).
+6. `feito` — `tabs.service` (`case 'deploy'`): payload aditivo com `deployVerdict`/`deploySignals`/`deployObservedAt` (lê o cache persistido; **não recomputa no render**, ADR-002).
+7. `feito` — Web: `DeployTab` faixa de confronto no topo (`DriftBanner`) — cada fonte com **natureza + plataforma + "observado em <data>"**, CTA "declare a URL" no `so_github_side`, **nunca** "roda em X" nem rótulo "congelado/resíduo". Badge no catálogo (`Home.tsx`): "deploy divergente" (discordam) / "deploy?" (so_github_side/omissa).
+8. `feito` — ADR-015: `Deployments: read` adicionado à permissão mínima. `Deployments: read` já concedida na instalação `RodReis` (2026-07-14).
+
+**Aceite runtime (pendente do PI):** precisa login no GitHub App + olho no `rrb-escola` (declarar `escola-erp.netlify.app` + `...railway.app` em `.proplan/config.yml` → `discordam`; sem declarar → `so_github_side` com CTA) e num repo sem deploy (`rrb-adv` → silencioso). Verificar zero chamada externa e degradação sem permissão.
 
 ## Fatia 8 — Multi-tenant — `sem-spec`
 

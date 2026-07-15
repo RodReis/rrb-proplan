@@ -46,6 +46,9 @@ model Project {
   commitMetaSyncedAt DateTime? @map("commit_meta_synced_at")
   needsIssueImport   Boolean  @default(false) @map("needs_issue_import")
   proplanConfigInvalid Boolean @default(false) @map("proplan_config_invalid")
+  deployVerdict    String?   @map("deploy_verdict")
+  deploySignals    Json?     @map("deploy_signals")
+  deployObservedAt DateTime? @map("deploy_observed_at")
   createdAt    DateTime @default(now()) @map("created_at")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents    Document[]
