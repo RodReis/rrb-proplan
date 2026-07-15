@@ -363,7 +363,7 @@ Parar de dar crédito institucional a doc de deploy possivelmente defasada — *
 
 **Aceite runtime do PI (pendente):** olho ao vivo, idealmente com o `rrb-escola` gerenciado (não está neste banco) para o caso canônico `discordam` (config+GitHub Vercel × URL Netlify+Railway) e `concordam`/`omissa` com deployments GitHub-side reais.
 
-## Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6, `aprovada-pi`) — `em-andamento`
+## Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6, `aprovada-pi`) — `feito` (mergeado PR #43; review de segurança 0 CRITICAL/HIGH; validado ao vivo; aguardando aceite do PI)
 
 Estende o confronto da Fatia 13 com a **única fonte que toca a realidade**: GET HTTP à URL declarada, que confirma o que está no ar **agora** e identifica plataforma de **domínio próprio** (que o parse-de-string da 13 deixa `desconhecida`). É o **único ponto com superfície SSRF** — sob **ADR-018** (7 guardas, critério de aceite).
 
