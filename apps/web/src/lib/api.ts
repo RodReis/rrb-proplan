@@ -450,11 +450,14 @@ export type DeployVerdictState =
   | 'so_github_side'
   | 'omissa'
   | 'silencio';
+/** SPEC-013.6: como a plataforma de uma URL declarada foi obtida. */
+export type DeclaredUrlMode = 'string' | 'probe' | 'bloqueada_por_seguranca';
 export interface DeploySignal {
   source: DeploySource;
   platforms: string[];
   observedAt: string;
   evidenceRef: string;
+  mode?: DeclaredUrlMode;
 }
 
 export interface SkillEntry {

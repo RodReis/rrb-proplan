@@ -43,6 +43,14 @@ const CONFIG_FILES: { file: string; platform: string }[] = [
 
 export type DeploySource = 'doc' | 'repoConfig' | 'githubDeployments' | 'declaredUrl';
 
+/**
+ * Modo pelo qual a plataforma de `declaredUrl` foi obtida (SPEC-013.6):
+ *  - `string`: parse do sufixo de domínio, sem rede (o da Fatia 13).
+ *  - `probe`: GET HTTP ao vivo, fingerprint de headers (esta fatia).
+ *  - `bloqueada_por_seguranca`: destino não-público — não sondado (ADR-018).
+ */
+export type DeclaredUrlMode = 'string' | 'probe' | 'bloqueada_por_seguranca';
+
 export interface DeploySignal {
   source: DeploySource;
   /** Plataformas que a fonte aponta. Vazio = a fonte silenciou/é domínio próprio. */
@@ -50,6 +58,8 @@ export interface DeploySignal {
   observedAt: string;
   /** Referência da evidência (path do doc, nome do arquivo, URL, "deployments"). */
   evidenceRef: string;
+  /** Só para source `declaredUrl` (SPEC-013.6): como a plataforma foi obtida. */
+  mode?: DeclaredUrlMode;
 }
 
 export type DeployVerdictState =

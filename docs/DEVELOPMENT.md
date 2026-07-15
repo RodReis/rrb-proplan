@@ -363,6 +363,30 @@ Parar de dar crédito institucional a doc de deploy possivelmente defasada — *
 
 **Aceite runtime do PI (pendente):** olho ao vivo, idealmente com o `rrb-escola` gerenciado (não está neste banco) para o caso canônico `discordam` (config+GitHub Vercel × URL Netlify+Railway) e `concordam`/`omissa` com deployments GitHub-side reais.
 
+## Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6, `aprovada-pi`) — `em-andamento`
+
+Estende o confronto da Fatia 13 com a **única fonte que toca a realidade**: GET HTTP à URL declarada, que confirma o que está no ar **agora** e identifica plataforma de **domínio próprio** (que o parse-de-string da 13 deixa `desconhecida`). É o **único ponto com superfície SSRF** — sob **ADR-018** (7 guardas, critério de aceite).
+
+1. `feito` — **Domínio puro** `ingestion/domain/deploy-probe.ts`: `platformFromProbe` (fingerprint de headers → plataforma; `server` por token exato, não substring; desconhecido → `null`, nunca chuta) e `isPublicIp` (guarda 2 do ADR-018 — rejeita RFC1918, loopback, link-local `169.254`/metadata, CGNAT `100.64/10`, ULA v6 `fc00::/7`, IPv4-mapped; **fail-closed**). 26 testes.
+2. `feito` — **`HttpProbe`** (infra) — as 7 guardas: só https; resolve DNS e valida IP **antes** de conectar; **DNS rebinding fechado por pin** (`https.request` core com `lookup` custom que devolve só o IP validado — stdlib do Node, **zero dep nova**, evita o problema ESM/CJS do Octokit); redirect re-validado (teto 3), sem downgrade de esquema; HEAD, corpo ≤64KB, timeout 5s; zero credencial (só UA neutro + accept). `resolvePublicIp`/`requestPinned` `protected` para o duplo de teste da cadeia de redirect.
+3. `feito` — **Suíte de segurança** (`http-probe.spec.ts`, critério de aceite): http/file/gopher rejeitados; `localhost`/`169.254.169.254`/`10.0.0.1`/`127.0.0.1` → `destino_nao_publico` sem request; **redirect público→interno bloqueado no salto**; downgrade https→http bloqueado; teto de 3 redirects; caminho feliz. 12 testes.
+4. `feito` — Integração ao confronto: sinal `declaredUrl` ganha `mode: string | probe | bloqueada_por_seguranca`. `SyncService.probeDeclaredUrl` (um sinal por URL): plataforma à mão → mode string sem probe; probe bloqueado (destino não-público) → `bloqueada_por_seguranca`, transparente; probe com fingerprint → mode probe; **probe falho/sem fingerprint → cai no parse de domínio** (mode string — decisão do PI: probe falho ≠ inseguro). Probe roda em todo sync (decisão do PI). 6 testes de integração.
+5. `feito` — UI: `DriftBanner` mostra "confirmada ao vivo" quando `mode probe`; nota transparente `BlockedNote` para URLs não sondadas por segurança (ADR-018, nunca silenciosa), em qualquer estado.
+
+**Decisões do PI (2026-07-14):** (1) URL morta (timeout/DNS, não bloqueio de segurança) → parse de domínio, não some o sinal; domínio próprio sem resposta → desconhecida. (2) Probe em todo sync, junto da coleta de deploy (+1 request por prodUrl).
+
+**Decisão técnica do Code (registrada na spec):** DNS rebinding fechado por **pin de IP** com `https.request` + `lookup` custom (core Node), em vez de `undici` — evita risco ESM/CJS no build do Nest, zero dep nova. **Rate-limit (guarda 5):** teto de 10 prodUrls sondadas por sync, com WARN transparente ao truncar (achado do review de segurança). 376 testes no total, builds limpos.
+
+**Review de segurança executado (subagent security-reviewer):** 6/7 guardas sólidas de primeira; 0 CRITICAL/HIGH. 1 MEDIUM — guarda 5 (rate-limit) faltando — **corrigido** (teto + WARN). Testados manualmente bypasses clássicos (octal/decimal/IPv6 comprimido) → todos fail-closed via `net.isIP`.
+
+**Validação ao vivo executada pelo Code (2026-07-14):**
+- **Segurança (o crítico):** probe contra `169.254.169.254` (metadata), `127.0.0.1`, `localhost` → **`destino_nao_publico`, sem request**; `http://` → `esquema_nao_https`. As guardas SSRF bloqueiam alvos internos reais.
+- **Fingerprint ao vivo:** GET real a `netlify.com` → **netlify** (server: Netlify), `vercel.com` → **vercel**, `cloudflare.com` → **cloudflare**. Plataforma vinda dos headers de resposta, não de parse de domínio.
+- **Integrado no sync:** prodUrl `netlify.com` efêmera declarada no config do `rrb-organize` → sinal `declaredUrl` com **`mode: probe`**, plataforma netlify confirmada ao vivo → confronto `discordam` (doc railway × probe netlify). Config revertido, banco limpo.
+- **Bug corrigido no caminho:** o `lookup` custom devolvia `cb(null, ip, family)`, mas o Node chama com `opts.all: true` esperando `cb(null, [{address, family}])` — os probes vivos davam `erro_de_rede`. Corrigido para respeitar os dois formatos; +fallback IPv4-antes-de-IPv6 (host com IPv6 sem rota de saída). Era bug funcional, não de segurança (as guardas nunca falharam).
+
+**Aceite runtime do PI (pendente):** olho ao vivo com URL de domínio próprio declarada (`gestao.epgtrindade.com.br` se `rrb-escola` for gerenciado) → probe identifica a plataforma pelos headers; confirmar a faixa `BlockedNote` na UI com uma URL que aponta para IP interno.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.

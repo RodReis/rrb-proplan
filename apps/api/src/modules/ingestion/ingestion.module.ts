@@ -6,6 +6,7 @@ import { LinkService } from './application/link.service';
 import { ResolutionService } from './application/resolution.service';
 import { SyncService } from './application/sync.service';
 import { GithubGitClient } from './infrastructure/github-git.client';
+import { HttpProbe } from './infrastructure/http-probe';
 import { SyncWorker } from './infrastructure/sync.worker';
 import { SYNC_QUEUE } from './ingestion.constants';
 import { IngestionController } from './presentation/ingestion.controller';
@@ -19,6 +20,7 @@ import { IngestionController } from './presentation/ingestion.controller';
     LinkService,
     ResolutionService,
     GithubGitClient,
+    HttpProbe,
     SyncWorker,
   ],
   exports: [IngestionService, ResolutionService],
