@@ -363,7 +363,7 @@ Parar de dar crédito institucional a doc de deploy possivelmente defasada — *
 
 **Aceite runtime do PI (pendente):** olho ao vivo, idealmente com o `rrb-escola` gerenciado (não está neste banco) para o caso canônico `discordam` (config+GitHub Vercel × URL Netlify+Railway) e `concordam`/`omissa` com deployments GitHub-side reais.
 
-## Fatia 13.5 — Handoff exportável: o instantâneo que se leva embora (SPEC-018, `aprovada-pi`) — `feito` (mergeado PR #N; aguardando aceite do PI)
+## Fatia 13.5 — Handoff exportável: o instantâneo que se leva embora (SPEC-018, `aprovada-pi`) — `feito` (PR aberto refs #51; validação runtime OK; aguardando merge + aceite do PI)
 
 Congela o modelo canônico (Fatia 9) + board (Fatia 5) num pacote de contexto portátil — legível por humano, parseável por agente. Cada bloco carrega valor **ou** recusa + proveniência + confiança + a conta; bloco abaixo do limiar **recusa** ("não sei — ausente/defasado"), nunca some. **Zero IA** (ADR-002), determinístico (mesmo input → bytes idênticos). Compõe e serializa — não recalcula julgamento (ADR-001).
 
@@ -376,7 +376,7 @@ Congela o modelo canônico (Fatia 9) + board (Fatia 5) num pacote de contexto po
 
 **5 decisões do PI incorporadas** (1: entregar já sobre a 9, blocos 10/11 recusam honestamente; 2: download+write-back arquivo único, sem tabela; 3: referência+título datado, corpo/PR/check fora; 4: sha no rodapé; 5: `assembleHandoff` domínio compartilhado que a Fatia 11 herda). 453 testes (+22), tsc web+api limpos.
 
-**Aceite runtime do PI (pendente):** exportar o handoff de um repo gerenciado real, conferir os blocos de recusa honestos (constraints `a-revalidar`; próxima ação quando A Fazer vazio), baixar o `.md` e/ou commitar `.proplan/HANDOFF.md`.
+**Validação runtime (OK, 2026-07-15):** handoff exportado ao vivo de `RodReis/rrb-escola` (repo gerenciado real, caso deploy `discordam`). Bloco "Projeto + objetivo" recusou honesto ("não sei — ausente/defasado · falta: documento de project", confiança 0%), demais blocos com valor + `inferencia` + confiança + a conta. **Baixar HANDOFF.md** OK (blob local). **Commitar em .proplan/** OK — commit `ccc4db2` `proplan: atualiza HANDOFF.md`, autor `rrb-proplan[bot]`, Verified, em `.proplan/HANDOFF.md` (nunca `docs/`), prefixo `proplan:` (ADR-015 + guarda de path confirmados ao vivo). Aguardando aceite formal do PI (fecha #51 + `proplan:finalizado`).
 
 ## Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6, `aprovada-pi`) — `feito` (mergeado PR #43; review de segurança 0 CRITICAL/HIGH; validado ao vivo; aguardando aceite do PI)
 
