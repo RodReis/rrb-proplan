@@ -373,3 +373,20 @@ O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013)
 **Relação com o ADR-003**: observar a **resposta pública** de uma URL não é ler código nem clonar repo — o tabu do ADR-003 (blob de código-fonte, Code Search, diffs) permanece intacto. É superfície **externa nova** (daí exigir ADR próprio), da natureza dos metadados já autorizados nos adendos ao ADR-003, mas dirigida à plataforma, não ao GitHub.
 
 **Consequências**: com o probe, o `rrb-escola` vira `discordam` mesmo em domínio próprio, e o produto ganha a única fonte que reflete a realidade. Custo: uma superfície SSRF que **exige** as 7 guardas acima e manutenção de segurança contínua. Sem aprovação do PI a este ADR, a Fatia 13.6 não codifica e a SPEC-013 v2.1 (sem probe) é o teto.
+
+## ADR-019 — Relatório de testes gerado pelo CI; evidência de máquina, nunca narrada
+
+**Status**: **aprovado pelo PI em 2026-07-15**. Rege **processo/infra de desenvolvimento do repo**, não o runtime do produto ProPlan. Referência de implementação: `docs/TESTING.md`.
+
+**Contexto**: queríamos um resumo de testes por SPEC/issue ao fim de cada entrega (quantidade, pass, falha, cobertura, tipo de teste). O primeiro instinto — um `TEST.md` que o Claude Code escreve resumindo os próprios testes — é **auto-relato**: exatamente o *fechamento frágil* que o produto existe para detectar. "410 testes verdes" digitado por um agente é uma afirmação, não evidência. Um arquivo assim ainda violaria fonte única (ADR-011, pois qtde/cobertura já vivem no PR e no CI) e, se colocado em `docs/`, zeraria o relógio do alerta de doc defasada (ADR-010) a cada entrega.
+
+**Decisão**: a evidência de teste é **gerada por máquina e verificada no CI**, nunca narrada.
+
+1. **Fonte dos números**: saída `--json` dos runners (`jest`/`vitest`/`playwright`). Nenhum número é escrito à mão.
+2. **Arquivo-registro**: `reports/TESTS.md` — diretório neutro na raiz. **Não** em `docs/` (mascararia ADR-010) nem em `.proplan/` (artefato do produto em repos-alvo). Cabeçalho "GERADO — NÃO EDITAR". Registro **incremental** (append por entrega): 3 linhas por entrega (**Banco / Regras de Negócio / Tela**) — a categoria é o tipo de teste.
+3. **Categorias por convenção, sem hardcode**: mapa categoria→diretório em `test-report.config.json`; sufixos `*.spec.ts` (Regras), `*.int-spec.ts`/`*.e2e-spec.ts` (Banco), `*.test.tsx`/`e2e/` (Tela).
+4. **Guarda anti-drift**: `pnpm test:report --check` recomputa os números da issue atual numa execução limpa e **falha o CI** se divergirem do commitado. É o que torna o arquivo confiável — o número só cola se sobreviver a uma reexecução independente.
+5. **Publicação**: `$GITHUB_STEP_SUMMARY` + comentário fixo no PR. Cobertura é **report-only** (não barra merge). Nada de `closes #N`; o CI torna a evidência infalsificável, mas o aceite continua sendo ato deliberado do PI (ADR-011).
+6. **Operacional**: comando `pnpm test:report`; Playwright em job separado, sempre; Redis no CI só se um teste de integração exercitar BullMQ de verdade.
+
+**Consequências**: ganhamos o "print de testes verdes" como evidência infalsificável, tocada à fonte de verdade (o PR), sem produzir o auto-relato que o produto combate. Custo: montar `apps/web` do zero para testes (Vitest + Testing Library + Playwright) — hoje não há runner de tela; tratar como esforço próprio. Tooling é portável para projetos futuros (workflow + gerador + config), cumprindo o objetivo de já vir "de fábrica". Esta é a **primeira ADR de processo** no arquivo — governa como desenvolvemos, não a arquitetura do produto.
