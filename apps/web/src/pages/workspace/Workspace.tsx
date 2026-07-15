@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { api, Entity, SyncRun } from '../../lib/api';
 import { DocumentsTab } from './DocumentsTab';
@@ -34,23 +34,11 @@ export function Workspace({ project, onBack }: Props) {
   const [activeTab, setActiveTab] = useState('overview');
   const [syncNonce, setSyncNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const [hasStatusDoc, setHasStatusDoc] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [mapping, setMapping] = useState<{ open: boolean; focus: Entity | null }>({
     open: false,
     focus: null,
   });
-
-  const refreshDocsList = useCallback(() => {
-    api
-      .documents(projectId)
-      .then((docs) =>
-        setHasStatusDoc(docs.some((d) => d.path === 'docs/STATUS.md')),
-      )
-      .catch(() => setHasStatusDoc(false));
-  }, [projectId]);
-
-  useEffect(refreshDocsList, [refreshDocsList, syncNonce]);
 
   async function handleSync() {
     setSyncing(true);
@@ -144,11 +132,7 @@ export function Workspace({ project, onBack }: Props) {
 
       <div className="min-h-0 flex-1 overflow-auto">
         {activeTab === 'overview' && (
-          <OverviewTab
-            projectId={projectId}
-            hasStatusDoc={hasStatusDoc}
-            onSynced={() => setSyncNonce((n) => n + 1)}
-          />
+          <OverviewTab projectId={projectId} />
         )}
         {activeTab === 'documents' && (
           <DocumentsTab projectId={projectId} syncNonce={syncNonce} />

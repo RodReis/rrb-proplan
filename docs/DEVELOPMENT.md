@@ -451,6 +451,12 @@ O **fosso** (ADR-013): cofre versionado da asserção humana ("o que não mexer"
 
 **Aceite runtime do PI (pendente):** capturar uma asserção num repo real → conferir o commit do `proplan[bot]` em `docs/CONTEXT.md`, o card no painel de Atividade, a ingestão no re-sync (badge `vigente`), e depois commitar num path citado + sync → badge `a revalidar` + confirmar. Commit de CONTEXT.md conta como frescor (ADR-010) por construção — vai para `docs/`.
 
+## Correção — botão morto na Visão Geral (`BootstrapDialog`) — `feito` (aceito pelo PI em 2026-07-15)
+
+Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026-07-15: **remover**). O CTA "Gerar proposta de STATUS.md" na aba Visão Geral (`pages/workspace/BootstrapDialog.tsx`) chamava `api.proposeStatus`/`api.commitStatus` — **ambos** os endpoints (`POST /bootstrap/status` + `/commit`) foram removidos na SPEC-005 (bootstrap de STATUS.md superado pelas Issues, ADR-011). Pior que "quebra ao commitar": `proposeStatus` estourava **404 já ao abrir** o dialog. Ressuscitar o endpoint reabriria escritor-duplo em `docs/` (mascara ADR-010) — a proposta de roadmap já existe via bootstrap de cards da Fatia 5.
+
+1. `feito` — Removida a cadeia morta inteira (não só o botão): `pages/workspace/BootstrapDialog.tsx` deletado; `OverviewTab` perdeu o CTA `!hasStatusDoc`, o state `bootstrapOpen` e as props `hasStatusDoc`/`onSynced` (só serviam o dialog); `Workspace` perdeu o state `hasStatusDoc` + o `refreshDocsList`/`useEffect` que só o alimentavam; `api.ts` perdeu `proposeStatus`+`commitStatus`. `tsc` + `vite build` limpos. Sem teste (remoção pura de UI, sem lógica). **Validado ao vivo** (`agency-agents-app`): aba Visão Geral sem o CTA morto, resto intacto.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
