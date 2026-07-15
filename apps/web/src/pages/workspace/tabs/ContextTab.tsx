@@ -248,39 +248,101 @@ export function ContextTab({ projectId, syncNonce }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
-            className="mt-10 flex flex-col items-center px-6 text-center"
+            className="mt-6 overflow-hidden rounded-lg border border-border bg-surface"
           >
-            <div className="flex size-12 items-center justify-center rounded-full border border-border bg-surface text-text-muted">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className="grid md:grid-cols-[1fr_auto]">
+              {/* Coluna do convite */}
+              <div className="flex flex-col justify-center p-7">
+                <div className="flex size-11 items-center justify-center rounded-md border border-border bg-bg text-text">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z" />
+                    <path d="M12 8v4" />
+                    <circle cx="12" cy="15" r="0.5" fill="currentColor" />
+                  </svg>
+                </div>
+                <h3 className="mt-4 text-[15px] font-semibold text-text">
+                  O que um agente não pode descobrir sozinho
+                </h3>
+                <p className="mt-2 max-w-[46ch] text-sm leading-relaxed text-text-muted">
+                  A gambiarra intencional. O módulo que parece morto e não é. O drop
+                  que não pode rodar antes do corte. Isso só existe na sua cabeça —
+                  registre e vira documentação versionada no repositório.
+                </p>
+                <div className="mt-5 flex items-center gap-3">
+                  <button
+                    onClick={() => setFormOpen(true)}
+                    className="whitespace-nowrap rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97]"
+                  >
+                    Registrar a primeira
+                  </button>
+                  <span className="text-[11px] text-text-muted">
+                    Vira commit em{' '}
+                    <span className="font-mono">docs/CONTEXT.md</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Card-exemplo fantasma: ensina a anatomia de uma asserção */}
+              <div
                 aria-hidden
+                className="relative hidden select-none items-center border-t border-border bg-bg p-7 md:flex md:w-[340px] md:border-l md:border-t-0"
               >
-                <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z" />
-                <path d="M12 8v4" />
-                <circle cx="12" cy="15" r="0.5" fill="currentColor" />
-              </svg>
+                <div className="pointer-events-none w-full">
+                  <div className="rounded-lg border border-border bg-surface p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[13px] font-semibold leading-snug text-text">
+                        Não refatorar o motor de folha v1 antes do corte
+                      </p>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[10px] text-text-muted">
+                        <span className="size-1.5 rounded-full bg-success/70" />
+                        vigente
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
+                      O drop é irreversível e depende de validação fiscal.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      <code className="rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
+                        lib/folha/engine/
+                      </code>
+                    </div>
+                    <div className="mt-2.5 border-t border-border/70 pt-2 text-[10px] text-text-muted">
+                      você · hoje · <span className="font-mono">a1b2c3d</span>
+                    </div>
+                  </div>
+                  {/* Segundo card, cortado — sugere a lista que cresce */}
+                  <div className="mt-3 rounded-lg border border-warning/40 bg-warning/[0.06] p-4 opacity-80">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[13px] font-semibold leading-snug text-text">
+                        O módulo de portaria parece morto — não é
+                      </p>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning-strong">
+                        <span className="size-1.5 rounded-full bg-warning" />
+                        a revalidar
+                      </span>
+                    </div>
+                    <div className="mt-2.5 flex justify-end">
+                      <span className="rounded-md border border-warning/50 px-2 py-0.5 text-[10px] font-semibold text-warning-strong">
+                        Ainda vale — confirmar
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-center text-[10px] uppercase tracking-wide text-text-muted/70">
+                    exemplo
+                  </p>
+                </div>
+              </div>
             </div>
-            <h3 className="mt-4 text-sm font-semibold text-text">
-              Nenhuma asserção registrada
-            </h3>
-            <p className="mt-1.5 max-w-[46ch] text-sm leading-relaxed text-text-muted">
-              O que só existe na sua cabeça — a gambiarra intencional, o módulo que
-              parece morto e não é — morre com o contexto. Registre aqui e vira
-              documentação versionada.
-            </p>
-            <button
-              onClick={() => setFormOpen(true)}
-              className="mt-5 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97]"
-            >
-              Registrar a primeira
-            </button>
           </motion.div>
         )}
 
