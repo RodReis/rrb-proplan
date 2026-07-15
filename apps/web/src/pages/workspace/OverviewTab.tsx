@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, CurrentMonthUsage, Freshness, InsightSummary } from '../../lib/api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { BootstrapDialog } from './BootstrapDialog';
 
 interface Props {
   projectId: string;
-  /** true se o projeto tem docs/STATUS.md ingerido (controla CTA bootstrap). */
-  hasStatusDoc: boolean;
-  onSynced: () => void;
 }
 
 type SummaryState =
@@ -15,13 +11,12 @@ type SummaryState =
   | { status: 'error'; message: string }
   | { status: 'ready'; summary: InsightSummary | null };
 
-export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
+export function OverviewTab({ projectId }: Props) {
   const [state, setState] = useState<SummaryState>({ status: 'loading' });
   const [freshness, setFreshness] = useState<Freshness | null>(null);
   const [usage, setUsage] = useState<CurrentMonthUsage | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
-  const [bootstrapOpen, setBootstrapOpen] = useState(false);
 
   const load = useCallback(() => {
     setState({ status: 'loading' });
@@ -115,33 +110,6 @@ export function OverviewTab({ projectId, hasStatusDoc, onSynced }: Props) {
             </ul>
           </div>
         </>
-      )}
-
-      {!hasStatusDoc && (
-        <div className="rounded-lg border border-dashed border-border p-4 text-center">
-          <p className="text-sm font-medium">Sem STATUS.md</p>
-          <p className="mt-1 text-xs text-text-muted">
-            Gere uma proposta de Kanban a partir da documentação e commite no
-            repositório.
-          </p>
-          <button
-            onClick={() => setBootstrapOpen(true)}
-            className="mt-3 rounded-md border border-brand bg-brand/5 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/10"
-          >
-            Gerar proposta de STATUS.md
-          </button>
-        </div>
-      )}
-
-      {bootstrapOpen && (
-        <BootstrapDialog
-          projectId={projectId}
-          onClose={() => setBootstrapOpen(false)}
-          onCommitted={() => {
-            setBootstrapOpen(false);
-            onSynced();
-          }}
-        />
       )}
 
       {confirmRegen && (

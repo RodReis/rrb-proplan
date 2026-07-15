@@ -230,15 +230,6 @@ export const api = {
       `/projects/${projectId}/insights/summary/regenerate`,
       { method: 'POST' },
     ),
-  proposeStatus: (projectId: string) =>
-    request<{ content: string }>(`/projects/${projectId}/bootstrap/status`, {
-      method: 'POST',
-    }),
-  commitStatus: (projectId: string, content: string) =>
-    request<{ syncRunId: string }>(
-      `/projects/${projectId}/bootstrap/status/commit`,
-      { method: 'POST', body: JSON.stringify({ content }) },
-    ),
   graph: (projectId: string) =>
     request<DocGraph>(`/projects/${projectId}/graph`),
   suppressEdge: (projectId: string, sourcePath: string, targetPath: string) =>
