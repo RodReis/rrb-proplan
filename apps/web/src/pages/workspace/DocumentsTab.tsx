@@ -6,13 +6,15 @@ import {
   DocKind,
   DocumentContent,
   DocumentSummary,
+  Project,
   SyncRun,
 } from '../../lib/api';
 import { DocTree } from './DocTree';
+import { renderAs } from './renderAs';
 import { useResizableWidth } from './useResizableWidth';
 
 interface Props {
-  projectId: string;
+  project: Project;
   /** Sinaliza que um sync foi disparado externamente (botão do header). */
   syncNonce: number;
 }
@@ -25,7 +27,8 @@ type DocsState =
 const SYNC_TERMINAL: SyncRun['status'][] = ['success', 'noop', 'failed'];
 const POLL_MS = 1500;
 
-export function DocumentsTab({ projectId, syncNonce }: Props) {
+export function DocumentsTab({ project, syncNonce }: Props) {
+  const projectId = project.id;
   const [state, setState] = useState<DocsState>({ status: 'loading' });
   const [run, setRun] = useState<SyncRun | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -93,16 +96,23 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
 
   return (
     <div className={'flex h-full' + (dragging ? ' cursor-col-resize select-none' : '')}>
-      <nav
-        className="shrink-0 overflow-y-auto p-2"
-        style={{ width }}
-      >
-        {isSyncing && (
-          <div className="mb-2 rounded-md bg-brand/5 px-3 py-2 text-xs text-brand">
-            Sincronizando…
-          </div>
-        )}
-        <DocTree docs={state.docs} selected={selected} onSelect={setSelected} />
+      <nav className="flex shrink-0 flex-col overflow-hidden" style={{ width }}>
+        <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-3">
+          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+            Documentos
+          </span>
+          <span className="font-mono text-[9px] text-dim">
+            {state.docs.length} arquivo{state.docs.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {isSyncing && (
+            <div className="mb-2 rounded-[9px] bg-info/10 px-3 py-2 text-xs text-info">
+              Sincronizando…
+            </div>
+          )}
+          <DocTree docs={state.docs} selected={selected} onSelect={setSelected} />
+        </div>
       </nav>
 
       <div
@@ -135,19 +145,96 @@ export function DocumentsTab({ projectId, syncNonce }: Props) {
           </div>
         )}
         {selected ? (
-          <DocumentViewer
-            projectId={projectId}
-            path={selected}
-            kind={state.docs.find((d) => d.path === selected)?.kind ?? 'markdown'}
-          />
+          <>
+            <DocHeader
+              doc={state.docs.find((d) => d.path === selected) ?? null}
+              project={project}
+            />
+            <DocumentViewer
+              projectId={projectId}
+              path={selected}
+              kind={state.docs.find((d) => d.path === selected)?.kind ?? 'markdown'}
+            />
+          </>
         ) : (
-          <p className="p-8 text-sm text-text-muted">
-            Selecione um documento à esquerda.
-          </p>
+          <p className="p-8 text-sm text-muted">Selecione um documento à esquerda.</p>
         )}
       </div>
     </div>
   );
+}
+
+/**
+ * Header do leitor (protótipo): título + caminho · quando + chip de estado +
+ * link para o GitHub. O chip diz de onde o documento vem, não se ele está bom.
+ */
+function DocHeader({
+  doc,
+  project,
+}: {
+  doc: DocumentSummary | null;
+  project: Project;
+}) {
+  if (!doc) return null;
+  const name = doc.path.split('/').pop() ?? doc.path;
+  // `convenção` = documento canônico do CONVENTION.md (o ProPlan sabe o que é);
+  // `sincronizado` = veio do repo no último sync. Nenhum dos dois é juízo de
+  // valor sobre o conteúdo.
+  const conv = doc.isConventional;
+
+  return (
+    <header className="flex items-center gap-3 border-b border-border px-8 py-3.5">
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-sm font-semibold text-text">{name}</span>
+        <span className="truncate font-mono text-[10px] text-dim">
+          {doc.path} · atualizado {relativeDay(doc.updatedAt)}
+        </span>
+      </span>
+      <span
+        className="shrink-0 rounded-full px-2.5 py-1 font-mono text-[8.5px] uppercase tracking-[0.08em]"
+        style={
+          conv
+            ? { border: '1px solid var(--border2)', color: 'var(--faint)' }
+            : {
+                color: 'var(--success)',
+                background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+              }
+        }
+      >
+        {conv ? 'convenção' : 'sincronizado'}
+      </span>
+      <a
+        href={`https://github.com/${project.owner}/${project.name}/blob/${project.defaultBranch}/${doc.path}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex shrink-0 items-center gap-1 text-xs text-muted transition-colors duration-150 hover:text-text"
+      >
+        GitHub
+        <svg
+          aria-hidden
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M7 17 17 7M7 7h10v10" />
+        </svg>
+      </a>
+    </header>
+  );
+}
+
+function relativeDay(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (!Number.isFinite(days)) return '—';
+  if (days < 1) return 'hoje';
+  if (days === 1) return 'ontem';
+  if (days < 30) return `há ${days} dias`;
+  return new Date(iso).toLocaleDateString('pt-BR');
 }
 
 type ViewerState =
@@ -252,6 +339,15 @@ function MarkdownDoc({
       <div className="m-8 rounded-md border border-error/30 bg-error/5 p-4 text-sm text-error">
         Falha ao carregar {path}: {state.message}
       </div>
+    );
+
+  // YAML/JSON/txt não são markdown: renderizá-los como tal transforma todo
+  // comentário `# …` em heading. A extensão decide (ver renderAs.ts).
+  if (renderAs(path) === 'plain')
+    return (
+      <pre className="overflow-x-auto px-8 py-6 font-mono text-[12px] leading-relaxed text-body">
+        {state.doc.content}
+      </pre>
     );
 
   return (

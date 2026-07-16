@@ -78,8 +78,9 @@ export function ActivityPill({
     <button
       onClick={onOpenDrawer}
       aria-live="polite"
+      title={label}
       className={
-        'flex h-[34px] items-center gap-2 rounded-full border px-3 transition-colors duration-150 ' +
+        'flex h-[34px] min-w-[34px] shrink items-center justify-center gap-2 rounded-full border px-3 transition-colors duration-150 ' +
         (busy
           ? 'border-info/40 bg-info/10 text-info'
           : 'border-border2 text-body2 hover:border-hoverb hover:text-text')
@@ -91,9 +92,13 @@ export function ActivityPill({
         className={'h-2 w-2 shrink-0 rounded-full ' + (busy ? '' : 'anim-pulse')}
         style={{ background: busy ? 'var(--info)' : 'var(--success)' }}
       />
+      {/* Segundo a ceder quando a topbar aperta: o texto some e sobra o ponto
+          de estado (o `title` mantém a informação a um hover). O ponto sozinho
+          ainda diz o essencial — e clicar continua abrindo a gaveta. */}
       <span
         className={
-          'max-w-[260px] truncate text-[11px] ' + (busy ? 'font-mono tracking-[0.02em]' : '')
+          'hidden max-w-[260px] truncate text-[11px] lg:inline ' +
+          (busy ? 'font-mono tracking-[0.02em]' : '')
         }
       >
         {label}

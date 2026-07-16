@@ -105,7 +105,7 @@ export function Workspace({
         <main className="min-h-0 flex-1 overflow-auto">
           {activeTab === 'overview' && <OverviewTab project={project} />}
           {activeTab === 'documents' && (
-            <DocumentsTab projectId={projectId} syncNonce={syncNonce} />
+            <DocumentsTab project={project} syncNonce={syncNonce} />
           )}
           {activeTab === 'kanban' && (
             <KanbanTab projectId={projectId} syncNonce={syncNonce} />

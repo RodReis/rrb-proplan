@@ -34,13 +34,16 @@ export function Topbar({
 
   return (
     <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-border bg-panel px-5">
-      <nav aria-label="Trilha" className="min-w-0 flex-1">
-        <ol className="flex items-center gap-1.5 truncate text-[12.5px]">
-          <li className="text-dim">{project.owner}</li>
-          <li aria-hidden className="text-dimmer">/</li>
-          <li className="truncate text-body2">{project.name}</li>
-          <li aria-hidden className="text-dimmer">/</li>
-          <li className="truncate font-medium text-text">{tabLabel}</li>
+      {/* Ordem de aperto (decisão do PI em 2026-07-16): o breadcrumb cede
+          primeiro — a sidebar já diz onde você está —, depois a pílula perde o
+          texto. Os botões de ação nunca cortam: ação vence contexto. */}
+      <nav aria-label="Trilha" className="min-w-0 flex-1 shrink">
+        <ol className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
+          <li className="shrink truncate text-dim">{project.owner}</li>
+          <li aria-hidden className="shrink-0 text-dimmer">/</li>
+          <li className="shrink truncate text-body2">{project.name}</li>
+          <li aria-hidden className="shrink-0 text-dimmer">/</li>
+          <li className="shrink-0 font-medium text-text">{tabLabel}</li>
         </ol>
       </nav>
 

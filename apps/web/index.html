@@ -4,11 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RRB ProPlan</title>
-    <link rel="preconnect" href="https://rsms.me/" />
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+    <!-- Sem link de fonte aqui: IBM Plex é self-hosted via @fontsource, importada
+         em src/index.css (DESIGN.md §3 — nunca CDN em runtime; o ambiente é 100%
+         local). O CDN da Inter que vivia aqui era resto da paleta pré-Carbono. -->
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+  <!-- impeccable-live-start -->
+<script src="http://localhost:8400/live.js"></script>
+<!-- impeccable-live-end -->
+</body>
 </html>
