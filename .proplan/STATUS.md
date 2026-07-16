@@ -16,8 +16,6 @@ updated: 2026-07-16
 ## A Fazer
 
 - Fatia 10 — docs/CONTEXT.md: captura de asserção humana, "o que não mexer", validade por SHA (ADR-013) (#2, prio: alta)
-- Fatia 15 — Shell workspace + temas Carbono/Claro (#56, prio: media)
-- Fatia 16 — Telas Login e Catálogo (padrão workspace) (#57, prio: media)
 - Fatia 8 — Multi-tenant: RBAC, organizações, billing (#7, prio: baixa)
 
 ## Em Andamento
@@ -35,6 +33,8 @@ _(vazio)_
 - Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6) (#42, prio: alta, finalizado em: 2026-07-15)
 - Fatia 13 — Drift de deploy: confronto de fontes, sem coroar verdade (SPEC-013 v2.1) (#5, prio: alta, finalizado em: 2026-07-15)
 - Fatia 7.7 — Invalidação de inferência por inputHash (SPEC-011) (#31, prio: alta, finalizado em: 2026-07-14)
+- Fatia 15 — Shell workspace + temas Carbono/Claro (#56, prio: media, finalizado em: 2026-07-16)
+- Fatia 16 — Telas Login e Catálogo (padrão workspace) (#57, prio: media, finalizado em: 2026-07-16)
 - Fatia 6.2 — Formato de Deploy: 3 eixos (ambiente × componente × infra de apoio) (#53, prio: media, finalizado em: 2026-07-15)
 - Fatia 6.1 — Aba Deploy: documento primeiro, painel de ambientes como enriquecimento (SPEC-012) (#38, prio: media, finalizado em: 2026-07-15)
 - Correção — tela de Mapeamento exibe coleção como "ausente" (#36, prio: media, finalizado em: 2026-07-15)
