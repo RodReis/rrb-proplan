@@ -7,6 +7,8 @@ interface Props {
   onClose: () => void;
   /** Muda quando um sync/promote termina — reancora o feed para pegar o novo. */
   refreshNonce: number;
+  /** Tocando a animação de saída — o nó ainda existe, mas já está indo embora. */
+  leaving?: boolean;
 }
 
 // Polling adaptativo do painel (o F5 manual morreu — SPEC-010): rápido enquanto
@@ -145,11 +147,24 @@ function TermSteps({ op }: { op: OperationView }) {
  * carbono (aprovada pelo PI): fundo escuro, fonte mono, cores por grupo —
  * IA azul, escrita roxo, sync verde. Vive no shell → sobrevive à navegação.
  */
-export function ActivityPanel({ projectId, projectName, onClose, refreshNonce }: Props) {
+export function ActivityPanel({
+  projectId,
+  projectName,
+  onClose,
+  refreshNonce,
+  leaving,
+}: Props) {
   const [running, setRunning] = useState<OperationView[]>([]);
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [includeSyncs, setIncludeSyncs] = useState(false);
+
+  // Esc fecha a gaveta (§11: "fechar modal/gaveta com Esc sempre"). Faltava.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const [loading, setLoading] = useState(true);
 
   // Polling adaptativo: os jobs de IA (summary/edges/classify) rodam ASSÍNCRONOS
@@ -213,7 +228,10 @@ export function ActivityPanel({ projectId, projectName, onClose, refreshNonce }:
   }
 
   return (
-    <aside className="act-panel">
+    <aside
+      className={'act-panel' + (leaving ? ' act-panel--leaving' : '')}
+      aria-label={`Atividade de ${projectName}`}
+    >
       <header className="act-titlebar">
         <span className="act-title">
           Atividade · <b>{projectName}</b>

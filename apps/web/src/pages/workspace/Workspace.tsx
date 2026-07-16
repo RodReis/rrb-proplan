@@ -18,6 +18,7 @@ import { TestsTab } from './tabs/TestsTab';
 import { HandoffTab } from './tabs/HandoffTab';
 import { Sidebar } from './shell/Sidebar';
 import { Topbar } from './shell/Topbar';
+import { useExitAnimation } from './useExitAnimation';
 
 interface Props {
   user: SessionUser;
@@ -53,6 +54,8 @@ export function Workspace({
   const [syncing, setSyncing] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 240ms = a duração de `drawerOut` no index.css. Se um mudar, o outro muda.
+  const drawer = useExitAnimation(activityOpen, 240);
   const [mapping, setMapping] = useState<{ open: boolean; focus: Entity | null }>({
     open: false,
     focus: null,
@@ -177,11 +180,15 @@ export function Workspace({
           />
         )}
 
-        {activityOpen && (
+        {/* A gaveta sobrevive ao fechar até terminar a animação de saída
+            (useExitAnimation) — senão o React desmonta no mesmo quadro e ela
+            some sem o "volta". */}
+        {drawer.rendered && (
           <ActivityPanel
             projectId={projectId}
             projectName={project.name}
             refreshNonce={syncNonce}
+            leaving={drawer.leaving}
             onClose={() => setActivityOpen(false)}
           />
         )}

@@ -116,7 +116,9 @@ button:active {
 }
 
 .anim-dropIn { animation: dropIn 0.15s var(--ease-out-expo); }
-.anim-drawerIn { animation: drawerIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* `drawerIn` não tem classe utilitária: quem anima é o próprio `.act-panel`
+   (junto com o `drawerOut` da saída), para entrada e saída viverem no mesmo
+   lugar. */
 .anim-popIn { animation: popIn 0.2s var(--ease-out-expo); }
 .anim-pulse { animation: actPulse 2s ease-in-out infinite; }
 
@@ -210,36 +212,53 @@ button:active {
  * o contraste que a justificava e virava ilha escura no tema Claro; o PI
  * decidiu (2026-07-16) tokenizar: a gaveta segue o tema nos dois.
  *
- * Os apelidos locais (--term-… e --g-…) sobrevivem como ponte para as ~94
- * regras abaixo: reapontá-los aos tokens tokeniza o bloco inteiro sem
- * reescrever cada uso.
+ * Os apelidos locais (--drw-… e --g-…) são ponte para as ~94 regras abaixo:
+ * reapontá-los aos tokens tokeniza o bloco inteiro sem reescrever cada uso.
+ * Chamavam-se --term-… até 2026-07-16 — nome que mentia sobre o que a gaveta
+ * é hoje e mandava o próximo leitor procurar um console que não existe mais.
  * Cores por grupo (§6): IA azul, escrita violeta, sync verde.
  */
 .act-panel {
-  --term-bg: var(--pop);
-  --term-line-hover: var(--card);
-  --term-border: var(--border2);
-  --term-ink: var(--text2);
-  --term-dim: var(--muted);
-  --term-faint: var(--dim);
+  --drw-bg: var(--pop);
+  --drw-hover: var(--card);
+  --drw-border: var(--border2);
+  --drw-ink: var(--text2);
+  --drw-dim: var(--muted);
+  --drw-faint: var(--dim);
   --g-ai: var(--info);
   --g-write: var(--write);
   --g-sync: var(--success);
   --g-error: var(--error);
   --mono: var(--font-mono);
 
-  position: absolute;
-  inset-block: 0;
+  /* `fixed` a partir da base da topbar (§2: 60px) — era `absolute` dentro do
+     container que contém a própria topbar, e a gaveta cobria os botões dela.
+     A gaveta é overlay do conteúdo, nunca das ações. */
+  position: fixed;
+  top: 60px;
+  bottom: 0;
   right: 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
-  width: 384px;
+  width: 390px;
   max-width: 100%;
-  background: var(--term-bg);
-  border-left: 1px solid var(--term-border);
+  background: var(--drw-bg);
+  border-left: 1px solid var(--drw-border);
   /* Sombra de flutuante (§5): a gaveta é o caso -28px. */
   box-shadow: -28px 0 70px var(--shadow);
+  animation: drawerIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Saída: o mesmo caminho de volta (§9). Sem isso o React desmonta o nó e a
+   gaveta some de um quadro para o outro — o "vai" sem o "volta". */
+.act-panel--leaving {
+  animation: drawerOut 0.24s cubic-bezier(0.4, 0, 0.9, 0.4) both;
+}
+
+@keyframes drawerOut {
+  from { transform: none; }
+  to { transform: translateX(102%); }
 }
 
 .act-titlebar {
@@ -247,7 +266,7 @@ button:active {
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--term-border);
+  border-bottom: 1px solid var(--drw-border);
   background: var(--panel);
 }
 /* Os "pontinhos macOS" saíram com a metáfora de terminal: eram cor sem
@@ -255,16 +274,16 @@ button:active {
 .act-title {
   font-family: var(--mono);
   font-size: 12px;
-  color: var(--term-dim);
+  color: var(--drw-dim);
   letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.act-title b { color: var(--term-ink); font-weight: 600; }
+.act-title b { color: var(--drw-ink); font-weight: 600; }
 .act-x {
   margin-left: auto;
-  color: var(--term-faint);
+  color: var(--drw-faint);
   background: none;
   border: 0;
   cursor: pointer;
@@ -275,15 +294,15 @@ button:active {
   border-radius: 6px;
   transition: color 120ms, background 120ms;
 }
-.act-x:hover { color: var(--term-ink); background: var(--card); }
+.act-x:hover { color: var(--drw-ink); background: var(--card); }
 
 .act-scroll { min-height: 0; flex: 1; overflow-y: auto; }
 
 .act-now {
   margin: 10px 14px 4px;
-  border: 1px solid color-mix(in srgb, var(--g-write) 30%, var(--term-border));
+  border: 1px solid color-mix(in srgb, var(--g-write) 30%, var(--drw-border));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--g-write) 6%, var(--term-bg));
+  background: color-mix(in srgb, var(--g-write) 6%, var(--drw-bg));
   padding: 10px 12px;
 }
 .act-now-h {
@@ -297,9 +316,9 @@ button:active {
 
 .act-summary {
   margin: 10px 14px 4px;
-  border: 1px solid color-mix(in srgb, var(--g-ai) 30%, var(--term-border));
+  border: 1px solid color-mix(in srgb, var(--g-ai) 30%, var(--drw-border));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--g-ai) 6%, var(--term-bg));
+  background: color-mix(in srgb, var(--g-ai) 6%, var(--drw-bg));
   padding: 10px 12px;
 }
 .act-summary-h {
@@ -317,7 +336,7 @@ button:active {
 .act-summary-when {
   text-transform: none;
   letter-spacing: 0;
-  color: var(--term-faint);
+  color: var(--drw-faint);
   font-weight: 400;
 }
 .act-summary-metrics {
@@ -330,27 +349,27 @@ button:active {
   flex-direction: column;
   gap: 1px;
   padding: 8px 10px;
-  border: 1px solid var(--term-border);
+  border: 1px solid var(--drw-border);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--term-ink) 3%, transparent);
+  background: color-mix(in srgb, var(--drw-ink) 3%, transparent);
 }
 .act-metric-n {
   font-family: var(--mono);
   font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
-  color: var(--term-ink);
+  color: var(--drw-ink);
   font-variant-numeric: tabular-nums;
 }
 .act-metric-lbl {
   font-size: 12px;
-  color: var(--term-ink);
+  color: var(--drw-ink);
 }
 .act-metric-sub {
   margin-top: auto;
   padding-top: 4px;
   font-size: 11px;
-  color: var(--term-dim);
+  color: var(--drw-dim);
 }
 .act-metric-free { color: var(--g-sync); }
 .act-summary-econ {
@@ -362,12 +381,12 @@ button:active {
 .act-summary-next {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--term-border);
+  border-top: 1px solid var(--drw-border);
   font-size: 11.5px;
-  color: var(--term-dim);
+  color: var(--drw-dim);
   line-height: 1.5;
 }
-.act-summary-next b { color: var(--term-ink); font-weight: 600; }
+.act-summary-next b { color: var(--drw-ink); font-weight: 600; }
 
 .act-subhead {
   display: flex;
@@ -380,7 +399,7 @@ button:active {
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--term-faint);
+  color: var(--drw-faint);
 }
 .act-toggle {
   display: inline-flex;
@@ -388,7 +407,7 @@ button:active {
   gap: 6px;
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--term-dim);
+  color: var(--drw-dim);
   cursor: pointer;
   user-select: none;
 }
@@ -403,7 +422,7 @@ button:active {
   padding: 7px 14px;
   transition: background 120ms ease;
 }
-.act-row:hover { background: var(--term-line-hover); }
+.act-row:hover { background: var(--drw-hover); }
 .act-mark { font-size: 12px; line-height: 1.5; text-align: center; }
 .act-body { min-width: 0; }
 .act-title-line {
@@ -422,12 +441,12 @@ button:active {
   border-radius: 4px;
   font-weight: 600;
 }
-.act-name { color: var(--term-ink); }
-.act-meta { color: var(--term-dim); font-size: 11px; margin-top: 2px; word-break: break-word; }
+.act-name { color: var(--drw-ink); }
+.act-meta { color: var(--drw-dim); font-size: 11px; margin-top: 2px; word-break: break-word; }
 .act-meta a { color: var(--g-write); text-decoration: none; }
 .act-meta a:hover { text-decoration: underline; }
 .act-time {
-  color: var(--term-faint);
+  color: var(--drw-faint);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -439,13 +458,13 @@ button:active {
 .act-g-write .act-tag { background: color-mix(in srgb, var(--g-write) 14%, transparent); }
 .act-g-sync .act-mark, .act-g-sync .act-tag { color: var(--g-sync); }
 .act-g-sync .act-tag { background: color-mix(in srgb, var(--g-sync) 14%, transparent); }
-.act-g-sync .act-name { color: var(--term-dim); }
+.act-g-sync .act-name { color: var(--drw-dim); }
 
 .act-skeleton {
   height: 96px;
   margin: 0 14px;
   border-radius: 6px;
-  background: var(--term-line-hover);
+  background: var(--drw-hover);
   animation: act-pulse 1.4s ease-in-out infinite;
 }
 @keyframes act-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.9; } }
@@ -454,7 +473,7 @@ button:active {
   text-align: center;
   font-family: var(--mono);
   font-size: 11.5px;
-  color: var(--term-faint);
+  color: var(--drw-faint);
 }
 .act-more {
   display: block;
@@ -463,14 +482,14 @@ button:active {
   padding: 7px;
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--term-dim);
+  color: var(--drw-dim);
   background: none;
-  border: 1px solid var(--term-border);
+  border: 1px solid var(--drw-border);
   border-radius: 6px;
   cursor: pointer;
   transition: color 120ms, border-color 120ms;
 }
-.act-more:hover { color: var(--term-ink); border-color: var(--g-ai); }
+.act-more:hover { color: var(--drw-ink); border-color: var(--g-ai); }
 
 .act-spin { display: inline-block; animation: act-spin 1s linear infinite; }
 @keyframes act-spin { to { transform: rotate(360deg); } }

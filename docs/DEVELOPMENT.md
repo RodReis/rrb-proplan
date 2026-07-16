@@ -579,6 +579,14 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Decisão do PI (2026-07-16) — conflito design system × ferramenta**: a skill `impeccable` bane *side-stripe border* (`border-left` > 1px como acento) e o `DESIGN.md` §4.3 **manda** exatamente isso para a prioridade do card. **O DESIGN.md vence**: a cor é semântica, o protótipo a tem, e o design system deste produto é decisão do PI — a skill é conselho genérico.
 
+7. `feito` — **Gaveta de Atividade** (4 defeitos reportados pelo PI ao vivo, cada um com causa própria):
+   - **Cobria os botões da topbar**: era `position: absolute` dentro do container que **contém** a topbar. Passou a `fixed` a partir de `top: 60px` (§2) — a gaveta é overlay do conteúdo, nunca das ações. É o que o protótipo faz.
+   - **Entrada sem animação**: a classe `.anim-drawerIn` existia no CSS desde a Fatia 15 e **nunca teve consumidor** — o mesmo tipo de gap do `stageTint`. A animação passou para o próprio `.act-panel`, junto com a saída; a classe órfã foi removida.
+   - **Sem "volta"**: não havia animação de saída — o React desmontava no mesmo quadro. `useExitAnimation` segura o nó até o `drawerOut` terminar (240 ms, casado com o CSS). **5 testes**, incluindo o caso que quebra fácil: reabrir no meio da saída não pode deixar o timer velho derrubar o nó. Sob `prefers-reduced-motion` a saída é imediata (§11) — quem pediu para não ver movimento não pode ficar esperando por um.
+   - **Estilo "de terminal"**: os apelidos `--term-*` sobreviveram à tokenização e o nome mentia sobre o que a gaveta é hoje. Renomeados para `--drw-*` — nome honesto evita o próximo leitor procurar um console que não existe mais.
+
+**Bug de acessibilidade corrigido junto**: **Esc não fechava a gaveta**, contra o §11 (*"fechar modal/gaveta com Esc sempre"*).
+
 **Bug de contraste corrigido junto**: o placeholder do input de criar card usava `--dimmer` (2.85:1 no Carbono, 2.52:1 no Claro) — placeholder é texto que se lê e exige os mesmos 4.5:1 do corpo. Passou para `--muted` (6.6:1 / 5.65:1). A linha "placeholder" do `--dimmer` na tabela do §4.1 foi corrigida: o token não serve para isso.
 
 ### Dívida registrada — peso das imagens de IA (decisão do PI em 2026-07-16: **fatia futura**)
