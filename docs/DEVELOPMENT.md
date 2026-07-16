@@ -587,6 +587,10 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Bug de acessibilidade corrigido junto**: **Esc não fechava a gaveta**, contra o §11 (*"fechar modal/gaveta com Esc sempre"*).
 
+8. `feito` — **Grafo legível** (reportado pelo PI ao vivo: *"fundo escuro com cards escuros não está legal, e o branco com fundo branco também não"*). Medido: o nó dava **1.06:1** contra o canvas no Carbono e **1.12:1** no Claro — praticamente a mesma cor; as arestas, **1.39:1**. **Regressão minha da Fatia 15**: troquei os nós de blocos sólidos para `--surface` + borda seguindo a letra do §6, e o §6 não previa canvas. Agora: nó `--card` + **borda `--muted`** (7.17:1 / 5.46:1) + sombra (§5 permite em flutuante); arestas em `--dim` (3.87:1 / 2.97:1 — subordinadas ao nó de propósito); grade em `--border3`; MiniMap com nós em `--muted`. Nó-fantasma segue sem preenchimento **e agora sem sombra**: ele não é documento que existe, e sombra sugeriria corpo (ADR-014). `DESIGN.md` §6 reescrito com as medições.
+
+**O achado maior que o Grafo**: **nenhum token de superfície serve para objeto em canvas.** A escala inteira (`--surface`/`--surface2`/`--card`/`--colbg`) fica entre **1.04 e 1.79:1** contra `--bg` — ela foi desenhada para painéis *empilhados*, onde a borda separa e o preenchimento só diferencia camada. Num canvas não há empilhamento: quem separa é a **borda**, e ela precisa vir da escala de *texto* (`--muted`/`--dim`), não da de superfície. Vale para qualquer canvas futuro (timeline, matriz de prontidão da Fatia 14). Registrado aqui porque o §6 não tem onde dizer isso.
+
 **Bug de contraste corrigido junto**: o placeholder do input de criar card usava `--dimmer` (2.85:1 no Carbono, 2.52:1 no Claro) — placeholder é texto que se lê e exige os mesmos 4.5:1 do corpo. Passou para `--muted` (6.6:1 / 5.65:1). A linha "placeholder" do `--dimmer` na tabela do §4.1 foi corrigida: o token não serve para isso.
 
 ### Dívida registrada — peso das imagens de IA (decisão do PI em 2026-07-16: **fatia futura**)

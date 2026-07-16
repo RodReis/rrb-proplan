@@ -168,9 +168,13 @@ Prioridade = **borda esquerda 3 px** no card: ALTA `#e08a80`/`#c65a4e`, MÉDIA `
 - Drag: `DragOverlay` com o mesmo card + `rotate(2deg)`, sombra `0 24px 60px var(--shadow)`; drop target = coluna com borda `--accentBorder`.
 
 ### Grafo (react-flow)
-- Nós = documento: `--surface`, borda `--border2` 1px, raio 12px, título Mono 11px; nó desatualizado ganha borda/ícone `--accent` (carbono) ou âmbar (claro). Arestas **inferidas por IA são tracejadas** (ADR-002).
-- Arestas: `stroke: var(--border3)` 1.5px; ativo/hover: `var(--accent)` com `stroke-dasharray: 4 8` animado. Hover destaca vizinhos e esmaece o resto.
-- Fundo: `--bg` + `<Background variant="dots" gap={48} size={1}>` em `--border`. MiniMap/Controls: `--pop` + `--border2`.
+
+> **Corrigido em 2026-07-16 (medido).** A versão anterior desta seção mandava nó `--surface` + borda `--border2` e aresta `--border3`. Contra o canvas isso dá **1.06:1** (nó) e **1.39:1** (aresta) no Carbono — invisível. **Nenhum token de superfície resolve**: a escala inteira fica em 1.04–1.79:1 contra `--bg`, porque foi desenhada para painéis empilhados, não para objetos soltos num canvas. Num canvas, quem separa é a **borda**, não o preenchimento.
+
+- Nós = documento: `--card`, **borda `--muted` 1px** (7.17:1 carbono / 5.46:1 claro — o mínimo WCAG para componente gráfico é 3:1), raio 12px, sombra `0 4px 14px var(--shadow)` (o §5 permite em flutuante, e nó de grafo é flutuante por definição). Faixa esquerda 3px com a cor do tipo (README verde · CLAUDE.md azul · doc prata — todas ≥5:1 sobre o nó). Nó desatualizado ganha borda/ícone `--accent` (carbono) ou âmbar (claro).
+- Nó-fantasma (link quebrado): tracejado `--error`, **sem preenchimento e sem sombra** — ele não é um documento que existe, e sombra sugeriria corpo (ADR-014: ausência é informação, nunca um bloco vermelho).
+- Arestas: **`stroke: var(--dim)`** 1.5px (3.87:1 / 2.97:1) — `--dim` e não `--muted` de propósito: a aresta deve ler-se e continuar subordinada ao nó. Ativo/hover: `var(--accent)` com `stroke-dasharray: 4 8` animado. Hover destaca vizinhos e esmaece o resto. Arestas **inferidas por IA são tracejadas** (ADR-002).
+- Fundo: `--bg` + `<Background variant="dots" gap={48} size={1}>` em **`--border3`** (era `--border`, a 1.19:1 — grade que não se vê não orienta ninguém). MiniMap: `--pop` + `--border2`, com nós em `--muted` (em miniatura o nó tem poucos pixels).
 
 ### Faixa de aba (hero das abas de documento)
 

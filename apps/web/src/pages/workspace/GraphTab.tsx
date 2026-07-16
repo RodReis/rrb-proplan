@@ -57,15 +57,28 @@ const NODE_STYLES: Record<
   string,
   { normal: React.CSSProperties; dim: React.CSSProperties }
 > = (() => {
-  // Nó = documento: --surface, borda --border2 1px, raio 12px (§6).
+  /**
+   * Nó = documento (§6), com dois desvios medidos em 2026-07-16 e aprovados
+   * pelo PI — o §6 pedia `--surface` + borda `--border2` e o resultado era
+   * ilegível: **1.06:1** do nó contra o canvas no Carbono, 1.12:1 no Claro.
+   * Nenhum token de superfície resolve (a escala toda fica em 1.04–1.79:1
+   * contra `--bg`): ela foi feita para painéis empilhados, não para objetos
+   * soltos num canvas.
+   *
+   * 1. Borda `--muted` (7.17:1 carbono / 5.46:1 claro) — acima do mínimo WCAG
+   *    de 3:1 para componente gráfico.
+   * 2. Sombra: o §5 permite em flutuante, e nó de grafo é flutuante por
+   *    definição. Separa do canvas sem introduzir cor nova.
+   */
   const base: React.CSSProperties = {
     borderRadius: 12,
     fontSize: 13,
     fontWeight: 500,
     padding: '8px 12px',
-    background: 'var(--surface)',
-    border: '1px solid var(--border2)',
+    background: 'var(--card)',
+    border: '1px solid var(--muted)',
     color: 'var(--text2)',
+    boxShadow: '0 4px 14px var(--shadow)',
     transition: 'opacity 150ms',
   };
   const solid = (dot: string) => ({
@@ -74,12 +87,14 @@ const NODE_STYLES: Record<
     dim: { ...base, borderLeft: `3px solid ${dot}`, opacity: 0.35 },
   });
   // Nó-fantasma = link quebrado: tracejado, sem preencher (ausência é
-  // informação — ADR-014; nunca um bloco vermelho).
+  // informação — ADR-014; nunca um bloco vermelho). Sem sombra: ele não é um
+  // documento que existe, e projetar sombra sugeriria corpo.
   const ghost = (opacity: number): React.CSSProperties => ({
     ...base,
     background: 'transparent',
     border: '1px dashed var(--error)',
     color: 'var(--error)',
+    boxShadow: 'none',
     opacity,
   });
   return {
@@ -91,15 +106,21 @@ const NODE_STYLES: Record<
 })();
 
 const EDGE_STYLES = {
-  // Arestas: --border3 1.5px (§6).
+  /**
+   * Arestas em `--dim` (3.87:1 carbono / 2.97:1 claro) — o §6 pedia
+   * `--border3`, que dá 1.39:1 contra o canvas e some. Aresta é a informação
+   * central do grafo: sem ela sobra uma nuvem de caixas. `--dim` e não
+   * `--muted` de propósito — a aresta deve ler-se, mas continuar subordinada
+   * ao nó.
+   */
   normal: {
-    stroke: 'var(--border3)',
+    stroke: 'var(--dim)',
     strokeWidth: 1.5,
     opacity: 1,
     transition: 'opacity 150ms',
   },
   normalDim: {
-    stroke: 'var(--border3)',
+    stroke: 'var(--dim)',
     strokeWidth: 1.5,
     opacity: 0.25,
     transition: 'opacity 150ms',
@@ -397,9 +418,19 @@ function GraphCanvas({
         {/* Fundo pontilhado do §6. Background/MiniMap recebem cor por prop
             (não por CSS), então var(--token) não resolve — lemos o token
             computado, reancorado quando o tema troca. */}
-        <Background variant={BackgroundVariant.Dots} gap={48} size={1} color={cssVar('--border')} />
+        {/* Grade em --border3 (1.39:1): decoração, não precisa AA — mas em
+            --border dava 1.19:1 e não se via, o que a torna inútil. Fica
+            abaixo das arestas de propósito: grade orienta, não informa. */}
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={48}
+          size={1}
+          color={cssVar('--border3')}
+        />
         <MiniMap
-          nodeColor={cssVar('--border3')}
+          // --muted: em miniatura o nó é de poucos pixels; --border3 sumia no
+          // fundo do próprio minimapa.
+          nodeColor={cssVar('--muted')}
           maskColor={cssVar('--shadow')}
           style={{ background: cssVar('--pop'), border: `1px solid ${cssVar('--border2')}` }}
         />
