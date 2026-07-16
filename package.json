@@ -1,6 +1,7 @@
 {
   "name": "rrb-proplan",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "workspaces": [
     "apps/*"
   ],
@@ -10,6 +11,8 @@
     "dev:web": "pnpm --filter @proplan/web dev",
     "build": "pnpm --filter @proplan/api build && pnpm --filter @proplan/web build",
     "prisma:migrate": "pnpm --filter @proplan/api prisma:migrate",
-    "prisma:seed": "pnpm --filter @proplan/api prisma:seed"
+    "prisma:seed": "pnpm --filter @proplan/api prisma:seed",
+    "test:report": "node scripts/test-report.mjs",
+    "test:report:check": "node scripts/test-report.mjs --check"
   }
 }

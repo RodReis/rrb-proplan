@@ -471,6 +471,20 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Aceite runtime do PI (pendente):** olho ao vivo com os `rrb-*` reais (`rrb-escola` deploy discordante, `rrb-organize` só-github-side) — o portfólio já nasce com casos ricos. Roteiro: linha por repo gerenciado com os 4 sinais datados; ordenação por nº de vermelhos (desempate staleness); chip de CI datado linkando o GitHub Actions; repo sem Actions → `sem CI` neutro (não vermelho); clicar chip abre a aba certa. **Provar que o radar não inventa**: sinal de 10/11 não aparece (peso zero); 2× o mesmo estado → mesma ordem.
 
+## Infra — Relatório de testes gerado pelo CI (ADR-019 / TESTING.md) — `feito`
+
+**Processo/infra, não fatia de produto** (não é SPEC-0XX). Implementa o ADR-019: evidência de teste gerada por máquina e verificada, nunca narrada. Escopo confirmado com o PI: **encanamento da camada Tela com smoke** (não suíte grande — YAGNI), **pnpm** canônico, **workflow no GitHub Actions**.
+
+1. `feito` — `apps/api/jest.config.js` com dois **projects**: `regras` (`*.spec.ts`, unidade) e `banco` (`*.int-spec.ts` + `test/*.e2e-spec.ts`, hoje vazio — harness pronto). Categoria determinística por sufixo (ADR-019 §3), o gerador não adivinha.
+2. `feito` — **Camada Tela do zero**: Vitest + Testing Library (`ConfirmDialog.test.tsx`, 3 testes de comportamento real) + Playwright (`e2e/login.spec.ts`, 1 smoke que carrega o app no browser). Vitest fixado em `^1.6` (compat com Vite 5; vitest 4 exige Vite ≥6). Testes fora do build de produção (`tsconfig` exclude).
+3. `feito` — `scripts/gen-test-report.ts` (repo-agnóstico, lê `test-report.config.json`): números vêm do `--json` dos runners + `coverage-summary.json`; monta `reports/TESTS.md` (Estado atual + Histórico append-only, 3 linhas Banco/Regras/Tela por entrega); modo `--check` compara **só os números** (metadados Data/Issue/PR variam por PR — decisão do PI) → exit 1 se forjados. `scripts/test-report.mjs` orquestra os runners.
+4. `feito` — `.github/workflows/ci.yml`: roda em todo PR (Postgres de teste pronto para o `banco`), publica a tabela no job summary + comentário fixo do PR, e a **guarda anti-drift** (`test:report:check`) barra o merge se o relatório commitado divergir de uma execução limpa. Cobertura report-only (não barra merge).
+5. `feito` — `reports/TESTS.md` fora de `docs/` (não mascara ADR-010) e fora de `.proplan/`; `.raw`/coverage/test-results no `.gitignore`. `package-lock.json` órfão removido (pnpm é o canônico), `packageManager` fixado.
+
+**Verificado ao vivo**: pipeline `pnpm test:report` end-to-end (Regras 473 / Banco 0 / Tela 4); guarda anti-drift provada — número forjado à mão → `--check` exit 1; `--check` passa com metadados de PR diferentes (não falha espúrio em PR futuro). Builds API+web limpos.
+
+**Nota**: o workflow do GitHub Actions só será exercido quando o repo receber um PR pós-merge desta fatia — validação real do CI (summary + sticky comment) é o aceite runtime pendente do PI.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.

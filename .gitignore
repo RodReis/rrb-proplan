@@ -6,3 +6,9 @@ dist/
 *.tsbuildinfo
 .playwright-mcp/
 graphify-out/
+
+# Testes (ADR-019): efêmeros — só reports/TESTS.md é versionado.
+coverage/
+reports/.raw/
+apps/web/test-results/
+apps/web/playwright-report.json

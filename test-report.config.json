@@ -1,0 +1,27 @@
+{
+  "$comment": "Mapa categoria→origem para o gerador de relatório (ADR-019 §3). ÚNICO arquivo que muda por projeto — o gen-test-report.ts é repo-agnóstico. Sufixos são convenção, não hardcode no código.",
+  "reportPath": "reports/TESTS.md",
+  "categories": [
+    {
+      "name": "Regras de Negócio",
+      "runner": "jest",
+      "project": "regras",
+      "resultsJson": "reports/.raw/api-regras.json",
+      "coverageSummary": "apps/api/coverage/regras/coverage-summary.json"
+    },
+    {
+      "name": "Banco",
+      "runner": "jest",
+      "project": "banco",
+      "resultsJson": "reports/.raw/api-banco.json",
+      "coverageSummary": "apps/api/coverage/banco/coverage-summary.json"
+    },
+    {
+      "name": "Tela",
+      "runner": "vitest+playwright",
+      "resultsJson": "reports/.raw/web-vitest.json",
+      "playwrightJson": "reports/.raw/web-playwright.json",
+      "coverageSummary": "apps/web/coverage/coverage-summary.json"
+    }
+  ]
+}
