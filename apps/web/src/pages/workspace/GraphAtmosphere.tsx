@@ -64,29 +64,62 @@ function NightSky() {
 function DayHaze() {
   return (
     <>
+      {/**
+       * Partículas em `--muted` a 55% (2.26:1 contra o canvas). A primeira
+       * versão usava `--dim` a 30% com `opacity .5` por cima: dava **1.33:1**
+       * e o tema Claro ficava branco liso.
+       *
+       * A lição, medida: o céu escuro funciona porque a estrela tem ~15:1 de
+       * espaço contra o preto. No branco não existe esse espaço — cinza claro
+       * sobre quase-branco não vai a lugar nenhum. Aqui o valor precisa ser
+       * bem mais escuro para produzir a *mesma* sutileza percebida.
+       *
+       * 2.26:1 é deliberado: fica abaixo da aresta (2.97:1) para a atmosfera
+       * não competir com a informação do grafo.
+       */}
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: `
-            radial-gradient(1px 1px at 30% 20%, color-mix(in srgb, var(--dim) 30%, transparent), transparent),
-            radial-gradient(1px 1px at 70% 60%, color-mix(in srgb, var(--dim) 24%, transparent), transparent)`,
-          backgroundSize: '180px 180px, 260px 260px',
-          opacity: 0.5,
+          ...starLayer(HAZE_NEAR),
+          opacity: 0.85,
         }}
       />
+      <div className="absolute inset-0" style={{ ...starLayer(HAZE_FAR), opacity: 0.6 }} />
       {/* Duas massas de luz difusa em diagonal: o mesmo papel do brilho de
-          horizonte do céu — dar um "onde" ao espaço vazio. */}
+          horizonte do céu — dar um "onde" ao espaço vazio. A 22% (1.35:1):
+          presença, não forma. */}
       <div
         className="absolute inset-0"
         style={{
           background: `
-            radial-gradient(900px 500px at 78% 12%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
-            radial-gradient(700px 400px at 15% 85%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 60%)`,
+            radial-gradient(900px 500px at 78% 12%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 62%),
+            radial-gradient(700px 400px at 15% 85%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%)`,
         }}
       />
     </>
   );
 }
+
+/** Camada de partículas da bruma — mesmo mecanismo de tile das estrelas. */
+const HAZE_NEAR: StarSpec = {
+  points: [
+    [12, 18], [47, 8], [78, 33], [26, 62], [63, 77], [91, 55], [37, 41], [8, 88],
+    [55, 24], [71, 91], [19, 5], [88, 12], [34, 96], [96, 74], [3, 37], [59, 51],
+  ],
+  size: 1.2,
+  tile: 170,
+  color: '--muted',
+  alpha: 55,
+};
+
+const HAZE_FAR: StarSpec = {
+  points: [[22, 31], [68, 14], [85, 71], [41, 86], [9, 54], [53, 62], [77, 43]],
+  size: 1.6,
+  tile: 280,
+  color: '--muted',
+  alpha: 70,
+};
+
 
 interface StarSpec {
   /** Posições em % dentro do tile — irregulares de propósito (grade denuncia). */
