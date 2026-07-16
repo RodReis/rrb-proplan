@@ -75,15 +75,16 @@ describe('MappingService.putMapping', () => {
           .fn()
           .mockResolvedValue({ id: 'p1', userId: 'u1', owner: 'o', name: 'r', defaultBranch: 'main' }),
       },
-      document: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ content: 'proplan: v2\nmapping:\n  architecture: docs/a.md\n' }),
-      },
+      document: { findUnique: jest.fn() },
     } as any;
     const auth = { installationToken: jest.fn().mockResolvedValue('tok') } as any;
+    // O config vem do GitHub, não do cache do banco: o merge tem de ser
+    // calculado sobre o conteúdo vivo para poder ser reaplicado num 409.
     const writeback = {
-      getFileSha: jest.fn().mockResolvedValue('sha1'),
+      getFile: jest.fn().mockResolvedValue({
+        sha: 'sha1',
+        content: 'proplan: v2\nmapping:\n  architecture: docs/a.md\n',
+      }),
       putFile: jest.fn().mockResolvedValue('sha2'),
     } as any;
     const ingestion = { enqueueSync: jest.fn().mockResolvedValue({ syncRunId: 'run1' }) } as any;

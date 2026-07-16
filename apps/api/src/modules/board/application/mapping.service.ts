@@ -1,10 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GithubAuth } from '../../identity/application/github-auth.service';
-import {
-  GithubWritebackClient,
-  WritebackConflictError,
-} from '../../../shared/github/github-writeback.client';
+import { GithubWritebackClient } from '../../../shared/github/github-writeback.client';
+import { putFileWithMerge } from '../../../shared/github/writeback-merge';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, ENTITIES, Resolution } from '../../ingestion/domain/entity';
@@ -87,41 +85,25 @@ export class MappingService {
     const operationId = await this.activity.start(projectId, 'mapping', CONFIG_PATH);
 
     try {
-      const current = await this.prisma.document.findUnique({
-        where: { projectId_path: { projectId, path: CONFIG_PATH } },
-        select: { content: true },
-      });
-      const { config } = parseProplanConfig(current?.content ?? null);
-      const merged = mergeProplanConfig(config, entity, path);
-      const content = serializeProplanConfig(merged);
-
       const token = await this.auth.installationToken(projectId);
-      let newBlobSha = '';
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const baseSha = await this.writeback.getFileSha(
-            token,
-            project.owner,
-            project.name,
-            CONFIG_PATH,
-            project.defaultBranch,
-          );
-          newBlobSha = await this.writeback.putFile({
-            token,
-            owner: project.owner,
-            repo: project.name,
-            path: CONFIG_PATH,
-            branch: project.defaultBranch,
-            content,
-            message: `proplan: mapeia ${entity} → ${path ?? 'ausente'} (.proplan/config.yml)`,
-            baseSha,
-          });
-          break;
-        } catch (err) {
-          if (err instanceof WritebackConflictError && attempt === 0) continue;
-          throw err;
-        }
-      }
+      // O merge roda dentro do helper, sobre o conteúdo VIVO do repo, e é
+      // reaplicado no retry — o caminho antigo computava o conteúdo uma vez,
+      // antes do loop, e no 409 re-enviava o merge do snapshot velho,
+      // apagando quem tivesse editado o config à mão (ARCHITECTURE.md →
+      // Resiliência: "409 → re-sync, reaplicar mudança, um retry").
+      const newBlobSha = await putFileWithMerge({
+        writeback: this.writeback,
+        token,
+        owner: project.owner,
+        repo: project.name,
+        path: CONFIG_PATH,
+        branch: project.defaultBranch,
+        message: `proplan: mapeia ${entity} → ${path ?? 'ausente'} (.proplan/config.yml)`,
+        mutate: (live) => {
+          const { config } = parseProplanConfig(live);
+          return serializeProplanConfig(mergeProplanConfig(config, entity, path));
+        },
+      });
 
       const commitUrl = `https://github.com/${project.owner}/${project.name}/blob/${project.defaultBranch}/${CONFIG_PATH}`;
       await this.activity.attachArtifacts(operationId, { commitUrl });

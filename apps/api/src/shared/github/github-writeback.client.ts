@@ -25,6 +25,25 @@ export class GithubWritebackClient {
     path: string,
     branch: string,
   ): Promise<string | null> {
+    return (await this.getFile(token, owner, repo, path, branch))?.sha ?? null;
+  }
+
+  /**
+   * Arquivo vivo no branch: SHA **e** conteúdo, ou null se não existe.
+   *
+   * A Contents API entrega os dois na mesma resposta — o `getFileSha` sempre
+   * jogou o conteúdo fora. Quem faz ler-mesclar-reescrever precisa dele para
+   * re-aplicar a mudança sobre o estado atual depois de um 409, em vez de
+   * re-enviar o merge de um snapshot velho (ARCHITECTURE.md → Resiliência:
+   * *"409 → re-sync, reaplicar mudança, um retry"*). Custo: zero request novo.
+   */
+  async getFile(
+    token: string,
+    owner: string,
+    repo: string,
+    path: string,
+    branch: string,
+  ): Promise<{ sha: string; content: string } | null> {
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodePath(path)}?ref=${encodeURIComponent(branch)}`;
     const res = await fetch(url, {
       headers: authHeaders(token),
@@ -33,8 +52,15 @@ export class GithubWritebackClient {
     if (res.status === 404) return null;
     if (res.status === 401) throw new UnauthorizedException('Token GitHub inválido');
     if (!res.ok) throw new Error(`GitHub Contents GET ${res.status}`);
-    const body = (await res.json()) as { sha: string };
-    return body.sha;
+    const body = (await res.json()) as { sha: string; content?: string; encoding?: string };
+    // Arquivo > 1 MB vem sem `content` (a API manda buscar pelo blob). Nesse
+    // caso devolvemos o sha e conteúdo vazio: o caller decide — melhor do que
+    // fingir que o arquivo está vazio e apagá-lo no merge.
+    const content =
+      body.encoding === 'base64' && body.content
+        ? Buffer.from(body.content, 'base64').toString('utf-8')
+        : '';
+    return { sha: body.sha, content };
   }
 
   /**

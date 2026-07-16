@@ -6,10 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GithubAuth } from '../../identity/application/github-auth.service';
-import {
-  GithubWritebackClient,
-  WritebackConflictError,
-} from '../../../shared/github/github-writeback.client';
+import { GithubWritebackClient } from '../../../shared/github/github-writeback.client';
+import { putFileWithMerge } from '../../../shared/github/writeback-merge';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { GithubGitClient } from '../../ingestion/infrastructure/github-git.client';
 import { ActivityService } from '../../activity/application/activity.service';
@@ -207,40 +205,24 @@ export class ContextService {
     );
 
     try {
-      const current = await this.prisma.document.findUnique({
-        where: { projectId_path: { projectId, path: CONTEXT_PATH } },
-        select: { content: true },
-      });
-      const { assertions } = parseContextMd(current?.content ?? null);
-      const content = serializeContextMd(mutate(assertions));
-
       const token = await this.auth.installationToken(projectId);
-      let newBlobSha = '';
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const baseSha = await this.writeback.getFileSha(
-            token,
-            project.owner,
-            project.name,
-            CONTEXT_PATH,
-            project.defaultBranch,
-          );
-          newBlobSha = await this.writeback.putFile({
-            token,
-            owner: project.owner,
-            repo: project.name,
-            path: CONTEXT_PATH,
-            branch: project.defaultBranch,
-            content,
-            message,
-            baseSha,
-          });
-          break;
-        } catch (err) {
-          if (err instanceof WritebackConflictError && attempt === 0) continue;
-          throw err;
-        }
-      }
+      // O `mutate` do caller (adicionar/revalidar asserção) roda sobre o
+      // `docs/CONTEXT.md` VIVO e é reaplicado no retry. O caminho antigo lia o
+      // cache do banco, mesclava uma vez e no 409 re-enviava esse merge —
+      // apagando asserção que outra pessoa tivesse escrito à mão nesse meio
+      // tempo. Aqui isso é grave duas vezes: o CONTEXT.md é o cofre da
+      // asserção humana (ADR-013), o material que só existe na cabeça do dono.
+      const newBlobSha = await putFileWithMerge({
+        writeback: this.writeback,
+        token,
+        owner: project.owner,
+        repo: project.name,
+        path: CONTEXT_PATH,
+        branch: project.defaultBranch,
+        message,
+        mutate: (live) =>
+          serializeContextMd(mutate(parseContextMd(live).assertions)),
+      });
 
       const commitUrl = `https://github.com/${project.owner}/${project.name}/blob/${project.defaultBranch}/${CONTEXT_PATH}`;
       await this.activity.attachArtifacts(operationId, { commitUrl });

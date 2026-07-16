@@ -55,8 +55,15 @@ function makeSvc(over: {
     userToken: jest.fn().mockResolvedValue('user-token'),
     installationToken: jest.fn().mockResolvedValue('inst-token'),
   } as any;
+  // O CONTEXT.md vem do GitHub, não do cache do banco: o merge é calculado
+  // sobre o conteúdo vivo para poder ser reaplicado num 409 (ARCHITECTURE.md →
+  // Resiliência). `over.contextDoc` continua sendo o dial do teste.
   const writeback = {
-    getFileSha: jest.fn().mockResolvedValue('base-sha'),
+    getFile: jest.fn().mockResolvedValue(
+      over.contextDoc !== undefined && over.contextDoc !== null
+        ? { sha: 'base-sha', content: over.contextDoc }
+        : null,
+    ),
     putFile: jest.fn((params: any) => {
       putCalls.push(params);
       return Promise.resolve('new-blob-sha');
