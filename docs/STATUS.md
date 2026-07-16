@@ -8,6 +8,43 @@ updated: 2026-07-15
 
 Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem é dependência real: não iniciar fatia N+1 com N incompleta.
 
+## Índice Fatia ↔ SPEC (de-para canônico)
+
+> **Fonte única do pareamento.** Toda outra menção no repo deriva daqui. Extraído do frontmatter (`fatia:`/`spec:`) de cada `docs/specs/SPEC-*.md` — a autoridade. Verificado em 2026-07-15.
+>
+> **Por que dois números** — `Fatia N` é unidade de trabalho (pode ser fatiada em 7.5/7.6/7.7 depois); `SPEC-NNN` é ID de documento, imutável e em ordem de criação. Eles **divergem de propósito** e não devem ser reconciliados.
+>
+> ⚠️ **Colisões vivas** — os dígitos batem entre esquemas: **Fatia 9≠SPEC-014 mas Fatia 14=SPEC-019** · **Fatia 10 vs Fatia 15=SPEC-020** · **Fatia 11=SPEC-016 vs Fatia 16=SPEC-021**. **Nunca cite o número nu ("11"): sempre o par — "Fatia 11 (SPEC-016)".**
+>
+> **Estado não mora aqui.** Coluna do card = GitHub Issues (`.proplan/STATUS.md`). Progresso dentro da fatia = `docs/DEVELOPMENT.md`. Status da spec = frontmatter do arquivo. Esta tabela é só identidade (ADR-011: nenhum fato de estado em dois lugares).
+
+| Fatia | SPEC | arquivo | o que entrega |
+|---|---|---|---|
+| 1 | SPEC-001 | `SPEC-001-fundacao.md` | Fundação (monorepo, API, web, DB) |
+| 2 | SPEC-002 | `SPEC-002-ingestion.md` | Ingestion de docs via GitHub API |
+| 3 | SPEC-003 | `SPEC-003-insight-bootstrap.md` | Insight: resumo, bootstrap, config de IA, alerta de defasagem |
+| 4 | SPEC-004 | `SPEC-004-grafo.md` | Grafo de links explícitos |
+| 4.5 | SPEC-008 | `SPEC-008-github-app.md` | Migração para GitHub App |
+| 5 | SPEC-005 | `SPEC-005-kanban.md` | Kanban sobre GitHub Issues |
+| 6 | SPEC-006 | `SPEC-006-abas-convencao.md` | Resolução de documentos + abas |
+| 6.1 | SPEC-012 | `SPEC-012-deploy-documento-primeiro.md` | Aba Deploy: documento primeiro |
+| 6.2 | SPEC-017 | `SPEC-017-deploy-tres-eixos.md` | Formato de Deploy: 3 eixos |
+| 7 | SPEC-007 | `SPEC-007-insight-semantico.md` | Insight semântico |
+| 7.5 | SPEC-009 | `SPEC-009-consumo-ia.md` | Consumo de IA: tokens, custo, teto |
+| 7.6 | SPEC-010 | `SPEC-010-atividade.md` | Operação assíncrona + painel de Atividade |
+| 7.7 | SPEC-011 | `SPEC-011-invalidacao-granular.md` | Invalidação de inferência por `inputHash` |
+| 8 | — | (sem spec) | Multi-tenant: RBAC, orgs, billing — backlog, sem escopo |
+| 9 | SPEC-014 | `SPEC-014-modelo-canonico.md` | Modelo canônico + proveniência + confiança |
+| 10 | SPEC-015 | `SPEC-015-contexto-assercao.md` | `docs/CONTEXT.md` + captura de asserção humana |
+| 11 | SPEC-016 | `SPEC-016-mcp-server.md` | MCP Server: contrato de evidência + 6 tools |
+| 12 | — | (sem spec) | GitHub Projects v2, sub-issues, issue types — backlog |
+| 13 | SPEC-013 | `SPEC-013-drift-deploy.md` | Drift de deploy: confronto de fontes |
+| 13.5 | SPEC-018 | `SPEC-018-handoff-exportavel.md` | Handoff exportável |
+| 13.6 | SPEC-013.6 | `SPEC-013-6-probe-http.md` | Probe HTTP de URL declarada |
+| 14 | SPEC-019 | `SPEC-019-portfolio-radar.md` | Portfólio da fábrica + Radar de risco |
+| 15 | SPEC-020 | `SPEC-020-shell-workspace.md` | Shell workspace |
+| 16 | SPEC-021 | `SPEC-021-login-catalogo.md` | Login + catálogo |
+
 ## Backlog
 
 ### MVP2 — doc humana como artefato de primeira classe (escopo: `docs/specs/MVP2.md`, rascunho)
@@ -15,7 +52,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 > Tese **reposicionada em 2026-07-13** (`docs/LANDSCAPE.md`): "memória verificável com evidência" deixou de ser diferencial — o GitHub Copilot Memory já faz citação obrigatória + verificação, on-by-default desde mar/2026. O que sobrou e é nosso: **detectar quando a doc humana está mentindo** + **guardar o que só existe na cabeça do dono** (ADR-013, o ponto cego estrutural do Copilot: ele exige citação de *código*).
 - ~~Fatia 9~~ → **movida para A Fazer** (spec `aprovada-pi` em 2026-07-14: `docs/specs/SPEC-014-modelo-canonico.md`)
 - ~~Fatia 10~~ → **movida para A Fazer** (spec `aprovada-pi` em 2026-07-14: `docs/specs/SPEC-015-contexto-assercao.md`)
-- ~~Fatia 11~~ → **movida para A Fazer** (spec `aprovada-pi` em 2026-07-14: `docs/specs/SPEC-016-mcp-server.md`). Contrato de evidência obrigatório + 6 tools, **sem pass-through do GitHub** (ADR-017). **Fecha o núcleo do MVP2 (9→10→11).**
+- ~~Fatia 11~~ → **entregue; ver seção Em Andamento** (spec `aprovada-pi` em 2026-07-14: `docs/specs/SPEC-016-mcp-server.md`). Contrato de evidência obrigatório + 6 tools, **sem pass-through do GitHub** (ADR-017). **Fecha o núcleo do MVP2 (9→10→11).**
 - Fatia 12 — ~~Migração do Kanban para Issues~~ **antecipada para a Fatia 5**. Sobra no MVP2: GitHub Projects v2 (campo Status nativo, ordenação manual), sub-issues e issue types (prio: baixa; sem spec)
 - **Fatia 13** → spec escrita em 2026-07-14 (`docs/specs/SPEC-013-drift-deploy.md`), **`aprovada-pi` e depois DEVOLVIDA a `rascunho` em 2026-07-14**: o **Passo 0 bloqueante falhou** e a premissa da fatia foi **refutada por verificação direta**. O "handoff exportável" saiu do título e virou a **Fatia 13.5**. Dossiê original preservado abaixo — **leia primeiro a verificação**:
 
@@ -76,7 +113,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 _(vazio)_
 
 ## Em Andamento
-_(vazio)_
+- **Fatia 11 — MCP Server do ProPlan (SPEC-016)** — prio: **alta**. **Fecha o núcleo do MVP2 (9→10→11).** Adaptador fino (ADR-001) que expõe o julgamento (canônico da 9, asserção da 10, board da 5, handoff da 6/13.5) via MCP stdio sob **contrato de evidência sem exceção**: toda resposta carrega evidência datada + confiança; **sem evidência → recusa**, nunca chuta. **As 6 tools** (`get_project_state`/`get_next_task`/`get_handoff_context`/`get_constraints`/`explain_project`/`find_blockers`) + **7 resources** `proplan://repo/{owner}/{repo}/{view}` (sem `kanban`). **Metade da spec é o que NÃO faz:** nenhum pass-through do GitHub (ADR-017 — referencia issue por nº+URL, nunca o corpo; arch test prova). **Zero IA** (ADR-002), **zero modelo Prisma novo**. `a-revalidar` sempre propagado (ADR-013). Sem auth no MVP (decisão 1 — usuário único local; auth → Fatia 8). **Entry ESM isolado** `apps/mcp` (workspace novo) fora do build CJS do Nest — o SDK é ESM-only (evita o conflito do Octokit); barrel `mcp-bootstrap.ts` garante instância única de `@nestjs/*`. 28 testes no mcp, **501 no total**, tsc api + builds api/mcp/web limpos. **Verificado ao vivo:** servidor sobe stdio; JSON-RPC `tools/list` devolve as 6 tools. **4 decisões do PI incorporadas.** **Entregue via PR (`refs #3`); card em Em Andamento até o merge** (ADR-011 — `proplan:done` é pós-merge, aceite é só do PI).
 
 ## Feito
 - **Fatia 14 — Portfólio da fábrica + Radar de risco (SPEC-019)** — prio: **baixa** (mas é a tela inicial diária com 6–20 repos). View cross-projeto **top-level** (rail, separada do catálogo — decisão 4 do PI): repos gerenciados com staleness + cobertura + deploy + **CI** (coleta nova via Actions API, `Actions: read` já no ADR-015/instalação), cada sinal **cru, datado e clicável** para a aba de origem — **sem "health score" composto** (ADR-012). Radar ordena por **contagem de vermelhos** (desempate staleness, então nome — determinístico), com **slots peso-zero** para constraints-`a-revalidar` (Fatia 10) e blockers (Fatia 11) que acendem só subindo o peso, sem reescrita. CI: `sem-ci`/`sem-run` = neutro (não vermelho — decisão 2); **fora do MCP** (UI lê cache datado; ADR-017). **Zero IA** (ADR-002 — `GET /portfolio` não cria `LlmUsage`). Molde direto da Fatia 13 (coleta no sync tolerante a falha, cache no `Project`, projeção pura); **nenhuma tabela nova**. `Project.ciStatus/ciConclusionUrl/ciObservedAt` + migration `fatia_14_ci_status`. 473 testes (+15: portfolio 10, ci-status 5), tsc api/web + nest/vite build limpos; API sobe com `GET /portfolio`. **4 decisões do PI incorporadas.** **Aguardando aceite runtime do PI** (roteiro no DEVELOPMENT.md: casos ricos com os `rrb-*` reais).

@@ -14,6 +14,7 @@ import { CanonicalModule } from './modules/canonical/canonical.module';
 import { ContextModule } from './modules/context/context.module';
 import { HandoffModule } from './modules/handoff/handoff.module';
 import { PortfolioModule } from './modules/portfolio/portfolio.module';
+import { McpModule } from './modules/mcp/mcp.module';
 
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
@@ -39,6 +40,7 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
     ContextModule,
     HandoffModule,
     PortfolioModule,
+    McpModule,
   ],
 })
 export class AppModule {}
