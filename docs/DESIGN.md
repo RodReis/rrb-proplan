@@ -92,7 +92,8 @@ CSS custom properties em `:root[data-theme]`. O tema troca **apenas** as variáv
 | `--dim` | 3.32:1 | 2.86:1 | ❌ **reprova nos dois** — ver `STATUS.md` |
 | `--dimmer` | 2.65:1 | 2.34:1 | n/a — **não é texto** |
 
-- **`--dimmer` não carrega texto legível**: só ponto de estado, borda `/` de breadcrumb (`aria-hidden`) e item desabilitado — WCAG isenta controle desabilitado, e escurecê-lo apagaria a diferença entre "desabilitado" e "ativo", que é justamente o significado que ele comunica (§1). Se um dia for usado em texto que se lê, precisa passar AA.
+- **`--dimmer` não carrega texto legível**: só ponto de estado, borda `/` de breadcrumb (`aria-hidden`) e item desabilitado — WCAG isenta controle desabilitado, e escurecê-lo apagaria a diferença entre "desabilitado" e "ativo", que é justamente o significado que ele comunica (§1).
+- **Correção da tabela: `--dimmer` NÃO serve de placeholder** (o "uso" na linha acima é histórico). Medido: 2.85:1 no Carbono e 2.52:1 no Claro sobre `--surface2` — placeholder é texto que se lê e exige os mesmos 4.5:1 do corpo. **Placeholder usa `--muted`** (6.6:1 / 5.65:1).
 - **`--dim` reprova e não tem correção barata**: empurrá-lo até 4.5:1 no Claro o faz colidir com `--faint` (ambos → `~#696c71`), e a escala de 4 níveis vira 2. Precisa de rebalanceamento da escala inteira, não de um valor — item no `STATUS.md`.
 
 ### 4.2 Acento e semânticas
