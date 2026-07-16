@@ -1,0 +1,236 @@
+/**
+ * Gerador do relatório de testes (ADR-019). Repo-agnóstico: lê tudo de
+ * `test-report.config.json` — o único arquivo que muda por projeto. Os NÚMEROS
+ * vêm sempre da saída `--json` dos runners (jest/vitest/playwright) + o
+ * `coverage-summary.json`; nada é digitado à mão. É a nossa própria filosofia
+ * (evidência de máquina, nunca narrada) aplicada ao nosso CI.
+ *
+ * Uso:
+ *   ts-node scripts/gen-test-report.ts            # gera/atualiza reports/TESTS.md
+ *   ts-node scripts/gen-test-report.ts --check    # falha (exit 1) se divergir
+ *
+ * Metadados da entrega (linha do registro) via env:
+ *   REPORT_DATE (YYYY-MM-DD) · REPORT_ISSUE (#N) · REPORT_SPEC · REPORT_PR (#N)
+ * Ausentes → '—' (o relatório continua verdadeiro nos números, que é o que o
+ * --check verifica; metadados são rótulos humanos).
+ */
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+
+const ROOT = resolve(__dirname, '..');
+const CONFIG_PATH = resolve(ROOT, 'test-report.config.json');
+
+interface CategoryConfig {
+  name: string;
+  runner: string;
+  resultsJson: string;
+  playwrightJson?: string;
+  coverageSummary?: string;
+}
+interface Config {
+  reportPath: string;
+  categories: CategoryConfig[];
+}
+
+interface Row {
+  category: string;
+  tests: number;
+  pass: number;
+  fail: number;
+  coverage: string; // "91.2" ou "—" (E2E não tem cobertura de linha)
+}
+
+const HEADER = [
+  '<!-- GERADO AUTOMATICAMENTE por scripts/gen-test-report.ts — NÃO EDITAR À MÃO.',
+  '     Fonte dos números: jest/vitest/playwright --json. Divergência é barrada no CI. -->',
+].join('\n');
+
+const TABLE_HEADER =
+  '| Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR |\n' +
+  '|------|-------|------|-----------|-------:|-----:|------:|------------:|----|';
+
+function loadConfig(): Config {
+  return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Config;
+}
+
+/** Lê a saída `--json` de um runner (jest OU vitest — ambos expõem numTotal/…). */
+function readRunnerJson(path: string): { total: number; passed: number; failed: number } {
+  const abs = resolve(ROOT, path);
+  if (!existsSync(abs)) return { total: 0, passed: 0, failed: 0 };
+  const j = JSON.parse(readFileSync(abs, 'utf-8')) as {
+    numTotalTests?: number;
+    numPassedTests?: number;
+    numFailedTests?: number;
+  };
+  return {
+    total: j.numTotalTests ?? 0,
+    passed: j.numPassedTests ?? 0,
+    failed: j.numFailedTests ?? 0,
+  };
+}
+
+/** Lê o JSON do Playwright (formato próprio: suites/specs com stats). */
+function readPlaywrightJson(path: string): { total: number; passed: number; failed: number } {
+  const abs = resolve(ROOT, path);
+  if (!existsSync(abs)) return { total: 0, passed: 0, failed: 0 };
+  const j = JSON.parse(readFileSync(abs, 'utf-8')) as {
+    stats?: { expected?: number; unexpected?: number; flaky?: number; skipped?: number };
+  };
+  const s = j.stats ?? {};
+  const passed = s.expected ?? 0;
+  const failed = (s.unexpected ?? 0) + (s.flaky ?? 0);
+  return { total: passed + failed, passed, failed };
+}
+
+/** Cobertura de linhas (%) do coverage-summary.json, ou '—' se ausente. */
+function readCoverage(path?: string): string {
+  if (!path) return '—';
+  const abs = resolve(ROOT, path);
+  if (!existsSync(abs)) return '—';
+  const j = JSON.parse(readFileSync(abs, 'utf-8')) as {
+    total?: { lines?: { pct?: number } };
+  };
+  const pct = j.total?.lines?.pct;
+  return typeof pct === 'number' ? pct.toFixed(1) : '—';
+}
+
+function buildRows(cfg: Config): Row[] {
+  return cfg.categories.map((cat) => {
+    const runner = readRunnerJson(cat.resultsJson);
+    const pw = cat.playwrightJson
+      ? readPlaywrightJson(cat.playwrightJson)
+      : { total: 0, passed: 0, failed: 0 };
+    return {
+      category: cat.name,
+      tests: runner.total + pw.total,
+      pass: runner.passed + pw.passed,
+      fail: runner.failed + pw.failed,
+      coverage: readCoverage(cat.coverageSummary),
+    };
+  });
+}
+
+const meta = {
+  date: process.env.REPORT_DATE ?? '—',
+  issue: process.env.REPORT_ISSUE ?? '—',
+  spec: process.env.REPORT_SPEC ?? '—',
+  pr: process.env.REPORT_PR ?? '—',
+};
+
+function rowLine(r: Row): string {
+  return `| ${meta.date} | ${meta.issue} | ${meta.spec} | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | ${meta.pr} |`;
+}
+
+const HISTORY_MARKER = '## Histórico por entrega';
+const ESTADO_MARKER = '## Estado atual';
+
+/**
+ * Bloco "Estado atual" (só os números, metadados neutros) — é o que a guarda
+ * anti-drift compara. Isola os números da forja sem depender dos rótulos
+ * Data/Issue/PR, que legitimamente variam por PR.
+ */
+function estadoAtualBlock(doc: string): string {
+  const start = doc.indexOf(ESTADO_MARKER);
+  if (start === -1) return '';
+  const rest = doc.slice(start);
+  const end = rest.indexOf(HISTORY_MARKER);
+  return (end === -1 ? rest : rest.slice(0, end)).trim();
+}
+
+/**
+ * Linhas do histórico já commitadas, exceto as da issue atual (essas são
+ * upsert). Lê SÓ a seção após o marcador de histórico — o "Estado atual" é
+ * sempre regenerado e nunca deve realimentar o histórico.
+ */
+function keepHistory(existing: string, currentIssue: string): string[] {
+  const idx = existing.indexOf(HISTORY_MARKER);
+  if (idx === -1) return [];
+  const section = existing.slice(idx);
+  const out: string[] = [];
+  for (const line of section.split('\n')) {
+    if (!line.startsWith('| ') || line.includes('---')) continue;
+    if (line.includes('| Data |')) continue;
+    const issue = line.split('|')[2]?.trim();
+    if (issue === currentIssue && currentIssue !== '—') continue; // será reescrita
+    out.push(line.trimEnd());
+  }
+  return out;
+}
+
+function render(rows: Row[], existing: string): string {
+  const history =
+    meta.issue !== '—' && existing ? keepHistory(existing, meta.issue) : [];
+  const newLines = rows.map(rowLine);
+  const allLines = [...history, ...newLines];
+
+  const estadoAtual =
+    '## Estado atual\n\n' +
+    'Totais da última execução (regenerado, não acumulado):\n\n' +
+    TABLE_HEADER +
+    '\n' +
+    rows
+      .map(
+        (r) =>
+          `| — | — | — | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | — |`,
+      )
+      .join('\n');
+
+  const historico =
+    HISTORY_MARKER + '\n\n' +
+    'Append-only — linhas de entregas passadas são imutáveis.\n\n' +
+    TABLE_HEADER +
+    '\n' +
+    allLines.join('\n');
+
+  return [
+    HEADER,
+    '',
+    '# TESTS.md — Registro de evidência de testes',
+    '',
+    '> Gerado por `scripts/gen-test-report.ts` (ADR-019). Números vêm do `--json`',
+    '> dos runners. Ver `docs/TESTING.md` para a metodologia.',
+    '',
+    estadoAtual,
+    '',
+    historico,
+    '',
+  ].join('\n');
+}
+
+function main() {
+  const check = process.argv.includes('--check');
+  const cfg = loadConfig();
+  const reportAbs = resolve(ROOT, cfg.reportPath);
+  const existing = existsSync(reportAbs) ? readFileSync(reportAbs, 'utf-8') : '';
+  const rows = buildRows(cfg);
+  const next = render(rows, existing);
+
+  if (check) {
+    // Compara SÓ os números (seção "Estado atual", metadados neutros) — não os
+    // rótulos Data/Issue/PR, que variam por PR (decisão do PI). A guarda pega a
+    // forja de número, não força cada PR a pré-commitar seus metadados.
+    const committed = estadoAtualBlock(existing);
+    const fresh = estadoAtualBlock(next);
+    if (committed !== fresh) {
+      console.error(
+        '[gen-test-report] DIVERGÊNCIA de NÚMEROS: reports/TESTS.md não bate com uma execução limpa.\n' +
+          'Rode `pnpm test:report` e commite o resultado. Números não podem ser editados à mão (ADR-019).\n' +
+          `--- commitado ---\n${committed}\n--- execução limpa ---\n${fresh}`,
+      );
+      process.exit(1);
+    }
+    console.log('[gen-test-report] --check OK: os números batem com a execução limpa.');
+    return;
+  }
+
+  const dir = dirname(reportAbs);
+  if (!existsSync(dir)) execFileSync('node', ['-e', `require('fs').mkdirSync('${dir.replace(/\\/g, '\\\\')}',{recursive:true})`]);
+  writeFileSync(reportAbs, next, 'utf-8');
+  console.log(`[gen-test-report] escrito ${cfg.reportPath}:`);
+  for (const r of rows) {
+    console.log(`  ${r.category}: ${r.tests} testes, ${r.pass} pass, ${r.fail} falha, cob ${r.coverage}%`);
+  }
+}
+
+main();

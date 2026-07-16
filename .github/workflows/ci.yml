@@ -1,0 +1,88 @@
+name: CI — testes + relatório de evidência
+
+# ADR-019: evidência de teste gerada por máquina e verificada, nunca narrada.
+# Roda em todo PR: executa os runners, gera reports/TESTS.md a partir do --json,
+# publica no job summary + comentário fixo do PR, e barra o merge se o relatório
+# commitado divergir de uma execução limpa (guarda anti-drift).
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: proplan
+          POSTGRES_PASSWORD: proplan
+          POSTGRES_DB: proplan_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      # Categoria "Banco" ainda vazia; a DB de teste já fica pronta para quando
+      # os *.int-spec.ts/*.e2e-spec.ts existirem, sem mexer no workflow.
+      DATABASE_URL: postgresql://proplan:proplan@localhost:5432/proplan_test
+      REPORT_DATE: ${{ github.event.pull_request.updated_at }}
+      REPORT_ISSUE: "#${{ github.event.pull_request.number }}"
+      REPORT_PR: "#${{ github.event.pull_request.number }}"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Gerar Prisma client
+        run: pnpm --filter @proplan/api prisma:generate
+
+      - name: Instalar navegador do Playwright
+        run: pnpm --filter @proplan/web exec playwright install --with-deps chromium
+
+      # Guarda anti-drift: roda os runners e compara os números frescos com o
+      # reports/TESTS.md COMMITADO no PR. Se o dev editou um número à mão (ou
+      # esqueceu de rodar `pnpm test:report` e commitar), diverge → falha aqui.
+      # NÃO reescreve o arquivo — senão nunca pegaria a forja do commit.
+      - name: Rodar testes + guarda anti-drift
+        run: pnpm test:report:check
+
+      - name: Publicar tabela no job summary
+        if: always()
+        run: |
+          {
+            echo "## Relatório de testes (ADR-019)"
+            echo ""
+            sed -n '/## Estado atual/,/## Histórico/p' reports/TESTS.md | sed '/## Histórico/d'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comentário fixo no PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          BODY=$(sed -n '/## Estado atual/,/## Histórico/p' reports/TESTS.md | sed '/## Histórico/d')
+          MARKER="<!-- test-report-sticky -->"
+          COMMENT="$MARKER"$'\n'"$BODY"
+          ID=$(gh api "repos/${{ github.repository }}/issues/$PR/comments" --jq \
+            ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$ID" -f body="$COMMENT"
+          else
+            gh api -X POST "repos/${{ github.repository }}/issues/$PR/comments" -f body="$COMMENT"
+          fi
