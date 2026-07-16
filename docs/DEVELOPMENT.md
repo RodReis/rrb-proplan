@@ -487,6 +487,25 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Verificado ao vivo (Code):** servidor sobe stdio (`createApplicationContext` sem Redis travar); **JSON-RPC real** (`initialize` → `tools/list`) devolve as 6 tools: `get_project_state, get_next_task, get_handoff_context, get_constraints, explain_project, find_blockers`.
 
+### Validação ao vivo executada pelo Code (2026-07-16) — JSON-RPC stdio contra o banco local, repos reais
+
+**As 6 tools + resources exercidas contra dados reais** (o MCP roda com cwd `apps/api` para o ConfigModule achar o `.env` — a API lê `apps/api/.env`, não o da raiz):
+
+| tool | repo | resultado |
+|---|---|---|
+| `get_project_state` | `rrb-proplan` | **answer** com blocos reais + **evidência datada com sha** (`docs/ARCHITECTURE.md` sha `e43e3ca`, `2026-07-16`); confiança 1 |
+| `get_next_task` | `rrb-proplan` (25 issues) | **recomenda #2 por número+URL**, **sem reproduzir o corpo** (ADR-017) |
+| `get_handoff_context` | `rrb-adv` | docs mapeados (`.proplan/config.yml`, `docs/DECISÕES.md`, …), cada um `fato` com path |
+| `get_constraints` | `rrb-escola` (1 asserção) | asserção real com **`status: vigente` propagado** + autor/data/sha (ADR-013) |
+| `get_constraints` | `construtor-erp` (canonical=0) | **refusal honesto** — evidência vazia, com o que falta. Não chuta |
+| `explain_project` | `rrb-escola` | mistura **fato × inferência × asserção** corretamente classificada; a restrição aparece com a marca |
+| `find_blockers` | `rrb-escola` | **refusal honesto** — asserção é `vigente` (não `a-revalidar`) e nenhum campo estrutural recusado ⇒ sem blocker |
+| resource | `proplan://repo/RodReis/rrb-escola/constraints` | template listado; `resources/read` devolve a asserção com `status: vigente` |
+
+**Bug encontrado e corrigido na validação** (PR #64, `refs #3`): `get_next_task` **recusava sempre** — `projectPresenceConfidence` buscava o campo canônico `project.presence`, que **não existe** (o canônico produz `architecture`/`decisions`/`design`/`testing`/`deploy`/`skills`, nunca uma entidade `project`) ⇒ confiança do estado sempre 0 ⇒ `belowThreshold` ⇒ refusal. Os testes unitários passavam porque os **mocks fabricavam** uma entidade `project` que o canônico real não gera — só o confronto com dados reais expôs (a tese do próprio produto: o teste que não toca a realidade mente). Corrigido para **confiança agregada** (maior entre os campos presentes); modelo vazio → 0 (refusal preservado).
+
+**Nota de polimento (não bloqueia):** `get_project_state` emite 2 itens de evidência `{"type":"fato"}` sem path/sha — vêm dos blocos `backlog`/`próxima ação`, cujo `provenanceRef` é `{source:...}` e não tem path. Cosmético; o contrato segue satisfeito (há evidência real suficiente).
+
 **Aceite runtime do PI (pendente):** conectar o MCP no Claude Code (`node apps/mcp/dist/main.js`, stdio) apontado a um `rrb-*` real e exercer as 6 tools + resources ao vivo: `get_constraints` traz a asserção da Fatia 10 com `a-revalidar` impresso; `get_next_task` recomenda nº+URL sem reproduzir corpo, excluindo o que constraint/decisão trava; repo sem asserção → `find_blockers`/`get_constraints` **recusam honestamente** (evidência vazia); revisão contra o ADR-017 (nenhum pass-through de fato do GitHub).
 
 ## Infra — Relatório de testes gerado pelo CI (ADR-019 / TESTING.md) — `feito`
