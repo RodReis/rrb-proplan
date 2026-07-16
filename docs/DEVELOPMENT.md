@@ -603,6 +603,18 @@ Os assets de `docs/design/assets/` são **2528×1696 PNG, ~4,5 MB cada**. A faix
 
 O **Portfólio da fábrica** (Fatia 14, issue #6 `finalizado`) era aberto pelo **rail de ícones**, que a SPEC-020 remove. A spec não diz onde ele reancora — e realocar tela já aceita é decisão de produto, não do Code. `pages/PortfolioView.tsx` fica **no código, íntegro e sem entrada** até o PI decidir (candidatos: menu do rodapé de usuário, item de grupo da sidebar, ou home). Não deletar: é trabalho aceito.
 
+## Correção — retry de conflito no write-back reusava conteúdo velho — `feito` (mergeado PR #68 squash `4e06ca7`, `refs #69`; aguardando aceite do PI)
+
+Bug documentado (code review da Fatia 10, MEDIUM). **Sem spec**: o certo já estava no `ARCHITECTURE.md` → Resiliência — *"409 → re-sync, **reaplicar** mudança, um retry"*. O código **reenviava**.
+
+1. `feito` — **O defeito**: o conteúdo era computado uma vez, **antes** do loop de retry. No 409 só o `baseSha` era re-lido e o merge do snapshot velho ia junto no PUT. Edição feita à mão no GitHub entre o snapshot e o retry era **silenciosamente sobrescrita** — sem erro, sem aviso, sem rastro. Onde doía mais: `docs/CONTEXT.md`, o cofre da asserção humana (ADR-013) — o material que só existe na cabeça do dono.
+2. `feito` — **`putFileWithMerge`** (helper compartilhado, 5 testes): o `mutate` roda sobre o conteúdo **vivo** e é reaplicado a cada tentativa. `getFile` novo devolve `{sha, content}` do mesmo GET — a Contents API **já entregava os dois** e o `getFileSha` jogava o conteúdo fora. **Zero request novo.**
+3. `feito` — **A doc dizia 3 call sites; são 2.** `mapping.putMapping` e `context.writeContext` fazem ler-mesclar-reescrever. O terceiro citado (`tabs.promote`) **não é o mesmo caso**: o conteúdo vem do humano que revisou — não há merge a reaplicar. Os outros três write-backs (`projection`, `board-import`, `handoff-commit`) **geram** o arquivo inteiro; idem. Re-PUTar é o **correto** para eles, e migrá-los seria inventar um merge que ninguém pediu. Os loops deles ficam.
+
+**O teste pegou um bug no próprio conserto** — vale guardar: a 1ª versão do helper usava o conteúdo do **cache local** com o **sha vivo**, para poupar um GET. O PUT casava (o sha estava certo), **não havia 409**, e o merge saía calculado sobre o conteúdo velho: a edição concorrente morria **sem nem um conflito para avisar** — pior que o bug original. **Conteúdo e sha têm de vir do mesmo GET.** Só apareceu porque o fake rejeita PUT com sha desatualizado, como a Contents API faz; mockar `putFile` para "lançar uma vez" teria provado que o retry acontece, não que ele **reaplica**, que é o ponto.
+
+**Sem verificação ao vivo, e isto é da natureza do bug**: ele é invisível na tela por definição — apaga dados sem deixar rastro. Reproduzir exigiria commitar no GitHub no intervalo exato entre duas chamadas. O teste é a única testemunha possível. 506 testes na API (+5), `nest build` limpo.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
