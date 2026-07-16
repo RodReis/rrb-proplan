@@ -99,8 +99,10 @@ O histórico é **append-only** (linhas de entregas passadas são imutáveis). U
 
 1. Executa os runners com `--json` (ou lê os artefatos `*-results.json` + `coverage-summary.json`).
 2. Classifica por categoria via `test-report.config.json`.
-3. **Upsert** das linhas da issue atual em `reports/TESTS.md` com os números reais.
+3. **Acrescenta** as linhas da entrega ao histórico de `reports/TESTS.md` com os números reais. Linha commitada **nunca** é reescrita nem removida — reentregar a mesma issue vira uma linha nova, datada (duas execuções são dois fatos).
 4. Regenera a seção `## Estado atual`.
+
+> **Corrigido em 2026-07-16.** O item 3 dizia *"**upsert** das linhas da issue atual"* — contradizendo o append-only do §4 duas seções acima. O código seguiu o upsert e o append-only virou só texto. Pior: o gerador **descartava o histórico inteiro** quando rodava sem `refs #N` (o caso de `pnpm test:report` local, antes do PR) — foi assim que o registro da SPEC-016 sumiu, recuperado depois do commit `5a3fea4`. Hoje: **sem issue preserva e não acrescenta** (uma linha `| — | — | — |` não é evidência de entrega); **com issue, acrescenta**.
 
 **Guarda anti-drift (o que torna o arquivo confiável):** no PR, o CI roda o gerador em
 **`--check`**: recomputa os números da issue atual numa execução limpa e compara com as linhas

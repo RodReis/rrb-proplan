@@ -22,6 +22,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 509 | 509 | 0 | 78.2 | — | — |
-| — | — | — | Banco | 0 | 0 | 0 | — | — | — |
-| — | — | — | Tela | 35 | 35 | 0 | 4.3 | — | — |
+| 2026-07-16 | #3 | SPEC-016 | Regras de Negócio | 501 | 501 | 0 | 76.7 | #65 | [#65](https://github.com/RodReis/rrb-proplan/pull/65) |
+| 2026-07-16 | #3 | SPEC-016 | Banco | 0 | 0 | 0 | — | #65 | [#65](https://github.com/RodReis/rrb-proplan/pull/65) |
+| 2026-07-16 | #3 | SPEC-016 | Tela | 4 | 4 | 0 | 1.0 | #65 | [#65](https://github.com/RodReis/rrb-proplan/pull/65) |
