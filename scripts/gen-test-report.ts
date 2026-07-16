@@ -11,6 +11,7 @@
  *
  * Metadados da entrega (linha do registro) via env:
  *   REPORT_DATE (YYYY-MM-DD) · REPORT_ISSUE (#N) · REPORT_SPEC · REPORT_PR (#N)
+ *   REPORT_PR_URL (link do PR; sem ela, monta de `repoUrl` do config + o número)
  * Ausentes → '—' (o relatório continua verdadeiro nos números, que é o que o
  * --check verifica; metadados são rótulos humanos).
  */
@@ -30,6 +31,9 @@ interface CategoryConfig {
 }
 interface Config {
   reportPath: string;
+  /** Base do repo (ex.: https://github.com/owner/repo) para montar o link do PR
+   *  quando o CI não injeta REPORT_PR_URL. Opcional — sem ele a coluna fica '—'. */
+  repoUrl?: string;
   categories: CategoryConfig[];
 }
 
@@ -47,8 +51,8 @@ const HEADER = [
 ].join('\n');
 
 const TABLE_HEADER =
-  '| Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR |\n' +
-  '|------|-------|------|-----------|-------:|-----:|------:|------------:|----|';
+  '| Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |\n' +
+  '|------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|';
 
 function loadConfig(): Config {
   return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Config;
@@ -111,15 +115,49 @@ function buildRows(cfg: Config): Row[] {
   });
 }
 
-const meta = {
-  date: process.env.REPORT_DATE ?? '—',
-  issue: process.env.REPORT_ISSUE ?? '—',
-  spec: process.env.REPORT_SPEC ?? '—',
-  pr: process.env.REPORT_PR ?? '—',
-};
+interface Meta {
+  date: string;
+  issue: string;
+  spec: string;
+  pr: string;
+  /** Link markdown clicável do PR (ou '—'). */
+  prLink: string;
+}
+
+/**
+ * Metadados da entrega. O link do PR vem de `REPORT_PR_URL` (o CI tem a URL
+ * pronta em `github.event.pull_request.html_url`); sem ela, monta de
+ * `repoUrl` do config + o número do PR. Sem nenhum dos dois → '—'. O gerador
+ * não conhece GitHub nem lê o git remote — segue repo-agnóstico (§7).
+ */
+function buildMeta(cfg: Config): Meta {
+  const pr = process.env.REPORT_PR ?? '—';
+  return {
+    date: process.env.REPORT_DATE ?? '—',
+    issue: process.env.REPORT_ISSUE ?? '—',
+    spec: process.env.REPORT_SPEC ?? '—',
+    pr,
+    prLink: prLinkOf(pr, cfg.repoUrl),
+  };
+}
+
+/** `#62` + base → `[#62](https://…/pull/62)`. Sem número ou sem base → '—'. */
+function prLinkOf(pr: string, repoUrl?: string): string {
+  const url = process.env.REPORT_PR_URL ?? urlFromBase(pr, repoUrl);
+  return url ? `[${pr}](${url})` : '—';
+}
+
+function urlFromBase(pr: string, repoUrl?: string): string | null {
+  const num = pr.replace(/^#/, '');
+  if (!repoUrl || !/^\d+$/.test(num)) return null;
+  return `${repoUrl.replace(/\/+$/, '')}/pull/${num}`;
+}
+
+/** Preenchido em `main` assim que o config é lido (o link do PR depende dele). */
+let meta: Meta;
 
 function rowLine(r: Row): string {
-  return `| ${meta.date} | ${meta.issue} | ${meta.spec} | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | ${meta.pr} |`;
+  return `| ${meta.date} | ${meta.issue} | ${meta.spec} | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | ${meta.pr} | ${meta.prLink} |`;
 }
 
 const HISTORY_MARKER = '## Histórico por entrega';
@@ -172,7 +210,7 @@ function render(rows: Row[], existing: string): string {
     rows
       .map(
         (r) =>
-          `| — | — | — | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | — |`,
+          `| — | — | — | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | — | — |`,
       )
       .join('\n');
 
@@ -201,6 +239,7 @@ function render(rows: Row[], existing: string): string {
 function main() {
   const check = process.argv.includes('--check');
   const cfg = loadConfig();
+  meta = buildMeta(cfg);
   const reportAbs = resolve(ROOT, cfg.reportPath);
   const existing = existsSync(reportAbs) ? readFileSync(reportAbs, 'utf-8') : '';
   const rows = buildRows(cfg);
