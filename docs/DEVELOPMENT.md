@@ -541,6 +541,24 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Pendente nesta fatia**: faixa de aba (item 7 da spec), inspeção visual das 12 abas × 2 temas, Kanban re-tokenizado, verificação do shell autenticado (sidebar/combo/F5 em `/p/:id/kanban`).
 
+## Fatia 16 — Telas Login e Catálogo (SPEC-021, `aprovada-pi`) — `em andamento`
+
+**Completa a migração visual da 15.** O catálogo deixa de dividir a tela com a lista de projetos e vira a porta de entrada; o login ganha o hero de valor. Entregue **no mesmo PR da 15** (decisão do PI em 2026-07-16 — as fatias são contíguas: a 16 redesenha as duas telas que a 15 deixa apenas re-skinadas pelos tokens).
+
+1. `feito` — **Login 2 colunas** (§1): hero com imagem IA por tema (`hero-grafo*`), Ken Burns, gradiente de leitura, cartões de vidro flutuantes (`Docs × código: sem divergência` · `Aceite: sempre humano`) e o carrossel de 4 mensagens de valor. Coluna de ação: logo, `Entrar com GitHub` (48px), nota de somente-leitura, `TRÊS PRINCÍPIOS`. **Mesmo fluxo OAuth** — muda só a apresentação. O toggle de tema funciona pré-autenticação (localStorage, padrão Carbono).
+2. `feito` — **Catálogo página cheia** (§2): header próprio (logo + `CATÁLOGO` + tema + usuário/sair), banner com imagem IA por tema e gradiente lateral, grupos por instalação (conta + chip `PESSOAL`/`ORGANIZAÇÃO` + contagem), **linhas densas** de repo (ponto de estado, nome, chip `privado`, descrição, último push), `Abrir workspace` quando gerenciado, e desgerenciar **com diálogo de confirmação** deixando explícito que só o índice local sai — o repo não é tocado. Estado vazio preservado, re-estilizado. Reusa o `ConfirmDialog` existente; **sem `danger`**: desgerenciar não destrói nada, e vermelho comunicaria destruição (§1).
+
+**Decisões do PI (2026-07-16)** — três conflitos entre protótipo e spec/DESIGN.md, resolvidos:
+- **Carrossel do Login**: fiel ao protótipo (auto-rotate 4.5s). É **loop parado**, contra a regra de ouro do §9 ⇒ **exceção registrada no DESIGN.md §9** com escopo estrito (só o Login; para sob `prefers-reduced-motion`; **para de vez** ao clicar num dot — mexer no controle é dizer "eu dirijo agora").
+- **Repos como linhas densas** (protótipo), não cards (letra da spec): cabem 12 repos sem rolar.
+- **Rodapé do login** mantido com nome + e-mail, como no protótipo.
+
+**Verificado ao vivo** (nos 2 temas, com screenshot): login novo renderiza com hero, cartões de vidro, carrossel e princípios; cada tema carrega **sua** imagem; `Entrar com GitHub` legível nos dois.
+
+**Bug encontrado rodando**: cartões de vidro do hero ilegíveis no tema Claro — `color-mix(--pop 72%)` some sobre a `hero-grafo-claro`, que é quase branca. Corrigido para 92% no claro (o vidro precisa de mais opacidade quando a imagem por baixo é clara).
+
+**Pendente**: o catálogo novo está atrás do OAuth — não verifiquei ao vivo (mesmo limite da 15). Vai no aceite runtime do PI.
+
 ### Dívida registrada — peso das imagens de IA (decisão do PI em 2026-07-16: **fatia futura**)
 
 Os assets de `docs/design/assets/` são **2528×1696 PNG, ~4,5 MB cada**. A faixa de aba renderiza num container de ~1000×168 px — ~2,5× maior que o necessário, em PNG onde JPEG serviria. Só a `workspace-vista*` (2 temas) pesa **9 MB** no bundle; com a SPEC-021 (`hero-grafo*` + `catalogo-banner*`) chega a ~18 MB. Invisível em ambiente 100% local (CLAUDE.md), doloroso fora dele.

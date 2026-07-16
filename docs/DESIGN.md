@@ -222,7 +222,8 @@ Racional: toast em toda ação treina o usuário a ignorá-los e mascara o canal
 - Entradas de página: `fadeUp` escalonado (delays 0/.05/.1/.15/.2 s), só na primeira montagem — refetch não re-anima.
 - Hovers: `transition: .15s ease` em borda/cor; cards do Kanban sobem 1px.
 - Skeletons (não spinners) em toda carga de aba, shimmer 1.5s.
-- **Regra de ouro**: efeito responde a ação do usuário ou mudança de estado; nada anima em loop parado (exceções: pulso de atividade e Ken Burns de imagem).
+- **Regra de ouro**: efeito responde a ação do usuário ou mudança de estado; nada anima em loop parado (exceções: pulso de atividade, Ken Burns de imagem e o carrossel do Login — ver abaixo).
+- **Exceção registrada — carrossel de valor do Login** (decisão do PI em 2026-07-16, Fatia 16): as 4 mensagens do hero rotacionam sozinhas a cada 4.5 s. É loop parado, contra a regra de ouro; vale porque a tela é pré-autenticação — não é ferramenta de gestão ainda, é a única chance de dizer o que o produto entrega a quem não entrou. **Escopo estrito**: só o Login. Para sob `prefers-reduced-motion`, e **para de vez** quando o usuário clica num dot (mexer no controle é dizer "eu dirijo agora"). Nenhuma tela autenticada ganha carrossel.
 - **Limites**: sem parallax, sem scroll-jacking, sem gradientes animados de fundo, sem confete. Densidade de informação primeiro — é ferramenta de gestão, não landing page.
 - Animar apenas `transform`/`opacity`; nunca `width/height/top` em listas grandes. Framer Motion para orquestração; CSS puro para hover/focus/press.
 
