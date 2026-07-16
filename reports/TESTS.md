@@ -12,7 +12,7 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----|
-| — | — | — | Regras de Negócio | 473 | 473 | 0 | 76.7 | — |
+| — | — | — | Regras de Negócio | 501 | 501 | 0 | 76.7 | — |
 | — | — | — | Banco | 0 | 0 | 0 | — | — |
 | — | — | — | Tela | 4 | 4 | 0 | 1.0 | — |
 
@@ -22,6 +22,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----|
-| 2026-07-15 | #testes | TESTING.md | Regras de Negócio | 473 | 473 | 0 | 76.7 | #pending |
-| 2026-07-15 | #testes | TESTING.md | Banco | 0 | 0 | 0 | — | #pending |
-| 2026-07-15 | #testes | TESTING.md | Tela | 4 | 4 | 0 | 1.0 | #pending |
+| — | — | — | Regras de Negócio | 501 | 501 | 0 | 76.7 | — |
+| — | — | — | Banco | 0 | 0 | 0 | — | — |
+| — | — | — | Tela | 4 | 4 | 0 | 1.0 | — |
