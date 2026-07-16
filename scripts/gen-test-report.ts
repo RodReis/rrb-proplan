@@ -164,8 +164,8 @@ function urlFromBase(pr: string, repoUrl?: string): string | null {
 /** Preenchido em `main` assim que o config é lido (o link do PR depende dele). */
 let meta: Meta;
 
-function rowLine(r: Row): string {
-  return `| ${meta.date} | ${meta.issue} | ${meta.spec} | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | ${meta.pr} | ${meta.prLink} |`;
+function rowLine(r: Row, m: Meta): string {
+  return `| ${m.date} | ${m.issue} | ${m.spec} | ${r.category} | ${r.tests} | ${r.pass} | ${r.fail} | ${r.coverage} | ${m.pr} | ${m.prLink} |`;
 }
 
 const HISTORY_MARKER = '## Histórico por entrega';
@@ -189,7 +189,7 @@ function estadoAtualBlock(doc: string): string {
  * upsert). Lê SÓ a seção após o marcador de histórico — o "Estado atual" é
  * sempre regenerado e nunca deve realimentar o histórico.
  */
-function keepHistory(existing: string, currentIssue: string): string[] {
+export function keepHistory(existing: string): string[] {
   const idx = existing.indexOf(HISTORY_MARKER);
   if (idx === -1) return [];
   const section = existing.slice(idx);
@@ -197,17 +197,33 @@ function keepHistory(existing: string, currentIssue: string): string[] {
   for (const line of section.split('\n')) {
     if (!line.startsWith('| ') || line.includes('---')) continue;
     if (line.includes('| Data |')) continue;
-    const issue = line.split('|')[2]?.trim();
-    if (issue === currentIssue && currentIssue !== '—') continue; // será reescrita
+    // Toda linha commitada fica. Append-only significa isto e nada mais.
     out.push(line.trimEnd());
   }
   return out;
 }
 
-function render(rows: Row[], existing: string): string {
-  const history =
-    meta.issue !== '—' && existing ? keepHistory(existing, meta.issue) : [];
-  const newLines = rows.map(rowLine);
+/**
+ * O histórico é **append-only** (TESTING.md §4): linha commitada nunca é
+ * reescrita nem descartada. Duas regras, ambas nascidas de bugs reais:
+ *
+ * 1. **Sem issue não apaga.** A versão anterior fazia
+ *    `meta.issue !== '—' ? keepHistory(...) : []` — rodar `pnpm test:report`
+ *    local (sem PR, logo sem `refs #N`) **zerava o histórico inteiro**. Foi
+ *    assim que o registro da SPEC-016 sumiu, em 2026-07-16. Agora o histórico
+ *    é sempre preservado.
+ * 2. **Sem issue não acrescenta.** Uma linha `| — | — | — |` não é evidência
+ *    de entrega: não diz o que foi entregue nem por qual PR. Rodar local
+ *    atualiza só o `Estado atual` — que é regenerado por contrato.
+ *
+ * O "upsert" que a versão anterior fazia (remover as linhas da issue atual
+ * antes de reescrevê-las) **contradizia o append-only** e foi removido: uma
+ * reentrega da mesma issue agora vira uma linha nova, datada. Duas execuções
+ * são dois fatos, não uma correção.
+ */
+export function render(rows: Row[], existing: string, m: Meta): string {
+  const history = existing ? keepHistory(existing) : [];
+  const newLines = m.issue !== '—' ? rows.map((r) => rowLine(r, m)) : [];
   const allLines = [...history, ...newLines];
 
   const estadoAtual =
@@ -251,7 +267,7 @@ function main() {
   const reportAbs = resolve(ROOT, cfg.reportPath);
   const existing = existsSync(reportAbs) ? readFileSync(reportAbs, 'utf-8') : '';
   const rows = buildRows(cfg);
-  const next = render(rows, existing);
+  const next = render(rows, existing, meta);
 
   if (check) {
     // Compara SÓ os números (seção "Estado atual", metadados neutros) — não os
@@ -280,4 +296,6 @@ function main() {
   }
 }
 
-main();
+// Só executa quando chamado como script — assim o teste importa `render` e
+// `keepHistory` sem disparar os runners.
+if (require.main === module) main();
