@@ -32,14 +32,29 @@ jobs:
       # Categoria "Banco" ainda vazia; a DB de teste já fica pronta para quando
       # os *.int-spec.ts/*.e2e-spec.ts existirem, sem mexer no workflow.
       DATABASE_URL: postgresql://proplan:proplan@localhost:5432/proplan_test
-      REPORT_DATE: ${{ github.event.pull_request.updated_at }}
-      REPORT_ISSUE: "#${{ github.event.pull_request.number }}"
       REPORT_PR: "#${{ github.event.pull_request.number }}"
       # O GitHub já tem a URL pronta — o gerador não precisa saber montar link
       # de GitHub (segue repo-agnóstico, TESTING.md §7).
       REPORT_PR_URL: ${{ github.event.pull_request.html_url }}
     steps:
       - uses: actions/checkout@v4
+
+      # A ISSUE da fatia sai do `refs #N` do corpo do PR — NÃO é o número do PR
+      # (ADR-011: `closes #N` é proibido, então `refs #N` é o elo canônico
+      # PR→issue). Sem `refs #N` no corpo → '—', e o gerador segue verdadeiro
+      # nos números. A SPEC sai do link para docs/specs/SPEC-0XX-*.md, quando há.
+      - name: Metadados da entrega (issue, spec, data)
+        env:
+          # Via env, nunca interpolado no script: o corpo do PR é texto de
+          # usuário e ${{ }} direto no `run` seria injeção de shell.
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_UPDATED_AT: ${{ github.event.pull_request.updated_at }}
+        run: |
+          issue=$(printf '%s' "$PR_BODY" | grep -oiE 'refs #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+          spec=$(printf '%s' "$PR_BODY" | grep -oiE 'SPEC-[0-9]{3}' | head -1 || true)
+          echo "REPORT_ISSUE=${issue:+#$issue}" >> "$GITHUB_ENV"
+          echo "REPORT_SPEC=${spec:-}" >> "$GITHUB_ENV"
+          echo "REPORT_DATE=$(date -u -d "$PR_UPDATED_AT" +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v4
 

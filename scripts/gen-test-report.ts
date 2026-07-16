@@ -131,20 +131,28 @@ interface Meta {
  * não conhece GitHub nem lê o git remote — segue repo-agnóstico (§7).
  */
 function buildMeta(cfg: Config): Meta {
-  const pr = process.env.REPORT_PR ?? '—';
+  const pr = envOrDash('REPORT_PR');
   return {
-    date: process.env.REPORT_DATE ?? '—',
-    issue: process.env.REPORT_ISSUE ?? '—',
-    spec: process.env.REPORT_SPEC ?? '—',
+    date: envOrDash('REPORT_DATE'),
+    issue: envOrDash('REPORT_ISSUE'),
+    spec: envOrDash('REPORT_SPEC'),
     pr,
     prLink: prLinkOf(pr, cfg.repoUrl),
   };
 }
 
+/** Env ausente OU vazia → '—'. O CI exporta a var vazia quando o PR não traz o
+ *  metadado (ex.: sem `refs #N` no corpo); vazio é ausência, não um rótulo. */
+function envOrDash(name: string): string {
+  const v = process.env[name];
+  return v && v.trim() ? v.trim() : '—';
+}
+
 /** `#62` + base → `[#62](https://…/pull/62)`. Sem número ou sem base → '—'. */
 function prLinkOf(pr: string, repoUrl?: string): string {
-  const url = process.env.REPORT_PR_URL ?? urlFromBase(pr, repoUrl);
-  return url ? `[${pr}](${url})` : '—';
+  const fromEnv = process.env.REPORT_PR_URL?.trim();
+  const url = fromEnv || urlFromBase(pr, repoUrl);
+  return url && pr !== '—' ? `[${pr}](${url})` : '—';
 }
 
 function urlFromBase(pr: string, repoUrl?: string): string | null {
