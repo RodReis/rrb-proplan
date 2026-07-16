@@ -559,6 +559,19 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Pendente**: o catálogo novo está atrás do OAuth — não verifiquei ao vivo (mesmo limite da 15). Vai no aceite runtime do PI.
 
+## Visão Geral no padrão do protótipo — `sem-spec` (escopo direto do PI, 2026-07-16) — `em andamento`
+
+**Não é fatia da SPEC-020/021** — aquelas dizem, na letra, *"qualquer mudança de comportamento nas abas: só pele"*. Isto muda a aba. O PI decidiu ao vivo (comparando o app com o protótipo lado a lado) redesenhar a Visão Geral **nesta leva**, respondendo as decisões na hora em vez de esperar spec do Cowork. Entra no mesmo PR #67.
+
+1. `feito` — `OverviewSignals`: os 4 sinais datados do topo (`DOCS · CÓDIGO` · `AGUARDANDO SEU ACEITE` · `ÚLTIMA SINCRONIZAÇÃO` · `DRIFT DE DEPLOY`), fiéis ao protótipo. **Sem backend novo**: frescor de `api.freshness`, sync e drift do próprio `Project`, aceite de `api.board` (coluna `done`). **7 testes**, incluindo o invariante que importa: sem dado o cartão diz `—` e nunca finge zero (ADR-014) — "0 entregas" quando o board não carregou seria mentir sobre o aceite, que é a tese do produto.
+2. `feito` — `OverviewTab` reescrito: título + `Abrir no GitHub ↗`, faixa do chip de IA com a explicação de precedência (humano > máquina), `O que é` / `Onde parou` lado a lado com ícones, `O que falta` numerado em 2 colunas. A `FreshnessBar` antiga saiu: o sinal `DOCS · CÓDIGO` diz a mesma coisa, e repetir seria ruído.
+
+**Decisões do PI (2026-07-16)**:
+- **4 cartões fiéis ao protótipo**, não a faixa densa que ele havia escolhido antes ⇒ **exceção ao "sem hero-metric" registrada no `PRODUCT.md`**, com escopo estrito (só esta faixa; cada sinal é fato datado, nenhum é score composto — ADR-012).
+- **Puxar o board** só para contar a fila de aceite: uma request a mais por abertura da aba, paga porque o aceite pendente é o sinal que carrega a tese do produto.
+
+**Pendente**: não verifiquei ao vivo — a aba está atrás do OAuth e o DPAPI do Windows bloqueia importar os cookies do Chrome para o browser headless. Vai no aceite runtime do PI.
+
 ### Dívida registrada — peso das imagens de IA (decisão do PI em 2026-07-16: **fatia futura**)
 
 Os assets de `docs/design/assets/` são **2528×1696 PNG, ~4,5 MB cada**. A faixa de aba renderiza num container de ~1000×168 px — ~2,5× maior que o necessário, em PNG onde JPEG serviria. Só a `workspace-vista*` (2 temas) pesa **9 MB** no bundle; com a SPEC-021 (`hero-grafo*` + `catalogo-banner*`) chega a ~18 MB. Invisível em ambiente 100% local (CLAUDE.md), doloroso fora dele.

@@ -103,7 +103,7 @@ export function Workspace({
         />
 
         <main className="min-h-0 flex-1 overflow-auto">
-          {activeTab === 'overview' && <OverviewTab projectId={projectId} />}
+          {activeTab === 'overview' && <OverviewTab project={project} />}
           {activeTab === 'documents' && (
             <DocumentsTab projectId={projectId} syncNonce={syncNonce} />
           )}

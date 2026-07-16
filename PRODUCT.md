@@ -27,7 +27,7 @@ Exceção: a tela de **Login** é pré-autenticação e carrega peso de marca (h
 ## Anti-references
 
 - Sem parallax, scroll-jacking, gradientes animados de fundo, confete (DESIGN.md §9 — Limites).
-- **Sem hero-metric SaaS** (número grande + rótulo pequeno + acento em gradiente), sem glassmorphism decorativo.
+- **Sem hero-metric SaaS** (número grande + rótulo pequeno + acento em gradiente), sem glassmorphism decorativo. **Exceção registrada** (decisão do PI em 2026-07-16): os 4 sinais do topo da Visão Geral (`OverviewSignals`) usam a forma de cartão-métrica, fiéis ao protótipo. Vale porque cada um é **fato datado** que responde uma pergunta de gestão — nenhum é composto ou inventado (ADR-012 proíbe score de saúde), e sem dado o cartão diz `—` em vez de fingir zero (ADR-014). Escopo estrito: só esta faixa; não é licença para número grande em outra aba.
 - **Nada anima em loop parado.** Exceções registradas no DESIGN.md §9: pulso de atividade, Ken Burns de imagem, e o carrossel do Login (só ele, pré-autenticação).
 - Toast só para resultado do que **não** está na tela; gesto visível = feedback inline (DESIGN.md §8).
 - **Ausência é informação, não falha** (ADR-014): documento que não existe leva rótulo `AGUARDA <arquivo>`, nunca cor de erro. O ProPlan se adapta ao repo — nunca renomeia, move ou impõe convenção.
