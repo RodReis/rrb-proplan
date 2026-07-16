@@ -113,13 +113,19 @@ export class SyncService {
           project.defaultBranch,
         );
         await this.updateCiStatus(project.id, token, project.owner, project.name);
+
+        // Idem ao caminho `success`: as issues sincronizam ANTES do status
+        // final. Aqui importa ainda mais — `noop` diz "os docs não mudaram",
+        // e as **issues** podem ter mudado (é o caso de mover um card direto
+        // no GitHub, que não toca `docs/`).
+        await this.events.emitAsync(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
+
         await this.finish(run.id, 'noop', scopeHash, {
           added: 0,
           updated: 0,
           removed: 0,
           skipped: 0,
         });
-        this.events.emit(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
         return;
       }
 
@@ -225,6 +231,12 @@ export class SyncService {
       );
       await this.updateCiStatus(project.id, token, project.owner, project.name);
 
+      // Issues ANTES de marcar success: `status: success` é o sinal que o
+      // cliente espera para recarregar a tela. Emitir depois criava a corrida
+      // — o front lia o board enquanto o `syncIssues` ainda ia rodar, e o card
+      // só aparecia certo depois de um F5. `emitAsync` espera os handlers.
+      await this.events.emitAsync(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
+
       await this.finish(run.id, 'success', scopeHash, {
         added: added.length,
         updated: updated.length,
@@ -232,8 +244,10 @@ export class SyncService {
         skipped,
       });
 
+      // Fica DEPOIS de propósito: dispara os jobs de IA (assíncronos por
+      // contrato, ADR-002 — nunca no caminho de uma request). Esperar por eles
+      // seguraria o sync por minutos.
       this.events.emit(DOCS_SYNCED, new DocsSyncedEvent(project.id, scopeHash));
-      this.events.emit(SYNC_COMPLETED, new SyncCompletedEvent(project.id));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       await this.prisma.syncRun.update({
