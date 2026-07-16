@@ -127,7 +127,7 @@ export class McpToolsService {
       }));
 
     const threshold = await this.settings.canonicalThresholdOf(userId);
-    const stateConfidence = await this.projectPresenceConfidence(userId, projectId);
+    const stateConfidence = await this.projectStateConfidence(userId, projectId);
     const decision = nextTask({
       candidates,
       excluded,
@@ -191,12 +191,18 @@ export class McpToolsService {
     return findBlockers(constraints, refused);
   }
 
-  /** Confiança do estado: a do campo `project.presence` (proxy do "onde parou").
-   *  Ausente → 0 (recusa). */
-  private async projectPresenceConfidence(userId: string, projectId: string): Promise<number> {
+  /** Confiança do estado do projeto para `get_next_task`: a MAIOR confiança entre
+   *  os campos canônicos presentes (não recusados). O canônico não produz uma
+   *  entidade `project` — a confiança do estado é agregada dos campos que existem
+   *  (architecture/decisions/design/…). Modelo vazio ou tudo recusado → 0 (recusa
+   *  honesta, o contrato). */
+  private async projectStateConfidence(userId: string, projectId: string): Promise<number> {
     const model = await this.canonical.getCanonicalModel(userId, projectId);
-    const field = model.entities['project']?.fields['presence'];
-    return field ? field.confidence : 0;
+    const confidences = Object.values(model.entities)
+      .flatMap((ent) => Object.values(ent.fields))
+      .filter((v) => !v.refused)
+      .map((v) => v.confidence);
+    return confidences.length ? Math.max(...confidences) : 0;
   }
 
   /** Projeta os blocos do handoff (canônico + board) num resultado de tool sob o
