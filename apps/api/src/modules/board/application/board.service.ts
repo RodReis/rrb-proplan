@@ -18,6 +18,8 @@ export interface BoardCard {
   priority: 'alta' | 'media' | 'baixa' | null;
   assignee: { login: string; avatarUrl: string } | null;
   htmlUrl: string;
+  /** Nascimento da issue no GitHub — o card mostra fora de Finalizado/Descartado. */
+  createdAt: string;
   closedAt: string | null;
   /** Fechada fora do ProPlan (closed sem label) — badge em Finalizado (SPEC-005). */
   closedOutside: boolean;
@@ -78,6 +80,7 @@ export class BoardService {
         assigneeLogin: assignee?.login ?? null,
         assigneeAvatarUrl: assignee?.avatar_url ?? null,
         htmlUrl: i.html_url,
+        createdAt: new Date(i.created_at),
         closedAt: i.closed_at ? new Date(i.closed_at) : null,
         updatedAt: new Date(i.updated_at),
       };
@@ -143,6 +146,7 @@ export class BoardService {
           ? { login: i.assigneeLogin, avatarUrl: i.assigneeAvatarUrl ?? '' }
           : null,
         htmlUrl: i.htmlUrl,
+        createdAt: i.createdAt.toISOString(),
         closedAt: i.closedAt?.toISOString() ?? null,
         closedOutside: i.closedOutside,
       });

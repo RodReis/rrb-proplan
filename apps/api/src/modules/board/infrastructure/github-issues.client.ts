@@ -10,6 +10,7 @@ export interface GithubIssue {
   labels: { name: string }[];
   assignees: { login: string; avatar_url: string }[];
   html_url: string;
+  created_at: string;
   closed_at: string | null;
   updated_at: string;
   /** Presente ⇒ é PR, não issue (armadilha da REST API — descartar). */

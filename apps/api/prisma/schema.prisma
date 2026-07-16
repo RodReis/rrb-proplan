@@ -396,6 +396,10 @@ model Issue {
   assigneeLogin     String? @map("assignee_login")
   assigneeAvatarUrl String? @map("assignee_avatar_url")
   htmlUrl    String        @map("html_url")
+  // Datas nativas do GitHub (fatos, não carimbos nossos): `createdAt` é quando a
+  // issue nasceu — o card mostra em Backlog/A Fazer/Em Andamento/Feito ("aberta
+  // desde"); `closedAt` é o aceite/descarte — mostrado em Finalizado/Descartado.
+  createdAt  DateTime      @map("created_at")
   closedAt   DateTime?     @map("closed_at")
   updatedAt  DateTime      @map("updated_at")
   // Issue `closed` sem label `proplan:*` — fechada fora do fluxo do ProPlan.

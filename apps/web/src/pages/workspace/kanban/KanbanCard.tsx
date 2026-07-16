@@ -13,6 +13,51 @@ interface Props {
 }
 
 /**
+ * `dd/MM/aaaa 'às' hh:mm` (pt-BR, 24h). ISO inválido/ausente → null — o card
+ * fica sem carimbo em vez de exibir "Invalid Date".
+ *
+ * `timeZone` existe para o teste fixar o fuso; em produção fica de fora e o
+ * horário sai no relógio do usuário, que é o que ele espera ver.
+ */
+export function formatStamp(iso: string | null, timeZone?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const data = d.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone,
+  });
+  // hourCycle h23 → 00:xx; `hour12: false` sozinho produz 24:xx à meia-noite.
+  const hora = d.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+  });
+  return `${data} às ${hora}`;
+}
+
+/**
+ * O carimbo do card: cada coluna mostra o fato que importa nela (decisão do PI
+ * em 2026-07-16). Aberto → quando nasceu ("aberta desde"); encerrado → quando
+ * foi aceito/descartado. Um carimbo por card, sempre — o que muda é qual.
+ *
+ * Finalizado/Descartado sem `closedAt` cai de volta na criação: o card não pode
+ * ficar mudo, e a data de nascimento continua verdadeira. Nunca inventa.
+ */
+function stampOf(card: BoardCard): { label: string; value: string } | null {
+  const encerrado = card.column === 'finalized' || card.column === 'discarded';
+  const fechado = encerrado ? formatStamp(card.closedAt) : null;
+  if (fechado) {
+    return { label: card.column === 'discarded' ? 'descartado em' : 'finalizado em', value: fechado };
+  }
+  const criado = formatStamp(card.createdAt);
+  return criado ? { label: 'aberta em', value: criado } : null;
+}
+
+/**
  * Card do Kanban (variação B do DESIGN.md): avatar do assignee + faixa de
  * prioridade semântica à esquerda + chip de prioridade + número da issue + link.
  * Arrastável (dnd-kit). Sem cor decorativa — só sinal semântico (ADR do DESIGN).
@@ -25,6 +70,7 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
   const discarded = card.column === 'discarded';
   const finalized = card.column === 'finalized';
   const stage = stageOf(card.column);
+  const stamp = stampOf(card);
 
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -79,6 +125,14 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
       >
         {card.title}
       </p>
+
+      {/* Carimbo datado: `--text-muted` e não `--dim` — o `--dim` reprova AA nos
+          dois temas (item aberto no STATUS.md); texto pequeno exige 4.5:1. */}
+      {stamp && (
+        <p className="mt-1.5 font-mono text-[9.5px] tabular-nums text-text-muted">
+          {stamp.label} {stamp.value}
+        </p>
+      )}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
