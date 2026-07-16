@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-15
+updated: 2026-07-16
 ---
 <!-- gerado pelo ProPlan a partir das Issues — não edite à mão -->
 # Status
@@ -20,7 +20,6 @@ updated: 2026-07-15
 - Fatia 15 — Shell workspace + temas Carbono/Claro (#56, prio: media)
 - Fatia 16 — Telas Login e Catálogo (padrão workspace) (#57, prio: media)
 - Fatia 8 — Multi-tenant: RBAC, organizações, billing (#7, prio: baixa)
-- CI: relatório de testes gerado + evidência por SPEC/issue (ADR-019) (#60)
 
 ## Em Andamento
 
@@ -42,6 +41,7 @@ _(vazio)_
 - Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão (#6, prio: baixa, finalizado em: 2026-07-15)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (#12, prio: baixa, finalizado em: 2026-07-13)
 - Fatia 6 — Resolução de documentos (ADR-014) + abas: DocumentResolver (convenção → alias → .proplan/config.yml → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção adr/), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (#11, prio: baixa, finalizado em: 2026-07-13)
+- CI: relatório de testes gerado + evidência por SPEC/issue (ADR-019) (#60, finalizado em: 2026-07-16)
 - Fatia 13.5 — Handoff exportável (#51, finalizado em: 2026-07-15)
 - Fatia 10 — docs/CONTEXT.md + captura de asserção humana (SPEC-015) (#46, finalizado em: 2026-07-15)
 - Fatia 7.6 — Operação assíncrona visível + painel de Atividade (#19, finalizado em: 2026-07-14)
