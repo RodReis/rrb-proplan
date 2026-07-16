@@ -615,6 +615,27 @@ Bug documentado (code review da Fatia 10, MEDIUM). **Sem spec**: o certo já est
 
 **Sem verificação ao vivo, e isto é da natureza do bug**: ele é invisível na tela por definição — apaga dados sem deixar rastro. Reproduzir exigiria commitar no GitHub no intervalo exato entre duas chamadas. O teste é a única testemunha possível. 506 testes na API (+5), `nest build` limpo.
 
+## Correção — Kanban só atualizava depois de um F5 — `feito` (mergeado PR #71 squash `ed5fc02`, `refs #70`; aguardando aceite do PI)
+
+Bug **reportado ao vivo pelo PI usando o produto**. Sem spec: corrida, não escopo.
+
+1. `feito` — **A corrida**: o front já estava certo (o `handleSync` polla o `SyncRun` e recarrega o board pelo `syncNonce`, que já existia). O **backend quebrava o próprio contrato**: gravava `status: success|noop` — o sinal de *"pode recarregar"* — e **só então** emitia `SYNC_COMPLETED`, **sem `await`**. É esse evento que dispara o `syncIssues`. O front lia o board enquanto as issues ainda iam sincronizar; por isso só o F5 mostrava.
+2. `feito` — **O conserto**: `emitAsync(SYNC_COMPLETED)` **antes** do `finish`, nos dois caminhos. **Zero mudança no web** — o mecanismo existia, faltava o backend cumprir o contrato que ele já sinalizava. **O `noop` era o caso do PI**: `noop` diz *"os docs não mudaram"*, e mover um card no GitHub **não toca `docs/`** — era o caminho onde o bug aparecia sempre.
+3. `feito` — **A régua, no `ARCHITECTURE.md`**: *espera o que a tela lê ao recarregar; não espera o que roda em job*. O `DOCS_SYNCED` (que dispara IA) continua fire-and-forget — esperar por ele seguraria o sync por minutos (ADR-002). Custo do que passou a esperar: 2 chamadas ao GitHub, contra as muitas que o sync já faz.
+
+**Os testes provados contra o bug**: 3 testes travam a ordem. Reintroduzi o defeito de propósito — **2 falharam**; restaurei — os 3 passam. Um teste que não falha quando o bug volta é decoração. 509 testes na API (+3), cobertura 76.7% → 78.2%.
+
+## Correção — histórico do `TESTS.md` era sobrescrito, não acumulado — `feito` (mergeado PR #73 squash `f91dea7`, `refs #72`; aguardando aceite do PI)
+
+Bug **reportado ao vivo pelo PI**. Sem spec: o certo já estava no `TESTING.md` §4 — *"o histórico é append-only (linhas de entregas passadas são imutáveis)"*.
+
+1. `feito` — **Rodar sem issue apagava tudo**: `meta.issue !== '—' ? keepHistory(...) : []`. Sem `refs #N` o histórico virava `[]` — e esse é o caso de **`pnpm test:report` local**, que eu rodo antes de cada PR. **Fui eu que apaguei o registro da SPEC-016**, hoje. Recuperado do commit `5a3fea4` e restaurado. Agora: **sem issue preserva e não acrescenta** (uma linha `| — | — | — |` não é evidência — não diz o que entregou nem por qual PR).
+2. `feito` — **O `TESTING.md` se contradizia**: §4 *"linhas passadas são imutáveis"* × §5 *"**upsert** das linhas da issue atual"*. O código seguiu o §5 e o append-only virou só texto. §5 corrigido: reentregar a mesma issue vira **linha nova, datada** — duas execuções são dois fatos.
+
+**Por que sobreviveu desde o primeiro commit do ADR-019** — e este é o achado que vale mais que o bug: **a guarda anti-drift compara só o bloco `Estado atual`**. Nada verifica o histórico. O defeito passou por **CI verde em 3 PRs seguidos**, porque os números do topo estavam certos enquanto o histórico era zerado. **A guarda que existe para impedir evidência forjada não vê a evidência acumulada** — num produto cuja tese é detectar documentação que mente.
+
+**Sem teste automatizado, e isso é honesto**: escrevi um, vi que **não roda** (o jest da API tem `rootDir: apps/api` e `scripts/` fica fora; o ts-jest recusa o import através da fronteira) e **removi** — teste que não executa é pior que nenhum. Verificado na prática: rodei o comando que apagava e a SPEC-016 sobreviveu. Os dois buracos ficaram no `STATUS.md`: estender o `--check` ao histórico (append-only é verificável — é **continência de conjunto**, não igualdade, então não sofre do problema dos metadados que motivou o check a olhar só os números) e decidir onde o teste de script vive (toca a categorização do ADR-019 ⇒ decisão do PI).
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
