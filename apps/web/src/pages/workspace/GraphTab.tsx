@@ -80,6 +80,24 @@ const NODE_STYLES: Record<
     color: 'var(--text2)',
     boxShadow: '0 4px 14px var(--shadow)',
     transition: 'opacity 150ms',
+    /**
+     * Largura fixa (o label é um caminho inteiro: `docs/design/assets/
+     * workspace-vista-claro.png`). Sem ela o nó esticava com o texto e o
+     * caminho vazava pela borda.
+     *
+     * Também alinha a simulação: `forceCollide(90)` assume raio ~90px, mas o
+     * nó crescia com o label — nós largos se sobrepunham porque a física
+     * media um raio que o layout não respeitava.
+     *
+     * `break-word` para o caminho quebrar em qualquer ponto: `/` e `-` não dão
+     * ponto de quebra natural, e `nowrap` truncaria justo o fim do caminho,
+     * que é a parte que identifica o arquivo.
+     */
+    width: 168,
+    whiteSpace: 'normal',
+    overflowWrap: 'break-word',
+    textAlign: 'center',
+    lineHeight: 1.35,
   };
   const solid = (dot: string) => ({
     // borda esquerda 3px = o "ponto" de tipo, sem pintar a superfície toda.
