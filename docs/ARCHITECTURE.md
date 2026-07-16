@@ -95,6 +95,13 @@ Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb
   **Condição que obriga a rever**: hoje `promote` e `putMapping` commitam **um arquivo cada** → expectativa singular `{path, blobSha}` cobre 100%. Se um write-back futuro passar a commitar **N paths atômicos** e o noop depender de todos propagarem, a expectativa vira **lista** `[{path, blobSha}]` e o `satisfied()` checa `.every()`. Barato de estender (campo já opcional); não feito agora por YAGNI.
 
   **Proibido**: `sleep` de duração fixa antes do re-sync. Número mágico não é prova — troca uma condição de corrida por uma aposta, e falha no p99. Todos os call sites de write-back (`promote`, `putMapping`) passam a expectativa `{path, blobSha}` via `enqueueSync`; nenhum dorme.
+- **`status` do `SyncRun` é o sinal de "pode recarregar a tela"** (regra de 2026-07-16). O cliente polla o run e, ao vê-lo `success`/`noop`, recarrega a aba — então **tudo que a tela vai ler tem de estar pronto antes do status final**. O `SYNC_COMPLETED` (que dispara o `syncIssues`) era emitido **depois** do `finish`, sem `await`: o front lia o board enquanto as issues ainda iam sincronizar, e o card só aparecia na coluna certa depois de um F5. Agora o emit é `emitAsync` e vem **antes** do `finish`, nos dois caminhos (`success` e `noop`).
+
+  **Por que também no `noop`**: `noop` diz *"os docs não mudaram"* — e as **issues** podem ter mudado. Mover um card direto no GitHub não toca `docs/`, então o caminho `noop` é justamente onde o bug aparecia mais.
+
+  **O que fica fora**: `DOCS_SYNCED` continua `emit` fire-and-forget **depois** do `finish` — ele dispara os jobs de IA, assíncronos por contrato (ADR-002, nunca no caminho de uma request). Esperar por eles seguraria o sync por minutos. A régua é: **espera o que a tela lê ao recarregar; não espera o que roda em job.**
+
+  Custo medido: o `syncIssues` são 2 chamadas ao GitHub (`issuesEnabled` + `listIssues`) — o sync já espera por muito mais (Trees API, downloads, deploy, CI). O listener segue tolerante a falha: Issues desabilitada ou fora do ar não derruba o sync de docs.
 - **Health checks**: liveness/readiness (`@nestjs/terminus`) incluindo Postgres e Redis.
 
 ## Estrutura de pastas
