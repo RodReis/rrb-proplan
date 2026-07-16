@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-16T00:00:00.000Z",
+  "title": "Design System: RRB ProPlan",
+  "_note": "Sidecar do painel do impeccable live. A FONTE ÚNICA de design é docs/DESIGN.md (§1–§12) — este arquivo é derivado dele e de apps/web/src/tokens.css, para o painel renderizar os componentes reais. Não editar à mão: mudança de design vai em docs/DESIGN.md e desce para cá.",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Prata Escovada",
+        "canonical": "#c9ced8",
+        "tonalRamp": ["#2a2c33", "#3a3d45", "#5d6068", "#6c6f77", "#8b8e96", "#9a9da5", "#c9ced8", "#e2e5ea"]
+      },
+      "accent-claro": {
+        "role": "primary",
+        "displayName": "Aço",
+        "canonical": "#5b616c",
+        "tonalRamp": ["#191a1d", "#26272b", "#3f4147", "#5b616c", "#74777d", "#9a9da1", "#dcdcd8", "#f2f2f0"]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Grafite Profundo",
+        "canonical": "#0c0d0f",
+        "tonalRamp": ["#0c0d0f", "#0e0f12", "#101114", "#131418", "#16171b", "#1c1e23", "#24262c", "#2a2c33"]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Verde Aceito",
+        "canonical": "#4ade80",
+        "tonalRamp": ["#0f2d1a", "#14532d", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0"]
+      },
+      "write": {
+        "role": "secondary",
+        "displayName": "Violeta de Escrita",
+        "canonical": "#a596d8",
+        "tonalRamp": ["#2a2440", "#3d3560", "#524a80", "#6b5aa8", "#8878c0", "#a596d8", "#c4baea", "#e2dcf5"]
+      },
+      "info": {
+        "role": "secondary",
+        "displayName": "Azul de Leitura",
+        "canonical": "#7ea6d8",
+        "tonalRamp": ["#1a2733", "#24384d", "#2f4a66", "#3f6aa5", "#5c88c0", "#7ea6d8", "#a8c4e6", "#d2e0f2"]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Âmbar em Andamento",
+        "canonical": "#d9a05b",
+        "tonalRamp": ["#3d2c15", "#5c4420", "#7a5a2c", "#96691c", "#b8834a", "#d9a05b", "#e8c193", "#f4e0c8"]
+      },
+      "error": {
+        "role": "tertiary",
+        "displayName": "Vermelho Dessaturado",
+        "canonical": "#e08a80",
+        "tonalRamp": ["#3d1f1c", "#5c2f2a", "#7a3e38", "#a33c31", "#c65a4e", "#e08a80", "#eeb3ac", "#f7d9d5"]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Título de página",
+        "purpose": "IBM Plex Sans 600, 22–28px, letter-spacing -0.01em. Abre uma aba ou uma tela."
+      },
+      "body": {
+        "displayName": "Corpo",
+        "purpose": "IBM Plex Sans 400/500, 12.5–14px. Todo conteúdo. Prosa longa até 65–75ch."
+      },
+      "label": {
+        "displayName": "Rótulo Mono",
+        "purpose": "IBM Plex Mono 400–600, 9–11px, tracking .11–.16em, CAIXA ALTA. Todo rótulo de seção/estrutura (WORKSPACE, PROJETO, CATÁLOGO). Regra: estrutura é Mono, conteúdo é Sans."
+      }
+    },
+    "shadows": [
+      {
+        "name": "dropdown",
+        "value": "0 24px 60px var(--shadow)",
+        "purpose": "Dropdown do combo de workspace e menu de usuário."
+      },
+      {
+        "name": "drawer",
+        "value": "-28px 0 70px var(--shadow)",
+        "purpose": "Gaveta de Atividade (390px, direita)."
+      },
+      {
+        "name": "toast",
+        "value": "0 20px 50px var(--shadow)",
+        "purpose": "Toast, canto inferior direito."
+      }
+    ],
+    "motion": [
+      { "name": "ease-out-expo", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Easing padrão de UI (150–300ms)." },
+      { "name": "drawerIn", "value": "cubic-bezier(.2,.8,.2,1) .3s", "purpose": "Entrada da gaveta de atividade." },
+      { "name": "heroZoom", "value": "24s ease-in-out infinite alternate", "purpose": "Ken Burns das imagens de IA (20–28s). Estático sob prefers-reduced-motion." },
+      { "name": "actPulse", "value": "2s ease-in-out infinite", "purpose": "Pulso da pílula de atividade ociosa. Exceção ao 'nada anima em loop parado'." }
+    ],
+    "breakpoints": [
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão primário",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Sincronizar, Entrar com GitHub, confirmar diálogo. Fundo --btnbg, texto --btnfg, sem borda; hover clareia.",
+      "html": "<button class=\"ds-btn-primary\">Sincronizar</button>",
+      "css": ".ds-btn-primary { height: 34px; padding: 0 14px; background: var(--btnbg, #e2e5ea); color: var(--btnfg, #101114); border: none; border-radius: 10px; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: filter 150ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-primary:hover { filter: brightness(1.1); } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 2px solid var(--accent, #c9ced8); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botão fantasma",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Mapeamento, Cancelar, ações secundárias. Transparente + borda; hover muda só borda e texto.",
+      "html": "<button class=\"ds-btn-ghost\">Mapeamento</button>",
+      "css": ".ds-btn-ghost { height: 34px; padding: 0 12px; background: transparent; color: var(--body2, #c9c8c3); border: 1px solid var(--border2, #24262c); border-radius: 10px; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 150ms, color 150ms; } .ds-btn-ghost:hover { border-color: var(--hoverb, #3a3d45); color: var(--text, #f5f4f1); } .ds-btn-ghost:active { transform: scale(0.97); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--accent, #c9ced8); outline-offset: 2px; }"
+    },
+    {
+      "name": "Toggle Gerenciar/Gerenciado",
+      "kind": "button",
+      "refersTo": "button-toggle-active",
+      "description": "Estado ativo do catálogo: fantasma vira accentSoft + accentBorder com check. Clicável para desgerenciar (pede confirmação).",
+      "html": "<button class=\"ds-btn-toggle-on\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>Gerenciado</button>",
+      "css": ".ds-btn-toggle-on { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; background: var(--accentSoft, rgba(201,206,216,.12)); color: var(--text, #f5f4f1); border: 1px solid var(--accentBorder, rgba(201,206,216,.35)); border-radius: 9px; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color 150ms; } .ds-btn-toggle-on:hover { border-color: var(--hoverb, #3a3d45); } .ds-btn-toggle-on:focus-visible { outline: 2px solid var(--accent, #c9ced8); outline-offset: 2px; }"
+    },
+    {
+      "name": "Chip de IA",
+      "kind": "chip",
+      "refersTo": "chip-ai",
+      "description": "Marca conteúdo inferido (ADR-002). Contorno accentBorder, texto accent, Mono caixa-alta. Regra de produto: nunca aparece sem um Regenerar ao lado.",
+      "html": "<span class=\"ds-chip-ai\">Inferido por IA · anthropic</span>",
+      "css": ".ds-chip-ai { display: inline-block; padding: 4px 10px; border: 1px solid var(--accentBorder, rgba(201,206,216,.35)); border-radius: 99px; color: var(--accent, #c9ced8); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }"
+    },
+    {
+      "name": "Chip técnico",
+      "kind": "chip",
+      "refersTo": "chip-technical",
+      "description": "privado, PESSOAL, prioridades. Mono 8.5px caixa-alta, borda neutra, sem preenchimento.",
+      "html": "<span class=\"ds-chip-tech\">privado</span>",
+      "css": ".ds-chip-tech { display: inline-block; padding: 2px 7px; border: 1px solid var(--border2, #24262c); border-radius: 99px; color: var(--faint, #8b8e96); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase; }"
+    },
+    {
+      "name": "Cartão de sinal",
+      "kind": "card",
+      "refersTo": "card-signal",
+      "description": "Os 4 sinais da Visão Geral: rótulo Mono + valor + subtexto. Cada um é fato datado; sem dado mostra — em vez de fingir zero (ADR-014).",
+      "html": "<div class=\"ds-card-signal\"><div class=\"ds-card-signal-label\">Aguardando seu aceite</div><div class=\"ds-card-signal-value\">3 entregas</div><div class=\"ds-card-signal-sub\">entregue, aguardando seu aceite</div></div>",
+      "css": ".ds-card-signal { padding: 14px 16px; background: var(--surface, #131418); border: 1px solid var(--border2, #24262c); border-radius: 14px; font-family: 'IBM Plex Sans', system-ui, sans-serif; } .ds-card-signal-label { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint, #8b8e96); } .ds-card-signal-value { margin-top: 6px; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--accent, #c9ced8); } .ds-card-signal-sub { margin-top: 2px; font-size: 11.5px; color: var(--muted, #9a9da5); }"
+    },
+    {
+      "name": "Item de navegação (sidebar)",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Item ativo: fundo --card, barra esquerda 2.5px --accent, ícone --accent. Inativo é texto --body2 com hover em --card.",
+      "html": "<button class=\"ds-nav-item ds-nav-item--active\"><span class=\"ds-nav-bar\"></span><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/></svg>Visão Geral</button>",
+      "css": ".ds-nav-item { position: relative; display: flex; align-items: center; gap: 10px; width: 220px; padding: 8px 10px 8px 12px; background: transparent; border: none; border-radius: 9px; color: var(--body2, #c9c8c3); font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 12.5px; text-align: left; cursor: pointer; transition: background 150ms, color 150ms; } .ds-nav-item:hover { background: var(--card, #1c1e23); color: var(--text, #f5f4f1); } .ds-nav-item--active { background: var(--card, #1c1e23); color: var(--text, #f5f4f1); font-weight: 600; } .ds-nav-item--active svg { color: var(--accent, #c9ced8); } .ds-nav-bar { position: absolute; left: 0; top: 6px; bottom: 6px; width: 2.5px; border-radius: 99px; background: var(--accent, #c9ced8); } .ds-nav-item:focus-visible { outline: 2px solid var(--accent, #c9ced8); outline-offset: 2px; }"
+    },
+    {
+      "name": "Pílula de atividade",
+      "kind": "custom",
+      "refersTo": "activity-pill",
+      "description": "A 1ª das 3 camadas do 'sem silêncio' (§7). Ociosa: ponto verde pulsante + 'Em dia · sync há X'. Sincronizando: azul, narra o passo em Mono.",
+      "html": "<button class=\"ds-pill\"><span class=\"ds-pill-dot\"></span><span>Em dia · sync há 2 h</span></button>",
+      "css": ".ds-pill { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; background: transparent; border: 1px solid var(--border2, #24262c); border-radius: 99px; color: var(--body2, #c9c8c3); font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 11px; cursor: pointer; transition: border-color 150ms, color 150ms; } .ds-pill:hover { border-color: var(--hoverb, #3a3d45); color: var(--text, #f5f4f1); } .ds-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success, #4ade80); animation: ds-pulse 2s ease-in-out infinite; } @keyframes ds-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4); } 70% { box-shadow: 0 0 0 7px transparent; } } @media (prefers-reduced-motion: reduce) { .ds-pill-dot { animation: none; } }"
+    },
+    {
+      "name": "Card do Kanban",
+      "kind": "card",
+      "refersTo": "card-kanban",
+      "description": "Tinta da etapa (background-image sobre --surface2) + borda esquerda 3px de prioridade. Sem assignee = espaço vazio, nunca placeholder: a ausência deve ser visível.",
+      "html": "<div class=\"ds-card-kanban\"><div class=\"ds-card-kanban-title\">Shell workspace + temas Carbono/Claro</div><div class=\"ds-card-kanban-foot\"><span class=\"ds-chip-prio\">média</span><span class=\"ds-card-kanban-num\">#56</span></div></div>",
+      "css": ".ds-card-kanban { padding: 12px; background-color: var(--surface2, #16171b); background-image: linear-gradient(rgba(217,160,91,.10), rgba(217,160,91,.10)); border: 1px solid var(--border2, #24262c); border-left: 3px solid #d9a05b; border-radius: 10px; font-family: 'IBM Plex Sans', system-ui, sans-serif; transition: transform 150ms, border-color 150ms; } .ds-card-kanban:hover { transform: translateY(-1px); border-color: var(--hoverb, #3a3d45); } .ds-card-kanban-title { font-size: 12.5px; font-weight: 500; color: var(--text2, #e8e7e3); } .ds-card-kanban-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; } .ds-chip-prio { padding: 2px 7px; border: 1px solid var(--border2, #24262c); border-radius: 99px; color: var(--faint, #8b8e96); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; } .ds-card-kanban-num { margin-left: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; color: var(--dim, #6c6f77); }"
+    },
+    {
+      "name": "Linha de repositório (catálogo)",
+      "kind": "custom",
+      "refersTo": "row-repo",
+      "description": "Linha densa do catálogo: ponto de estado + owner/nome + chip + descrição. Gerenciado ganha borda accentBorder e Abrir workspace.",
+      "html": "<div class=\"ds-row-repo\"><span class=\"ds-row-dot\"></span><span class=\"ds-row-main\"><span class=\"ds-row-name\"><span class=\"ds-row-owner\">RodReis/</span>rrb-proplan</span><span class=\"ds-row-desc\">Painel de governança de projetos · último push 15/07/2026</span></span></div>",
+      "css": ".ds-row-repo { display: flex; align-items: center; gap: 16px; padding: 15px 18px; background: var(--surface, #131418); border: 1px solid var(--accentBorder, rgba(201,206,216,.35)); border-radius: 14px; font-family: 'IBM Plex Sans', system-ui, sans-serif; transition: border-color 150ms; } .ds-row-repo:hover { border-color: var(--hoverb, #3a3d45); } .ds-row-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success, #4ade80); flex-shrink: 0; } .ds-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .ds-row-name { font-size: 13.5px; font-weight: 600; color: var(--text, #f5f4f1); } .ds-row-owner { font-weight: 400; color: var(--muted, #9a9da5); } .ds-row-desc { font-size: 12px; color: var(--dim, #6c6f77); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Carbono + prata, uma cor por vez",
+    "overview": "Painel de governança de projetos: a base é monocromática (grafite/prata) e cor só entra quando carrega significado. É ferramenta de gestão em sessões longas, não campanha — densidade de informação vem antes de qualquer efeito. Dois temas (Carbono padrão, Claro), e o tema troca apenas custom properties: nenhum componente conhece cor absoluta.\n\nDuas regras de produto mandam no visual e não são negociáveis: o aceite é sempre humano (Feito ≠ Finalizado; nenhuma automação fecha o que o dono não aceitou — ADR-011), e conteúdo inferido por IA é sempre distinguível, com chip e ação de regenerar (ADR-002). Ausência é informação, não falha: documento que não existe leva 'AGUARDA <arquivo>' e nunca cor de erro (ADR-014).",
+    "keyCharacteristics": [
+      "Monocromático por padrão; cor só carrega significado (verde = aceito, violeta = escrita, azul = leitura/IA, âmbar = andamento, vermelho = alta/erro)",
+      "IBM Plex Sans para conteúdo, IBM Plex Mono caixa-alta para toda estrutura (rótulo de seção, contador, caminho)",
+      "Bordas antes de sombras: todo card tem 1px; sombra só em flutuantes",
+      "Fontes self-hosted, nunca CDN em runtime — o ambiente é 100% local",
+      "Sem silêncio: toda escrita tem presença em 3 camadas (pílula → gaveta → toast)"
+    ],
+    "rules": [
+      { "name": "Regra da cor com significado", "body": "A base é grafite/prata. Cor só entra quando significa algo: verde = aceito/finalizado/sem custo, violeta = escrita no repositório, azul = leitura/IA, âmbar = em andamento/atenção, vermelho dessaturado = prioridade alta/erro. Cor decorativa é proibida.", "section": "colors" },
+      { "name": "Regra da estrutura em Mono", "body": "Todo rótulo de seção/estrutura é IBM Plex Mono caixa-alta espaçado (PROJETO, HISTÓRICO, BACKLOG); todo conteúdo é Sans. O token de rótulo é --faint; --dim é metadado e reprova AA a 10px.", "section": "typography" },
+      { "name": "Regra das bordas antes das sombras", "body": "Todo card tem 1px solid var(--border2). Sombra só em flutuante: dropdown, gaveta, toast. Superfície em repouso é plana.", "section": "elevation" },
+      { "name": "Regra do aceite humano", "body": "Feito é fila de aceite, não conquista — destaque de ação pendente do dono, nunca urgência falsa. Finalizado é a conquista (verde). Nenhuma automação fecha o que o dono não aceitou.", "section": "components" },
+      { "name": "Regra da ausência visível", "body": "Sem assignee = espaço vazio, nunca placeholder. Documento ausente = AGUARDA <arquivo>, nunca cor de erro. Sem dado = '—', nunca zero fingido. A ausência deve ser visível, não decorada.", "section": "components" }
+    ],
+    "dos": [
+      "Do usar somente var(--token): o tema troca as variáveis e a UI inteira re-pinta sem rebuild.",
+      "Do marcar todo conteúdo inferido com o chip INFERIDO POR IA · <provedor> e um Regenerar ao lado (ADR-002).",
+      "Do usar --faint (não --dim) em rótulo Mono: --dim reprova contraste AA a 10px nos dois temas.",
+      "Do animar só transform e opacity, com ease-out-expo em 150–300ms.",
+      "Do dar a toda animação um fallback sob prefers-reduced-motion.",
+      "Do usar o par bg-btnbg/text-btnfg em botão primário."
+    ],
+    "donts": [
+      "Don't usar hero-metric SaaS. Exceção única e registrada: os 4 sinais da Visão Geral, porque cada um é fato datado e nenhum é score composto (ADR-012).",
+      "Don't usar glassmorphism decorativo — só o vidro do hero do Login, onde há imagem por baixo.",
+      "Don't animar em loop parado. Exceções registradas: pulso da pílula, Ken Burns das imagens, carrossel do Login (só ele, pré-autenticação).",
+      "Don't usar parallax, scroll-jacking, gradiente animado de fundo ou confete.",
+      "Don't emitir toast para gesto visível na tela — toast é resultado do que o usuário não está vendo (§8).",
+      "Don't carregar fonte de CDN: IBM Plex é self-hosted via @fontsource (ambiente 100% local).",
+      "Don't hardcodar cor em componente: o grep de #hex só pode achar tokens.css e stageTint.ts.",
+      "Don't usar o par bg-brand + text-white: brand é --accent (prata) e o texto branco some."
+    ]
+  }
+}

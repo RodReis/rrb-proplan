@@ -12,3 +12,4 @@ coverage/
 reports/.raw/
 apps/web/test-results/
 apps/web/playwright-report.json
+.gstack/
