@@ -81,11 +81,11 @@ repos-alvo; misturaria semântica).
 **Formato — tabela-registro (append por entrega).** Cada entrega adiciona **3 linhas** (uma por
 categoria) compartilhando Data/Issue/SPEC/PR. A categoria **é** o "tipo de teste realizado":
 
-| Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR |
-|------|-------|------|-----------|-------:|-----:|------:|------------:|----|
-| 2026-07-15 | #12 | SPEC-014 | Regras de Negócio | 128 | 128 | 0 | 91.2 | #45 |
-| 2026-07-15 | #12 | SPEC-014 | Banco             | 34  | 34  | 0 | 78.0 | #45 |
-| 2026-07-15 | #12 | SPEC-014 | Tela              | 22  | 22  | 0 | 64.5* | #45 |
+| Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
+|------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
+| 2026-07-15 | #12 | SPEC-014 | Regras de Negócio | 128 | 128 | 0 | 91.2 | #45 | link Github pr |
+| 2026-07-15 | #12 | SPEC-014 | Banco             | 34  | 34  | 0 | 78.0 | #45 | link Github pr |
+| 2026-07-15 | #12 | SPEC-014 | Tela              | 22  | 22  | 0 | 64.5* | #45 | link Github pr |
 
 `*` cobertura de Tela = Vitest (componente); a parte Playwright entra só na contagem.
 

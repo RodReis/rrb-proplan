@@ -35,6 +35,9 @@ jobs:
       REPORT_DATE: ${{ github.event.pull_request.updated_at }}
       REPORT_ISSUE: "#${{ github.event.pull_request.number }}"
       REPORT_PR: "#${{ github.event.pull_request.number }}"
+      # O GitHub já tem a URL pronta — o gerador não precisa saber montar link
+      # de GitHub (segue repo-agnóstico, TESTING.md §7).
+      REPORT_PR_URL: ${{ github.event.pull_request.html_url }}
     steps:
       - uses: actions/checkout@v4
 
