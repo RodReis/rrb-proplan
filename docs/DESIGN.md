@@ -78,10 +78,23 @@ CSS custom properties em `:root[data-theme]`. O tema troca **apenas** as variáv
 | `--body` | `#b8b7b2` | `#3f4147` | parágrafo |
 | `--body2` | `#c9c8c3` | `#33353a` | texto secundário |
 | `--muted` | `#9a9da5` | `#5f6268` | apoio |
-| `--faint` | `#8b8e96` | `#74777d` | rótulos mono |
+| `--faint` | `#8b8e96` | `#696c71` | rótulos mono |
 | `--dim` | `#6c6f77` | `#8a8d93` | metadados |
 | `--dimmer` | `#5d6068` | `#9a9da1` | placeholder |
 | `--shadow` | `rgba(0,0,0,.5)` | `rgba(25,26,30,.16)` | sombras |
+
+**Contraste da escala de apoio** (medido em 2026-07-16 contra o pior fundo de cada tema; §11 exige AA 4.5:1 para texto pequeno):
+
+| token | Carbono | Claro | veredito |
+|---|---|---|---|
+| `--muted` | 7.06:1 | 5.46:1 | ✅ |
+| `--faint` | 5.09:1 | 4.54:1 | ✅ — o Claro **era** `#74777d` (3.86:1) e foi escurecido |
+| `--dim` | 3.32:1 | 2.86:1 | ❌ **reprova nos dois** — ver `STATUS.md` |
+| `--dimmer` | 2.65:1 | 2.34:1 | n/a — **não é texto** |
+
+- **`--dimmer` não carrega texto legível**: só ponto de estado, borda `/` de breadcrumb (`aria-hidden`) e item desabilitado — WCAG isenta controle desabilitado, e escurecê-lo apagaria a diferença entre "desabilitado" e "ativo", que é justamente o significado que ele comunica (§1).
+- **Correção da tabela: `--dimmer` NÃO serve de placeholder** (o "uso" na linha acima é histórico). Medido: 2.85:1 no Carbono e 2.52:1 no Claro sobre `--surface2` — placeholder é texto que se lê e exige os mesmos 4.5:1 do corpo. **Placeholder usa `--muted`** (6.6:1 / 5.65:1).
+- **`--dim` reprova e não tem correção barata**: empurrá-lo até 4.5:1 no Claro o faz colidir com `--faint` (ambos → `~#696c71`), e a escala de 4 níveis vira 2. Precisa de rebalanceamento da escala inteira, não de um valor — item no `STATUS.md`.
 
 ### 4.2 Acento e semânticas
 
@@ -155,9 +168,14 @@ Prioridade = **borda esquerda 3 px** no card: ALTA `#e08a80`/`#c65a4e`, MÉDIA `
 - Drag: `DragOverlay` com o mesmo card + `rotate(2deg)`, sombra `0 24px 60px var(--shadow)`; drop target = coluna com borda `--accentBorder`.
 
 ### Grafo (react-flow)
-- Nós = documento: `--surface`, borda `--border2` 1px, raio 12px, título Mono 11px; nó desatualizado ganha borda/ícone `--accent` (carbono) ou âmbar (claro). Arestas **inferidas por IA são tracejadas** (ADR-002).
-- Arestas: `stroke: var(--border3)` 1.5px; ativo/hover: `var(--accent)` com `stroke-dasharray: 4 8` animado. Hover destaca vizinhos e esmaece o resto.
-- Fundo: `--bg` + `<Background variant="dots" gap={48} size={1}>` em `--border`. MiniMap/Controls: `--pop` + `--border2`.
+
+> **Corrigido em 2026-07-16 (medido).** A versão anterior desta seção mandava nó `--surface` + borda `--border2` e aresta `--border3`. Contra o canvas isso dá **1.06:1** (nó) e **1.39:1** (aresta) no Carbono — invisível. **Nenhum token de superfície resolve**: a escala inteira fica em 1.04–1.79:1 contra `--bg`, porque foi desenhada para painéis empilhados, não para objetos soltos num canvas. Num canvas, quem separa é a **borda**, não o preenchimento.
+
+- Nós = documento: `--card`, **borda `--muted` 1px** (7.17:1 carbono / 5.46:1 claro — o mínimo WCAG para componente gráfico é 3:1), raio 12px, sombra `0 4px 14px var(--shadow)` (o §5 permite em flutuante, e nó de grafo é flutuante por definição). Faixa esquerda 3px com a cor do tipo (README verde · CLAUDE.md azul · doc prata — todas ≥5:1 sobre o nó). Nó desatualizado ganha borda/ícone `--accent` (carbono) ou âmbar (claro).
+- Nó-fantasma (link quebrado): tracejado `--error`, **sem preenchimento e sem sombra** — ele não é um documento que existe, e sombra sugeriria corpo (ADR-014: ausência é informação, nunca um bloco vermelho).
+- Arestas: **`stroke: var(--dim)`** 1.5px (3.87:1 / 2.97:1) — `--dim` e não `--muted` de propósito: a aresta deve ler-se e continuar subordinada ao nó. Ativo/hover: `var(--accent)` com `stroke-dasharray: 4 8` animado. Hover destaca vizinhos e esmaece o resto. Arestas **inferidas por IA são tracejadas** (ADR-002).
+- **Atmosfera** (`GraphAtmosphere`, decisão do PI em 2026-07-16 — substitui o `<Background dots>` do react-flow): o canvas era `--bg` chapado e o grafo boiava no vazio. **Carbono**: céu noturno — três camadas de estrelas em `radial-gradient` (poeira `--muted`, médias `--body`, brilhantes `--text`), tiles de tamanhos diferentes para não formar grade visível, mais um brilho de horizonte em `--accent` a 7% que ancora o campo. **Claro**: a bruma equivalente — partículas `--muted` a 55% (2.26:1) + duas massas de luz em diagonal a 16–22%; céu estrelado em tema claro leria como sujeira na tela. **Lição medida**: a primeira versão usava `--dim` a 30% (1.33:1) e o Claro ficava branco liso. O céu escuro funciona porque a estrela tem ~15:1 de espaço contra o preto; **no branco esse espaço não existe** — cinza claro sobre quase-branco não vai a lugar nenhum. Para a *mesma sutileza percebida*, o tema claro exige valores bem mais escuros. Os 2.26:1 são deliberados: ficam abaixo da aresta (2.97:1) para a atmosfera não competir com a informação. **Tudo em CSS** (zero asset) e **estático**: estrela piscando seria loop parado (§9) e as exceções já estão gastas — a profundidade vem das camadas, não de movimento. Fica **fora** do `<ReactFlow>`: é cenário fixo, não acompanha o pan/zoom. Custo aceito: a grade dava referência de deslocamento no pan; a atmosfera não dá.
+- MiniMap: `--pop` + `--border2`, com nós em `--muted` (em miniatura o nó tem poucos pixels).
 
 ### Faixa de aba (hero das abas de documento)
 
@@ -222,7 +240,8 @@ Racional: toast em toda ação treina o usuário a ignorá-los e mascara o canal
 - Entradas de página: `fadeUp` escalonado (delays 0/.05/.1/.15/.2 s), só na primeira montagem — refetch não re-anima.
 - Hovers: `transition: .15s ease` em borda/cor; cards do Kanban sobem 1px.
 - Skeletons (não spinners) em toda carga de aba, shimmer 1.5s.
-- **Regra de ouro**: efeito responde a ação do usuário ou mudança de estado; nada anima em loop parado (exceções: pulso de atividade e Ken Burns de imagem).
+- **Regra de ouro**: efeito responde a ação do usuário ou mudança de estado; nada anima em loop parado (exceções: pulso de atividade, Ken Burns de imagem e o carrossel do Login — ver abaixo).
+- **Exceção registrada — carrossel de valor do Login** (decisão do PI em 2026-07-16, Fatia 16): as 4 mensagens do hero rotacionam sozinhas a cada 4.5 s. É loop parado, contra a regra de ouro; vale porque a tela é pré-autenticação — não é ferramenta de gestão ainda, é a única chance de dizer o que o produto entrega a quem não entrou. **Escopo estrito**: só o Login. Para sob `prefers-reduced-motion`, e **para de vez** quando o usuário clica num dot (mexer no controle é dizer "eu dirijo agora"). Nenhuma tela autenticada ganha carrossel.
 - **Limites**: sem parallax, sem scroll-jacking, sem gradientes animados de fundo, sem confete. Densidade de informação primeiro — é ferramenta de gestão, não landing page.
 - Animar apenas `transform`/`opacity`; nunca `width/height/top` em listas grandes. Framer Motion para orquestração; CSS puro para hover/focus/press.
 

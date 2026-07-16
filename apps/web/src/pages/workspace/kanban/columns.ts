@@ -27,15 +27,14 @@ export const PRIORITY_LABEL: Record<IssuePriority, string> = {
   baixa: 'baixa',
 };
 
-/** Classe da faixa de prioridade (variação B do card) — cor semântica. */
-export const PRIORITY_STRIPE: Record<IssuePriority, string> = {
-  alta: 'bg-error',
-  media: 'bg-warning',
-  baixa: 'bg-border',
-};
-
+/**
+ * Chip de prioridade (§6 — chip técnico: Mono, caixa alta, espaçado).
+ *
+ * A faixa de 3px do card não mora aqui: ela vem de `priorityColor` do
+ * `stageTint.ts`, que é a fonte das cores por dado.
+ */
 export const PRIORITY_CHIP: Record<IssuePriority, string> = {
   alta: 'bg-error/10 text-error',
   media: 'bg-warning/15 text-warning',
-  baixa: 'bg-surface-hover text-text-muted border border-border',
+  baixa: 'border border-border2 text-faint',
 };

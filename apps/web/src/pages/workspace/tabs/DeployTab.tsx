@@ -201,7 +201,7 @@ export function DeployTab({ projectId, syncNonce, onCorrect }: Props) {
   const active = (s: string) => /ativo|active|produção|production/i.test(s);
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Deploy" spans={payload?.spans} onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Deploy" tabId="deploy" spans={payload?.spans} onCorrect={onCorrect}>
       {/* SPEC-013: faixa de confronto de fontes no TOPO. Só aparece quando há
           drift (discordam/so_github_side/omissa); silenciosa se concordam. */}
       {payload?.deployVerdict && (

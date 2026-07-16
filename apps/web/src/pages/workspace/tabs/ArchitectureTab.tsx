@@ -39,7 +39,7 @@ export function ArchitectureTab({ projectId, syncNonce, onCorrect, onReload }: P
   }, [projectId, syncNonce]);
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Arquitetura" spans={payload?.spans} inferred={payload?.inferred === true} onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Arquitetura" tabId="architecture" spans={payload?.spans} inferred={payload?.inferred === true} onCorrect={onCorrect}>
       {payload?.inferred === true && (
         <div
           className="mb-4 flex items-center justify-between rounded-md border p-3 text-xs"

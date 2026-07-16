@@ -139,7 +139,7 @@ export function BootstrapDialog({ projectId, onClose, onCreated }: Props) {
             <button
               onClick={() => void create()}
               disabled={running || starting || state.cards.length === 0}
-              className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              className="rounded-md border border-btnbg bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90 disabled:opacity-50"
             >
               {starting ? 'Criando…' : `Criar ${state.cards.length} issues`}
             </button>

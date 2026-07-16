@@ -73,7 +73,7 @@ export function ImportBanner({ projectId, onImported, onBootstrap }: Props) {
           </button>
           <button
             onClick={() => void loadPreview()}
-            className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+            className="rounded-md border border-btnbg bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90"
           >
             Importar do STATUS.md
           </button>
@@ -157,7 +157,7 @@ export function ImportBanner({ projectId, onImported, onBootstrap }: Props) {
                 <button
                   onClick={() => void confirmImport()}
                   disabled={running || starting || preview.length === 0}
-                  className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                  className="rounded-md border border-btnbg bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90 disabled:opacity-50"
                 >
                   {starting ? 'Criando…' : 'Criar issues'}
                 </button>

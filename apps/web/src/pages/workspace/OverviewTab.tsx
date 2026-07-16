@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, CurrentMonthUsage, Freshness, InsightSummary } from '../../lib/api';
+import {
+  api,
+  CurrentMonthUsage,
+  Freshness,
+  InsightSummary,
+  Project,
+} from '../../lib/api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { OverviewSignals } from './OverviewSignals';
 
 interface Props {
-  projectId: string;
+  project: Project;
 }
 
 type SummaryState =
@@ -11,10 +18,16 @@ type SummaryState =
   | { status: 'error'; message: string }
   | { status: 'ready'; summary: InsightSummary | null };
 
-export function OverviewTab({ projectId }: Props) {
+/**
+ * Visão Geral — o resumo executivo (protótipo `ProPlan Workspace.dc.html`):
+ * 4 sinais datados no topo, depois o que a IA inferiu da documentação.
+ */
+export function OverviewTab({ project }: Props) {
+  const projectId = project.id;
   const [state, setState] = useState<SummaryState>({ status: 'loading' });
   const [freshness, setFreshness] = useState<Freshness | null>(null);
   const [usage, setUsage] = useState<CurrentMonthUsage | null>(null);
+  const [awaiting, setAwaiting] = useState<number | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
 
@@ -26,6 +39,16 @@ export function OverviewTab({ projectId }: Props) {
       .catch((err) => setState({ status: 'error', message: String(err) }));
     api.freshness(projectId).then(setFreshness).catch(() => setFreshness(null));
     api.usageCurrentMonth().then(setUsage).catch(() => setUsage(null));
+    // O board vem só pelo contador da fila de aceite (decisão do PI em
+    // 2026-07-16): é o sinal que carrega a tese do produto. Falhou → null, e o
+    // cartão diz que não sabe em vez de fingir zero (ADR-014).
+    api
+      .board(projectId)
+      .then((b) => {
+        const done = b.columns.find((c) => c.column === 'done');
+        setAwaiting(done ? done.cards.length : 0);
+      })
+      .catch(() => setAwaiting(null));
   }, [projectId]);
 
   useEffect(load, [load]);
@@ -44,20 +67,43 @@ export function OverviewTab({ projectId }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-8 py-6">
-      {freshness && <FreshnessBar freshness={freshness} />}
+    <div className="mx-auto max-w-[1060px] space-y-5 px-8 py-7">
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-text">
+            Visão Geral
+          </h1>
+          <p className="mt-1 text-[13px] text-muted">
+            O resumo executivo: o que é o projeto, onde parou e o que falta.
+          </p>
+        </div>
+        <a
+          href={`https://github.com/${project.owner}/${project.name}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 text-xs text-muted transition-colors duration-150 hover:text-text"
+        >
+          Abrir no GitHub ↗
+        </a>
+      </header>
+
+      <OverviewSignals
+        freshness={freshness}
+        awaitingAcceptance={awaiting}
+        lastSyncAt={project.lastSyncAt}
+        deployVerdict={project.deployVerdict}
+      />
+
       {usage && <UsageAlert usage={usage} />}
 
       {state.status === 'loading' && <SummarySkeleton />}
 
       {state.status === 'error' && (
-        <div className="flex flex-col items-start gap-2 rounded-md border border-error/30 bg-error/5 p-4">
-          <p className="text-sm text-error">
-            Falha ao gerar o resumo: {state.message}
-          </p>
+        <div className="flex flex-col items-start gap-2 rounded-[14px] border border-error/30 bg-error/5 p-4">
+          <p className="text-sm text-error">Falha ao gerar o resumo: {state.message}</p>
           <button
             onClick={load}
-            className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand"
+            className="rounded-[10px] border border-border2 px-3 py-1.5 text-xs font-semibold text-body2 transition-colors duration-150 hover:border-hoverb hover:text-text"
           >
             Tentar de novo
           </button>
@@ -65,16 +111,16 @@ export function OverviewTab({ projectId }: Props) {
       )}
 
       {state.status === 'ready' && !state.summary && (
-        <div className="rounded-md border border-border bg-surface p-6 text-center">
-          <p className="text-sm font-medium">Resumo ainda não gerado</p>
-          <p className="mt-1 text-xs text-text-muted">
-            O resumo é criado automaticamente após a sincronização. Se demorar,
-            gere agora.
+        <div className="rounded-[14px] border border-border2 bg-surface p-6 text-center">
+          <p className="text-sm font-medium text-text">Resumo ainda não gerado</p>
+          <p className="mt-1 text-xs text-muted">
+            O resumo é criado automaticamente após a sincronização. Se demorar, gere
+            agora.
           </p>
           <button
-            onClick={regenerate}
+            onClick={() => setConfirmRegen(true)}
             disabled={regenerating}
-            className="mt-3 rounded-md border border-brand bg-brand/5 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/10 disabled:opacity-50"
+            className="mt-3 rounded-[10px] border border-accent-border bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent disabled:opacity-50"
           >
             {regenerating ? 'Gerando…' : 'Gerar resumo'}
           </button>
@@ -83,32 +129,55 @@ export function OverviewTab({ projectId }: Props) {
 
       {state.status === 'ready' && state.summary && (
         <>
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 px-2.5 py-1 text-xs font-medium text-warning">
-              inferido por IA · {state.summary.provider}
+          {/* Chip de IA + o que ele significa: conteúdo inferido é sempre
+              distinguível e revisável (ADR-002, DESIGN.md §6). */}
+          <div className="flex items-center gap-3 rounded-[14px] border border-border2 bg-surface px-4 py-3">
+            <span className="shrink-0 rounded-full border border-accent-border px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.08em] text-accent">
+              Inferido por IA · {state.summary.provider}
+            </span>
+            <span className="flex-1 text-[12.5px] leading-relaxed text-muted">
+              Resumo gerado a partir da documentação do repositório. O que o humano
+              escreveu tem prioridade sobre o que a máquina inferiu.
             </span>
             <button
               onClick={() => setConfirmRegen(true)}
               disabled={regenerating}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand disabled:opacity-50"
+              className="h-[34px] shrink-0 rounded-[10px] border border-border2 px-3 text-xs font-semibold text-body2 transition-colors duration-150 hover:border-hoverb hover:text-text disabled:opacity-50"
             >
               {regenerating ? 'Gerando…' : 'Regenerar'}
             </button>
           </div>
 
-          <Block title="O que é" text={state.summary.content.oQueE} />
-          <Block title="Onde parou" text={state.summary.content.ondeParou} />
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <h3 className="mb-2 text-sm font-semibold">O que falta</h3>
-            <ul className="space-y-1">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Block title="O que é" icon={<IconInfo />} text={state.summary.content.oQueE} />
+            <Block
+              title="Onde parou"
+              icon={<IconClock />}
+              text={state.summary.content.ondeParou}
+            />
+          </div>
+
+          <section className="rounded-[14px] border border-border2 bg-surface p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-accent">
+                <IconList />
+              </span>
+              <h2 className="text-sm font-semibold text-text">O que falta</h2>
+            </div>
+            <ol className="grid gap-2.5 lg:grid-cols-2">
               {state.summary.content.oQueFalta.map((item, i) => (
-                <li key={i} className="flex gap-2 text-sm text-text-muted">
-                  <span className="text-brand">•</span>
+                <li
+                  key={i}
+                  className="flex gap-2.5 rounded-[10px] bg-surface2 px-3.5 py-3 text-[12.5px] leading-relaxed text-body"
+                >
+                  <span className="shrink-0 font-mono text-[10px] text-faint">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
                   {item}
                 </li>
               ))}
-            </ul>
-          </div>
+            </ol>
+          </section>
         </>
       )}
 
@@ -125,66 +194,41 @@ export function OverviewTab({ projectId }: Props) {
   );
 }
 
-function Block({ title, text }: { title: string; text: string }) {
+function Block({
+  title,
+  icon,
+  text,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  text: string;
+}) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <h3 className="mb-1 text-sm font-semibold">{title}</h3>
-      <p className="text-sm text-text-muted">{text}</p>
-    </div>
-  );
-}
-
-function FreshnessBar({ freshness }: { freshness: Freshness }) {
-  const docs = relativeDate(freshness.lastDocsCommitAt);
-  const code = relativeDate(freshness.lastCodeCommitAt);
-  const base =
-    'flex items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors duration-200';
-  if (freshness.stale) {
-    return (
-      <div
-        className={base + ' border border-warning/30 bg-warning/10 text-warning'}
-        title="O último commit de código é mais recente que o de docs por mais que o limiar configurado. Ajuste em Configurações."
-      >
-        <span>⚠️</span>
-        <span className="font-medium">Documentação possivelmente defasada</span>
-        <span className="text-text-muted">
-          · Docs: {docs} · Código: {code}
-        </span>
+    <div className="rounded-[14px] border border-border2 bg-surface p-5">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-accent">{icon}</span>
+        <h2 className="text-sm font-semibold text-text">{title}</h2>
       </div>
-    );
-  }
-  return (
-    <div className={base + ' bg-surface text-text-muted'}>
-      Docs: {docs} · Código: {code}
+      <p className="text-[12.5px] leading-relaxed text-body">{text}</p>
     </div>
   );
-}
-
-function relativeDate(iso: string | null): string {
-  if (!iso) return '—';
-  const then = new Date(iso).getTime();
-  const days = Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
-  if (days < 1) return 'hoje';
-  if (days < 30) return `há ${days} dia${days > 1 ? 's' : ''}`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `há ${months} ${months > 1 ? 'meses' : 'mês'}`;
-  const years = Math.floor(months / 12);
-  return `há ${years} ano${years > 1 ? 's' : ''}`;
 }
 
 function SummarySkeleton() {
   return (
-    <div className="space-y-4">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-24 animate-pulse rounded-lg bg-border/50" />
-      ))}
+    <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="h-32 animate-pulse rounded-[14px] bg-card" />
+        <div className="h-32 animate-pulse rounded-[14px] bg-card" />
+      </div>
+      <div className="h-40 animate-pulse rounded-[14px] bg-card" />
     </div>
   );
 }
 
 /**
  * Faixa de gasto de IA (SPEC-009). Só aparece quando passou do alerta ou bateu
- * o teto — silenciosa dentro do orçamento (como a de frescor, é sinal, não ruído).
+ * o teto — silenciosa dentro do orçamento (sinal, não ruído).
  */
 function UsageAlert({ usage }: { usage: CurrentMonthUsage }) {
   const spent = Number(usage.costUsd);
@@ -192,11 +236,11 @@ function UsageAlert({ usage }: { usage: CurrentMonthUsage }) {
   const overAlert = alert > 0 && spent >= alert;
   if (!usage.blocked && !overAlert) return null;
 
-  const color = usage.blocked ? 'var(--color-error)' : 'var(--color-warning)';
+  const color = usage.blocked ? 'var(--error)' : 'var(--warning)';
   const money = (v: string) => `$${Number(v).toFixed(2)}`;
   return (
     <div
-      className="flex items-center gap-2 rounded-md px-4 py-2.5 text-sm"
+      className="flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm"
       style={{
         border: `1px solid color-mix(in oklab, ${color} 30%, transparent)`,
         background: `color-mix(in oklab, ${color} 8%, transparent)`,
@@ -211,5 +255,61 @@ function UsageAlert({ usage }: { usage: CurrentMonthUsage }) {
         <span className="opacity-80">Ajuste em Configurações → Uso de IA.</span>
       </span>
     </div>
+  );
+}
+
+function IconInfo() {
+  return (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v4M12 16h.01" />
+    </svg>
+  );
+}
+
+function IconClock() {
+  return (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  );
+}
+
+function IconList() {
+  return (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18M7 12h14M11 18h10" />
+    </svg>
   );
 }

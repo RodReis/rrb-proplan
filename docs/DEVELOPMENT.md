@@ -522,6 +522,87 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Nota**: o workflow do GitHub Actions só será exercido quando o repo receber um PR pós-merge desta fatia — validação real do CI (summary + sticky comment) é o aceite runtime pendente do PI.
 
+## Fatia 15 — Shell workspace + temas Carbono/Claro (SPEC-020, `aprovada-pi`) — `em andamento`
+
+**Padrão workspace + re-tokenização.** Substitui o shell antigo (rail + lista permanente de projetos + 12 abas horizontais) por sidebar 270px com combo e grupos verticais, e re-tokeniza o painel inteiro no design system Carbono/Claro. A fatia toca todas as abas — risco transversal declarado na spec; mitigação: tokens primeiro (apelidos dos nomes antigos), shell depois.
+
+1. `feito` — **Tokens**: `src/tokens.css` (fonte única, §4 inteiro nos 2 temas) + `src/stageTint.ts` (tintas do Kanban e prioridade, §4.3 — cor que depende de *dado*, não de estado de CSS). `src/theme.tsx`: `ThemeProvider` (`data-theme` no `<html>` + localStorage), `useToken` para as libs que recebem cor por **prop** e não por CSS (react-flow). Ponte `@theme` → custom properties com **apelidos dos nomes antigos** (`bg`/`surface`/`border`/`text`/`brand`) — as 12 abas migraram sem tocar em classe. Fontes IBM Plex **self-hosted** (`@fontsource/*`, 33 woff2 no bundle; zero CDN — ambiente 100% local). Animações §9 + `prefers-reduced-motion` global.
+2. `feito` — **Gaveta de Atividade tokenizada** (decisão do PI em 2026-07-16): era "terminal de log" em carbono fixo — quebra deliberada do shell claro de então. Com o shell inteiro em Carbono, a metáfora perdeu o contraste que a justificava e virava ilha escura no tema Claro. Reapontar os 10 apelidos locais (`--term-…`/`--g-…`) aos tokens tokenizou as ~94 regras sem reescrever cada uso; pontinhos macOS e o título `proplan ~` saíram junto (cor sem significado, contra §1).
+3. `feito` — **Grafo re-projetado** (§6): nós deixam de ser blocos sólidos coloridos e viram `--surface` + borda + faixa de tipo 3px (o bloco colorido não dizia nada além de "sou um doc"). Fundo pontilhado gap 48; `Background`/`MiniMap` via `useToken` (recebem cor por prop). Arestas inferidas seguem tracejadas (ADR-002).
+4. `feito` — **Rotas** (`react-router-dom`): `/` (catálogo) · `/p/:projectId/:tab` · `/p/:id` → aba padrão · aba desconhecida → redirect. `WorkspaceRoute` resolve a URL e carrega os projetos **uma vez** para a rota e o combo. `ProjectNotFound`: 404 amigável, **sem cor de erro** (desgerenciar não é falha). `Home.tsx` (403 linhas) morreu: virou `Catalog.tsx` + rotas; `openProjectId`/`activeTab` em `useState` morreram com ele. `lib/lastAccess.ts` alimenta a ordem do combo (localStorage, entrada não confiável validada na leitura).
+5. `feito` — **Shell**: `shell/Sidebar.tsx` (combo + grupos + rodapé de usuário, onde Configurações migrou do rail), `shell/WorkspaceCombo.tsx` (dropdown ordenado por último acesso, ponto de estado + no máx. 1 badge), `shell/Topbar.tsx` (breadcrumb + toggle de tema + pílula + Mapeamento/Sincronizar — **sem busca global**, decisão do PI), `shell/ActivityPill.tsx` (narra o passo ativo de `activity/running` — **nenhum backend novo**, como a spec previu), `shell/navGroups.ts` (mapa 1:1 de `tabs.ts`; aba órfã cai num grupo final para nunca sumir), `shell/projectAlert.ts` (precedência dos alertas, **4 testes**).
+
+**Bugs encontrados rodando** (nenhum pegável por typecheck/build — o build passava com os três):
+- **`*/` dentro de comentário CSS** (`--term-*/--g-*` escrito por mim) fechava o bloco no meio e derrubava o dev server inteiro (`[postcss] Unclosed bracket`). `vite build` passava; só `vite dev` quebrava.
+- **`bg-brand text-white` em 13 arquivos** — o par da paleta antiga (brand escuro + branco). Com `brand` = `--accent` (prata), virou branco sobre prata: **todo botão primário do app ilegível, nos 2 temas**. Corrigidos para o par `btnbg`/`btnfg` (§6). **O grep de `#hex` do critério de aceite não pega isto** — o defeito estava em nome de classe, não em cor literal. É o risco transversal que a spec previu, materializado.
+- **Login com `bg-text text-white`**: `--text` era quase-preto no tema claro antigo e hoje é claro ⇒ branco sobre branco.
+
+**Verificado ao vivo** (browser real, não só compilador): `data-theme` no `<html>`, tokens computados corretos nos 2 temas (`--bg` `#0c0d0f` ↔ `#f2f2f0`), IBM Plex Sans ativa, tema **sobrevive ao F5** (localStorage), login re-pintado pelos tokens **sem tocar no `Login.tsx`** (prova do re-skin automático do item 8), botão primário com contraste correto nos 2 temas.
+
+**Pendente nesta fatia**: faixa de aba (item 7 da spec), inspeção visual das 12 abas × 2 temas, Kanban re-tokenizado, verificação do shell autenticado (sidebar/combo/F5 em `/p/:id/kanban`).
+
+## Fatia 16 — Telas Login e Catálogo (SPEC-021, `aprovada-pi`) — `em andamento`
+
+**Completa a migração visual da 15.** O catálogo deixa de dividir a tela com a lista de projetos e vira a porta de entrada; o login ganha o hero de valor. Entregue **no mesmo PR da 15** (decisão do PI em 2026-07-16 — as fatias são contíguas: a 16 redesenha as duas telas que a 15 deixa apenas re-skinadas pelos tokens).
+
+1. `feito` — **Login 2 colunas** (§1): hero com imagem IA por tema (`hero-grafo*`), Ken Burns, gradiente de leitura, cartões de vidro flutuantes (`Docs × código: sem divergência` · `Aceite: sempre humano`) e o carrossel de 4 mensagens de valor. Coluna de ação: logo, `Entrar com GitHub` (48px), nota de somente-leitura, `TRÊS PRINCÍPIOS`. **Mesmo fluxo OAuth** — muda só a apresentação. O toggle de tema funciona pré-autenticação (localStorage, padrão Carbono).
+2. `feito` — **Catálogo página cheia** (§2): header próprio (logo + `CATÁLOGO` + tema + usuário/sair), banner com imagem IA por tema e gradiente lateral, grupos por instalação (conta + chip `PESSOAL`/`ORGANIZAÇÃO` + contagem), **linhas densas** de repo (ponto de estado, nome, chip `privado`, descrição, último push), `Abrir workspace` quando gerenciado, e desgerenciar **com diálogo de confirmação** deixando explícito que só o índice local sai — o repo não é tocado. Estado vazio preservado, re-estilizado. Reusa o `ConfirmDialog` existente; **sem `danger`**: desgerenciar não destrói nada, e vermelho comunicaria destruição (§1).
+
+**Decisões do PI (2026-07-16)** — três conflitos entre protótipo e spec/DESIGN.md, resolvidos:
+- **Carrossel do Login**: fiel ao protótipo (auto-rotate 4.5s). É **loop parado**, contra a regra de ouro do §9 ⇒ **exceção registrada no DESIGN.md §9** com escopo estrito (só o Login; para sob `prefers-reduced-motion`; **para de vez** ao clicar num dot — mexer no controle é dizer "eu dirijo agora").
+- **Repos como linhas densas** (protótipo), não cards (letra da spec): cabem 12 repos sem rolar.
+- **Rodapé do login** mantido com nome + e-mail, como no protótipo.
+
+**Verificado ao vivo** (nos 2 temas, com screenshot): login novo renderiza com hero, cartões de vidro, carrossel e princípios; cada tema carrega **sua** imagem; `Entrar com GitHub` legível nos dois.
+
+**Bug encontrado rodando**: cartões de vidro do hero ilegíveis no tema Claro — `color-mix(--pop 72%)` some sobre a `hero-grafo-claro`, que é quase branca. Corrigido para 92% no claro (o vidro precisa de mais opacidade quando a imagem por baixo é clara).
+
+**Pendente**: o catálogo novo está atrás do OAuth — não verifiquei ao vivo (mesmo limite da 15). Vai no aceite runtime do PI.
+
+## Visão Geral no padrão do protótipo — `sem-spec` (escopo direto do PI, 2026-07-16) — `em andamento`
+
+**Não é fatia da SPEC-020/021** — aquelas dizem, na letra, *"qualquer mudança de comportamento nas abas: só pele"*. Isto muda a aba. O PI decidiu ao vivo (comparando o app com o protótipo lado a lado) redesenhar a Visão Geral **nesta leva**, respondendo as decisões na hora em vez de esperar spec do Cowork. Entra no mesmo PR #67.
+
+1. `feito` — `OverviewSignals`: os 4 sinais datados do topo (`DOCS · CÓDIGO` · `AGUARDANDO SEU ACEITE` · `ÚLTIMA SINCRONIZAÇÃO` · `DRIFT DE DEPLOY`), fiéis ao protótipo. **Sem backend novo**: frescor de `api.freshness`, sync e drift do próprio `Project`, aceite de `api.board` (coluna `done`). **7 testes**, incluindo o invariante que importa: sem dado o cartão diz `—` e nunca finge zero (ADR-014) — "0 entregas" quando o board não carregou seria mentir sobre o aceite, que é a tese do produto.
+2. `feito` — `OverviewTab` reescrito: título + `Abrir no GitHub ↗`, faixa do chip de IA com a explicação de precedência (humano > máquina), `O que é` / `Onde parou` lado a lado com ícones, `O que falta` numerado em 2 colunas. A `FreshnessBar` antiga saiu: o sinal `DOCS · CÓDIGO` diz a mesma coisa, e repetir seria ruído.
+
+**Decisões do PI (2026-07-16)**:
+- **4 cartões fiéis ao protótipo**, não a faixa densa que ele havia escolhido antes ⇒ **exceção ao "sem hero-metric" registrada no `PRODUCT.md`**, com escopo estrito (só esta faixa; cada sinal é fato datado, nenhum é score composto — ADR-012).
+- **Puxar o board** só para contar a fila de aceite: uma request a mais por abertura da aba, paga porque o aceite pendente é o sinal que carrega a tese do produto.
+
+**Pendente**: não verifiquei ao vivo — a aba está atrás do OAuth e o DPAPI do Windows bloqueia importar os cookies do Chrome para o browser headless. Vai no aceite runtime do PI.
+
+3. `feito` — **Documentos no padrão do protótipo**: coluna com header `DOCUMENTOS` + contador de arquivos; leitor com header próprio (nome + caminho · quando + chip de estado + link GitHub). O chip diz **de onde o documento vem** (`convenção` = canônico do CONVENTION.md · `sincronizado` = veio do repo), nunca juízo sobre o conteúdo. O separador redimensionável que já existia **fica** — é funcionalidade real que o protótipo não tem.
+4. `feito` — **Bug: YAML renderizado como Markdown** (achado na screenshot do PI). O `ci.yml` virava um muro de headings gigantes porque todo comentário YAML começa com `#`. Causa: `DocKind` responde *duas* perguntas — o que o sync baixa **e** como o leitor renderiza; `yml` é marcado `markdown` para ser ingerido (alimenta a aba Testes), e o leitor obedecia. **Corrigido no leitor** (`renderAs.ts`, decide pela extensão; 7 testes): markdown só quando se sabe que é markdown, nunca por omissão — arquivo sem extensão (LICENSE, Dockerfile) também cai em texto puro. A **causa** (campo com dupla responsabilidade) ficou no `STATUS.md`: separar `renderAs` de `kind` toca ingestão e schema ⇒ fatia própria.
+5. `feito` — **Topbar apertada** (achado na mesma screenshot): o botão `Sincronizar` cortava. Faltava `min-w-0` no breadcrumb — sem ele o flex não deixa nada encolher. Ordem de aperto decidida pelo PI: breadcrumb trunca primeiro (a sidebar já diz onde você está), depois a pílula perde o texto e fica só o ponto de estado (com `title` para o hover). **Botão de ação nunca corta**: ação vence contexto.
+6. `feito` — **Kanban no padrão do protótipo**. O achado que motivou: **o `stageTint.ts` que criei na Fatia 15 tinha zero consumidores** — escrevi as tintas do §4.3 e nunca liguei no card, que ficou `bg-surface` liso. Efeito visível: Backlog, A Fazer e Em Andamento com cards idênticos, sem o sinal de etapa que o design system especifica. Agora: tinta da etapa no **card** (não na coluna — assim ele segue legível no `DragOverlay`, longe da origem), header da coluna com ponto na cor da etapa + rótulo Mono + contador em pílula tintada, coluna neutra `--colbg`, drop target com borda de acento, coluna vazia com a caixa tracejada do §6, trilho do Descartado re-tokenizado. `Stage` renomeado de `finalizado` para `finalized`: espelha `BoardColumn` da API — um mapa de tradução a menos é um bug a menos.
+
+**Decisão do PI (2026-07-16) — conflito design system × ferramenta**: a skill `impeccable` bane *side-stripe border* (`border-left` > 1px como acento) e o `DESIGN.md` §4.3 **manda** exatamente isso para a prioridade do card. **O DESIGN.md vence**: a cor é semântica, o protótipo a tem, e o design system deste produto é decisão do PI — a skill é conselho genérico.
+
+7. `feito` — **Gaveta de Atividade** (4 defeitos reportados pelo PI ao vivo, cada um com causa própria):
+   - **Cobria os botões da topbar**: era `position: absolute` dentro do container que **contém** a topbar. Passou a `fixed` a partir de `top: 60px` (§2) — a gaveta é overlay do conteúdo, nunca das ações. É o que o protótipo faz.
+   - **Entrada sem animação**: a classe `.anim-drawerIn` existia no CSS desde a Fatia 15 e **nunca teve consumidor** — o mesmo tipo de gap do `stageTint`. A animação passou para o próprio `.act-panel`, junto com a saída; a classe órfã foi removida.
+   - **Sem "volta"**: não havia animação de saída — o React desmontava no mesmo quadro. `useExitAnimation` segura o nó até o `drawerOut` terminar (240 ms, casado com o CSS). **5 testes**, incluindo o caso que quebra fácil: reabrir no meio da saída não pode deixar o timer velho derrubar o nó. Sob `prefers-reduced-motion` a saída é imediata (§11) — quem pediu para não ver movimento não pode ficar esperando por um.
+   - **Estilo "de terminal"**: os apelidos `--term-*` sobreviveram à tokenização e o nome mentia sobre o que a gaveta é hoje. Renomeados para `--drw-*` — nome honesto evita o próximo leitor procurar um console que não existe mais.
+
+**Bug de acessibilidade corrigido junto**: **Esc não fechava a gaveta**, contra o §11 (*"fechar modal/gaveta com Esc sempre"*).
+
+8. `feito` — **Grafo legível** (reportado pelo PI ao vivo: *"fundo escuro com cards escuros não está legal, e o branco com fundo branco também não"*). Medido: o nó dava **1.06:1** contra o canvas no Carbono e **1.12:1** no Claro — praticamente a mesma cor; as arestas, **1.39:1**. **Regressão minha da Fatia 15**: troquei os nós de blocos sólidos para `--surface` + borda seguindo a letra do §6, e o §6 não previa canvas. Agora: nó `--card` + **borda `--muted`** (7.17:1 / 5.46:1) + sombra (§5 permite em flutuante); arestas em `--dim` (3.87:1 / 2.97:1 — subordinadas ao nó de propósito); grade em `--border3`; MiniMap com nós em `--muted`. Nó-fantasma segue sem preenchimento **e agora sem sombra**: ele não é documento que existe, e sombra sugeriria corpo (ADR-014). `DESIGN.md` §6 reescrito com as medições.
+
+**O achado maior que o Grafo**: **nenhum token de superfície serve para objeto em canvas.** A escala inteira (`--surface`/`--surface2`/`--card`/`--colbg`) fica entre **1.04 e 1.79:1** contra `--bg` — ela foi desenhada para painéis *empilhados*, onde a borda separa e o preenchimento só diferencia camada. Num canvas não há empilhamento: quem separa é a **borda**, e ela precisa vir da escala de *texto* (`--muted`/`--dim`), não da de superfície. Vale para qualquer canvas futuro (timeline, matriz de prontidão da Fatia 14). Registrado aqui porque o §6 não tem onde dizer isso.
+
+**Bug de contraste corrigido junto**: o placeholder do input de criar card usava `--dimmer` (2.85:1 no Carbono, 2.52:1 no Claro) — placeholder é texto que se lê e exige os mesmos 4.5:1 do corpo. Passou para `--muted` (6.6:1 / 5.65:1). A linha "placeholder" do `--dimmer` na tabela do §4.1 foi corrigida: o token não serve para isso.
+
+### Dívida registrada — peso das imagens de IA (decisão do PI em 2026-07-16: **fatia futura**)
+
+Os assets de `docs/design/assets/` são **2528×1696 PNG, ~4,5 MB cada**. A faixa de aba renderiza num container de ~1000×168 px — ~2,5× maior que o necessário, em PNG onde JPEG serviria. Só a `workspace-vista*` (2 temas) pesa **9 MB** no bundle; com a SPEC-021 (`hero-grafo*` + `catalogo-banner*`) chega a ~18 MB. Invisível em ambiente 100% local (CLAUDE.md), doloroso fora dele.
+
+**Não recomprimir sem o PI**: a SPEC-021 declara os assets **finais e aprovados** ("regenerar depois é troca de arquivo, não retrabalho"). O caminho quando for a hora: ~1600 px + JPEG q82 ⇒ ~600 KB no total, sem mudança visual perceptível no tamanho renderizado. **Gatilho para revisar: qualquer deploy fora de local.**
+
+### Dívida registrada — `PortfolioView` órfão (decisão do PI em 2026-07-16: **fatia futura**)
+
+O **Portfólio da fábrica** (Fatia 14, issue #6 `finalizado`) era aberto pelo **rail de ícones**, que a SPEC-020 remove. A spec não diz onde ele reancora — e realocar tela já aceita é decisão de produto, não do Code. `pages/PortfolioView.tsx` fica **no código, íntegro e sem entrada** até o PI decidir (candidatos: menu do rodapé de usuário, item de grupo da sidebar, ou home). Não deletar: é trabalho aceito.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
