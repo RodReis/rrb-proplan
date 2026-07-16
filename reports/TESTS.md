@@ -22,6 +22,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----|
-| — | — | — | Regras de Negócio | 501 | 501 | 0 | 76.7 | — |
-| — | — | — | Banco | 0 | 0 | 0 | — | — |
-| — | — | — | Tela | 4 | 4 | 0 | 1.0 | — |
+| 2026-07-16 | #3 | SPEC-016 | Regras de Negócio | 501 | 501 | 0 | 76.7 | #62 |
+| 2026-07-16 | #3 | SPEC-016 | Banco | 0 | 0 | 0 | — | #62 |
+| 2026-07-16 | #3 | SPEC-016 | Tela | 4 | 4 | 0 | 1.0 | #62 |
