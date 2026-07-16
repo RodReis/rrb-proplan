@@ -72,11 +72,26 @@ jobs:
       - name: Instalar navegador do Playwright
         run: pnpm --filter @proplan/web exec playwright install --with-deps chromium
 
+      # O append-only é verificado contra a BASE do PR, não contra HEAD: aqui
+      # HEAD é o merge commit, cujo TESTS.md é a versão do próprio PR — a guarda
+      # estaria conferindo o arquivo contra si mesmo. Fetch raso só dessa ref.
+      - name: Buscar a base do PR (baseline do append-only)
+        if: github.event_name == 'pull_request'
+        run: git fetch --depth=1 origin "${{ github.base_ref }}"
+
+      # Self-check do gerador: prova que a própria guarda funciona (append-only,
+      # CRLF, histórico zerado). Sem isto, um bug no gerador desliga a guarda em
+      # silêncio — foi assim que o registro da SPEC-016 sumiu sob CI verde.
+      - name: Self-check do gerador de relatório
+        run: pnpm test:report:selfcheck
+
       # Guarda anti-drift: roda os runners e compara os números frescos com o
       # reports/TESTS.md COMMITADO no PR. Se o dev editou um número à mão (ou
       # esqueceu de rodar `pnpm test:report` e commitar), diverge → falha aqui.
       # NÃO reescreve o arquivo — senão nunca pegaria a forja do commit.
       - name: Rodar testes + guarda anti-drift
+        env:
+          REPORT_BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm test:report:check
 
       - name: Publicar tabela no job summary

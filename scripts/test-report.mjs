@@ -3,9 +3,10 @@
  * `--json` nos caminhos que o `test-report.config.json` espera, depois chama o
  * gerador. Portável (Windows dev + Linux CI): usa spawn, não shell.
  *
- *   node scripts/test-report.mjs          # roda tudo + gera reports/TESTS.md
- *   node scripts/test-report.mjs --check  # roda tudo + falha se divergir
- *   node scripts/test-report.mjs --no-run # só gera do que já existe em reports/.raw
+ *   node scripts/test-report.mjs             # roda tudo + gera reports/TESTS.md
+ *   node scripts/test-report.mjs --check     # roda tudo + falha se divergir
+ *   node scripts/test-report.mjs --no-run    # só gera do que já existe em reports/.raw
+ *   node scripts/test-report.mjs --selfcheck # só prova o gerador (não roda runners)
  *
  * Testes que falham NÃO abortam o relatório — o número de falhas é o dado. Só o
  * gerador (via --check) barra o CI, e por divergência de número, não por falha.
@@ -17,7 +18,8 @@ import { resolve } from 'node:path';
 const ROOT = resolve(import.meta.dirname, '..');
 const RAW = resolve(ROOT, 'reports/.raw');
 const check = process.argv.includes('--check');
-const noRun = process.argv.includes('--no-run');
+const selfcheck = process.argv.includes('--selfcheck');
+const noRun = process.argv.includes('--no-run') || selfcheck;
 const isWin = process.platform === 'win32';
 
 function run(cmd, args, cwd) {
@@ -57,7 +59,9 @@ if (!noRun) {
 // module=commonjs via env (o gerador usa __dirname/require; passar o objeto pela
 // flag --compiler-options quebra no shell do Windows — a env é à prova de aspas).
 process.env.TS_NODE_COMPILER_OPTIONS = '{"module":"commonjs"}';
-const genArgs = ['ts-node', resolve(ROOT, 'scripts/gen-test-report.ts')];
+const entry = selfcheck ? 'scripts/gen-test-report.selfcheck.ts' : 'scripts/gen-test-report.ts';
+const genArgs = ['ts-node', resolve(ROOT, entry)];
 if (check) genArgs.push('--check');
+// cwd = apps/api: é de lá que o ts-node resolve (o script vive fora de qualquer workspace).
 const status = run('npx', genArgs, resolve(ROOT, 'apps/api'));
 process.exit(status);
