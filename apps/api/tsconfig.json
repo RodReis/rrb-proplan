@@ -12,7 +12,9 @@
     "strictPropertyInitialization": false,
     "skipLibCheck": true,
     "sourceMap": true,
-    "incremental": true
+    "incremental": true,
+    "declaration": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.spec.ts", "test"]
 }
