@@ -522,7 +522,7 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Nota**: o workflow do GitHub Actions só será exercido quando o repo receber um PR pós-merge desta fatia — validação real do CI (summary + sticky comment) é o aceite runtime pendente do PI.
 
-## Fatia 15 — Shell workspace + temas Carbono/Claro (SPEC-020, `aprovada-pi`) — `em andamento`
+## Fatia 15 — Shell workspace + temas Carbono/Claro (SPEC-020, `aprovada-pi`) — `feito` (mergeado PR #67 squash `552a1a8`, `refs #56`; aguardando aceite runtime do PI)
 
 **Padrão workspace + re-tokenização.** Substitui o shell antigo (rail + lista permanente de projetos + 12 abas horizontais) por sidebar 270px com combo e grupos verticais, e re-tokeniza o painel inteiro no design system Carbono/Claro. A fatia toca todas as abas — risco transversal declarado na spec; mitigação: tokens primeiro (apelidos dos nomes antigos), shell depois.
 
@@ -541,7 +541,7 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Pendente nesta fatia**: faixa de aba (item 7 da spec), inspeção visual das 12 abas × 2 temas, Kanban re-tokenizado, verificação do shell autenticado (sidebar/combo/F5 em `/p/:id/kanban`).
 
-## Fatia 16 — Telas Login e Catálogo (SPEC-021, `aprovada-pi`) — `em andamento`
+## Fatia 16 — Telas Login e Catálogo (SPEC-021, `aprovada-pi`) — `feito` (mergeado no mesmo PR #67, `refs #57`; aguardando aceite runtime do PI)
 
 **Completa a migração visual da 15.** O catálogo deixa de dividir a tela com a lista de projetos e vira a porta de entrada; o login ganha o hero de valor. Entregue **no mesmo PR da 15** (decisão do PI em 2026-07-16 — as fatias são contíguas: a 16 redesenha as duas telas que a 15 deixa apenas re-skinadas pelos tokens).
 
@@ -559,7 +559,7 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Pendente**: o catálogo novo está atrás do OAuth — não verifiquei ao vivo (mesmo limite da 15). Vai no aceite runtime do PI.
 
-## Visão Geral no padrão do protótipo — `sem-spec` (escopo direto do PI, 2026-07-16) — `em andamento`
+## Visão Geral no padrão do protótipo — `sem-spec` (escopo direto do PI, 2026-07-16) — `feito` (mergeado no PR #67)
 
 **Não é fatia da SPEC-020/021** — aquelas dizem, na letra, *"qualquer mudança de comportamento nas abas: só pele"*. Isto muda a aba. O PI decidiu ao vivo (comparando o app com o protótipo lado a lado) redesenhar a Visão Geral **nesta leva**, respondendo as decisões na hora em vez de esperar spec do Cowork. Entra no mesmo PR #67.
 
