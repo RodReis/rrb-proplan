@@ -20,7 +20,8 @@ updated: 2026-07-16
 
 ## Em Andamento
 
-_(vazio)_
+- Correção — TESTS.md sobrescreve o histórico em vez de acumular (append-only quebrado) (#72, prio: alta)
+- Correção — Kanban só mostra o card na coluna certa depois de um F5 (corrida no sync) (#70, prio: media)
 
 ## Feito
 
@@ -33,6 +34,7 @@ _(vazio)_
 - Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6) (#42, prio: alta, finalizado em: 2026-07-15)
 - Fatia 13 — Drift de deploy: confronto de fontes, sem coroar verdade (SPEC-013 v2.1) (#5, prio: alta, finalizado em: 2026-07-15)
 - Fatia 7.7 — Invalidação de inferência por inputHash (SPEC-011) (#31, prio: alta, finalizado em: 2026-07-14)
+- Correção — retry de conflito no write-back reusa conteúdo velho (apaga edição concorrente) (#69, prio: media, finalizado em: 2026-07-16)
 - Fatia 15 — Shell workspace + temas Carbono/Claro (#56, prio: media, finalizado em: 2026-07-16)
 - Fatia 16 — Telas Login e Catálogo (padrão workspace) (#57, prio: media, finalizado em: 2026-07-16)
 - Fatia 6.2 — Formato de Deploy: 3 eixos (ambiente × componente × infra de apoio) (#53, prio: media, finalizado em: 2026-07-15)
