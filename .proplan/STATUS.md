@@ -15,7 +15,6 @@ updated: 2026-07-16
 
 ## A Fazer
 
-- Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools (#3, prio: alta)
 - Fatia 10 — docs/CONTEXT.md: captura de asserção humana, "o que não mexer", validade por SHA (ADR-013) (#2, prio: alta)
 - Fatia 15 — Shell workspace + temas Carbono/Claro (#56, prio: media)
 - Fatia 16 — Telas Login e Catálogo (padrão workspace) (#57, prio: media)
@@ -31,6 +30,7 @@ _(vazio)_
 
 ## Finalizado
 
+- Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools (#3, prio: alta, finalizado em: 2026-07-16)
 - Fatia 9 — Modelo canônico + proveniência por campo + confiança determinística (SPEC-014) (#1, prio: alta, finalizado em: 2026-07-15)
 - Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6) (#42, prio: alta, finalizado em: 2026-07-15)
 - Fatia 13 — Drift de deploy: confronto de fontes, sem coroar verdade (SPEC-013 v2.1) (#5, prio: alta, finalizado em: 2026-07-15)
