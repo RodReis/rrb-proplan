@@ -10,8 +10,6 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import ReactFlow, {
-  Background,
-  BackgroundVariant,
   Controls,
   Edge,
   MiniMap,
@@ -23,6 +21,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { useToken } from '../../theme';
 import { api, DocGraph, GraphNode } from '../../lib/api';
+import { GraphAtmosphere } from './GraphAtmosphere';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { DocViewerPanel } from './DocViewerPanel';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -400,6 +399,10 @@ function GraphCanvas({
 
   return (
     <div className="relative h-full">
+      {/* Atmosfera atrás de tudo: o canvas era --bg chapado e o grafo boiava
+          no vazio. Fica fora do <ReactFlow> de propósito — é cenário fixo, não
+          acompanha o pan/zoom. */}
+      <GraphAtmosphere />
       <ReactFlow
         nodes={nodes}
         edges={visibleEdges}
@@ -407,6 +410,8 @@ function GraphCanvas({
         onEdgesChange={onEdgesChange}
         nodesDraggable={false}
         nodesConnectable={false}
+        // Sem isto o react-flow pinta o próprio fundo e engole a atmosfera.
+        style={{ background: 'transparent' }}
         onNodeMouseEnter={(_, node) =>
           setHovered((h) => (h === node.id ? h : node.id))
         }
@@ -436,15 +441,10 @@ function GraphCanvas({
         {/* Fundo pontilhado do §6. Background/MiniMap recebem cor por prop
             (não por CSS), então var(--token) não resolve — lemos o token
             computado, reancorado quando o tema troca. */}
-        {/* Grade em --border3 (1.39:1): decoração, não precisa AA — mas em
-            --border dava 1.19:1 e não se via, o que a torna inútil. Fica
-            abaixo das arestas de propósito: grade orienta, não informa. */}
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={48}
-          size={1}
-          color={cssVar('--border3')}
-        />
+        {/* Sem <Background>: a atmosfera (GraphAtmosphere) ocupa esse papel —
+            decisão do PI em 2026-07-16. Dois padrões de ponto no mesmo lugar
+            competiriam. Custo aceito: a grade acompanhava o pan/zoom e dava
+            referência de deslocamento; a atmosfera é fixa e não dá. */}
         <MiniMap
           // --muted: em miniatura o nó é de poucos pixels; --border3 sumia no
           // fundo do próprio minimapa.
