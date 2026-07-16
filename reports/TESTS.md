@@ -12,7 +12,7 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 501 | 501 | 0 | 76.7 | — | — |
+| — | — | — | Regras de Negócio | 506 | 506 | 0 | 76.7 | — | — |
 | — | — | — | Banco | 0 | 0 | 0 | — | — | — |
 | — | — | — | Tela | 35 | 35 | 0 | 4.3 | — | — |
 
@@ -22,6 +22,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 501 | 501 | 0 | 76.7 | — | — |
+| — | — | — | Regras de Negócio | 506 | 506 | 0 | 76.7 | — | — |
 | — | — | — | Banco | 0 | 0 | 0 | — | — | — |
 | — | — | — | Tela | 35 | 35 | 0 | 4.3 | — | — |
