@@ -60,7 +60,9 @@
   --body: #3f4147;
   --body2: #33353a;
   --muted: #5f6268;
-  --faint: #74777d;
+  /* Escurecido de #74777d (2026-07-16): a 10–11 px sobre --bg dava 3.86:1 e
+     reprovava o AA que a SPEC-020 exige. Rótulo Mono é texto que se lê. */
+  --faint: #696c71;
   --dim: #8a8d93;
   --dimmer: #9a9da1;
   --shadow: rgba(25, 26, 30, 0.16);

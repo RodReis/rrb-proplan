@@ -78,10 +78,22 @@ CSS custom properties em `:root[data-theme]`. O tema troca **apenas** as variáv
 | `--body` | `#b8b7b2` | `#3f4147` | parágrafo |
 | `--body2` | `#c9c8c3` | `#33353a` | texto secundário |
 | `--muted` | `#9a9da5` | `#5f6268` | apoio |
-| `--faint` | `#8b8e96` | `#74777d` | rótulos mono |
+| `--faint` | `#8b8e96` | `#696c71` | rótulos mono |
 | `--dim` | `#6c6f77` | `#8a8d93` | metadados |
 | `--dimmer` | `#5d6068` | `#9a9da1` | placeholder |
 | `--shadow` | `rgba(0,0,0,.5)` | `rgba(25,26,30,.16)` | sombras |
+
+**Contraste da escala de apoio** (medido em 2026-07-16 contra o pior fundo de cada tema; §11 exige AA 4.5:1 para texto pequeno):
+
+| token | Carbono | Claro | veredito |
+|---|---|---|---|
+| `--muted` | 7.06:1 | 5.46:1 | ✅ |
+| `--faint` | 5.09:1 | 4.54:1 | ✅ — o Claro **era** `#74777d` (3.86:1) e foi escurecido |
+| `--dim` | 3.32:1 | 2.86:1 | ❌ **reprova nos dois** — ver `STATUS.md` |
+| `--dimmer` | 2.65:1 | 2.34:1 | n/a — **não é texto** |
+
+- **`--dimmer` não carrega texto legível**: só ponto de estado, borda `/` de breadcrumb (`aria-hidden`) e item desabilitado — WCAG isenta controle desabilitado, e escurecê-lo apagaria a diferença entre "desabilitado" e "ativo", que é justamente o significado que ele comunica (§1). Se um dia for usado em texto que se lê, precisa passar AA.
+- **`--dim` reprova e não tem correção barata**: empurrá-lo até 4.5:1 no Claro o faz colidir com `--faint` (ambos → `~#696c71`), e a escala de 4 níveis vira 2. Precisa de rebalanceamento da escala inteira, não de um valor — item no `STATUS.md`.
 
 ### 4.2 Acento e semânticas
 

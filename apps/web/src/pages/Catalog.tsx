@@ -320,7 +320,7 @@ function RepoRow({
             {repo.name}
           </span>
           {repo.isPrivate && (
-            <span className="shrink-0 rounded-full border border-border2 px-[7px] py-[2px] font-mono text-[8.5px] uppercase tracking-[0.08em] text-dim">
+            <span className="shrink-0 rounded-full border border-border2 px-[7px] py-[2px] font-mono text-[8.5px] uppercase tracking-[0.08em] text-faint">
               privado
             </span>
           )}

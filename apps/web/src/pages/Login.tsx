@@ -212,7 +212,9 @@ export function Login() {
           </div>
 
           <div className="mt-8 flex flex-col gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-dim">
+            {/* --faint é o token de rótulo Mono (§4.1); --dim é de metadado e
+                reprova AA a 10px (3.81:1). */}
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
               Três princípios
             </span>
             {[
