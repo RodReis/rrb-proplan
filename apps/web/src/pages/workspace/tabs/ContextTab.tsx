@@ -108,7 +108,7 @@ export function ContextTab({ projectId, syncNonce }: Props) {
           {!formOpen && !busy && (
             <button
               onClick={() => setFormOpen(true)}
-              className="shrink-0 rounded-md bg-brand px-3.5 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97]"
+              className="shrink-0 rounded-md bg-btnbg px-3.5 py-2 text-xs font-semibold text-btnfg transition-all duration-150 hover:bg-btnbg/90 hover:shadow-sm active:scale-[0.97]"
             >
               Registrar asserção
             </button>
@@ -209,7 +209,7 @@ export function ContextTab({ projectId, syncNonce }: Props) {
                 <button
                   onClick={() => void submit()}
                   disabled={!statement.trim() || !paths.trim()}
-                  className="rounded-md bg-brand px-3.5 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+                  className="rounded-md bg-btnbg px-3.5 py-2 text-xs font-semibold text-btnfg transition-all duration-150 hover:bg-btnbg/90 hover:shadow-sm active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
                 >
                   Salvar no repositório
                 </button>
@@ -281,7 +281,7 @@ export function ContextTab({ projectId, syncNonce }: Props) {
                 <div className="mt-5 flex items-center gap-3">
                   <button
                     onClick={() => setFormOpen(true)}
-                    className="whitespace-nowrap rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white transition-all duration-150 hover:bg-brand/90 hover:shadow-sm active:scale-[0.97]"
+                    className="whitespace-nowrap rounded-md bg-btnbg px-4 py-2 text-xs font-semibold text-btnfg transition-all duration-150 hover:bg-btnbg/90 hover:shadow-sm active:scale-[0.97]"
                   >
                     Registrar a primeira
                   </button>

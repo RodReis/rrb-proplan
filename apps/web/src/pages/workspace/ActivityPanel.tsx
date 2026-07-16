@@ -215,13 +215,8 @@ export function ActivityPanel({ projectId, projectName, onClose, refreshNonce }:
   return (
     <aside className="act-panel">
       <header className="act-titlebar">
-        <span className="act-dots" aria-hidden>
-          <i />
-          <i />
-          <i />
-        </span>
         <span className="act-title">
-          proplan ~ <b>{projectName}</b>
+          Atividade · <b>{projectName}</b>
         </span>
         <button className="act-x" onClick={onClose} aria-label="Fechar painel de Atividade">
           ✕

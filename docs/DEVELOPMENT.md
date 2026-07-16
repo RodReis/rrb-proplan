@@ -522,6 +522,35 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Nota**: o workflow do GitHub Actions só será exercido quando o repo receber um PR pós-merge desta fatia — validação real do CI (summary + sticky comment) é o aceite runtime pendente do PI.
 
+## Fatia 15 — Shell workspace + temas Carbono/Claro (SPEC-020, `aprovada-pi`) — `em andamento`
+
+**Padrão workspace + re-tokenização.** Substitui o shell antigo (rail + lista permanente de projetos + 12 abas horizontais) por sidebar 270px com combo e grupos verticais, e re-tokeniza o painel inteiro no design system Carbono/Claro. A fatia toca todas as abas — risco transversal declarado na spec; mitigação: tokens primeiro (apelidos dos nomes antigos), shell depois.
+
+1. `feito` — **Tokens**: `src/tokens.css` (fonte única, §4 inteiro nos 2 temas) + `src/stageTint.ts` (tintas do Kanban e prioridade, §4.3 — cor que depende de *dado*, não de estado de CSS). `src/theme.tsx`: `ThemeProvider` (`data-theme` no `<html>` + localStorage), `useToken` para as libs que recebem cor por **prop** e não por CSS (react-flow). Ponte `@theme` → custom properties com **apelidos dos nomes antigos** (`bg`/`surface`/`border`/`text`/`brand`) — as 12 abas migraram sem tocar em classe. Fontes IBM Plex **self-hosted** (`@fontsource/*`, 33 woff2 no bundle; zero CDN — ambiente 100% local). Animações §9 + `prefers-reduced-motion` global.
+2. `feito` — **Gaveta de Atividade tokenizada** (decisão do PI em 2026-07-16): era "terminal de log" em carbono fixo — quebra deliberada do shell claro de então. Com o shell inteiro em Carbono, a metáfora perdeu o contraste que a justificava e virava ilha escura no tema Claro. Reapontar os 10 apelidos locais (`--term-…`/`--g-…`) aos tokens tokenizou as ~94 regras sem reescrever cada uso; pontinhos macOS e o título `proplan ~` saíram junto (cor sem significado, contra §1).
+3. `feito` — **Grafo re-projetado** (§6): nós deixam de ser blocos sólidos coloridos e viram `--surface` + borda + faixa de tipo 3px (o bloco colorido não dizia nada além de "sou um doc"). Fundo pontilhado gap 48; `Background`/`MiniMap` via `useToken` (recebem cor por prop). Arestas inferidas seguem tracejadas (ADR-002).
+4. `feito` — **Rotas** (`react-router-dom`): `/` (catálogo) · `/p/:projectId/:tab` · `/p/:id` → aba padrão · aba desconhecida → redirect. `WorkspaceRoute` resolve a URL e carrega os projetos **uma vez** para a rota e o combo. `ProjectNotFound`: 404 amigável, **sem cor de erro** (desgerenciar não é falha). `Home.tsx` (403 linhas) morreu: virou `Catalog.tsx` + rotas; `openProjectId`/`activeTab` em `useState` morreram com ele. `lib/lastAccess.ts` alimenta a ordem do combo (localStorage, entrada não confiável validada na leitura).
+5. `feito` — **Shell**: `shell/Sidebar.tsx` (combo + grupos + rodapé de usuário, onde Configurações migrou do rail), `shell/WorkspaceCombo.tsx` (dropdown ordenado por último acesso, ponto de estado + no máx. 1 badge), `shell/Topbar.tsx` (breadcrumb + toggle de tema + pílula + Mapeamento/Sincronizar — **sem busca global**, decisão do PI), `shell/ActivityPill.tsx` (narra o passo ativo de `activity/running` — **nenhum backend novo**, como a spec previu), `shell/navGroups.ts` (mapa 1:1 de `tabs.ts`; aba órfã cai num grupo final para nunca sumir), `shell/projectAlert.ts` (precedência dos alertas, **4 testes**).
+
+**Bugs encontrados rodando** (nenhum pegável por typecheck/build — o build passava com os três):
+- **`*/` dentro de comentário CSS** (`--term-*/--g-*` escrito por mim) fechava o bloco no meio e derrubava o dev server inteiro (`[postcss] Unclosed bracket`). `vite build` passava; só `vite dev` quebrava.
+- **`bg-brand text-white` em 13 arquivos** — o par da paleta antiga (brand escuro + branco). Com `brand` = `--accent` (prata), virou branco sobre prata: **todo botão primário do app ilegível, nos 2 temas**. Corrigidos para o par `btnbg`/`btnfg` (§6). **O grep de `#hex` do critério de aceite não pega isto** — o defeito estava em nome de classe, não em cor literal. É o risco transversal que a spec previu, materializado.
+- **Login com `bg-text text-white`**: `--text` era quase-preto no tema claro antigo e hoje é claro ⇒ branco sobre branco.
+
+**Verificado ao vivo** (browser real, não só compilador): `data-theme` no `<html>`, tokens computados corretos nos 2 temas (`--bg` `#0c0d0f` ↔ `#f2f2f0`), IBM Plex Sans ativa, tema **sobrevive ao F5** (localStorage), login re-pintado pelos tokens **sem tocar no `Login.tsx`** (prova do re-skin automático do item 8), botão primário com contraste correto nos 2 temas.
+
+**Pendente nesta fatia**: faixa de aba (item 7 da spec), inspeção visual das 12 abas × 2 temas, Kanban re-tokenizado, verificação do shell autenticado (sidebar/combo/F5 em `/p/:id/kanban`).
+
+### Dívida registrada — peso das imagens de IA (decisão do PI em 2026-07-16: **fatia futura**)
+
+Os assets de `docs/design/assets/` são **2528×1696 PNG, ~4,5 MB cada**. A faixa de aba renderiza num container de ~1000×168 px — ~2,5× maior que o necessário, em PNG onde JPEG serviria. Só a `workspace-vista*` (2 temas) pesa **9 MB** no bundle; com a SPEC-021 (`hero-grafo*` + `catalogo-banner*`) chega a ~18 MB. Invisível em ambiente 100% local (CLAUDE.md), doloroso fora dele.
+
+**Não recomprimir sem o PI**: a SPEC-021 declara os assets **finais e aprovados** ("regenerar depois é troca de arquivo, não retrabalho"). O caminho quando for a hora: ~1600 px + JPEG q82 ⇒ ~600 KB no total, sem mudança visual perceptível no tamanho renderizado. **Gatilho para revisar: qualquer deploy fora de local.**
+
+### Dívida registrada — `PortfolioView` órfão (decisão do PI em 2026-07-16: **fatia futura**)
+
+O **Portfólio da fábrica** (Fatia 14, issue #6 `finalizado`) era aberto pelo **rail de ícones**, que a SPEC-020 remove. A spec não diz onde ele reancora — e realocar tela já aceita é decisão de produto, não do Code. `pages/PortfolioView.tsx` fica **no código, íntegro e sem entrada** até o PI decidir (candidatos: menu do rodapé de usuário, item de grupo da sidebar, ou home). Não deletar: é trabalho aceito.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.

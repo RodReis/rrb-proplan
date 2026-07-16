@@ -109,7 +109,7 @@ export function PromoteDialog({ projectId, tab, initialContent, onClose, onPromo
               </button>
               <button
                 onClick={retry}
-                className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                className="rounded-md border border-btnbg bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90"
               >
                 Tentar de novo
               </button>
@@ -126,7 +126,7 @@ export function PromoteDialog({ projectId, tab, initialContent, onClose, onPromo
               <button
                 onClick={() => void promote()}
                 disabled={running || starting || content.trim() === ''}
-                className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                className="rounded-md border border-btnbg bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90 disabled:opacity-50"
               >
                 {operationId ? 'Promovendo…' : starting ? 'Promovendo…' : 'Promover e commitar'}
               </button>

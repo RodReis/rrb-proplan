@@ -89,7 +89,7 @@ export function HandoffTab({ projectId, syncNonce }: Props) {
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={handleDownload}
-            className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+            className="rounded-md bg-btnbg px-3 py-1.5 text-xs font-medium text-btnfg hover:opacity-90"
           >
             Baixar HANDOFF.md
           </button>

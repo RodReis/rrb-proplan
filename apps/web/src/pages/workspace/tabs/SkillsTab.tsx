@@ -55,7 +55,7 @@ export function SkillsTab({ projectId, syncNonce, onCorrect }: Props) {
   const empty = data.skills.length === 0 && data.agents.length === 0;
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Skills & Agentes" spans={payload?.spans} onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Skills & Agentes" tabId="skills" spans={payload?.spans} onCorrect={onCorrect}>
       {empty ? (
         <p className="text-sm text-text-muted">Nenhuma skill ou agente configurado neste repositório.</p>
       ) : (

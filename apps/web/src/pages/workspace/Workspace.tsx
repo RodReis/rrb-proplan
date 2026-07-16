@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { api, Entity, SyncRun } from '../../lib/api';
+import { api, Entity, Project, SessionUser, SyncRun } from '../../lib/api';
+import { Settings } from '../Settings';
 import { DocumentsTab } from './DocumentsTab';
 import { GraphTab } from './GraphTab';
 import { MappingScreen } from './MappingScreen';
@@ -15,28 +16,43 @@ import { DesignTab } from './tabs/DesignTab';
 import { SkillsTab } from './tabs/SkillsTab';
 import { TestsTab } from './tabs/TestsTab';
 import { HandoffTab } from './tabs/HandoffTab';
-import { CURRENT_SLICE, WORKSPACE_TABS } from './tabs';
-
-/** Shape mínimo para abrir o workspace (repo do catálogo ou projeto gerenciado). */
-export interface WorkspaceTarget {
-  owner: string;
-  name: string;
-  managedProjectId: string | null;
-}
+import { Sidebar } from './shell/Sidebar';
+import { Topbar } from './shell/Topbar';
 
 interface Props {
-  project: WorkspaceTarget; // gerenciado (managedProjectId garantido não-nulo)
-  onBack: () => void;
-  /** Aba inicial (deep-link do portfólio); default 'overview'. */
-  initialTab?: string;
+  user: SessionUser;
+  project: Project;
+  /** Todos os gerenciados — o combo da sidebar lista a partir daqui. */
+  projects: Project[];
+  activeTab: string;
+  onSelectTab: (tabId: string) => void;
+  onSelectProject: (id: string) => void;
+  onBackToCatalog: () => void;
+  onLogout: () => void;
 }
 
-export function Workspace({ project, onBack, initialTab }: Props) {
-  const projectId = project.managedProjectId!;
-  const [activeTab, setActiveTab] = useState(initialTab ?? 'overview');
+/**
+ * Shell do workspace (SPEC-020): sidebar 270px + topbar 60px + conteúdo.
+ *
+ * A navegação (projeto/aba) mora na URL — este componente a recebe pronta e
+ * reporta intenção via callback. O `useState` de `openProjectId`/`activeTab`
+ * morreu com o shell antigo.
+ */
+export function Workspace({
+  user,
+  project,
+  projects,
+  activeTab,
+  onSelectTab,
+  onSelectProject,
+  onBackToCatalog,
+  onLogout,
+}: Props) {
+  const projectId = project.id;
   const [syncNonce, setSyncNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [mapping, setMapping] = useState<{ open: boolean; focus: Entity | null }>({
     open: false,
     focus: null,
@@ -61,162 +77,117 @@ export function Workspace({ project, onBack, initialTab }: Props) {
   }
 
   return (
-    <div className="relative flex h-full flex-col">
-      <header className="border-b border-border px-8 pt-5">
-        <div className="flex items-center justify-between">
-          <div className="min-w-0">
-            <button
-              onClick={onBack}
-              className="mb-1 text-xs text-text-muted transition-colors duration-150 hover:text-brand"
-            >
-              ← Catálogo
-            </button>
-            <h1 className="truncate text-lg font-semibold">
-              {project.owner}/{project.name}
-            </h1>
-            <a
-              href={`https://github.com/${project.owner}/${project.name}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-text-muted underline-offset-2 hover:text-brand hover:underline"
-            >
-              Abrir no GitHub ↗
-            </a>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              onClick={() => setActivityOpen((o) => !o)}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand"
-            >
-              Atividade
-            </button>
-            <button
-              onClick={() => setMapping({ open: true, focus: null })}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand"
-            >
-              Mapeamento
-            </button>
-            <button
-              onClick={() => void handleSync()}
-              disabled={syncing}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold transition-all duration-150 hover:border-brand hover:text-brand disabled:opacity-50"
-            >
-              {syncing ? 'Sincronizando…' : 'Sincronizar'}
-            </button>
-          </div>
-        </div>
+    <div className="flex h-screen bg-bg">
+      <Sidebar
+        user={user}
+        project={project}
+        projects={projects}
+        activeTab={activeTab}
+        onSelectTab={onSelectTab}
+        onSelectProject={onSelectProject}
+        onBackToCatalog={onBackToCatalog}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onLogout={onLogout}
+      />
 
-        <nav className="mt-4 flex gap-1 overflow-x-auto">
-          {WORKSPACE_TABS.map((tab) => {
-            const enabled = (tab.enabledIn ?? Infinity) <= CURRENT_SLICE;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => enabled && setActiveTab(tab.id)}
-                disabled={!enabled}
-                title={enabled ? undefined : `Fatia ${tab.enabledIn}`}
-                className={
-                  'shrink-0 rounded-full px-3 py-1.5 text-sm transition-colors duration-200 ' +
-                  (isActive
-                    ? 'bg-brand/10 font-semibold text-brand'
-                    : enabled
-                      ? 'text-text hover:bg-bg'
-                      : 'cursor-not-allowed text-text-muted/50')
-                }
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-      </header>
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <Topbar
+          project={project}
+          activeTab={activeTab}
+          syncing={syncing}
+          syncNonce={syncNonce}
+          activityOpen={activityOpen}
+          onOpenActivity={() => setActivityOpen((o) => !o)}
+          onOpenMapping={() => setMapping({ open: true, focus: null })}
+          onSync={() => void handleSync()}
+        />
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        {activeTab === 'overview' && (
-          <OverviewTab projectId={projectId} />
-        )}
-        {activeTab === 'documents' && (
-          <DocumentsTab projectId={projectId} syncNonce={syncNonce} />
-        )}
-        {activeTab === 'kanban' && (
-          <KanbanTab projectId={projectId} syncNonce={syncNonce} />
-        )}
-        {activeTab === 'graph' && (
-          <GraphTab projectId={projectId} syncNonce={syncNonce} />
-        )}
-        {activeTab === 'architecture' && (
-          <ArchitectureTab
+        <main className="min-h-0 flex-1 overflow-auto">
+          {activeTab === 'overview' && <OverviewTab projectId={projectId} />}
+          {activeTab === 'documents' && (
+            <DocumentsTab projectId={projectId} syncNonce={syncNonce} />
+          )}
+          {activeTab === 'kanban' && (
+            <KanbanTab projectId={projectId} syncNonce={syncNonce} />
+          )}
+          {activeTab === 'graph' && (
+            <GraphTab projectId={projectId} syncNonce={syncNonce} />
+          )}
+          {activeTab === 'architecture' && (
+            <ArchitectureTab
+              projectId={projectId}
+              syncNonce={syncNonce}
+              onCorrect={() => setMapping({ open: true, focus: 'architecture' })}
+              onReload={() => setSyncNonce((n) => n + 1)}
+            />
+          )}
+          {activeTab === 'design' && (
+            <DesignTab
+              projectId={projectId}
+              syncNonce={syncNonce}
+              onCorrect={() => setMapping({ open: true, focus: 'design' })}
+              onReload={() => setSyncNonce((n) => n + 1)}
+            />
+          )}
+          {activeTab === 'decisions' && (
+            <DecisionsTab
+              projectId={projectId}
+              syncNonce={syncNonce}
+              onCorrect={() => setMapping({ open: true, focus: 'decisions' })}
+            />
+          )}
+          {activeTab === 'tests' && (
+            <TestsTab
+              projectId={projectId}
+              syncNonce={syncNonce}
+              onCorrect={() => setMapping({ open: true, focus: 'testing' })}
+            />
+          )}
+          {activeTab === 'deploy' && (
+            <DeployTab
+              projectId={projectId}
+              syncNonce={syncNonce}
+              onCorrect={() => setMapping({ open: true, focus: 'deploy' })}
+            />
+          )}
+          {activeTab === 'skills' && (
+            <SkillsTab
+              projectId={projectId}
+              syncNonce={syncNonce}
+              onCorrect={() => setMapping({ open: true, focus: 'skills' })}
+            />
+          )}
+          {activeTab === 'context' && (
+            <ContextTab projectId={projectId} syncNonce={syncNonce} />
+          )}
+          {activeTab === 'handoff' && (
+            <HandoffTab projectId={projectId} syncNonce={syncNonce} />
+          )}
+        </main>
+
+        {mapping.open && (
+          <MappingScreen
             projectId={projectId}
-            syncNonce={syncNonce}
-            onCorrect={() => setMapping({ open: true, focus: 'architecture' })}
-            onReload={() => setSyncNonce((n) => n + 1)}
+            focusEntity={mapping.focus}
+            onClose={() => setMapping({ open: false, focus: null })}
+            onSaved={() => {
+              setMapping({ open: false, focus: null });
+              setSyncNonce((n) => n + 1);
+            }}
           />
         )}
-        {activeTab === 'design' && (
-          <DesignTab
+
+        {activityOpen && (
+          <ActivityPanel
             projectId={projectId}
-            syncNonce={syncNonce}
-            onCorrect={() => setMapping({ open: true, focus: 'design' })}
-            onReload={() => setSyncNonce((n) => n + 1)}
+            projectName={project.name}
+            refreshNonce={syncNonce}
+            onClose={() => setActivityOpen(false)}
           />
-        )}
-        {activeTab === 'decisions' && (
-          <DecisionsTab
-            projectId={projectId}
-            syncNonce={syncNonce}
-            onCorrect={() => setMapping({ open: true, focus: 'decisions' })}
-          />
-        )}
-        {activeTab === 'tests' && (
-          <TestsTab
-            projectId={projectId}
-            syncNonce={syncNonce}
-            onCorrect={() => setMapping({ open: true, focus: 'testing' })}
-          />
-        )}
-        {activeTab === 'deploy' && (
-          <DeployTab
-            projectId={projectId}
-            syncNonce={syncNonce}
-            onCorrect={() => setMapping({ open: true, focus: 'deploy' })}
-          />
-        )}
-        {activeTab === 'skills' && (
-          <SkillsTab
-            projectId={projectId}
-            syncNonce={syncNonce}
-            onCorrect={() => setMapping({ open: true, focus: 'skills' })}
-          />
-        )}
-        {activeTab === 'context' && (
-          <ContextTab projectId={projectId} syncNonce={syncNonce} />
-        )}
-        {activeTab === 'handoff' && (
-          <HandoffTab projectId={projectId} syncNonce={syncNonce} />
         )}
       </div>
 
-      {mapping.open && (
-        <MappingScreen
-          projectId={projectId}
-          focusEntity={mapping.focus}
-          onClose={() => setMapping({ open: false, focus: null })}
-          onSaved={() => {
-            setMapping({ open: false, focus: null });
-            setSyncNonce((n) => n + 1);
-          }}
-        />
-      )}
-
-      {activityOpen && (
-        <ActivityPanel
-          projectId={projectId}
-          projectName={project.name}
-          refreshNonce={syncNonce}
-          onClose={() => setActivityOpen(false)}
-        />
-      )}
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
@@ -239,7 +210,7 @@ async function pollSyncRun(projectId: string, runId: string): Promise<SyncRun> {
   }
 }
 
-/** Toast com o resultado do sync (política de toasts do DESIGN.md). */
+/** Toast com o resultado do sync (política de toasts do DESIGN.md §8). */
 function reportSync(run: SyncRun, toastId: string | number): void {
   if (run.status === 'failed') {
     toast.error(`Sincronização falhou: ${run.error ?? 'erro desconhecido'}`, {

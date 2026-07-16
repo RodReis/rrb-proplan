@@ -38,7 +38,7 @@ export function DecisionsTab({ projectId, syncNonce, onCorrect }: Props) {
   const items = payload?.items ?? [];
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Decisões" spans={payload?.spans} onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Decisões" tabId="decisions" spans={payload?.spans} onCorrect={onCorrect}>
       <ul className="space-y-2">
         {items.map((it, i) => (
           <li key={`${it.path}-${i}`}>

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   Controls,
   Edge,
   MiniMap,
@@ -20,6 +21,7 @@ import ReactFlow, {
   useNodesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { useToken } from '../../theme';
 import { api, DocGraph, GraphNode } from '../../lib/api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { DocViewerPanel } from './DocViewerPanel';
@@ -30,10 +32,16 @@ interface Props {
   syncNonce: number;
 }
 
+/**
+ * Ponto de cor por tipo de nó (DESIGN.md §6 — Grafo). O nó é uma superfície
+ * neutra; o tipo é sinalizado por um ponto, não pelo fundo inteiro — cor só
+ * carrega significado (§1) e o bloco sólido colorido não dizia nada além de
+ * "sou um doc".
+ */
 const KIND_COLOR: Record<string, string> = {
-  readme: '#12B76A', // success
-  claude: '#6172F3', // azul info
-  doc: '#1D2939', // carbono (brand)
+  readme: 'var(--success)',
+  claude: 'var(--info)',
+  doc: 'var(--accent)',
 };
 
 // Referências estáveis (fora do componente) — evitam re-render do ReactFlow.
@@ -43,26 +51,35 @@ const PRO_OPTS = { hideAttribution: true };
 // Estilos pré-computados com referência CONSTANTE por (kind, dim).
 // Identidade nova por render re-renderizava o card sob o cursor
 // (loop mouseenter/leave = piscar) — referência fixa mata o ciclo.
+// `var(--token)` preserva isso: a string é constante e quem resolve a cor por
+// tema é o browser, então trocar o tema não recria nenhum objeto.
 const NODE_STYLES: Record<
   string,
   { normal: React.CSSProperties; dim: React.CSSProperties }
 > = (() => {
+  // Nó = documento: --surface, borda --border2 1px, raio 12px (§6).
   const base: React.CSSProperties = {
-    borderRadius: 8,
+    borderRadius: 12,
     fontSize: 13,
     fontWeight: 500,
     padding: '8px 12px',
+    background: 'var(--surface)',
+    border: '1px solid var(--border2)',
+    color: 'var(--text2)',
     transition: 'opacity 150ms',
   };
-  const solid = (bg: string) => ({
-    normal: { ...base, background: bg, color: '#fff', border: 'none', opacity: 1 },
-    dim: { ...base, background: bg, color: '#fff', border: 'none', opacity: 0.35 },
+  const solid = (dot: string) => ({
+    // borda esquerda 3px = o "ponto" de tipo, sem pintar a superfície toda.
+    normal: { ...base, borderLeft: `3px solid ${dot}`, opacity: 1 },
+    dim: { ...base, borderLeft: `3px solid ${dot}`, opacity: 0.35 },
   });
+  // Nó-fantasma = link quebrado: tracejado, sem preencher (ausência é
+  // informação — ADR-014; nunca um bloco vermelho).
   const ghost = (opacity: number): React.CSSProperties => ({
     ...base,
-    background: '#FEF3F2',
-    border: '1px dashed #F04438',
-    color: '#B42318',
+    background: 'transparent',
+    border: '1px dashed var(--error)',
+    color: 'var(--error)',
     opacity,
   });
   return {
@@ -74,29 +91,41 @@ const NODE_STYLES: Record<
 })();
 
 const EDGE_STYLES = {
-  normal: { stroke: '#D0D5DD', opacity: 1, transition: 'opacity 150ms' },
-  normalDim: { stroke: '#D0D5DD', opacity: 0.25, transition: 'opacity 150ms' },
+  // Arestas: --border3 1.5px (§6).
+  normal: {
+    stroke: 'var(--border3)',
+    strokeWidth: 1.5,
+    opacity: 1,
+    transition: 'opacity 150ms',
+  },
+  normalDim: {
+    stroke: 'var(--border3)',
+    strokeWidth: 1.5,
+    opacity: 0.25,
+    transition: 'opacity 150ms',
+  },
   broken: {
-    stroke: '#F04438',
+    stroke: 'var(--error)',
     strokeDasharray: '4 4',
     opacity: 1,
     transition: 'opacity 150ms',
   },
   brokenDim: {
-    stroke: '#F04438',
+    stroke: 'var(--error)',
     strokeDasharray: '4 4',
     opacity: 0.25,
     transition: 'opacity 150ms',
   },
+  // Inferida por IA = tracejada (ADR-002, §6) — regra de produto, não estética.
   inferred: {
-    stroke: 'var(--color-warning)',
+    stroke: 'var(--warning)',
     strokeWidth: 1.5,
     strokeDasharray: '5 3',
     opacity: 1,
     transition: 'opacity 150ms',
   },
   inferredDim: {
-    stroke: 'var(--color-warning)',
+    stroke: 'var(--warning)',
     strokeWidth: 1.5,
     strokeDasharray: '5 3',
     opacity: 0.25,
@@ -180,6 +209,7 @@ function GraphCanvas({
   projectId: string;
   graph: DocGraph;
 }) {
+  const cssVar = useToken();
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [showInferred, setShowInferred] = useState(true);
@@ -364,10 +394,14 @@ function GraphCanvas({
         maxZoom={2}
         proOptions={PRO_OPTS}
       >
-        <Background color="#EAECF0" gap={20} />
+        {/* Fundo pontilhado do §6. Background/MiniMap recebem cor por prop
+            (não por CSS), então var(--token) não resolve — lemos o token
+            computado, reancorado quando o tema troca. */}
+        <Background variant={BackgroundVariant.Dots} gap={48} size={1} color={cssVar('--border')} />
         <MiniMap
-          nodeColor={(n) => (n.style?.background as string) ?? '#1D2939'}
-          maskColor="rgba(0,0,0,0.05)"
+          nodeColor={cssVar('--border3')}
+          maskColor={cssVar('--shadow')}
+          style={{ background: cssVar('--pop'), border: `1px solid ${cssVar('--border2')}` }}
         />
         <Controls showInteractive={false} />
       </ReactFlow>
@@ -543,8 +577,8 @@ function Legend() {
     { c: KIND_COLOR.readme, l: 'README' },
     { c: KIND_COLOR.claude, l: 'CLAUDE.md' },
     { c: KIND_COLOR.doc, l: 'Documento' },
-    { c: '#F04438', l: 'Link quebrado', dashed: true },
-    { c: 'var(--color-warning)', l: 'Relação inferida', dashed: true },
+    { c: 'var(--error)', l: 'Link quebrado', dashed: true },
+    { c: 'var(--warning)', l: 'Relação inferida', dashed: true },
   ];
   return (
     <div className="absolute left-3 top-3 z-10 flex flex-col gap-1.5 rounded-md border border-border bg-surface/90 p-3 text-xs backdrop-blur">

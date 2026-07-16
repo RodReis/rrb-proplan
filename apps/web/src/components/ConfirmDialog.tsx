@@ -56,8 +56,8 @@ export function ConfirmDialog({
             autoFocus
             className={
               danger
-                ? 'rounded-md border border-error bg-error px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90'
-                : 'rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90'
+                ? 'rounded-md border border-error bg-error px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90'
+                : 'rounded-md border border-btnbg bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90'
             }
           >
             {confirmLabel}

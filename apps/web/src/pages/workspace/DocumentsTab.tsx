@@ -173,9 +173,19 @@ function DocumentViewer({
       />
     );
 
+  // Xadrez de transparência (a imagem pode ter alfa) — nos tokens de superfície
+  // para acompanhar o tema. Via `style`, não classe arbitrária: `var()` aninhado
+  // num valor Tailwind quebra o parser do PostCSS ("Unclosed bracket").
   if (kind === 'image')
     return (
-      <div className="flex h-full items-center justify-center overflow-auto bg-[repeating-conic-gradient(#f3f4f6_0_25%,#fff_0_50%)] bg-[length:20px_20px] p-8">
+      <div
+        className="flex h-full items-center justify-center overflow-auto p-8"
+        style={{
+          backgroundImage:
+            'repeating-conic-gradient(var(--surface2) 0 25%, var(--card) 0 50%)',
+          backgroundSize: '20px 20px',
+        }}
+      >
         <img
           src={api.rawUrl(projectId, path)}
           alt={path}

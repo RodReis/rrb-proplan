@@ -41,7 +41,7 @@ export function TestsTab({ projectId, syncNonce, onCorrect }: Props) {
 
   return (
     // fallback de CI: level=4 mas há payload — source=null evita o empty state indevido no TabFrame
-    <TabFrame loading={loading} error={error} source={isCi ? null : source} label="Testes" spans={spans} onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={isCi ? null : source} label="Testes" tabId="tests" spans={spans} onCorrect={onCorrect}>
       {payload && 'markdown' in payload && <MarkdownView markdown={payload.markdown} />}
       {payload && 'ci' in payload && (
         <div>

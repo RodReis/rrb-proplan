@@ -94,7 +94,7 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
             ) : (
               <span
                 title={card.assignee.login}
-                className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[9px] font-semibold text-white"
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-btnbg text-[9px] font-semibold text-btnfg"
               >
                 {card.assignee.login.slice(0, 2).toUpperCase()}
               </span>

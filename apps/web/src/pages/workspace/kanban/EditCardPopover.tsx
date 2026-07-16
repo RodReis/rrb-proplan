@@ -73,7 +73,7 @@ export function EditCardPopover({ card, mutate, onClose, onSaved }: Props) {
               className={
                 'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ' +
                 (priority === p
-                  ? 'border-brand bg-brand/5 text-brand'
+                  ? 'border-btnbg bg-btnbg/5 text-brand'
                   : 'border-border text-text-muted hover:border-brand/40')
               }
             >
@@ -99,7 +99,7 @@ export function EditCardPopover({ card, mutate, onClose, onSaved }: Props) {
             <button
               onClick={() => void save()}
               disabled={saving}
-              className="rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              className="rounded-md border border-btnbg bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg hover:opacity-90 disabled:opacity-50"
             >
               {saving ? 'Salvando…' : 'Salvar'}
             </button>

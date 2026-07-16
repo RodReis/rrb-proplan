@@ -1,5 +1,7 @@
 import { ReactNode } from 'react';
 import { TabSource } from '../../lib/api';
+import { conventionPathOf } from './shell/conventionPath';
+import { TabHero } from './shell/TabHero';
 
 interface Props {
   loading: boolean;
@@ -7,6 +9,8 @@ interface Props {
   source: TabSource | null;
   /** Rótulo da entidade para os estados vazios (ex.: "Arquitetura"). */
   label: string;
+  /** Id da aba (`tabs.ts`) — a faixa usa para ícone, descrição e convenção. */
+  tabId: string;
   /** Spans citados pela IA que justificam a classificação nível 3 (ADR-012). */
   spans?: string[];
   /**
@@ -21,34 +25,55 @@ interface Props {
 }
 
 /** Estados uniformes das abas: skeleton, erro, aviso de fonte (alias/inferência), ausente. */
-export function TabFrame({ loading, error, source, label, spans, inferred, onCorrect, children }: Props) {
-  if (loading) return <div className="m-8 h-40 animate-pulse rounded-md bg-border/50" />;
+export function TabFrame({
+  loading,
+  error,
+  source,
+  label,
+  tabId,
+  spans,
+  inferred,
+  onCorrect,
+  children,
+}: Props) {
+  if (loading) return <div className="m-8 h-40 animate-pulse rounded-[14px] bg-card" />;
   if (error) return <p className="m-8 text-sm text-error">{error}</p>;
 
+  // Sem documento: a faixa É o empty state da aba, nada abaixo (DESIGN.md §6).
+  // Ausência é informação (ADR-014) — sem cor de erro, sem tom de falha.
   if (source && source.level === 4 && !inferred) {
     return (
-      <div className="m-8 rounded-lg border border-dashed border-border p-8 text-center">
-        <p className="text-sm font-medium">{label} não documentado</p>
-        <p className="mt-1 text-xs text-text-muted">
-          Nenhuma fonte para esta aba neste repositório.
-        </p>
-        <button
-          onClick={onCorrect}
-          className="mt-3 rounded-md border border-border px-3 py-1.5 text-xs hover:border-brand hover:text-brand"
-        >
-          Mapear fonte
-        </button>
+      <div className="mx-auto max-w-[1060px] p-8">
+        <TabHero tabId={tabId} title={label} awaiting={conventionPathOf(tabId) ?? undefined} />
+        <div className="mt-4 flex items-center gap-3">
+          <p className="text-xs text-muted">
+            Nenhuma fonte para esta aba neste repositório — se ela existe com outro
+            nome, aponte o caminho.
+          </p>
+          <button
+            onClick={onCorrect}
+            className="shrink-0 rounded-[10px] border border-border2 px-3 py-1.5 text-xs font-semibold text-body2 transition-colors duration-150 hover:border-hoverb hover:text-text"
+          >
+            Mapear fonte
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8">
+    <div className="mx-auto max-w-[1060px] p-8">
+      <TabHero
+        tabId={tabId}
+        title={label}
+        path={source?.path ?? source?.paths[0] ?? null}
+      />
+
       {source?.source === 'alias' && (
-        <p className="mb-4 text-xs text-text-muted">
+        <p className="mb-4 mt-4 text-xs text-muted">
           Fonte: <span className="font-mono">{source.path ?? source.paths[0]}</span>{' '}
           (reconhecido por nome —{' '}
-          <button onClick={onCorrect} className="underline hover:text-brand">
+          <button onClick={onCorrect} className="underline hover:text-text">
             corrigir
           </button>
           )
@@ -56,16 +81,25 @@ export function TabFrame({ loading, error, source, label, spans, inferred, onCor
       )}
       {source?.source === 'inference' && (
         <div
-          className="mb-4 rounded-md border p-3 text-xs"
-          style={{ borderColor: 'var(--color-warning)', backgroundColor: 'color-mix(in oklab, var(--color-warning) 8%, transparent)' }}
+          className="mb-4 mt-4 rounded-[10px] border p-3 text-xs"
+          style={{
+            borderColor: 'var(--accentBorder)',
+            backgroundColor: 'var(--accentSoft)',
+          }}
         >
-          <p className="font-medium" style={{ color: 'var(--color-warning)' }}>
-            Inferido por IA — este documento foi classificado como {label.toLowerCase()} pelo conteúdo.
+          {/* Chip de IA: contorno accentBorder, texto accent (§6 — Chips/IA). */}
+          <p className="font-medium text-accent">
+            Inferido por IA — este documento foi classificado como {label.toLowerCase()}{' '}
+            pelo conteúdo.
           </p>
           {spans && spans.length > 0 && (
-            <ul className="mt-2 space-y-1 text-text-muted">
+            <ul className="mt-2 space-y-1 text-muted">
               {spans.map((s, i) => (
-                <li key={i} className="border-l-2 pl-2 italic" style={{ borderColor: 'var(--color-warning)' }}>
+                <li
+                  key={i}
+                  className="border-l-2 pl-2 italic"
+                  style={{ borderColor: 'var(--accentBorder)' }}
+                >
                   “{s}”
                 </li>
               ))}
@@ -74,13 +108,13 @@ export function TabFrame({ loading, error, source, label, spans, inferred, onCor
           <button
             onClick={onCorrect}
             aria-label={`Corrigir classificação de ${label}`}
-            className="mt-2 underline hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+            className="mt-2 text-accent underline"
           >
             não é isso — corrigir
           </button>
         </div>
       )}
-      {children}
+      <div className="mt-6">{children}</div>
     </div>
   );
 }

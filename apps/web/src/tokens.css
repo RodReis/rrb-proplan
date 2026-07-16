@@ -1,0 +1,85 @@
+/**
+ * Fonte única de tokens de cor (DESIGN.md §4).
+ *
+ * O tema troca APENAS estas variáveis — nenhum componente conhece cor absoluta.
+ * Vive em apps/web/src enquanto houver um único consumidor; extrair para
+ * libs/ui-tokens só quando surgir o segundo (decisão SPEC-020, YAGNI).
+ */
+
+/* §4.1 Superfícies e texto · §4.2 Acento e semânticas — Carbono (padrão) */
+:root,
+:root[data-theme='carbono'] {
+  --bg: #0c0d0f;
+  --panel: #0e0f12;
+  --surface: #131418;
+  --surface2: #16171b;
+  --card: #1c1e23;
+  --colbg: #101114;
+  --pop: #101114;
+  --border: #1e2025;
+  --border2: #24262c;
+  --border3: #2a2c33;
+  --hoverb: #3a3d45;
+  --text: #f5f4f1;
+  --text2: #e8e7e3;
+  --body: #b8b7b2;
+  --body2: #c9c8c3;
+  --muted: #9a9da5;
+  --faint: #8b8e96;
+  --dim: #6c6f77;
+  --dimmer: #5d6068;
+  --shadow: rgba(0, 0, 0, 0.5);
+
+  --accent: #c9ced8;
+  --accentSoft: rgba(201, 206, 216, 0.12);
+  --accentBorder: rgba(201, 206, 216, 0.35);
+  --btnbg: #e2e5ea;
+  --btnfg: #101114;
+  --success: #4ade80;
+  --info: #7ea6d8; /* leitura/IA */
+  --write: #a596d8; /* escrita no repositório */
+  --warning: #d9a05b; /* em andamento/atenção */
+  --error: #e08a80; /* prioridade alta/erro */
+  --slate: #8a90a0; /* backlog, neutro */
+}
+
+:root[data-theme='claro'] {
+  --bg: #f2f2f0;
+  --panel: #fafaf8;
+  --surface: #ffffff;
+  --surface2: #f6f6f4;
+  --card: #eeeeec;
+  --colbg: #f0f0ee;
+  --pop: #ffffff;
+  --border: #e5e5e1;
+  --border2: #dcdcd8;
+  --border3: #d3d3cf;
+  --hoverb: #b9b9b5;
+  --text: #191a1d;
+  --text2: #26272b;
+  --body: #3f4147;
+  --body2: #33353a;
+  --muted: #5f6268;
+  --faint: #74777d;
+  --dim: #8a8d93;
+  --dimmer: #9a9da1;
+  --shadow: rgba(25, 26, 30, 0.16);
+
+  --accent: #5b616c;
+  --accentSoft: rgba(91, 97, 108, 0.1);
+  --accentBorder: rgba(91, 97, 108, 0.35);
+  --btnbg: #1f2126;
+  --btnfg: #ffffff;
+  --success: #15803d;
+  --info: #3f6aa5;
+  --write: #6b5aa8;
+  --warning: #96691c;
+  --error: #a33c31;
+  --slate: #6b7280;
+}
+
+/* Gradiente da marca (logo "P") — igual nos dois temas (§4.2). */
+:root {
+  --brand-gradient: linear-gradient(135deg, #eceef2, #98a0ac);
+  --brand-fg: #16171b;
+}

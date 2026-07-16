@@ -16,7 +16,7 @@ export function Login() {
         </p>
         <a
           href={api.loginUrl}
-          className="flex w-full items-center justify-center gap-2 rounded-md bg-text px-4 py-2.5 text-sm font-semibold text-white transition-all duration-150 hover:bg-black hover:shadow-sm"
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-[10px] bg-btnbg px-4 text-sm font-semibold text-btnfg transition-[filter] duration-150 hover:brightness-110"
         >
           <GithubIcon />
           Entrar com GitHub
