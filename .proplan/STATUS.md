@@ -34,6 +34,7 @@ _(vazio)_
 - Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6) (#42, prio: alta, finalizado em: 2026-07-15)
 - Fatia 13 — Drift de deploy: confronto de fontes, sem coroar verdade (SPEC-013 v2.1) (#5, prio: alta, finalizado em: 2026-07-15)
 - Fatia 7.7 — Invalidação de inferência por inputHash (SPEC-011) (#31, prio: alta, finalizado em: 2026-07-14)
+- Atividade — gaveta fecha sozinha 4s após abrir pelo sync (#80, prio: media, finalizado em: 2026-07-17)
 - Correção — --dim reprova contraste AA nos dois temas (#78, prio: media, finalizado em: 2026-07-17)
 - Kanban — card mostra data/hora: criação nas colunas abertas, finalização em Finalizado/Descartado (#76, prio: media, finalizado em: 2026-07-17)
 - Correção — Kanban só mostra o card na coluna certa depois de um F5 (corrida no sync) (#70, prio: media, finalizado em: 2026-07-16)
