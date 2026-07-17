@@ -15,11 +15,10 @@ updated: 2026-07-17
 
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
 - Fatia 8 — Multi-tenant: RBAC, organizações, billing (#7, prio: baixa)
-- Definição de arquitetura, ADRs e convenção de dados (#13)
 
 ## Em Andamento
 
-_(vazio)_
+- Definição de arquitetura, ADRs e convenção de dados (#13)
 
 ## Feito
 
