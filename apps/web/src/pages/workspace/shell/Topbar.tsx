@@ -39,7 +39,7 @@ export function Topbar({
           texto. Os botões de ação nunca cortam: ação vence contexto. */}
       <nav aria-label="Trilha" className="min-w-0 flex-1 shrink">
         <ol className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
-          <li className="shrink truncate text-dim">{project.owner}</li>
+          <li className="shrink truncate text-faint">{project.owner}</li>
           <li aria-hidden className="shrink-0 text-dimmer">/</li>
           <li className="shrink truncate text-body2">{project.name}</li>
           <li aria-hidden className="shrink-0 text-dimmer">/</li>

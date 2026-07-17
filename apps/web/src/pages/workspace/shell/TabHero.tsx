@@ -64,7 +64,7 @@ export function TabHero({ tabId, title, path, syncedAt, awaiting }: Props) {
         </p>
         <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
           {label}
-          {path && !awaiting && <span className="text-dim"> · {path}</span>}
+          {path && !awaiting && <span className="text-faint"> · {path}</span>}
         </p>
       </div>
     </section>

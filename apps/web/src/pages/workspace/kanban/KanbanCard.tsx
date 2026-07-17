@@ -168,7 +168,7 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="font-mono text-[10px] tabular-nums text-dim transition-colors duration-150 hover:text-text"
+          className="font-mono text-[10px] tabular-nums text-faint transition-colors duration-150 hover:text-text"
         >
           #{card.number}
         </a>

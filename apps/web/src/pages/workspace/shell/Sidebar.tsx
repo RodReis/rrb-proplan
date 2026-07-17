@@ -148,7 +148,7 @@ function UserFooter({
           </span>
           {/* A sessão não traz e-mail (o §2 previa) — o @login identifica sem
               inventar endpoint. */}
-          <span className="block truncate text-[11px] text-dim">@{user.login}</span>
+          <span className="block truncate text-[11px] text-faint">@{user.login}</span>
         </span>
       </button>
 

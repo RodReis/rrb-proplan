@@ -158,7 +158,7 @@ function ComboItem({
           >
             {project.name}
           </span>
-          <span className="block truncate text-[11px] text-dim">{project.owner}</span>
+          <span className="block truncate text-[11px] text-faint">{project.owner}</span>
         </span>
         {alert && (
           <span
