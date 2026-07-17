@@ -46,3 +46,19 @@ export function applyMigrations(): void {
     cwd: process.cwd(),
   });
 }
+
+/**
+ * Concede à role de app (proplan_app) acesso às tabelas recém-migradas.
+ * Necessário PÓS-migração: o init `01-app-role.sql` roda no initdb com o banco
+ * vazio, então seu `GRANT ON ALL TABLES` é no-op para as tabelas que só nascem
+ * depois, via `prisma migrate`. Rodar após applyMigrations() no beforeAll.
+ * Usa o ownerClient (só o owner pode conceder). Idempotente.
+ */
+export async function grantAppRole(owner: PrismaClient): Promise<void> {
+  await owner.$executeRawUnsafe(
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO proplan_app',
+  );
+  await owner.$executeRawUnsafe(
+    'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO proplan_app',
+  );
+}

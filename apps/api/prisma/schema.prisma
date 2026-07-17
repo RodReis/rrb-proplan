@@ -22,8 +22,53 @@ model User {
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
   projects               Project[]
+  memberships            Membership[]
 
   @@map("users")
+}
+
+// Tenant = dono de projetos, membros e teto de IA (SPEC-022, Fatia 8).
+// ENTIDADE PRÓPRIA com PK própria — não o id de instalação do GitHub. Por quê:
+// o installationId do GitHub NÃO é estável (desinstalar+reinstalar emite id
+// novo). Com PK própria, um reinstall só RE-APONTA `installationId` no mesmo
+// Tenant e nenhum dado orfana. No 1º corte a relação é 1:1 (tenant = instalação
+// = org); a PK própria só não fecha a porta para N instalações no futuro.
+model Tenant {
+  id             String       @id @default(uuid())
+  // Nullable: tenant pessoal pode nascer sem instalação de org. @unique: a
+  // relação é 1:1 e re-apontável no reinstall.
+  installationId Int?         @unique @map("installation_id")
+  accountLogin   String       @map("account_login")
+  accountType    String       @map("account_type") // User | Organization
+  createdAt      DateTime     @default(now()) @map("created_at")
+  memberships    Membership[]
+  projects       Project[]
+  settings       Settings[]
+
+  @@map("tenants")
+}
+
+enum Role {
+  owner  // gerencia projeto, administra membros, é o ÚNICO que finaliza (ADR-011)
+  member // opera o board, dispara sync, vê custo
+  viewer // só leitura
+}
+
+// Vínculo usuário↔tenant com papel (SPEC-022). Papel derivado do acesso do
+// GitHub (PR-5), mas gravado aqui (coluna própria) para desacoplar de um
+// eventual SSO sem migração.
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tenantId  String   @map("tenant_id")
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("memberships")
 }
 
 enum InstallationStatus {
@@ -34,6 +79,10 @@ enum InstallationStatus {
 model Project {
   id           String   @id @default(uuid())
   userId       String   @map("user_id")
+  // Nullable no schema para o backfill (migração da Fatia 8 preenche e depois
+  // um ALTER torna NOT NULL — Prisma não modela "NOT NULL após backfill", então
+  // o SQL da migração faz o SET NOT NULL; a coluna é obrigatória de fato).
+  tenantId     String?  @map("tenant_id")
   githubRepoId BigInt   @map("github_repo_id")
   owner        String
   name         String
@@ -57,6 +106,9 @@ model Project {
   ciObservedAt     DateTime? @map("ci_observed_at")
   createdAt    DateTime @default(now()) @map("created_at")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // onDelete: Restrict — não apagar tenant que ainda tem projeto (a migração
+  // torna tenantId NOT NULL; a relação é opcional no schema só pelo backfill).
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   documents    Document[]
   syncRuns     SyncRun[]
   insights     Insight[]
@@ -199,6 +251,10 @@ enum LlmProvider {
 model Settings {
   id                        String      @id @default(uuid())
   userId                    String      @unique @map("user_id")
+  // Teto de IA passa a ser por tenant (ADR-016 escopado, Fatia 8). Nullable no
+  // schema pelo backfill; a migração preenche e torna NOT NULL.
+  tenantId                  String?     @map("tenant_id")
+  tenant                    Tenant?     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   llmProvider               LlmProvider @default(anthropic) @map("llm_provider")
   docsStalenessThresholdDays Int        @default(90) @map("docs_staleness_threshold_days")
   // Teto de gasto de IA (ADR-016, SPEC-009). USD/mês, global (soma provedores).
@@ -295,6 +351,12 @@ enum CostSource {
 model LlmUsage {
   id                   String         @id @default(uuid())
   projectId            String?        @map("project_id")
+  // Nullable PERMANENTE (exceção às outras raízes, F4). O ledger é append-only
+  // e sobrevive ao projeto (projectId vira null no SetNull); linhas históricas
+  // pré-Fatia-8 e órfãs de projeto ficam com tenantId NULL = tenant pessoal do
+  // dono. A policy RLS trata NULL como pertencente ao tenant ativo pessoal.
+  // Não há FK forte nem SET NOT NULL — a coluna é deliberadamente frouxa.
+  tenantId             String?        @map("tenant_id")
   kind                 String         // summary | status_bootstrap | architecture_fallback | ...
   provider             String
   model                String

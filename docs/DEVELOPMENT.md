@@ -700,4 +700,12 @@ Spec `aprovada-pi` (2026-07-17). Entregue em 6 PRs (`refs #7`, nunca `closes`). 
 2. `feito` — **duas URLs**: `DATABASE_URL` (app → `proplan_app`, sujeita a RLS) e `DIRECT_URL` (migrations/seed → `proplan` owner). `datasource { url, directUrl }` no schema; `.env` e `docker-compose.yml` atualizados. `prisma validate` ok.
 3. `feito` — **harness do jest `banco`** (`test/int/db-harness.ts`): `ownerClient`/`appClient` + `applyMigrations`. Asserções de isolamento usam `appClient` (owner mentiria — pula RLS). Banco de teste separado do dev.
 
-Próximos: PR-2 schema+RLS · PR-3 contexto+guards · PR-4 RBAC+gate owner+teto · PR-5 papel/reinstall · PR-6 frontend.
+**PR-2 — Schema + migração + RLS** (`em-andamento`):
+1. `feito` — **`Tenant` (PK própria + `installationId` re-apontável) e `Membership {userId, tenantId, role}`**; `tenantId` em Project/Settings (NOT NULL após backfill) e LlmUsage (nullable permanente, F4). 13 filhas SEM coluna — herdam por join.
+2. `feito` — **migração `fatia_8_multi_tenant`** (SQL à mão via `migrate diff`): backfill idempotente do usuário único → tenant pessoal (id determinístico + `ON CONFLICT` + `WHERE tenant_id IS NULL` ⇒ roda 2× sem duplicar, F3). `SET NOT NULL` nas raízes é o guarda contra backfill incompleto.
+3. `feito` — **RLS em profundidade**: `ENABLE`+`FORCE` em 15 tabelas. Raízes casam por `tenant_id`; `llm_usage` trata NULL como tenant ativo; 12 filhas por `project_id IN (SELECT ... FROM projects WHERE tenant_id = current_setting('app.tenant_id', true))`. `missing_ok=true` ⇒ sem contexto = fail-closed.
+4. `feito` — **8 int-specs contra Postgres real** (`rls-isolation`, `rls-audit`), conectando como `proplan_app`: fail-closed sem contexto · isolamento A/B nas raízes · herança nas filhas · cobertura de policy (`pg_policies` sobre toda tabela de tenant) · backfill idempotente. **Provado ao vivo** no `proplan_test`. `regras` segue 509/509.
+
+Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb com banco vazio (no-op); o harness re-concede pós-migração (`grantAppRole`). Em prod fresh o `ALTER DEFAULT PRIVILEGES` cobre.
+
+Próximos: PR-3 contexto+guards · PR-4 RBAC+gate owner+teto · PR-5 papel/reinstall · PR-6 frontend.
