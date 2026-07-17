@@ -8,7 +8,19 @@
       "Bash(gh issue create --repo RodReis/rrb-proplan --title 'Fatia 10 — docs/CONTEXT.md + captura de asserção humana \\(SPEC-015\\)' --body 'Spec: [docs/specs/SPEC-015-contexto-assercao.md]\\(https://github.com/RodReis/rrb-proplan/blob/main/docs/specs/SPEC-015-contexto-assercao.md\\) \\(`aprovada-pi` em 2026-07-14\\) *)",
       "Bash(pnpm dev:api)",
       "Bash(tee /tmp/api.log)",
-      "Bash(node -e *jsonwebtoken*)"
+      "Bash(node -e *jsonwebtoken*)",
+      "Bash(git check-ignore *)",
+      "Bash(git checkout *)",
+      "Bash(ps -W)",
+      "Bash(tasklist)",
+      "Bash(rm -f .git/HEAD.lock)",
+      "Bash(git rev-list *)",
+      "Bash(rm -f .git/index.lock .git/HEAD.lock; echo \"locks removidos\"; echo \"---estado atual---\"; git status --short)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Desenv\\Projetos\\rrb-proplan\\.git"
     ]
   }
 }
