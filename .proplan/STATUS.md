@@ -22,7 +22,7 @@ _(vazio)_
 
 ## Feito
 
-- Definição de arquitetura, ADRs e convenção de dados (#13)
+_(vazio)_
 
 ## Finalizado
 
@@ -46,6 +46,7 @@ _(vazio)_
 - Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão (#6, prio: baixa, finalizado em: 2026-07-15)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (#12, prio: baixa, finalizado em: 2026-07-13)
 - Fatia 6 — Resolução de documentos (ADR-014) + abas: DocumentResolver (convenção → alias → .proplan/config.yml → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção adr/), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (#11, prio: baixa, finalizado em: 2026-07-13)
+- Definição de arquitetura, ADRs e convenção de dados (#13, finalizado em: 2026-07-17)
 - CI: relatório de testes gerado + evidência por SPEC/issue (ADR-019) (#60, finalizado em: 2026-07-16)
 - Fatia 13.5 — Handoff exportável (#51, finalizado em: 2026-07-15)
 - Fatia 10 — docs/CONTEXT.md + captura de asserção humana (SPEC-015) (#46, finalizado em: 2026-07-15)
