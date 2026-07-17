@@ -39,12 +39,35 @@ Exibir a **stack real detectada** de um projeto (linguagens e ecossistemas) a pa
 
 ## Critérios de aceite
 
-- [ ] Num repo **público com Dependency Graph ativo**, a aba Arquitetura mostra ecossistemas e principais dependências detectados, com o SHA de ancoragem visível.
-- [ ] Num repo **privado sem Dependency Graph**, a aba mostra "não habilitado neste repo" (com o como-habilitar), **nunca** erro nem lista vazia silenciosa.
-- [ ] Quando a doc declara stack diferente da detectada, a aba **exibe a discordância** (declarado × detectado) sem eleger verdade; quando coincidem, exibe como reforço.
-- [ ] O item aparece marcado como **detectado (SBOM)**, distinto de qualquer stack declarada — a UI não confunde as origens.
-- [ ] A leitura roda no sync, não no render (ADR-002); falha do SBOM não derruba o sync de docs (tolerante, como o `syncIssues`).
-- [ ] Nenhum byte de código-fonte é persistido — só a lista SPDX normalizada.
+> Verificáveis um a um. Cada critério diz **setup → ação → resultado observável** e o método. "Funciona" não é critério.
+
+**Detecção (repo público, Dependency Graph ativo)**
+
+- [ ] Setup: repo público com DG ativo e manifests. `GET /projects/:id/stack` retorna `enabled: true`, `source: 'sbom'`, os ecossistemas/linguagens agregados e `sourceSha` = HEAD do default branch; a aba Arquitetura os renderiza.
+- [ ] O `sourceSha` exibido **bate** com o SHA do HEAD do default branch no momento do sync (conferível contra a Commits API do GitHub).
+- [ ] A lista de dependências detalhada só é buscada/exibida **sob demanda** (expandir), não no carregamento da aba.
+
+**Fallback (privado / desabilitado / vazio) — nunca falhar em silêncio**
+
+- [ ] Repo privado com DG **desabilitado** → `enabled: false`; a aba mostra "não habilitado neste repo" **com o como-habilitar**; nunca 500, nunca lista vazia sem rótulo.
+- [ ] Repo com DG **ativo porém sem manifests** → **mesmo** estado de fallback informativo (o usuário não precisa distinguir de desabilitado).
+- [ ] O estado de fallback é visualmente distinto de "ainda não sincronizado" — não induz o usuário a achar que faltou rodar o sync.
+
+**Confronto doc × SBOM (padrão ADR-018 — coroa nenhuma)**
+
+- [ ] Setup: doc declara stack X, SBOM detecta Y, X≠Y. A aba exibe **declarado × detectado lado a lado**, marcados como discordância; **nenhum** rótulo unilateral de "correto"/"confere"/"errado" em qualquer das fontes.
+- [ ] Doc declara X e SBOM detecta X → exibido como **concordância/reforço** (não como discordância).
+- [ ] Doc **não** declara stack → estado "não declarado na doc" (informação, não erro); a stack detectada aparece sozinha, sem alarme falso.
+
+**Proveniência e limites do ADR-003**
+
+- [ ] Cada item detectado é **visualmente distinto** de stack declarada por humano e de inferência de IA (origem `sbom` vs. `doc` vs. `inference` — a UI não funde as três).
+- [ ] Auditoria do banco após o sync: **só** a lista SPDX normalizada persistida — nenhum blob/bytes de código-fonte, nenhum lockfile bruto, nenhum conteúdo fora do escopo do ADR-003.
+
+**Operação (sync e resiliência — ADR-002)**
+
+- [ ] A leitura do SBOM roda **no sync**, não no render: abrir a aba (`GET`) **não** dispara chamada ao GitHub (conferir na aba de rede / logs).
+- [ ] SBOM falhar (rate limit ou 5xx do GitHub) **não derruba** o sync de docs: o estado anterior persiste e a aba sinaliza a falha sem quebrar — tolerante como o `syncIssues`.
 
 ## Contratos (esboço)
 
