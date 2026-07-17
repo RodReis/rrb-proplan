@@ -26,12 +26,12 @@ Granularidades diferentes ⇒ **nenhum fato mora nos dois lugares**. Não criar 
 
 ---
 
-## Fatia 1 — Fundação (SPEC-001) — `feito`
+## Fatia 1 — Fundação (SPEC-001) — `finalizado` (aceita pelo PI em 2026-07-17)
 
-Implementada via Cowork (exceção histórica; a partir daqui, só Claude Code). Aguardando aceite do PI (validação runtime local: OAuth App + `.env` + migrate + subir).
+Implementada via Cowork (exceção histórica; a partir daqui, só Claude Code). Aceita ao vivo pelo PI (roda em produção local há dias; toda entrega posterior foi construída sobre ela). **Sem card no board** — nasceu antes do Kanban sobre Issues (Fatia 5), então o aceite vive só aqui.
 
 - [x] Monorepo, docker-compose, identity (OAuth), catalog, web shell — `feito`
-- [ ] Aceite do PI → mover para `finalizado` e STATUS.md → Feito
+- [x] Aceite do PI em 2026-07-17
 
 ## Fatia 2 — Ingestion (SPEC-002, `aprovada-pi`) — `finalizado`
 
