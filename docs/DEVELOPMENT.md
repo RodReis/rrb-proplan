@@ -680,6 +680,15 @@ Bug documentado (medido no polish da Fatia 15/16 em 2026-07-16). Sem spec — o 
 3. `feito` — **A correção (decisão do PI: separar os papéis)**: os 13 usos de **texto** migram `text-dim` → `text-faint` (5.09:1 / 4.54:1, já AA). `--dim` fica **só para não-texto**. **Zero mudança de valor de cor** — só a atribuição. Escala honesta: 2 níveis de texto (`--muted`/`--faint`) + 2 de não-texto (`--dim`/`--dimmer`).
 4. `feito` — `DESIGN.md` §4.1 (tabela de papéis + veredito de contraste) atualizado. `tsc` + `vite build` limpos, 39 testes de tela verdes, histórico do `TESTS.md` intacto. **Verificação ao vivo pendente** (atrás do OAuth, como as Fatias 15/16).
 
+## Atividade — gaveta fecha sozinha 4s após abrir pelo sync — `feito` (aguardando merge do PR; `refs #80`)
+
+Pedido do PI ao vivo (2026-07-17). Sem spec: ajuste de UX pequeno, definido na hora (natureza do #76). Muda a SPEC-010 na margem.
+
+1. `feito` — **A regra**: a gaveta já abria no fim do sync (decisão anterior do PI). Agora **fecha sozinha 4s depois**, como um toast. **Só quando abre pelo sync** — abrir pela pílula é intenção de ler e nunca auto-fecha.
+2. `feito` — **Duas proteções**: interação (hover/scroll/clique/foco) reinicia a contagem; operação em curso adia enquanto há job de IA (o polling re-emite o sinal a cada 2s < 4s) — nunca fecha no meio de trabalho visível.
+3. `feito` — **`useAutoClose.ts`** (hook novo, 5 testes): arma só quando pedido, re-arma no `bumpToken`, e **re-render sem interação NÃO reinicia** — senão o polling do feed (2s) seguraria a gaveta aberta pra sempre; o teste trava isso. `Workspace` arma no sync e desarma na pílula; `ActivityPanel` emite `onActivity` em interação e enquanto `running.length > 0`.
+4. `feito` — tsc + vite build limpos, 46 testes de tela verdes (+5). **Verificação ao vivo pendente** (atrás do OAuth): abre no sync → 4s → fecha; hover cancela; job rodando adia; pílula não fecha.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
