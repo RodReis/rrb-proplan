@@ -33,7 +33,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 7.5 | SPEC-009 | `SPEC-009-consumo-ia.md` | Consumo de IA: tokens, custo, teto |
 | 7.6 | SPEC-010 | `SPEC-010-atividade.md` | Operação assíncrona + painel de Atividade |
 | 7.7 | SPEC-011 | `SPEC-011-invalidacao-granular.md` | Invalidação de inferência por `inputHash` |
-| 8 | SPEC-022 | `SPEC-022-multi-tenant.md` | Multi-tenant: orgs, RBAC, isolamento (spec `rascunho`, perguntas abertas ao PI) |
+| 8 | SPEC-022 | `SPEC-022-multi-tenant.md` | Multi-tenant: orgs, RBAC, isolamento por RLS (spec `aprovada-pi` 2026-07-17) |
 | 9 | SPEC-014 | `SPEC-014-modelo-canonico.md` | Modelo canônico + proveniência + confiança |
 | 10 | SPEC-015 | `SPEC-015-contexto-assercao.md` | `docs/CONTEXT.md` + captura de asserção humana |
 | 11 | SPEC-016 | `SPEC-016-mcp-server.md` | MCP Server: contrato de evidência + 6 tools |
@@ -44,7 +44,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 14 | SPEC-019 | `SPEC-019-portfolio-radar.md` | Portfólio da fábrica + Radar de risco |
 | 15 | SPEC-020 | `SPEC-020-shell-workspace.md` | Shell workspace |
 | 16 | SPEC-021 | `SPEC-021-login-catalogo.md` | Login + catálogo |
-| 17 | SPEC-023 | `SPEC-023-stack-sbom.md` | Stack detectada via SBOM/Dependency Graph (issue #8; spec `rascunho`, perguntas abertas ao PI) |
+| 17 | SPEC-023 | `SPEC-023-stack-sbom.md` | Stack detectada via SBOM + confronto doc×real (issue #8; spec `aprovada-pi` 2026-07-17) |
 
 ## Backlog
 
