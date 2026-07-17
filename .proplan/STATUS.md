@@ -19,7 +19,7 @@ updated: 2026-07-17
 
 ## Em Andamento
 
-- Correção — a guarda anti-drift não guardava: nem o histórico do TESTS.md, nem a si mesma (#74, prio: alta)
+_(vazio)_
 
 ## Feito
 
@@ -27,6 +27,7 @@ _(vazio)_
 
 ## Finalizado
 
+- Correção — a guarda anti-drift não guardava: nem o histórico do TESTS.md, nem a si mesma (#74, prio: alta, finalizado em: 2026-07-17)
 - Correção — TESTS.md sobrescreve o histórico em vez de acumular (append-only quebrado) (#72, prio: alta, finalizado em: 2026-07-16)
 - Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools (#3, prio: alta, finalizado em: 2026-07-16)
 - Fatia 9 — Modelo canônico + proveniência por campo + confiança determinística (SPEC-014) (#1, prio: alta, finalizado em: 2026-07-15)
