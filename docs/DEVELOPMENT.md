@@ -714,4 +714,13 @@ Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb co
 3. `feito` — **arch-spec `tenant-scope`**: varredura estática (molde do `installation-token-usage`) barra qualquer arquivo que sete `app.tenant_id` fora do `withTenant` — o contexto tem um único setter (F2).
 4. `feito` — **testes**: unit dos guards (RoleGuard 8, TenantGuard 3) em `regras` (521/521); int-spec `tenant-context` prova que o SET LOCAL **não vaza no pool** (pool=1, `withTenant(A)` → query fora de contexto = 0 linhas). `banco` 10/10. Jest project `banco` agora `maxWorkers:1` (suítes compartilham o Postgres de teste — serial evita colisão de seed/contexto).
 
-Próximos: PR-4 RBAC+gate owner+teto · PR-5 papel/reinstall · PR-6 frontend.
+**PR-4 — RBAC do board + gate owner** (`em-andamento`):
+1. `feito` — **gate owner na finalização** (`board-mutation.service.ts`): `closesIssue(input)` (mover para `finalized`/`discarded` ou `discard_card`) exige `role === 'owner'`, senão 403 — **antes** de tocar o banco/criar o job. É o único ponto síncrono com o papel: depois do enqueue o worker carrega só `{mutationId, projectId}` e não reautentica. Nenhuma automação finaliza. Cobre finalizado **e** descartado (decisão do PI: qualquer fechamento de issue é ato do dono, além da letra da spec que cita só `finalizado`).
+2. `feito` — **board controller sob `/t/:tenant`**: `@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)` + `TenantContextInterceptor`. GETs sem exigência (viewer **lê** o board); POSTs de escrita com `@RequireRole('member')` (viewer barrado). `enqueue` recebe `req.role`.
+3. `feito` — **11 testes** do gate (`board-mutation.spec.ts`): `closesIssue` por coluna; owner finaliza, member/viewer → 403 sem enfileirar; gate roda antes do banco. `regras` 532/532.
+
+**Pendência consciente**: só o **board** migrou para `/t/:tenant`; os outros 8 controllers (tabs, activity, canonical, freshness, context, handoff, ingestion, insight) seguem em `/projects/:id` até o **PR-6** (roteamento completo + frontend). A app não roda ponta-a-ponta até lá — esperado numa pilha de PRs não-mergeados.
+
+**Teto de IA por tenant → PR próprio (PR-4b)**: `SettingsService` é chaveado por `userId` em ~8 métodos + callers cross-module; migrar `userId→tenantId` não cabe junto do RBAC. Fica isolado. O `aggregate` de `LlmUsage` já escopa por tenant via RLS quando roda sob contexto — a mudança restante é a chave do Settings.
+
+Próximos: PR-4b teto por tenant · PR-5 papel/reinstall · PR-6 frontend + rotas restantes.

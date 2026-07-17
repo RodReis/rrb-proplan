@@ -1,9 +1,22 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { BoardColumn, IssuePriority } from '../domain/column-mapping';
 import { BOARD_QUEUE } from '../board.constants';
+
+// Colunas terminais: entrar nelas FECHA a issue (proplan:finalizado /
+// proplan:descartado) — o ato deliberado do dono (ADR-011, CLAUDE.md). Só owner
+// pode. Nenhuma automação passa por aqui (o worker não reautentica papel).
+const CLOSING_COLUMNS: readonly BoardColumn[] = ['finalized', 'discarded'];
+
+/** Uma mutação fecha a issue (exige owner)? */
+export function closesIssue(input: MutationInput): boolean {
+  if (input.type === 'discard_card') return true;
+  if (input.type === 'move_column') return CLOSING_COLUMNS.includes(input.toColumn);
+  return false;
+}
 
 // Tipos de mutação (payload por tipo). Discriminado por `type`.
 export type MutationInput =
@@ -33,7 +46,18 @@ export class BoardMutationService {
     userId: string,
     projectId: string,
     input: MutationInput,
+    role: Role,
   ): Promise<{ mutationId: string }> {
+    // Gate de papel ANTES de criar o job. Este é o único ponto síncrono com o
+    // papel do usuário: depois do enqueue o job carrega só {mutationId,
+    // projectId} e o worker NÃO reautentica — então fechar issue tem de ser
+    // barrado aqui. Fechar (finalizado/descartado) = ato do dono (ADR-011).
+    if (closesIssue(input) && role !== 'owner') {
+      throw new ForbiddenException(
+        'Só o owner pode finalizar ou descartar (aceite do dono, ADR-011)',
+      );
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
       select: { id: true, installationStatus: true },
