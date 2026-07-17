@@ -9,6 +9,10 @@ interface Props {
   refreshNonce: number;
   /** Tocando a animação de saída — o nó ainda existe, mas já está indo embora. */
   leaving?: boolean;
+  /** Sinal de vida: interação do usuário ou operação em curso. O Workspace usa
+   *  para adiar o auto-close de 4s — não fecha na cara de quem lê nem no meio
+   *  de um job. Opcional: sem auto-close (aberto pela pílula) não é passado. */
+  onActivity?: () => void;
 }
 
 // Polling adaptativo do painel (o F5 manual morreu — SPEC-010): rápido enquanto
@@ -153,6 +157,7 @@ export function ActivityPanel({
   onClose,
   refreshNonce,
   leaving,
+  onActivity,
 }: Props) {
   const [running, setRunning] = useState<OperationView[]>([]);
   const [items, setItems] = useState<ActivityItem[]>([]);
@@ -165,6 +170,13 @@ export function ActivityPanel({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Enquanto há operação em curso, adia o auto-close: um job rodando é conteúdo
+  // que muda, não gaveta esquecida aberta. Re-dispara a cada mudança de estado
+  // do polling, mantendo a contagem de 4s zerada até o trabalho acabar.
+  useEffect(() => {
+    if (running.length > 0) onActivity?.();
+  }, [running, onActivity]);
   const [loading, setLoading] = useState(true);
 
   // Polling adaptativo: os jobs de IA (summary/edges/classify) rodam ASSÍNCRONOS
@@ -231,6 +243,10 @@ export function ActivityPanel({
     <aside
       className={'act-panel' + (leaving ? ' act-panel--leaving' : '')}
       aria-label={`Atividade de ${projectName}`}
+      onPointerMove={onActivity}
+      onWheel={onActivity}
+      onPointerDown={onActivity}
+      onFocusCapture={onActivity}
     >
       <header className="act-titlebar">
         <span className="act-title">

@@ -19,6 +19,7 @@ import { HandoffTab } from './tabs/HandoffTab';
 import { Sidebar } from './shell/Sidebar';
 import { Topbar } from './shell/Topbar';
 import { useExitAnimation } from './useExitAnimation';
+import { useAutoClose } from './useAutoClose';
 
 interface Props {
   user: SessionUser;
@@ -56,6 +57,17 @@ export function Workspace({
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 240ms = a duração de `drawerOut` no index.css. Se um mudar, o outro muda.
   const drawer = useExitAnimation(activityOpen, 240);
+
+  // Auto-close da gaveta (decisão do PI): quando abre pelo fim do sync, fecha
+  // sozinha após 4s — como um toast. Armado só nesse caminho, nunca quando o
+  // usuário abre pela pílula (aí ele quer ler). Cada sinal de vida do painel
+  // (interação ou operação em curso) reinicia a contagem via `activityBump`.
+  const [autoClose, setAutoClose] = useState(false);
+  const [activityBump, setActivityBump] = useState(0);
+  useAutoClose(autoClose && activityOpen, activityBump, 4000, () => {
+    setAutoClose(false);
+    setActivityOpen(false);
+  });
   const [mapping, setMapping] = useState<{ open: boolean; focus: Entity | null }>({
     open: false,
     focus: null,
@@ -71,7 +83,9 @@ export function Workspace({
       reportSync(run, toastId);
       // Ao concluir o sync, abre a Atividade para o resultado ficar à vista —
       // fecha o ciclo "Sincronizar → veja o que o ProPlan fez" (decisão do PI).
+      // Armado para auto-fechar em 4s; qualquer interação/trabalho adia.
       setActivityOpen(true);
+      setAutoClose(true);
     } catch (err) {
       toast.error(`Falha ao sincronizar: ${err}`, { id: toastId });
     } finally {
@@ -100,7 +114,11 @@ export function Workspace({
           syncing={syncing}
           syncNonce={syncNonce}
           activityOpen={activityOpen}
-          onOpenActivity={() => setActivityOpen((o) => !o)}
+          onOpenActivity={() => {
+            // Aberta pela pílula = intenção de ler: nunca auto-fecha.
+            setAutoClose(false);
+            setActivityOpen((o) => !o);
+          }}
           onOpenMapping={() => setMapping({ open: true, focus: null })}
           onSync={() => void handleSync()}
         />
@@ -190,6 +208,7 @@ export function Workspace({
             refreshNonce={syncNonce}
             leaving={drawer.leaving}
             onClose={() => setActivityOpen(false)}
+            onActivity={() => setActivityBump((b) => b + 1)}
           />
         )}
       </div>
