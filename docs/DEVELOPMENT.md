@@ -288,7 +288,7 @@ O bug original (promover → `noop` → doc não ingerido até sync manual) **n�
 
 > **Sinergia**: o sync SHA-aware (backlog, prio alta) mata o `sleep(2500)` do promote — o passo "aguardando propagação" deixa de ser tempo cego e vira verificação real.
 
-## Fatia 7.5 — Consumo de IA: tokens, custo e teto (SPEC-009, `aprovada-pi`) — `feito` (aguardando aceite runtime do PI)
+## Fatia 7.5 — Consumo de IA: tokens, custo e teto (SPEC-009, `aprovada-pi`) — `finalizado` (#25 aceita pelo PI em 2026-07-14)
 
 **Última fatia do MVP1.** Sem dependência de nenhuma outra — toca só `insight` e `settings`. Marcada `[paralelo]`: pode ser puxada para frente a qualquer momento. **Antecipe se a conta de IA assustar durante a Fatia 7**, que é a que mais chama o provedor.
 
@@ -331,7 +331,7 @@ O painel dizia "reaproveitou" mas não deixava crível que reaproveitar custou z
 
 **Bug corrigido no aceite**: ao renomear o `kind` do feed (`insight`→`insight_run`), o front tinha o tipo e o mapa `GROUP_OF` ainda no valor antigo → `undefined.mark` quebrava o painel. Escapou do build porque back e front têm tipos separados (acoplados por string). 290 testes no total, builds API+web limpos.
 
-## Fatia 6.1 — Aba Deploy: documento primeiro (SPEC-012, `aprovada-pi`) — `feito` (mergeado PR #38/merge #39; aguardando aceite runtime do PI)
+## Fatia 6.1 — Aba Deploy: documento primeiro (SPEC-012, `aprovada-pi`) — `finalizado` (mergeado PR #38/merge #39; #38 aceita pelo PI em 2026-07-15)
 
 Emenda de renderização à Fatia 6 (ADR-014). Deploy era a única aba com parser estrutural rígido: `tabs.service` rodava `parseDeploy(md)` e **descartava o documento**. Doc mapeado sem a tabela do `CONVENTION.md` (achado no dogfooding do `rrb-organize`: `docs/runbooks/deploy-railway.md`, prosa) → aba desenhava cabeçalho de tabela vazio. O ProPlan exigindo o próprio formato — violando o ADR-014 na renderização, depois de o mapeamento ter feito a coisa certa.
 
@@ -355,7 +355,7 @@ Fecha o furo do `CONVENTION.md`: a tabela canônica de Deploy tinha **um eixo (a
 
 **Validação runtime (aceite do PI, 2026-07-15):** API real (`node dist/main.js`, endpoint `GET /projects/:id/tabs/deploy`, cookie `proplan_session`), projeto seedado com DEPLOY.md e revertido depois. Capturado do response real: **5-col** → `environments` com `componente` populado (web/API/banco/cache), `produção` com Netlify+Railway como componentes distintos, `cache (redis-volume)` linha própria sem `+`, `—`→`url:null`; **4-col** → sem `componente` (compat provada ao vivo, não só no fixture); **ordem de colunas trocada** → mapeada por nome (header-aware confirmado). Achado: instância órfã na 3311 (secret/código velho) dava 401 num token válido — matar todas antes (ver nota de watchers órfãos).
 
-## Fatia 13 — Drift de deploy: confronto de fontes (SPEC-013 v2.1, `aprovada-pi`) — `feito` (mergeado PR #40; validado ao vivo; aguardando aceite do PI)
+## Fatia 13 — Drift de deploy: confronto de fontes (SPEC-013 v2.1, `aprovada-pi`) — `finalizado` (mergeado PR #40; #5 aceita pelo PI em 2026-07-15)
 
 Parar de dar crédito institucional a doc de deploy possivelmente defasada — **sem afirmar qual plataforma é a verdadeira**. Confronta 4 fontes (doc · config no repo · GitHub Deployments · URL declarada pelo dono); quando discordam, mostra cada uma com natureza + data; quando só há sinal GitHub-side, admite que não há fonte fresca e **pede a URL**. **Zero IA, zero chamada externa** (a plataforma sai do domínio da URL por parse de string), zero credencial de plataforma. ADR-018/probe negado (→ Fatia 13.6); handoff → 13.5.
 
@@ -389,9 +389,9 @@ Congela o modelo canônico (Fatia 9) + board (Fatia 5) num pacote de contexto po
 
 **5 decisões do PI incorporadas** (1: entregar já sobre a 9, blocos 10/11 recusam honestamente; 2: download+write-back arquivo único, sem tabela; 3: referência+título datado, corpo/PR/check fora; 4: sha no rodapé; 5: `assembleHandoff` domínio compartilhado que a Fatia 11 herda). 453 testes (+22), tsc web+api limpos.
 
-**Validação runtime (OK, 2026-07-15):** handoff exportado ao vivo de `RodReis/rrb-escola` (repo gerenciado real, caso deploy `discordam`). Bloco "Projeto + objetivo" recusou honesto ("não sei — ausente/defasado · falta: documento de project", confiança 0%), demais blocos com valor + `inferencia` + confiança + a conta. **Baixar HANDOFF.md** OK (blob local). **Commitar em .proplan/** OK — commit `ccc4db2` `proplan: atualiza HANDOFF.md`, autor `rrb-proplan[bot]`, Verified, em `.proplan/HANDOFF.md` (nunca `docs/`), prefixo `proplan:` (ADR-015 + guarda de path confirmados ao vivo). Aguardando aceite formal do PI (fecha #51 + `proplan:finalizado`).
+**Validação runtime (OK, 2026-07-15):** handoff exportado ao vivo de `RodReis/rrb-escola` (repo gerenciado real, caso deploy `discordam`). Bloco "Projeto + objetivo" recusou honesto ("não sei — ausente/defasado · falta: documento de project", confiança 0%), demais blocos com valor + `inferencia` + confiança + a conta. **Baixar HANDOFF.md** OK (blob local). **Commitar em .proplan/** OK — commit `ccc4db2` `proplan: atualiza HANDOFF.md`, autor `rrb-proplan[bot]`, Verified, em `.proplan/HANDOFF.md` (nunca `docs/`), prefixo `proplan:` (ADR-015 + guarda de path confirmados ao vivo). **#51 aceita pelo PI em 2026-07-15** (`closed` + `proplan:finalizado`).
 
-## Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6, `aprovada-pi`) — `feito` (mergeado PR #43; review de segurança 0 CRITICAL/HIGH; validado ao vivo; aguardando aceite do PI)
+## Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6, `aprovada-pi`) — `finalizado` (mergeado PR #43; review de segurança 0 CRITICAL/HIGH; #42 aceita pelo PI em 2026-07-15)
 
 Estende o confronto da Fatia 13 com a **única fonte que toca a realidade**: GET HTTP à URL declarada, que confirma o que está no ar **agora** e identifica plataforma de **domínio próprio** (que o parse-de-string da 13 deixa `desconhecida`). É o **único ponto com superfície SSRF** — sob **ADR-018** (7 guardas, critério de aceite).
 
@@ -457,7 +457,7 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 1. `feito` — Removida a cadeia morta inteira (não só o botão): `pages/workspace/BootstrapDialog.tsx` deletado; `OverviewTab` perdeu o CTA `!hasStatusDoc`, o state `bootstrapOpen` e as props `hasStatusDoc`/`onSynced` (só serviam o dialog); `Workspace` perdeu o state `hasStatusDoc` + o `refreshDocsList`/`useEffect` que só o alimentavam; `api.ts` perdeu `proposeStatus`+`commitStatus`. `tsc` + `vite build` limpos. Sem teste (remoção pura de UI, sem lógica). **Validado ao vivo** (`agency-agents-app`): aba Visão Geral sem o CTA morto, resto intacto.
 
-## Fatia 14 — Portfólio da fábrica + Radar de risco (SPEC-019, `aprovada-pi`) — `feito` (aguardando aceite runtime do PI)
+## Fatia 14 — Portfólio da fábrica + Radar de risco (SPEC-019, `aprovada-pi`) — `finalizado` (#6 aceita pelo PI em 2026-07-15)
 
 **A tela inicial diária.** View cross-projeto sobre os repos gerenciados, cada linha com os 4 sinais entregues (staleness, cobertura, deploy, CI) **crus e datados**, ordenados pelo radar. Molde direto da Fatia 13 (coleta no sync, cache no `Project`, projeção pura). **Zero IA** (ADR-002), determinístico, **nenhum score de saúde composto** (ADR-012). Slots peso-zero de 10/11 declarados, não calculados (decisão 3 do PI).
 
@@ -471,7 +471,7 @@ Bug documentado (achado no aceite da 7.6, comportamento decidido pelo PI em 2026
 
 **Aceite runtime do PI (pendente):** olho ao vivo com os `rrb-*` reais (`rrb-escola` deploy discordante, `rrb-organize` só-github-side) — o portfólio já nasce com casos ricos. Roteiro: linha por repo gerenciado com os 4 sinais datados; ordenação por nº de vermelhos (desempate staleness); chip de CI datado linkando o GitHub Actions; repo sem Actions → `sem CI` neutro (não vermelho); clicar chip abre a aba certa. **Provar que o radar não inventa**: sinal de 10/11 não aparece (peso zero); 2× o mesmo estado → mesma ordem.
 
-## Fatia 11 — MCP Server do ProPlan: contrato de evidência + as 6 tools (SPEC-016, `aprovada-pi`) — `feito` (aguardando aceite runtime do PI)
+## Fatia 11 — MCP Server do ProPlan: contrato de evidência + as 6 tools (SPEC-016, `aprovada-pi`) — `finalizado` (#3 aceita pelo PI em 2026-07-16)
 
 **O diferencial — fecha o núcleo do MVP2 (9→10→11).** O consumidor primário não é o humano, é o agente: o MCP expõe o julgamento (canônico da 9, asserção da 10, board da 5, resolver/handoff da 6/13.5) sob um **contrato de evidência sem exceção** — toda resposta carrega evidência datada + confiança; **sem evidência, a tool recusa** em vez de chutar. **Adaptador fino** (ADR-001): consome interfaces públicas, **não reimplementa julgamento, zero modelo Prisma novo, zero IA** (ADR-002). Metade da spec é o que NÃO faz: **nenhum pass-through do GitHub** (ADR-017) — referencia issue por número+URL, nunca reproduz o corpo.
 
@@ -603,7 +603,7 @@ Os assets de `docs/design/assets/` são **2528×1696 PNG, ~4,5 MB cada**. A faix
 
 O **Portfólio da fábrica** (Fatia 14, issue #6 `finalizado`) era aberto pelo **rail de ícones**, que a SPEC-020 remove. A spec não diz onde ele reancora — e realocar tela já aceita é decisão de produto, não do Code. `pages/PortfolioView.tsx` fica **no código, íntegro e sem entrada** até o PI decidir (candidatos: menu do rodapé de usuário, item de grupo da sidebar, ou home). Não deletar: é trabalho aceito.
 
-## Correção — retry de conflito no write-back reusava conteúdo velho — `feito` (mergeado PR #68 squash `4e06ca7`, `refs #69`; aguardando aceite do PI)
+## Correção — retry de conflito no write-back reusava conteúdo velho — `finalizado` (mergeado PR #68 squash `4e06ca7`, `refs #69`; #69 aceita pelo PI em 2026-07-16)
 
 Bug documentado (code review da Fatia 10, MEDIUM). **Sem spec**: o certo já estava no `ARCHITECTURE.md` → Resiliência — *"409 → re-sync, **reaplicar** mudança, um retry"*. O código **reenviava**.
 
@@ -615,7 +615,7 @@ Bug documentado (code review da Fatia 10, MEDIUM). **Sem spec**: o certo já est
 
 **Sem verificação ao vivo, e isto é da natureza do bug**: ele é invisível na tela por definição — apaga dados sem deixar rastro. Reproduzir exigiria commitar no GitHub no intervalo exato entre duas chamadas. O teste é a única testemunha possível. 506 testes na API (+5), `nest build` limpo.
 
-## Correção — Kanban só atualizava depois de um F5 — `feito` (mergeado PR #71 squash `ed5fc02`, `refs #70`; aguardando aceite do PI)
+## Correção — Kanban só atualizava depois de um F5 — `finalizado` (mergeado PR #71 squash `ed5fc02`, `refs #70`; #70 aceita pelo PI em 2026-07-16)
 
 Bug **reportado ao vivo pelo PI usando o produto**. Sem spec: corrida, não escopo.
 
@@ -625,7 +625,7 @@ Bug **reportado ao vivo pelo PI usando o produto**. Sem spec: corrida, não esco
 
 **Os testes provados contra o bug**: 3 testes travam a ordem. Reintroduzi o defeito de propósito — **2 falharam**; restaurei — os 3 passam. Um teste que não falha quando o bug volta é decoração. 509 testes na API (+3), cobertura 76.7% → 78.2%.
 
-## Correção — histórico do `TESTS.md` era sobrescrito, não acumulado — `feito` (mergeado PR #73 squash `f91dea7`, `refs #72`; aguardando aceite do PI)
+## Correção — histórico do `TESTS.md` era sobrescrito, não acumulado — `finalizado` (mergeado PR #73 squash `f91dea7`, `refs #72`; #72 aceita pelo PI em 2026-07-16)
 
 Bug **reportado ao vivo pelo PI**. Sem spec: o certo já estava no `TESTING.md` §4 — *"o histórico é append-only (linhas de entregas passadas são imutáveis)"*.
 
@@ -636,7 +636,7 @@ Bug **reportado ao vivo pelo PI**. Sem spec: o certo já estava no `TESTING.md` 
 
 **Sem teste automatizado, e isso é honesto**: escrevi um, vi que **não roda** (o jest da API tem `rootDir: apps/api` e `scripts/` fica fora; o ts-jest recusa o import através da fronteira) e **removi** — teste que não executa é pior que nenhum. Verificado na prática: rodei o comando que apagava e a SPEC-016 sobreviveu. Os dois buracos ficaram no `STATUS.md`: estender o `--check` ao histórico (append-only é verificável — é **continência de conjunto**, não igualdade, então não sofre do problema dos metadados que motivou o check a olhar só os números) e decidir onde o teste de script vive (toca a categorização do ADR-019 ⇒ decisão do PI).
 
-## Kanban — card mostra data/hora de criação e de finalização — `feito` (mergeado PR #77 squash `3737f53`, `refs #76`; aguardando aceite do PI)
+## Kanban — card mostra data/hora de criação e de finalização — `finalizado` (mergeado PR #77 squash `3737f53`, `refs #76`; #76 aceita pelo PI em 2026-07-17)
 
 **Pedido do PI ao vivo** (2026-07-16), olhando o board. Sem spec: escopo pequeno e definido pelo PI na hora, sem decisão de produto pendente.
 
@@ -656,7 +656,7 @@ Commit separado (`chore`), não relacionado ao card — declarado no corpo do PR
 
 **Achado no caminho** (não é bug desta mudança): quando o P1001 mata a API, o `pnpm -r --parallel` deixa o **web órfão** segurando a `5180`. Com `strictPort` (CLAUDE.md), o vite seguinte falha em vez de trocar de porta e derruba a leva inteira. Se o `dev` falhar com porta em uso, é processo velho — `Get-NetTCPConnection -State Listen -LocalPort 5180,3311` acha o dono.
 
-## Correção — a guarda anti-drift não guardava (nem o histórico, nem a si mesma) — `feito` (mergeado PR #75 squash `a072823`, `refs #74`; aguardando aceite do PI)
+## Correção — a guarda anti-drift não guardava (nem o histórico, nem a si mesma) — `finalizado` (mergeado PR #75 squash `a072823`, `refs #74`; #74 aceita pelo PI em 2026-07-17)
 
 Fecha os **dois buracos** que a correção anterior (PR #73) deixou registrados no `STATUS.md`. Sem spec: o certo já estava no `TESTING.md` §4 (*append-only*).
 
@@ -671,7 +671,7 @@ Fecha os **dois buracos** que a correção anterior (PR #73) deixou registrados 
 
 **Achado do PR corrigido:** o corpo da issue #74 cita `reports/TESTS copy.md` (untracked, evidência forjada à mão) como pendência. **O arquivo não existe mais** no working tree — verificado em 2026-07-17. Nada a decidir.
 
-## Correção — `--dim` reprova contraste AA nos dois temas — `feito` (aguardando merge do PR; `refs #78`)
+## Correção — `--dim` reprova contraste AA nos dois temas — `finalizado` (mergeado PR #79 squash `e7e3f45`, `refs #78`; #78 aceita pelo PI em 2026-07-17)
 
 Bug documentado (medido no polish da Fatia 15/16 em 2026-07-16). Sem spec — o certo já está no `DESIGN.md` §11 e é critério de aceite da SPEC-020 —, mas **toca o design system, então a decisão de corrigir passou pelo PI** (2026-07-17).
 
@@ -680,7 +680,7 @@ Bug documentado (medido no polish da Fatia 15/16 em 2026-07-16). Sem spec — o 
 3. `feito` — **A correção (decisão do PI: separar os papéis)**: os 13 usos de **texto** migram `text-dim` → `text-faint` (5.09:1 / 4.54:1, já AA). `--dim` fica **só para não-texto**. **Zero mudança de valor de cor** — só a atribuição. Escala honesta: 2 níveis de texto (`--muted`/`--faint`) + 2 de não-texto (`--dim`/`--dimmer`).
 4. `feito` — `DESIGN.md` §4.1 (tabela de papéis + veredito de contraste) atualizado. `tsc` + `vite build` limpos, 39 testes de tela verdes, histórico do `TESTS.md` intacto. **Verificação ao vivo pendente** (atrás do OAuth, como as Fatias 15/16).
 
-## Atividade — gaveta fecha sozinha 4s após abrir pelo sync — `feito` (aguardando merge do PR; `refs #80`)
+## Atividade — gaveta fecha sozinha 4s após abrir pelo sync — `finalizado` (mergeado PR #81 squash `94fd630`, `refs #80`; #80 aceita pelo PI em 2026-07-17)
 
 Pedido do PI ao vivo (2026-07-17). Sem spec: ajuste de UX pequeno, definido na hora (natureza do #76). Muda a SPEC-010 na margem.
 
