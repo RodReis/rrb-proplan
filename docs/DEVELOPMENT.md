@@ -708,4 +708,10 @@ Spec `aprovada-pi` (2026-07-17). Entregue em 6 PRs (`refs #7`, nunca `closes`). 
 
 Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb com banco vazio (no-op); o harness re-concede pós-migração (`grantAppRole`). Em prod fresh o `ALTER DEFAULT PRIVILEGES` cobre.
 
-Próximos: PR-3 contexto+guards · PR-4 RBAC+gate owner+teto · PR-5 papel/reinstall · PR-6 frontend.
+**PR-3 — Contexto + guards** (`em-andamento`):
+1. `feito` — **`PrismaService.withTenant(tenantId, fn)`**: `$transaction` + `set_config('app.tenant_id', id, true)` (SET LOCAL, morre no commit) + AsyncLocalStorage (`tenant-context.ts`) expõe o client-tx sem reescrever assinatura de service. **Nunca `SET` de sessão** (vazaria no pool).
+2. `feito` — **`TenantGuard`** (lê `:tenant`, resolve Membership, 403 se não-membro, popula `req.tenantId`/`req.role`) · **`RoleGuard` + `@RequireRole`** (hierarquia owner>member>viewer) · **`MembershipService.currentMembership()`** exposto pelo identity (ADR-001) · **`TenantContextInterceptor`** abre `withTenant` por request após os guards.
+3. `feito` — **arch-spec `tenant-scope`**: varredura estática (molde do `installation-token-usage`) barra qualquer arquivo que sete `app.tenant_id` fora do `withTenant` — o contexto tem um único setter (F2).
+4. `feito` — **testes**: unit dos guards (RoleGuard 8, TenantGuard 3) em `regras` (521/521); int-spec `tenant-context` prova que o SET LOCAL **não vaza no pool** (pool=1, `withTenant(A)` → query fora de contexto = 0 linhas). `banco` 10/10. Jest project `banco` agora `maxWorkers:1` (suítes compartilham o Postgres de teste — serial evita colisão de seed/contexto).
+
+Próximos: PR-4 RBAC+gate owner+teto · PR-5 papel/reinstall · PR-6 frontend.

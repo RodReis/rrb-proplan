@@ -9,6 +9,10 @@ import { InstallationTokenService } from './infrastructure/installation-token.se
 import { RedisProvider } from './infrastructure/redis.provider';
 import { AuthController } from './presentation/auth.controller';
 import { JwtAuthGuard } from './presentation/jwt-auth.guard';
+import { MembershipService } from './application/membership.service';
+import { TenantGuard } from './presentation/tenant.guard';
+import { RoleGuard } from './presentation/require-role.decorator';
+import { TenantContextInterceptor } from './presentation/tenant-context.interceptor';
 
 @Module({
   imports: [
@@ -28,7 +32,20 @@ import { JwtAuthGuard } from './presentation/jwt-auth.guard';
     InstallationTokenService,
     RedisProvider,
     JwtAuthGuard,
+    MembershipService,
+    TenantGuard,
+    RoleGuard,
+    TenantContextInterceptor,
   ],
-  exports: [AuthService, GithubAuth, GithubInstallationsClient, JwtAuthGuard],
+  exports: [
+    AuthService,
+    GithubAuth,
+    GithubInstallationsClient,
+    JwtAuthGuard,
+    MembershipService,
+    TenantGuard,
+    RoleGuard,
+    TenantContextInterceptor,
+  ],
 })
 export class IdentityModule {}

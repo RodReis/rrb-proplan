@@ -30,6 +30,10 @@ module.exports = {
         '<rootDir>/src/**/*.int-spec.ts',
         '<rootDir>/test/**/*.e2e-spec.ts',
       ],
+      // Serial: as suítes de integração compartilham o mesmo Postgres de teste;
+      // rodar em paralelo faz seed/contexto de uma vazar na outra (RLS + SET
+      // LOCAL numa conexão reusada). Banco real = execução sequencial.
+      maxWorkers: 1,
     },
   ],
 };

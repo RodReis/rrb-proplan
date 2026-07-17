@@ -7,8 +7,14 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
+import type { Role } from '@prisma/client';
+
 export interface AuthenticatedRequest extends Request {
   userId: string;
+  // Populados pelo TenantGuard (SPEC-022) nas rotas /t/:tenant. Ausentes nas
+  // rotas globais (auth, catalog) que não resolvem tenant.
+  tenantId?: string;
+  role?: Role;
 }
 
 @Injectable()

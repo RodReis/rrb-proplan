@@ -30,8 +30,14 @@ export function ownerClient(): PrismaClient {
   return new PrismaClient({ datasources: { db: { url: OWNER_URL } } });
 }
 
-export function appClient(): PrismaClient {
-  return new PrismaClient({ datasources: { db: { url: APP_URL } } });
+export function appClient(connectionLimit?: number): PrismaClient {
+  // connectionLimit=1 força reuso da mesma conexão do pool — usado pelo teste de
+  // vazamento transaction-scoped, onde um SET de sessão (bug) vazaria entre
+  // chamadas na conexão compartilhada.
+  const url = connectionLimit
+    ? `${APP_URL}${APP_URL.includes('?') ? '&' : '?'}connection_limit=${connectionLimit}`
+    : APP_URL;
+  return new PrismaClient({ datasources: { db: { url } } });
 }
 
 /**
