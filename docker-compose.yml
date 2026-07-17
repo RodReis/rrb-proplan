@@ -9,6 +9,9 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Cria a role proplan_app (não-owner) na 1ª subida do volume. Só roda com
+      # pgdata vazio — volume já existente exige rodar o SQL à mão (ver README).
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U proplan"]
       interval: 5s
@@ -33,7 +36,10 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://proplan:proplan@postgres:5432/proplan
+      # Runtime da API conecta como role NÃO-owner → sujeita a RLS (Fatia 8).
+      DATABASE_URL: postgresql://proplan_app:proplan_app@postgres:5432/proplan
+      # Migrations/seed precisam de DDL → owner. Usado por `prisma migrate`.
+      DIRECT_URL: postgresql://proplan:proplan@postgres:5432/proplan
       REDIS_URL: redis://redis:6379
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}

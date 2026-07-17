@@ -689,6 +689,15 @@ Pedido do PI ao vivo (2026-07-17). Sem spec: ajuste de UX pequeno, definido na h
 3. `feito` — **`useAutoClose.ts`** (hook novo, 5 testes): arma só quando pedido, re-arma no `bumpToken`, e **re-render sem interação NÃO reinicia** — senão o polling do feed (2s) seguraria a gaveta aberta pra sempre; o teste trava isso. `Workspace` arma no sync e desarma na pílula; `ActivityPanel` emite `onActivity` em interação e enquanto `running.length > 0`.
 4. `feito` — tsc + vite build limpos, 46 testes de tela verdes (+5). **Verificação ao vivo pendente** (atrás do OAuth): abre no sync → 4s → fecha; hover cancela; job rodando adia; pílula não fecha.
 
-## Fatia 8 — Multi-tenant — `sem-spec`
+## Fatia 8 — Multi-tenant — `em-andamento` (SPEC-022, issue #7)
 
-Condicionada à decisão do PI de produtizar. Não iniciar.
+Spec `aprovada-pi` (2026-07-17). Entregue em 6 PRs (`refs #7`, nunca `closes`). Plano completo em `docs/specs/SPEC-022-multi-tenant.md`.
+
+**Eixo:** RLS + `SET LOCAL app.tenant_id` por request tornam o filtro de tenant invisível e obrigatório na camada de banco — os services deixam de carregar `where:{tenantId}`. Barreira primária = guard que recusa não-membro; RLS = a rede (F1).
+
+**PR-1 — Fundação de banco** (`em-andamento`):
+1. `feito` — **role `proplan_app` NÃO-owner/NÃO-superuser** (`docker/postgres-init/01-app-role.sql`). Sem isto, RLS é no-op silencioso: `proplan` é superuser+owner e o Postgres pula RLS para ambos. Provado: `pg_roles` mostra `rolsuper=f` para `proplan_app`; ela conecta e lê `projects` (grants ok). Volume `pgdata` já existente NÃO re-roda o init — aplicar o SQL à mão (feito no dev).
+2. `feito` — **duas URLs**: `DATABASE_URL` (app → `proplan_app`, sujeita a RLS) e `DIRECT_URL` (migrations/seed → `proplan` owner). `datasource { url, directUrl }` no schema; `.env` e `docker-compose.yml` atualizados. `prisma validate` ok.
+3. `feito` — **harness do jest `banco`** (`test/int/db-harness.ts`): `ownerClient`/`appClient` + `applyMigrations`. Asserções de isolamento usam `appClient` (owner mentiria — pula RLS). Banco de teste separado do dev.
+
+Próximos: PR-2 schema+RLS · PR-3 contexto+guards · PR-4 RBAC+gate owner+teto · PR-5 papel/reinstall · PR-6 frontend.

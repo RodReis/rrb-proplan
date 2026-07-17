@@ -4,7 +4,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Runtime: role NÃO-owner (proplan_app), sujeita a RLS (Fatia 8, SPEC-022).
   url      = env("DATABASE_URL")
+  // Migrations/seed: role owner (proplan), precisa de DDL e ignora RLS.
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
