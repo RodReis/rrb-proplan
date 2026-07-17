@@ -18,11 +18,11 @@ updated: 2026-07-17
 
 ## Em Andamento
 
-- Definição de arquitetura, ADRs e convenção de dados (#13)
+_(vazio)_
 
 ## Feito
 
-_(vazio)_
+- Definição de arquitetura, ADRs e convenção de dados (#13)
 
 ## Finalizado
 
