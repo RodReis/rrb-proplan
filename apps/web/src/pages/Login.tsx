@@ -234,7 +234,7 @@ export function Login() {
           </div>
         </div>
 
-        <div className="text-xs text-dim">
+        <div className="text-xs text-faint">
           Rodrigo Reis ·{' '}
           <a href="mailto:rodreisdev@gmail.com" className="text-muted hover:text-text">
             rodreisdev@gmail.com

@@ -78,23 +78,23 @@ CSS custom properties em `:root[data-theme]`. O tema troca **apenas** as variáv
 | `--body` | `#b8b7b2` | `#3f4147` | parágrafo |
 | `--body2` | `#c9c8c3` | `#33353a` | texto secundário |
 | `--muted` | `#9a9da5` | `#5f6268` | apoio |
-| `--faint` | `#8b8e96` | `#696c71` | rótulos mono |
-| `--dim` | `#6c6f77` | `#8a8d93` | metadados |
-| `--dimmer` | `#5d6068` | `#9a9da1` | placeholder |
+| `--faint` | `#8b8e96` | `#696c71` | rótulos mono **+ metadados** (timestamps, contadores, `@login`, breadcrumb) |
+| `--dim` | `#6c6f77` | `#8a8d93` | **só não-texto**: arestas do Grafo, ícones (chevron), ponto de coluna |
+| `--dimmer` | `#5d6068` | `#9a9da1` | **só não-texto**: item desabilitado, borda `/` do breadcrumb |
 | `--shadow` | `rgba(0,0,0,.5)` | `rgba(25,26,30,.16)` | sombras |
 
 **Contraste da escala de apoio** (medido em 2026-07-16 contra o pior fundo de cada tema; §11 exige AA 4.5:1 para texto pequeno):
 
 | token | Carbono | Claro | veredito |
 |---|---|---|---|
-| `--muted` | 7.06:1 | 5.46:1 | ✅ |
-| `--faint` | 5.09:1 | 4.54:1 | ✅ — o Claro **era** `#74777d` (3.86:1) e foi escurecido |
-| `--dim` | 3.32:1 | 2.86:1 | ❌ **reprova nos dois** — ver `STATUS.md` |
-| `--dimmer` | 2.65:1 | 2.34:1 | n/a — **não é texto** |
+| `--muted` | 7.06:1 | 5.46:1 | ✅ texto |
+| `--faint` | 5.09:1 | 4.54:1 | ✅ texto — o Claro **era** `#74777d` (3.86:1) e foi escurecido |
+| `--dim` | 3.32:1 | 2.86:1 | ✅ **só não-texto** (min 3:1 WCAG) — não carrega mais texto |
+| `--dimmer` | 2.65:1 | 2.34:1 | ✅ **só não-texto** — item desabilitado (isento WCAG) |
 
-- **`--dimmer` não carrega texto legível**: só ponto de estado, borda `/` de breadcrumb (`aria-hidden`) e item desabilitado — WCAG isenta controle desabilitado, e escurecê-lo apagaria a diferença entre "desabilitado" e "ativo", que é justamente o significado que ele comunica (§1).
-- **Correção da tabela: `--dimmer` NÃO serve de placeholder** (o "uso" na linha acima é histórico). Medido: 2.85:1 no Carbono e 2.52:1 no Claro sobre `--surface2` — placeholder é texto que se lê e exige os mesmos 4.5:1 do corpo. **Placeholder usa `--muted`** (6.6:1 / 5.65:1).
-- **`--dim` reprova e não tem correção barata**: empurrá-lo até 4.5:1 no Claro o faz colidir com `--faint` (ambos → `~#696c71`), e a escala de 4 níveis vira 2. Precisa de rebalanceamento da escala inteira, não de um valor — item no `STATUS.md`.
+- **`--dim` teve os dois papéis separados (2026-07-17)**, resolvendo o item do `STATUS.md`. Ele reprovava AA (3.32:1 / 2.86:1) **enquanto carregava texto** — mas o `--dim` é, de propósito, a cor da **aresta do Grafo** subordinada ao nó (§6) e do chevron/ponto de coluna: não-texto, onde o mínimo WCAG é 3:1, e onde escurecê-lo quebraria a hierarquia do §6. **A correção foi mover quem usava, não a cor**: os metadados de texto (timestamps, contadores, `@login`, breadcrumb, rótulo vertical da coluna) migraram para `--faint`, que já passa AA nos dois temas (5.09:1 / 4.54:1). Nenhum valor de cor mudou — só a atribuição. Rebalancear a escala inteira teria colidido `--dim` com `--faint` no Claro (ambos → `~#696c71`), trocando um defeito de acessibilidade por um de hierarquia.
+- **`--dimmer` também é só não-texto**: ponto de estado, borda `/` de breadcrumb (`aria-hidden`) e item desabilitado — WCAG isenta controle desabilitado, e escurecê-lo apagaria a diferença entre "desabilitado" e "ativo", que é o significado que ele comunica (§1).
+- **Placeholder usa `--muted`** (6.6:1 / 5.65:1), não `--dimmer` — corrigido em 2026-07-16. Placeholder é texto que se lê e exige os mesmos 4.5:1 do corpo.
 
 ### 4.2 Acento e semânticas
 

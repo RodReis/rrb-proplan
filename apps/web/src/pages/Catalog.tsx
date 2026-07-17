@@ -205,7 +205,7 @@ export function Catalog({ user, onLogout }: Props) {
             ))}
 
           {catalog.status === 'ready' && !catalog.data.empty && (
-            <p className="mt-1 text-center text-xs text-dim">
+            <p className="mt-1 text-center text-xs text-faint">
               {totals.repos} repositórios · {totals.managed} gerenciados · Somente leitura
               de documentação — o ProPlan nunca clona seu código. Gerenciar um repositório
               cria o workspace dele.
@@ -252,7 +252,7 @@ function AccountGroup({
           {group.accountType === 'Organization' ? 'organização' : 'pessoal'}
         </span>
         <span className="flex-1" />
-        <span className="text-xs text-dim">
+        <span className="text-xs text-faint">
           {group.repos.length} repositórios · {managed} gerenciados
         </span>
       </div>
@@ -325,7 +325,7 @@ function RepoRow({
             </span>
           )}
         </span>
-        <span className="truncate text-xs text-dim">
+        <span className="truncate text-xs text-faint">
           {repo.description ?? 'Sem descrição'}
           {repo.pushedAt &&
             ` · último push ${new Date(repo.pushedAt).toLocaleDateString('pt-BR')}`}

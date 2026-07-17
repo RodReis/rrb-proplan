@@ -101,7 +101,7 @@ export function DocumentsTab({ project, syncNonce }: Props) {
           <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
             Documentos
           </span>
-          <span className="font-mono text-[9px] text-dim">
+          <span className="font-mono text-[9px] text-faint">
             {state.docs.length} arquivo{state.docs.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -186,7 +186,7 @@ function DocHeader({
     <header className="flex items-center gap-3 border-b border-border px-8 py-3.5">
       <span className="flex min-w-0 flex-col">
         <span className="truncate text-sm font-semibold text-text">{name}</span>
-        <span className="truncate font-mono text-[10px] text-dim">
+        <span className="truncate font-mono text-[10px] text-faint">
           {doc.path} · atualizado {relativeDay(doc.updatedAt)}
         </span>
       </span>

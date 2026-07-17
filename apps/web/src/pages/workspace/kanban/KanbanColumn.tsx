@@ -55,7 +55,7 @@ export function KanbanColumn({
       <button
         onClick={onToggleCollapse}
         title={`Expandir ${COLUMN_LABEL[column]}`}
-        className="flex h-full w-[34px] shrink-0 flex-col items-center gap-2 rounded-[14px] border border-border bg-colbg py-3 text-dim transition-colors duration-150 hover:border-hoverb hover:text-text"
+        className="flex h-full w-[34px] shrink-0 flex-col items-center gap-2 rounded-[14px] border border-border bg-colbg py-3 text-faint transition-colors duration-150 hover:border-hoverb hover:text-text"
       >
         <svg
           aria-hidden
@@ -115,7 +115,7 @@ export function KanbanColumn({
             onClick={() => setCreating(true)}
             title="Criar card"
             aria-label={`Criar card em ${COLUMN_LABEL[column]}`}
-            className="shrink-0 text-dim transition-colors duration-150 hover:text-text"
+            className="shrink-0 text-faint transition-colors duration-150 hover:text-text"
           >
             +
           </button>
@@ -172,7 +172,7 @@ export function KanbanColumn({
           {/* Coluna vazia: caixa tracejada com "vazio" (§6). A ausência é
               visível, não decorada — nem some, nem vira ilustração. */}
           {cards.length === 0 && !creating && (
-            <p className="flex flex-1 items-center justify-center rounded-[10px] border border-dashed border-border3 py-6 text-center font-mono text-[10px] text-dim">
+            <p className="flex flex-1 items-center justify-center rounded-[10px] border border-dashed border-border3 py-6 text-center font-mono text-[10px] text-faint">
               vazio
             </p>
           )}

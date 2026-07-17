@@ -671,6 +671,15 @@ Fecha os **dois buracos** que a correção anterior (PR #73) deixou registrados 
 
 **Achado do PR corrigido:** o corpo da issue #74 cita `reports/TESTS copy.md` (untracked, evidência forjada à mão) como pendência. **O arquivo não existe mais** no working tree — verificado em 2026-07-17. Nada a decidir.
 
+## Correção — `--dim` reprova contraste AA nos dois temas — `feito` (aguardando merge do PR; `refs #78`)
+
+Bug documentado (medido no polish da Fatia 15/16 em 2026-07-16). Sem spec — o certo já está no `DESIGN.md` §11 e é critério de aceite da SPEC-020 —, mas **toca o design system, então a decisão de corrigir passou pelo PI** (2026-07-17).
+
+1. `feito` — **O defeito**: `--dim` dava 3.32:1 (Carbono) e 2.86:1 (Claro) contra o pior fundo; mínimo AA é 4.5:1. Atingia timestamps, contadores, `@login`, breadcrumb e o rótulo vertical da coluna.
+2. `feito` — **Por que não bastava escurecer**: `--dim` tem dois papéis — texto de metadado (4.5:1) **e** não-texto (aresta do Grafo, chevron, ponto de coluna — 3:1, e o §6 quer a aresta subordinada ao nó). Empurrá-lo até AA no Claro o colidiria com `--faint` (ambos `~#696c71`) e engrossaria a aresta: troca de um defeito por outro.
+3. `feito` — **A correção (decisão do PI: separar os papéis)**: os 13 usos de **texto** migram `text-dim` → `text-faint` (5.09:1 / 4.54:1, já AA). `--dim` fica **só para não-texto**. **Zero mudança de valor de cor** — só a atribuição. Escala honesta: 2 níveis de texto (`--muted`/`--faint`) + 2 de não-texto (`--dim`/`--dimmer`).
+4. `feito` — `DESIGN.md` §4.1 (tabela de papéis + veredito de contraste) atualizado. `tsc` + `vite build` limpos, 39 testes de tela verdes, histórico do `TESTS.md` intacto. **Verificação ao vivo pendente** (atrás do OAuth, como as Fatias 15/16).
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
