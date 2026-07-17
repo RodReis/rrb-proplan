@@ -337,6 +337,8 @@ export interface BoardCard {
   priority: IssuePriority | null;
   assignee: { login: string; avatarUrl: string } | null;
   htmlUrl: string;
+  /** Nascimento da issue no GitHub — carimbo do card fora de Finalizado/Descartado. */
+  createdAt: string;
   closedAt: string | null;
   /** Fechada fora do ProPlan (closed sem label) — badge em Finalizado. */
   closedOutside: boolean;

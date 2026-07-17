@@ -199,9 +199,17 @@ export class MutationApplierService {
       closedAt: issue.closed_at ? new Date(issue.closed_at) : null,
       updatedAt: new Date(issue.updated_at),
     };
+    // `createdAt` só no create: é a data de nascimento da issue no GitHub, fato
+    // imutável. Reescrevê-la a cada mutação seria carimbar de novo o que já
+    // aconteceu — e o card mostra esse valor como "aberta em".
     await this.prisma.issue.upsert({
       where: { projectId_number: { projectId, number: issue.number } },
-      create: { projectId, number: issue.number, ...data },
+      create: {
+        projectId,
+        number: issue.number,
+        createdAt: new Date(issue.created_at),
+        ...data,
+      },
       update: data,
     });
   }
