@@ -636,6 +636,26 @@ Bug **reportado ao vivo pelo PI**. Sem spec: o certo já estava no `TESTING.md` 
 
 **Sem teste automatizado, e isso é honesto**: escrevi um, vi que **não roda** (o jest da API tem `rootDir: apps/api` e `scripts/` fica fora; o ts-jest recusa o import através da fronteira) e **removi** — teste que não executa é pior que nenhum. Verificado na prática: rodei o comando que apagava e a SPEC-016 sobreviveu. Os dois buracos ficaram no `STATUS.md`: estender o `--check` ao histórico (append-only é verificável — é **continência de conjunto**, não igualdade, então não sofre do problema dos metadados que motivou o check a olhar só os números) e decidir onde o teste de script vive (toca a categorização do ADR-019 ⇒ decisão do PI).
 
+## Kanban — card mostra data/hora de criação e de finalização — `feito` (mergeado PR #77 squash `3737f53`, `refs #76`; aguardando aceite do PI)
+
+**Pedido do PI ao vivo** (2026-07-16), olhando o board. Sem spec: escopo pequeno e definido pelo PI na hora, sem decisão de produto pendente.
+
+1. `feito` — **A regra (decisão do PI: opção B)**. O pedido original era *"criação só aparece no Backlog"*. **Refinado na conversa**: nenhuma issue do board passou pelo Backlog (#74 nasceu em Em Andamento, #72 está em Finalizado) — o carimbo de criação só ali deixaria mudos justo os cards que mais interessam. Decidido: **cada coluna mostra o fato que importa nela** — `aberta em` (Backlog · A Fazer · Em Andamento · Feito), `finalizado em` (Finalizado), `descartado em` (Descartado). Formato `dd/MM/aaaa 'às' hh:mm`, 24h via `hourCycle: h23` (`hour12: false` sozinho produz `24:xx` à meia-noite). Encerrado sem `closedAt` → cai na criação: o card **nunca fica mudo nem inventa data**.
+2. `feito` — **Custo real**: `closedAt` já existia ponta a ponta (Prisma → API → `BoardCard`) — só faltava renderizar. `createdAt` não existia em lugar nenhum: campo + migration `20260716220000_issue_created_at` + `created_at` no `GithubIssuesClient` + tipo na API/web. Entra **só no `create`** do upsert, nunca no `update` — data de nascimento é fato imutável.
+3. `feito` — **Backfill honesto**: linhas existentes recebem `updated_at`, **não `now()`**. `now()` cravaria *"nasceu hoje"* numa issue antiga — fato falso, exatamente o que este produto existe para detectar. `updated_at` erra só para frente e é transitório: o cache é reconstruível (ADR-011), o próximo sync sobrescreve com o `created_at` real do GitHub. **Efeito visível no aceite**: os cards do import legado (#9, #8, #4) mostram `13/07/2026 às 00:00` até o próximo sync do board.
+4. `feito` — **Um bug meu, pego no caminho**: o teste do formatador **passava por coincidência**. Eu setava `process.env.TZ` num `beforeAll` — mas o ICU resolve o fuso quando o processo sobe, então a env não fazia nada, e minha máquina já é São Paulo. No CI (UTC) os 3 casos de hora quebrariam. Fuso agora vai **por parâmetro**; provado rodando `TZ=UTC` (6/6 nos dois fusos). Mesma família do achado da #74: **teste verde que não prova o que diz provar**.
+5. `feito` — API **509/509** · web **41/41** (+6), tsc + builds limpos, guarda anti-drift aprovando, `TESTS.md` regenerado (Tela 35→41, cobertura 4.3%→6.6%). **Validado ao vivo pelo PI** no board real antes do PR.
+
+## Infra — `pnpm dev` sobe a infra antes da API — `feito` (carona no PR #77)
+
+Commit separado (`chore`), não relacionado ao card — declarado no corpo do PR para ele não omitir o que carrega.
+
+1. `feito` — **O sintoma**: a API estourava `P1001` (*"Please make sure your database server is running at `localhost:5433`"*) quando os containers estavam parados. Causa: `Exited (255)` nos dois — parada externa (Docker Desktop reiniciado), não crash. Container parado dá P1001 **idêntico** a banco quebrado; a distinção está no `docker compose ps -a`.
+2. `feito` — **O conserto**: `"dev": "pnpm infra:up && pnpm -r --parallel dev"` + `"infra:up": "docker compose up -d --wait postgres redis"`. O `--wait` usa os healthcheck que **já existiam** no `docker-compose.yml` (`pg_isready` / `redis-cli ping`) — sem script de espera, sem dep nova. O `&&` garante que a API só arranca com o banco aceitando conexão.
+3. `feito` — **Provado com os containers parados**: `pnpm dev` sobe postgres+redis até `Healthy`, API mapeia as rotas em `3311`, vite em `5180`. **Fora do escopo de propósito**: `dev:api`/`dev:web` avulsos não sobem infra — quem chama o script específico sabe o que quer.
+
+**Achado no caminho** (não é bug desta mudança): quando o P1001 mata a API, o `pnpm -r --parallel` deixa o **web órfão** segurando a `5180`. Com `strictPort` (CLAUDE.md), o vite seguinte falha em vez de trocar de porta e derruba a leva inteira. Se o `dev` falhar com porta em uso, é processo velho — `Get-NetTCPConnection -State Listen -LocalPort 5180,3311` acha o dono.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.
