@@ -656,7 +656,7 @@ Commit separado (`chore`), não relacionado ao card — declarado no corpo do PR
 
 **Achado no caminho** (não é bug desta mudança): quando o P1001 mata a API, o `pnpm -r --parallel` deixa o **web órfão** segurando a `5180`. Com `strictPort` (CLAUDE.md), o vite seguinte falha em vez de trocar de porta e derruba a leva inteira. Se o `dev` falhar com porta em uso, é processo velho — `Get-NetTCPConnection -State Listen -LocalPort 5180,3311` acha o dono.
 
-## Correção — a guarda anti-drift não guardava (nem o histórico, nem a si mesma) — `feito` (aguardando PR)
+## Correção — a guarda anti-drift não guardava (nem o histórico, nem a si mesma) — `feito` (mergeado PR #75 squash `a072823`, `refs #74`; aguardando aceite do PI)
 
 Fecha os **dois buracos** que a correção anterior (PR #73) deixou registrados no `STATUS.md`. Sem spec: o certo já estava no `TESTING.md` §4 (*append-only*).
 
@@ -667,7 +667,9 @@ Fecha os **dois buracos** que a correção anterior (PR #73) deixou registrados 
 5. `feito` — **Self-check do gerador** (`gen-test-report.selfcheck.ts`, 10 checks, `assert` puro do Node, roda no CI **antes** do `--check`). `assert` e não jest porque `rootDir: apps/api` não alcança `scripts/` — o problema que o PR #73 encontrou. Aqui não removi o teste: dei um runner que executa (`pnpm test:report:selfcheck`). Onde ele mora **em definitivo** segue no `STATUS.md` como decisão do PI (entra na régua Regras/Banco/Tela ou não).
 6. `feito` — **Validado ao vivo** (o que os unitários não provaram): forja do bug da SPEC-016 → **exit 1** nomeando as 3 linhas perdidas · append legítimo → exit 0 com as velhas preservadas · intacto → exit 0 · sem git → não derruba.
 
-**Achado para o PI:** `reports/TESTS copy.md`, **untracked**, é **evidência forjada à mão** — `#01`/`SPEC-001`, `609` testes que nunca rodaram, `Link` literal na coluna do PR. Não deletei (não fui eu que criei). Fora do `reports/` versionado a guarda não o vê; se a intenção era rascunho, o lugar é fora do repo.
+7. `feito` — **Re-validado em 2026-07-17, pós-rebase.** A branch ficou 4 commits atrás da `main` (a entrega da #76 entrou no meio) e foi rebasada em `62f84ad` — 3 conflitos de doc resolvidos mantendo os dois lados; `package.json` mesclou sozinho (`infra:up` e `test:report:selfcheck` convivem). **Rebase muda o baseline, e o baseline é o coração desta guarda** ⇒ re-executei tudo contra a `main` de hoje: selfcheck **10/10** · forja do bug da SPEC-016 → **exit 1** nomeando as 3 linhas · arquivo intacto → **exit 0**. O **CI verde no head `6159b75`** é o que fecha: é o único lugar onde `REPORT_BASE_REF` e o `git fetch` da base rodam de verdade (local sempre cai no fallback `HEAD`).
+
+**Achado do PR corrigido:** o corpo da issue #74 cita `reports/TESTS copy.md` (untracked, evidência forjada à mão) como pendência. **O arquivo não existe mais** no working tree — verificado em 2026-07-17. Nada a decidir.
 
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
