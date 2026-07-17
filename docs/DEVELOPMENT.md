@@ -656,6 +656,19 @@ Commit separado (`chore`), não relacionado ao card — declarado no corpo do PR
 
 **Achado no caminho** (não é bug desta mudança): quando o P1001 mata a API, o `pnpm -r --parallel` deixa o **web órfão** segurando a `5180`. Com `strictPort` (CLAUDE.md), o vite seguinte falha em vez de trocar de porta e derruba a leva inteira. Se o `dev` falhar com porta em uso, é processo velho — `Get-NetTCPConnection -State Listen -LocalPort 5180,3311` acha o dono.
 
+## Correção — a guarda anti-drift não guardava (nem o histórico, nem a si mesma) — `feito` (aguardando PR)
+
+Fecha os **dois buracos** que a correção anterior (PR #73) deixou registrados no `STATUS.md`. Sem spec: o certo já estava no `TESTING.md` §4 (*append-only*).
+
+1. `feito` — **`--check` prova o histórico** (`droppedHistory`): continência de conjunto — o histórico novo pode ter linhas a mais, nunca a menos. Não compara metadados, então não sofre do problema que fez o check original olhar só os números.
+2. `feito` — **A 1ª versão do conserto tinha o defeito que consertava.** Comparei o arquivo com a saída de `render(…, existing)` — construída **a partir do próprio arquivo**. Histórico apagado ⇒ os dois lados vazios ⇒ *"íntegro"*. **Os 8 checks unitários estavam verdes**; só a forja ao vivo pegou. Provavam a função, não a fiação — a mesma lição do PR #73 (teste que não roda), num disfarce novo: teste que roda e não cobre o caminho real. Baseline agora é o **blob do git na base do PR** (`REPORT_BASE_REF`).
+3. `feito` — **Nunca `HEAD` como baseline.** No CI de `pull_request` o checkout deixa HEAD no **merge commit**, cujo `TESTS.md` é a versão do próprio PR — auto-testemunho de novo, um nível acima. CI faz `git fetch --depth=1 origin $base_ref` e passa `origin/<base>`.
+4. `feito` — **2º bug, achado no caminho: a prova de números falhava ABERTA.** Checkout Windows entrega CRLF, o gerador emite LF → `--check` acusava divergência entre blocos idênticos na tela. Guard que falha sempre é guard que ninguém lê. Normaliza a quebra de linha antes de comparar.
+5. `feito` — **Self-check do gerador** (`gen-test-report.selfcheck.ts`, 10 checks, `assert` puro do Node, roda no CI **antes** do `--check`). `assert` e não jest porque `rootDir: apps/api` não alcança `scripts/` — o problema que o PR #73 encontrou. Aqui não removi o teste: dei um runner que executa (`pnpm test:report:selfcheck`). Onde ele mora **em definitivo** segue no `STATUS.md` como decisão do PI (entra na régua Regras/Banco/Tela ou não).
+6. `feito` — **Validado ao vivo** (o que os unitários não provaram): forja do bug da SPEC-016 → **exit 1** nomeando as 3 linhas perdidas · append legítimo → exit 0 com as velhas preservadas · intacto → exit 0 · sem git → não derruba.
+
+**Achado para o PI:** `reports/TESTS copy.md`, **untracked**, é **evidência forjada à mão** — `#01`/`SPEC-001`, `609` testes que nunca rodaram, `Link` literal na coluna do PR. Não deletei (não fui eu que criei). Fora do `reports/` versionado a guarda não o vê; se a intenção era rascunho, o lugar é fora do repo.
+
 ## Fatia 8 — Multi-tenant — `sem-spec`
 
 Condicionada à decisão do PI de produtizar. Não iniciar.

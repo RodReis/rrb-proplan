@@ -172,11 +172,24 @@ const HISTORY_MARKER = '## Histórico por entrega';
 const ESTADO_MARKER = '## Estado atual';
 
 /**
+ * Normaliza a quebra de linha antes de qualquer comparação. O gerador emite LF;
+ * o arquivo commitado chega com CRLF num checkout Windows (`core.autocrlf`).
+ * Sem isto o `--check` acusava divergência entre blocos idênticos — cada linha
+ * diferia por um `\r` invisível no print do erro. Um guard que falha sempre é um
+ * guard que ninguém lê: falhar em número certo é o mesmo que não falhar em
+ * número errado.
+ */
+function lf(s: string): string {
+  return s.replace(/\r\n/g, '\n');
+}
+
+/**
  * Bloco "Estado atual" (só os números, metadados neutros) — é o que a guarda
  * anti-drift compara. Isola os números da forja sem depender dos rótulos
  * Data/Issue/PR, que legitimamente variam por PR.
  */
-function estadoAtualBlock(doc: string): string {
+function estadoAtualBlock(docRaw: string): string {
+  const doc = lf(docRaw);
   const start = doc.indexOf(ESTADO_MARKER);
   if (start === -1) return '';
   const rest = doc.slice(start);
@@ -185,11 +198,12 @@ function estadoAtualBlock(doc: string): string {
 }
 
 /**
- * Linhas do histórico já commitadas, exceto as da issue atual (essas são
- * upsert). Lê SÓ a seção após o marcador de histórico — o "Estado atual" é
- * sempre regenerado e nunca deve realimentar o histórico.
+ * Linhas do histórico já commitadas. Lê SÓ a seção após o marcador de
+ * histórico — o "Estado atual" é sempre regenerado e nunca deve realimentar o
+ * histórico.
  */
-export function keepHistory(existing: string): string[] {
+export function keepHistory(existingRaw: string): string[] {
+  const existing = lf(existingRaw);
   const idx = existing.indexOf(HISTORY_MARKER);
   if (idx === -1) return [];
   const section = existing.slice(idx);
@@ -260,6 +274,55 @@ export function render(rows: Row[], existing: string, m: Meta): string {
   ].join('\n');
 }
 
+/**
+ * Linhas do histórico de `before` que não sobreviveram em `after`.
+ *
+ * Append-only é **verificável por continência**, não por igualdade: o histórico
+ * novo pode ter linhas a mais (a entrega atual), nunca a menos. Comparar os
+ * blocos inteiros exigiria que Data/Issue/PR batessem — os metadados que variam
+ * legitimamente por PR, e a razão de o `--check` olhar só os números do "Estado
+ * atual" (§5). Continência não sofre desse problema: não compara metadados,
+ * exige que cada linha já registrada continue lá.
+ *
+ * **O `before` tem de ser independente do arquivo auditado.** A primeira versão
+ * desta guarda comparava o arquivo com a saída de `render(…, existing)` — que é
+ * construída A PARTIR do próprio arquivo via `keepHistory`. Histórico apagado
+ * ⇒ os dois lados vinham vazios ⇒ "íntegro". A guarda comparava o arquivo
+ * corrompido consigo mesmo e passava. Por isso o call site usa como baseline o
+ * blob do git na base do PR (`reportAtBase`): a evidência de que uma linha
+ * existia não pode vir de dentro do arquivo que a apagou.
+ */
+export function droppedHistory(before: string, after: string): string[] {
+  const kept = new Set(keepHistory(after));
+  return keepHistory(before).filter((line) => !kept.has(line));
+}
+
+/**
+ * O relatório na revisão-baseline — a referência independente do append-only.
+ *
+ * Qual revisão importa: no CI de PR o checkout deixa HEAD no **merge commit**,
+ * cujo `reports/TESTS.md` é a versão do próprio PR — comparar com ela seria o
+ * mesmo auto-testemunho que essa guarda existe para fechar. A baseline correta
+ * é o alvo do PR (`origin/main`), que é o histórico ao qual o PR acrescenta.
+ * `REPORT_BASE_REF` deixa o CI dizer isso explicitamente; local, HEAD serve.
+ *
+ * Sem git, sem a ref, ou arquivo inexistente na baseline → null: não há
+ * histórico anterior a proteger e a guarda não tem o que provar. Nunca derruba
+ * o CI por ausência de git; só por linha que sumiu.
+ */
+function reportAtBase(cfg: Config): string | null {
+  const ref = process.env.REPORT_BASE_REF?.trim() || 'HEAD';
+  try {
+    return execFileSync('git', ['show', `${ref}:${cfg.reportPath}`], {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return null; // sem git, ref ausente, ou arquivo novo na baseline
+  }
+}
+
 function main() {
   const check = process.argv.includes('--check');
   const cfg = loadConfig();
@@ -270,9 +333,13 @@ function main() {
   const next = render(rows, existing, meta);
 
   if (check) {
-    // Compara SÓ os números (seção "Estado atual", metadados neutros) — não os
-    // rótulos Data/Issue/PR, que variam por PR (decisão do PI). A guarda pega a
-    // forja de número, não força cada PR a pré-commitar seus metadados.
+    // Duas provas independentes, porque são duas formas de forjar:
+    //   1. NÚMEROS — só a seção "Estado atual" (metadados neutros); não os
+    //      rótulos Data/Issue/PR, que variam por PR (decisão do PI). Pega o
+    //      número editado à mão sem forçar cada PR a pré-commitar metadados.
+    //   2. HISTÓRICO — append-only por continência contra o git HEAD (ver
+    //      `droppedHistory`). Números certos e histórico zerado passavam batido
+    //      até 2026-07-16.
     const committed = estadoAtualBlock(existing);
     const fresh = estadoAtualBlock(next);
     if (committed !== fresh) {
@@ -283,7 +350,25 @@ function main() {
       );
       process.exit(1);
     }
-    console.log('[gen-test-report] --check OK: os números batem com a execução limpa.');
+
+    // Baseline = git (base do PR), nunca `existing`: o arquivo não pode ser
+    // testemunha da própria integridade (histórico apagado "concorda" consigo).
+    const base = reportAtBase(cfg);
+    const dropped = base ? droppedHistory(base, existing) : [];
+    if (dropped.length) {
+      console.error(
+        '[gen-test-report] HISTÓRICO PERDIDO: o append-only foi violado — ' +
+          `${dropped.length} linha(s) commitada(s) sumiram de ${cfg.reportPath} (TESTING.md §4).\n` +
+          'Linha de entrega passada é imutável: restaure-as (git checkout HEAD -- ' +
+          `${cfg.reportPath}) e rode \`pnpm test:report\` de novo.\n` +
+          `--- linhas perdidas ---\n${dropped.join('\n')}`,
+      );
+      process.exit(1);
+    }
+
+    console.log(
+      '[gen-test-report] --check OK: os números batem com a execução limpa e o histórico está íntegro.',
+    );
     return;
   }
 

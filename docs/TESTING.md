@@ -105,10 +105,39 @@ O histórico é **append-only** (linhas de entregas passadas são imutáveis). U
 > **Corrigido em 2026-07-16.** O item 3 dizia *"**upsert** das linhas da issue atual"* — contradizendo o append-only do §4 duas seções acima. O código seguiu o upsert e o append-only virou só texto. Pior: o gerador **descartava o histórico inteiro** quando rodava sem `refs #N` (o caso de `pnpm test:report` local, antes do PR) — foi assim que o registro da SPEC-016 sumiu, recuperado depois do commit `5a3fea4`. Hoje: **sem issue preserva e não acrescenta** (uma linha `| — | — | — |` não é evidência de entrega); **com issue, acrescenta**.
 
 **Guarda anti-drift (o que torna o arquivo confiável):** no PR, o CI roda o gerador em
-**`--check`**: recomputa os números da issue atual numa execução limpa e compara com as linhas
-commitadas. Divergiu → **CI falha**. É isso que impede forjar o relatório: o número só "cola" se
-sobreviver a uma reexecução independente. Linhas de entregas passadas não são recomputadas (são
-histórico).
+**`--check`**, que faz **duas provas independentes** — são duas formas distintas de forjar:
+
+1. **Números** — recomputa os totais numa execução limpa e compara com a seção `## Estado atual`
+   commitada. Divergiu → **CI falha**. O número só "cola" se sobreviver a uma reexecução
+   independente. Compara só os números, não os rótulos Data/Issue/PR (que variam por PR de
+   propósito).
+2. **Histórico (append-only)** — prova que **toda linha da baseline continua no arquivo**.
+   Append-only é verificável por **continência de conjunto**, não por igualdade: o histórico novo
+   pode ter linhas a mais (a entrega atual), nunca a menos. Por isso não sofre do problema dos
+   metadados que motivou o recorte da prova 1.
+
+> **Corrigido em 2026-07-16 (a guarda não guardava).** A prova 2 não existia: o `--check` olhava
+> só os números. O bug que apagou o registro da SPEC-016 passou por **CI verde em 3 PRs seguidos**
+> — os totais do `Estado atual` estavam certos enquanto o histórico era zerado. A guarda que
+> existe para impedir evidência forjada não via a evidência acumulada. Dois aprendizados que o
+> conserto rendeu, ambos registrados no código:
+>
+> - **A baseline não pode sair do arquivo auditado.** A 1ª tentativa comparava o arquivo com a
+>   saída do gerador — que é construída *a partir* do arquivo. Histórico apagado ⇒ os dois lados
+>   vinham vazios ⇒ "íntegro": o arquivo corrompido testemunhando a própria integridade. A
+>   baseline é o **blob do git na base do PR** (`REPORT_BASE_REF`), nunca `HEAD` — no CI de PR
+>   HEAD é o merge commit, cujo `TESTS.md` é a versão do próprio PR (o mesmo auto-testemunho).
+> - **A prova de números estava falhando aberta.** Num checkout Windows o arquivo chega com CRLF
+>   e o gerador emite LF: o `--check` acusava divergência entre blocos idênticos. Um guard que
+>   falha sempre é um guard que ninguém lê — falhar com número certo é o mesmo que não falhar com
+>   número errado. Comparação normaliza a quebra de linha.
+
+**Quem guarda a guarda:** `scripts/gen-test-report.selfcheck.ts` (`pnpm test:report:selfcheck`,
+roda no CI antes do `--check`) prova o próprio gerador — append puro, histórico zerado, upsert de
+linha commitada, CRLF. Sem isso, um bug no gerador desliga a guarda em silêncio, que foi
+exatamente o que aconteceu. É `assert` puro do Node, sem framework: o jest da API tem
+`rootDir: apps/api` e não alcança `scripts/`. Onde o teste de script deve morar em definitivo
+(project novo no `jest.config.js` vs runner na raiz) segue como decisão em aberto no `STATUS.md`.
 
 ## 6. Workflow de CI — `.github/workflows/ci.yml`
 
@@ -149,6 +178,12 @@ Para o Code implementar e o PI conferir:
       (Banco/Regras/Tela) por entrega + seção `## Estado atual`.
 - [ ] `pnpm test:report --check` **falha** o CI quando a linha da issue atual não bate com uma
       execução limpa (anti-forja comprovado ao vivo).
+- [x] `--check` **falha** quando uma linha já registrada some do histórico (append-only), tendo o
+      blob da base do PR como baseline — nunca o próprio arquivo. *Comprovado ao vivo em
+      2026-07-16: forja do bug da SPEC-016 (histórico apagado, números certos) → exit 1 nomeando
+      as 3 linhas perdidas; append legítimo e arquivo intacto → exit 0.*
+- [x] O gerador tem self-check próprio no CI (`pnpm test:report:selfcheck`), incluindo o caso
+      CRLF — um bug no gerador não pode desligar a guarda em silêncio.
 - [ ] Cobertura é **reportada**, não barra merge.
 - [ ] `apps/web` passa a ter **Vitest + Testing Library** e **Playwright** configurados; a
       categoria "Tela" deixa de ficar vazia.
