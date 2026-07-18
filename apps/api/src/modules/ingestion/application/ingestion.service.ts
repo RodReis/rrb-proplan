@@ -14,6 +14,9 @@ import { SYNC_QUEUE } from '../ingestion.constants';
 
 export interface SyncJobData {
   syncRunId: string;
+  /** Tenant do projeto, capturado no enqueue (contexto autenticado). O worker
+   *  roda fora de request e precisa dele para abrir o contexto RLS (SPEC-022). */
+  tenantId: string;
 }
 
 /** Par sourcePath→targetPath inferido pelo módulo insight (ADR-001: insight nunca escreve). */
@@ -66,6 +69,11 @@ export class IngestionService {
       where: { id: projectId },
     });
     if (!project) throw new NotFoundException('Projeto não encontrado');
+    if (!project.tenantId) {
+      // Sob RLS um projeto sem tenant é invisível — se chegou aqui é porque a
+      // reconciliação (PR-5) ainda não rodou. Falhar claro > job preso em queued.
+      throw new BadRequestException('Projeto sem tenant — sincronize o catálogo');
+    }
 
     const run = await this.prisma.syncRun.create({
       data: {
@@ -78,7 +86,7 @@ export class IngestionService {
 
     await this.syncQueue.add(
       'sync',
-      { syncRunId: run.id },
+      { syncRunId: run.id, tenantId: project.tenantId },
       {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },

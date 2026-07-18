@@ -23,11 +23,14 @@ import { platformFromProbe } from '../domain/deploy-probe';
 import { ciStatusOf } from '../domain/ci-status';
 import { HttpProbe } from '../infrastructure/http-probe';
 
-/** Evento de domínio: docs de um projeto foram sincronizados com hash novo. */
+/** Evento de domínio: docs de um projeto foram sincronizados com hash novo.
+ *  Carrega o tenant para os jobs de IA que o listener enfileira — eles rodam
+ *  fora de request e precisam abrir o contexto RLS (SPEC-022). */
 export class DocsSyncedEvent {
   constructor(
     readonly projectId: string,
     readonly docsScopeHash: string,
+    readonly tenantId: string,
   ) {}
 }
 export const DOCS_SYNCED = 'docs.synced';
@@ -87,6 +90,10 @@ export class SyncService {
     });
     if (!run) throw new NotFoundException('SyncRun não encontrado');
     const project = run.project;
+    // NOT NULL no banco desde a migração da Fatia 8; o tipo é nullable só pelo
+    // backfill (ver schema). Capturado aqui para o DocsSyncedEvent.
+    const tenantId = project.tenantId;
+    if (!tenantId) throw new Error('Projeto sem tenant (invariante SPEC-022)');
 
     await this.prisma.syncRun.update({
       where: { id: run.id },
@@ -247,7 +254,10 @@ export class SyncService {
       // Fica DEPOIS de propósito: dispara os jobs de IA (assíncronos por
       // contrato, ADR-002 — nunca no caminho de uma request). Esperar por eles
       // seguraria o sync por minutos.
-      this.events.emit(DOCS_SYNCED, new DocsSyncedEvent(project.id, scopeHash));
+      this.events.emit(
+        DOCS_SYNCED,
+        new DocsSyncedEvent(project.id, scopeHash, tenantId),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       await this.prisma.syncRun.update({

@@ -23,6 +23,7 @@ function makeSvc(over: { docsChanged: boolean }) {
   const project = {
     id: 'p1',
     userId: 'u1',
+    tenantId: 't1',
     owner: 'o',
     name: 'r',
     defaultBranch: 'main',

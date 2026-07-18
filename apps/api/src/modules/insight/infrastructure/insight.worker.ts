@@ -2,6 +2,7 @@ import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Job, Queue } from 'bullmq';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   DOCS_SYNCED,
   DocsSyncedEvent,
@@ -13,6 +14,8 @@ import { INSIGHT_QUEUE } from '../insight.constants';
 interface InsightJobData {
   projectId: string;
   docsScopeHash: string;
+  /** Contexto RLS do worker (SPEC-022) — vem do DocsSyncedEvent. */
+  tenantId: string;
 }
 
 /**
@@ -40,9 +43,14 @@ export class InsightEventListener {
       return;
     }
     this.logger.log(`DocsSynced → enfileira resumo do projeto ${event.projectId}`);
+    const data: InsightJobData = {
+      projectId: event.projectId,
+      docsScopeHash: event.docsScopeHash,
+      tenantId: event.tenantId,
+    };
     await this.queue.add(
       'summary',
-      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      data,
       {
         jobId: `${event.projectId}_${event.docsScopeHash}`,
         attempts: 2,
@@ -54,7 +62,7 @@ export class InsightEventListener {
     this.logger.log(`DocsSynced → enfileira arestas do projeto ${event.projectId}`);
     await this.queue.add(
       'edges',
-      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      data,
       {
         jobId: `${event.projectId}_edges_${event.docsScopeHash}`,
         attempts: 2,
@@ -66,7 +74,7 @@ export class InsightEventListener {
     this.logger.log(`DocsSynced → enfileira classificação do projeto ${event.projectId}`);
     await this.queue.add(
       'classify',
-      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      data,
       {
         jobId: `${event.projectId}_classify_${event.docsScopeHash}`,
         attempts: 2,
@@ -78,7 +86,7 @@ export class InsightEventListener {
     this.logger.log(`DocsSynced → enfileira fallback (arquitetura/design) do projeto ${event.projectId}`);
     await this.queue.add(
       'fallback',
-      { projectId: event.projectId, docsScopeHash: event.docsScopeHash },
+      data,
       {
         jobId: `${event.projectId}_fallback_${event.docsScopeHash}`,
         attempts: 2,
@@ -94,12 +102,23 @@ export class InsightEventListener {
 export class InsightWorker extends WorkerHost {
   private readonly logger = new Logger(InsightWorker.name);
 
-  constructor(private readonly insight: InsightService) {
+  constructor(
+    private readonly insight: InsightService,
+    private readonly prisma: PrismaService,
+  ) {
     super();
   }
 
   async process(job: Job<InsightJobData>): Promise<void> {
     this.logger.log(`Insight job ${job.id} (${job.name}) → projeto ${job.data.projectId}`);
+    // Fora de request o RLS é fail-closed (SPEC-022) — todo o job roda sob o
+    // contexto do tenant, por operação (nunca uma tx segurada durante a IA).
+    await this.prisma.runInTenantContext([job.data.tenantId], () =>
+      this.run(job),
+    );
+  }
+
+  private async run(job: Job<InsightJobData>): Promise<void> {
     if (job.name === 'edges') {
       await this.insight.generateEdges(job.data.projectId);
       return;

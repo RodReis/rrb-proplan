@@ -28,6 +28,8 @@ export type MutationInput =
 export interface BoardJobData {
   mutationId: string;
   projectId: string;
+  /** Contexto RLS do worker (SPEC-022), capturado no enqueue autenticado. */
+  tenantId: string;
 }
 
 /**
@@ -60,13 +62,18 @@ export class BoardMutationService {
 
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
-      select: { id: true, installationStatus: true },
+      select: { id: true, installationStatus: true, tenantId: true },
     });
     if (!project) throw new NotFoundException('Projeto não encontrado');
     if (project.installationStatus !== 'active') {
       throw new NotFoundException(
         'Projeto sem instalação ativa do GitHub App — board somente leitura',
       );
+    }
+    if (!project.tenantId) {
+      // NOT NULL no banco (Fatia 8); o tipo é nullable só pelo backfill. O
+      // worker precisa dele para abrir o contexto RLS fora de request.
+      throw new NotFoundException('Projeto sem tenant — sincronize o catálogo');
     }
 
     const mutation = await this.prisma.boardMutation.create({
@@ -82,7 +89,7 @@ export class BoardMutationService {
     // Usamos a fila FIFO padrão com concorrência 1 no worker → ordem garantida.
     await this.queue.add(
       'mutation',
-      { mutationId: mutation.id, projectId },
+      { mutationId: mutation.id, projectId, tenantId: project.tenantId },
       { attempts: 1, removeOnComplete: 200, removeOnFail: 200 },
     );
 

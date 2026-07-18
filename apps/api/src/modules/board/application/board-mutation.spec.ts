@@ -27,7 +27,7 @@ describe('closesIssue', () => {
 
 describe('BoardMutationService.enqueue: gate owner na finalização', () => {
   function makeService() {
-    const project = { id: 'p1', installationStatus: 'active' };
+    const project = { id: 'p1', installationStatus: 'active', tenantId: 't1' };
     const prisma = {
       project: { findFirst: jest.fn().mockResolvedValue(project) },
       boardMutation: { create: jest.fn().mockResolvedValue({ id: 'm1' }) },

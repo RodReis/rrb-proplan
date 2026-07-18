@@ -11,8 +11,8 @@ import { BOARD_QUEUE } from '../board.constants';
 const PROJECTION_DEBOUNCE_MS = 4000;
 
 type BoardJob =
-  | { kind: 'mutation'; mutationId: string; projectId: string }
-  | { kind: 'projection'; projectId: string };
+  | { kind: 'mutation'; mutationId: string; projectId: string; tenantId: string }
+  | { kind: 'projection'; projectId: string; tenantId: string };
 
 /**
  * Worker do board (SPEC-005). Concorrência 1 → serializa por processo (uma
@@ -35,14 +35,22 @@ export class BoardWorker extends WorkerHost {
 
   async process(job: Job<BoardJob>): Promise<void> {
     const data = job.data;
-    if (job.name === 'projection' || data.kind === 'projection') {
-      await this.runProjection(data.projectId);
-      return;
-    }
-    await this.runMutation(data.mutationId, data.projectId);
+    // Fora de request o RLS é fail-closed (SPEC-022) — o job inteiro roda sob
+    // o contexto do tenant, por operação.
+    await this.prisma.runInTenantContext([data.tenantId], async () => {
+      if (job.name === 'projection' || data.kind === 'projection') {
+        await this.runProjection(data.projectId);
+        return;
+      }
+      await this.runMutation(data.mutationId, data.projectId, data.tenantId);
+    });
   }
 
-  private async runMutation(mutationId: string, projectId: string): Promise<void> {
+  private async runMutation(
+    mutationId: string,
+    projectId: string,
+    tenantId: string,
+  ): Promise<void> {
     const mutation = await this.prisma.boardMutation.findUnique({
       where: { id: mutationId },
     });
@@ -60,7 +68,7 @@ export class BoardWorker extends WorkerHost {
         data: { status: 'applied', finishedAt: new Date() },
       });
       // Projeção é consequência: agenda com debounce e NÃO bloqueia o card.
-      await this.scheduleProjection(projectId);
+      await this.scheduleProjection(projectId, tenantId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Mutação ${mutationId} falhou: ${message}`);
@@ -81,10 +89,10 @@ export class BoardWorker extends WorkerHost {
    * ponytail: debounce leading-edge simples; se quiser trailing (resetar o timer
    * a cada mutação) seria preciso remover+readd o job — desnecessário aqui.
    */
-  private async scheduleProjection(projectId: string): Promise<void> {
+  private async scheduleProjection(projectId: string, tenantId: string): Promise<void> {
     await this.queue.add(
       'projection',
-      { kind: 'projection', projectId },
+      { kind: 'projection', projectId, tenantId },
       {
         jobId: `projection_${projectId}`,
         delay: PROJECTION_DEBOUNCE_MS,
