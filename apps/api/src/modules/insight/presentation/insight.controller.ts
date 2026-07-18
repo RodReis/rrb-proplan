@@ -6,11 +6,15 @@ import {
   Post,
   Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { RoleGuard } from '../../identity/presentation/require-role.decorator';
+import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { InsightService, RegenerableKind } from '../application/insight.service';
 
 const REGENERABLE: readonly RegenerableKind[] = [
@@ -21,8 +25,9 @@ const REGENERABLE: readonly RegenerableKind[] = [
   'design_fallback',
 ];
 
-@Controller('projects/:id')
-@UseGuards(JwtAuthGuard)
+@Controller('t/:tenant/projects/:id')
+@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
+@UseInterceptors(TenantContextInterceptor)
 export class InsightController {
   constructor(private readonly insight: InsightService) {}
 

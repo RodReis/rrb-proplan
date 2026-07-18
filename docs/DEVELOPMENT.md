@@ -723,4 +723,14 @@ Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb co
 
 **Teto de IA por tenant → PR próprio (PR-4b)**: `SettingsService` é chaveado por `userId` em ~8 métodos + callers cross-module; migrar `userId→tenantId` não cabe junto do RBAC. Fica isolado. O `aggregate` de `LlmUsage` já escopa por tenant via RLS quando roda sob contexto — a mudança restante é a chave do Settings.
 
-Próximos: PR-4b teto por tenant · PR-5 papel/reinstall · PR-6 frontend + rotas restantes.
+**Emenda E1 (ADR-020) + PR-6 — multi-tenant ponta-a-ponta** (`em-andamento`):
+1. `feito` — **Contexto por array de membership** (`app.tenant_ids`, ADR-020): migração `e1_tenant_ids_array` recria as 15 policies com `tenant_id = ANY(NULLIF(current_setting('app.tenant_ids', true), '')::text[])`. Uma policy serve rota escopada (array de 1) e rota global do catálogo (array completo). `NULLIF` trata string vazia (Postgres retorna `''` numa conexão que já viu a var) → fail-closed. `withTenant` passa a receber `string[]`.
+2. `feito` — **Rota global do catálogo sob RLS** (resolve o 500 do dogfooding): `CatalogService` monta o array de membership do usuário (`membershipTenantIds`) e lê projetos via `withTenant(array)` — cross-tenant sem bypass. `InstallationGroup` ganha `tenantId` (1:1 com instalação) para o front montar `/t/:tenant`.
+3. `feito` — **8 controllers restantes sob `/t/:tenant`** (activity, tabs, canonical, freshness, context, handoff, ingestion, insight): `TenantGuard` + `RoleGuard` + `TenantContextInterceptor`, mesmo padrão do board. `canonical`/`insight` ganharam `IdentityModule`. `usage`/`catalog`/`auth` seguem globais.
+4. `feito` — **`me()` estendido** com `tenants:[{id, accountLogin, role}]` (do `Membership`).
+5. `feito` — **Frontend `/t/:tenant`**: rotas prefixadas (`App.tsx`), `TenantSync` fixa o tenant ativo da URL (`api.setActiveTenant`), `request()` prefixa `/projects/` → `/t/:tenant/projects/` num ponto (callers intactos), catálogo abre `/t/:tenant/p/:id`, navigates com tenant, **viewer read-only** no board (`readOnly = role==='viewer' || mode!=='active'` desliga DnD/criar/editar). Build web ok.
+6. `feito` — **int-spec do catálogo** (array [A,B] vê os dois) + `regras` 532/532, `banco` 11/11. **Corrigido**: `maxWorkers:1` estava no project (jest ignora) → movido pra raiz do config (serial de verdade).
+
+**Verificação ao vivo pendente** (atrás do OAuth, teste do PI): abrir o catálogo (não deve mais dar 500), entrar num projeto (`/t/:tenant/p/:id`), navegar abas, F5 preserva tenant/projeto/aba.
+
+Próximos: PR-4b teto por tenant · PR-5 papel/reinstall (deriva papel do GitHub — hoje só o tenant pessoal existe).

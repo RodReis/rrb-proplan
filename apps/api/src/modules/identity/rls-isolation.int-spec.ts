@@ -17,10 +17,11 @@ import { ownerClient, appClient, applyMigrations, grantAppRole } from '../../../
 const TENANT_A = '00000000-0000-4000-8000-aaaaaaaaaaaa';
 const TENANT_B = '00000000-0000-4000-8000-bbbbbbbbbbbb';
 
-async function setTenant(client: PrismaClient, tenantId: string, sql: string): Promise<unknown> {
-  // SET LOCAL dentro de uma transação = o mesmo mecanismo do runtime (PR-3).
+async function setTenant(client: PrismaClient, tenantIds: string[], sql: string): Promise<unknown> {
+  // SET LOCAL de app.tenant_ids (array) = o mesmo mecanismo do runtime (E1).
+  const arrayLiteral = `{${tenantIds.join(',')}}`;
   return client.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
+    await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_ids', $1, true)`, arrayLiteral);
     return tx.$queryRawUnsafe(sql);
   });
 }
@@ -80,7 +81,7 @@ describe('RLS: isolamento por tenant (proplan_app)', () => {
   it('com contexto A, vê só o projeto de A', async () => {
     const rows = (await setTenant(
       app,
-      TENANT_A,
+      [TENANT_A],
       `SELECT id FROM projects WHERE id IN ('rls-p-a','rls-p-b')`,
     )) as Array<{ id: string }>;
     expect(rows.map((r) => r.id)).toEqual(['rls-p-a']);
@@ -89,7 +90,7 @@ describe('RLS: isolamento por tenant (proplan_app)', () => {
   it('com contexto B, vê só o projeto de B', async () => {
     const rows = (await setTenant(
       app,
-      TENANT_B,
+      [TENANT_B],
       `SELECT id FROM projects WHERE id IN ('rls-p-a','rls-p-b')`,
     )) as Array<{ id: string }>;
     expect(rows.map((r) => r.id)).toEqual(['rls-p-b']);
@@ -98,7 +99,7 @@ describe('RLS: isolamento por tenant (proplan_app)', () => {
   it('tabela-filha (documents) herda o escopo: contexto B não vê doc de A', async () => {
     const rows = (await setTenant(
       app,
-      TENANT_B,
+      [TENANT_B],
       `SELECT id FROM documents WHERE id = 'rls-d-a'`,
     )) as unknown[];
     expect(rows).toHaveLength(0);
@@ -107,9 +108,20 @@ describe('RLS: isolamento por tenant (proplan_app)', () => {
   it('tabela-filha: contexto A vê o próprio doc', async () => {
     const rows = (await setTenant(
       app,
-      TENANT_A,
+      [TENANT_A],
       `SELECT id FROM documents WHERE id = 'rls-d-a'`,
     )) as Array<{ id: string }>;
     expect(rows.map((r) => r.id)).toEqual(['rls-d-a']);
+  });
+
+  // Caso do catálogo (E1, ADR-020): array com AMBOS os tenants → vê os dois.
+  // É a razão da emenda: a rota global lê cross-tenant sob RLS, sem bypass.
+  it('contexto com array [A, B] (catálogo) vê projetos dos dois', async () => {
+    const rows = (await setTenant(
+      app,
+      [TENANT_A, TENANT_B],
+      `SELECT id FROM projects WHERE id IN ('rls-p-a','rls-p-b') ORDER BY id`,
+    )) as Array<{ id: string }>;
+    expect(rows.map((r) => r.id)).toEqual(['rls-p-a', 'rls-p-b']);
   });
 });

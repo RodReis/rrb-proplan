@@ -1,16 +1,28 @@
-import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Req,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { RoleGuard } from '../../identity/presentation/require-role.decorator';
+import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { ActivityService } from '../application/activity.service';
 
 /**
  * Painel de Atividade por projeto (SPEC-010, Camada 2). "Agora" (operações em
  * curso) + "Histórico" (projeção de leitura, paginada). Ownership no service.
  */
-@Controller('projects/:id/activity')
-@UseGuards(JwtAuthGuard)
+@Controller('t/:tenant/projects/:id/activity')
+@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
+@UseInterceptors(TenantContextInterceptor)
 export class ActivityFeedController {
   constructor(private readonly activity: ActivityService) {}
 

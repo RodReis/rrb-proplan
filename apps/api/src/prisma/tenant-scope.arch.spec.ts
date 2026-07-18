@@ -36,10 +36,10 @@ function tsFiles(dir: string): string[] {
 
 describe('arquitetura: app.tenant_id só é setado em withTenant', () => {
   it('nenhum arquivo fora da allowlist seta app.tenant_id', () => {
-    // Mira a CHAMADA que seta o contexto (set_config/SET LOCAL de app.tenant_id),
+    // Mira a CHAMADA que seta o contexto (set_config/SET LOCAL de app.tenant_ids),
     // não a mera menção da string em comentário — o ALS tenant-context.ts cita a
     // var na doc sem setá-la.
-    const setsContext = /set_config\(\s*['"]app\.tenant_id['"]|SET\s+LOCAL\s+app\.tenant_id/i;
+    const setsContext = /set_config\(\s*['"]app\.tenant_ids['"]|SET\s+LOCAL\s+app\.tenant_ids/i;
     const offenders = tsFiles(SRC_DIR)
       .filter((file) => setsContext.test(readFileSync(file, 'utf-8')))
       .map((file) => file.slice(SRC_DIR.length + 1).replace(/\\/g, '/'))

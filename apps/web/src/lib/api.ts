@@ -1,10 +1,31 @@
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3311';
 
+export interface SessionTenant {
+  id: string;
+  accountLogin: string;
+  role: 'owner' | 'member' | 'viewer';
+}
+
 export interface SessionUser {
   id: string;
   login: string;
   name: string | null;
   avatarUrl: string | null;
+  tenants: SessionTenant[];
+}
+
+/**
+ * Tenant ativo (SPEC-022). Setado ao entrar num projeto (via URL /t/:tenant). O
+ * `request()` prefixa automaticamente as rotas de projeto — os callers seguem
+ * montando `/projects/...` sem saber do tenant. As rotas globais (`/catalog`,
+ * `/auth`, `/usage`, `/portfolio`) não são reescritas.
+ */
+let activeTenant: string | null = null;
+export function setActiveTenant(tenantId: string | null): void {
+  activeTenant = tenantId;
+}
+export function getActiveTenant(): string | null {
+  return activeTenant;
 }
 
 export interface Repo {
@@ -22,6 +43,7 @@ export interface Repo {
 /** Um grupo do catálogo = uma instalação do App em uma conta (ADR-015). */
 export interface InstallationGroup {
   installationId: number;
+  tenantId: string | null;
   account: string;
   accountType: 'User' | 'Organization';
   repos: Repo[];
@@ -32,8 +54,20 @@ export interface CatalogInstallations {
   empty: boolean;
 }
 
+/**
+ * Prefixa `/projects/...` com o tenant ativo (`/t/:tenant/projects/...`), SPEC-022.
+ * Rotas globais passam intactas. Se não há tenant ativo, deixa como está — o
+ * backend responde 401/403 e o app redireciona ao catálogo.
+ */
+function withTenantPrefix(path: string): string {
+  if (activeTenant && path.startsWith('/projects/')) {
+    return `/t/${activeTenant}${path}`;
+  }
+  return path;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${API_URL}${withTenantPrefix(path)}`, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...init,
@@ -188,7 +222,7 @@ export const api = {
       `/projects/${projectId}/documents/content?path=${encodeURIComponent(path)}`,
     ),
   rawUrl: (projectId: string, path: string) =>
-    `${API_URL}/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`,
+    `${API_URL}${withTenantPrefix(`/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`)}`,
   docxText: (projectId: string, path: string) =>
     request<{ text: string }>(
       `/projects/${projectId}/documents/raw?path=${encodeURIComponent(path)}`,

@@ -199,7 +199,7 @@ export function Catalog({ user, onLogout }: Props) {
                 busyRepoId={busyRepoId}
                 onManage={(r) => void manage(r)}
                 onAskUnmanage={setConfirmRemove}
-                onOpen={(id) => navigate(`/p/${id}/overview`)}
+                onOpen={(tenantId, id) => navigate(`/t/${tenantId}/p/${id}/overview`)}
                 onInstall={() => void openInstall()}
               />
             ))}
@@ -239,7 +239,7 @@ function AccountGroup({
   busyRepoId: number | null;
   onManage: (repo: Repo) => void;
   onAskUnmanage: (repo: Repo) => void;
-  onOpen: (projectId: string) => void;
+  onOpen: (tenantId: string, projectId: string) => void;
   onInstall: () => void;
 }) {
   const managed = group.repos.filter((r) => r.managedProjectId).length;
@@ -277,7 +277,11 @@ function AccountGroup({
               busy={busyRepoId === repo.githubRepoId}
               onManage={() => onManage(repo)}
               onAskUnmanage={() => onAskUnmanage(repo)}
-              onOpen={() => repo.managedProjectId && onOpen(repo.managedProjectId)}
+              onOpen={() =>
+                repo.managedProjectId &&
+                group.tenantId &&
+                onOpen(group.tenantId, repo.managedProjectId)
+              }
             />
           ))}
         </ul>

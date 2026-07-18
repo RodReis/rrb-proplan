@@ -1,5 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { IdentityModule } from '../identity/identity.module';
 import { SettingsModule } from '../settings/settings.module';
 import { IngestionModule } from '../ingestion/ingestion.module';
 import { InsightService } from './application/insight.service';
@@ -19,6 +20,7 @@ import { UsageController } from './presentation/usage.controller';
   imports: [
     SettingsModule,
     IngestionModule,
+    IdentityModule,
     BullModule.registerQueue({ name: INSIGHT_QUEUE }),
   ],
   controllers: [InsightController, UsageController],

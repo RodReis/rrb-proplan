@@ -23,6 +23,8 @@ import { useAutoClose } from './useAutoClose';
 
 interface Props {
   user: SessionUser;
+  /** Papel no tenant ativo (SPEC-022). viewer → board read-only. */
+  role: 'owner' | 'member' | 'viewer';
   project: Project;
   /** Todos os gerenciados — o combo da sidebar lista a partir daqui. */
   projects: Project[];
@@ -42,6 +44,7 @@ interface Props {
  */
 export function Workspace({
   user,
+  role,
   project,
   projects,
   activeTab,
@@ -129,7 +132,7 @@ export function Workspace({
             <DocumentsTab project={project} syncNonce={syncNonce} />
           )}
           {activeTab === 'kanban' && (
-            <KanbanTab projectId={projectId} syncNonce={syncNonce} />
+            <KanbanTab projectId={projectId} syncNonce={syncNonce} role={role} />
           )}
           {activeTab === 'graph' && (
             <GraphTab projectId={projectId} syncNonce={syncNonce} />

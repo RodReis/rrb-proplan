@@ -10,17 +10,22 @@ import {
   Put,
   Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { RoleGuard } from '../../identity/presentation/require-role.decorator';
+import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { ENTITIES, Entity } from '../../ingestion/domain/entity';
 import { MappingService } from '../application/mapping.service';
 import { TabsService } from '../application/tabs.service';
 
-@Controller('projects/:id/tabs')
-@UseGuards(JwtAuthGuard)
+@Controller('t/:tenant/projects/:id/tabs')
+@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
+@UseInterceptors(TenantContextInterceptor)
 export class TabsController {
   constructor(
     private readonly tabs: TabsService,

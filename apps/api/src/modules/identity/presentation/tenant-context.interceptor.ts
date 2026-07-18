@@ -25,7 +25,10 @@ export class TenantContextInterceptor implements NestInterceptor {
     if (!req.tenantId) return next.handle();
 
     return from(
-      this.prisma.withTenant(req.tenantId, () =>
+      // Rota escopada: array de 1 tenant (o resolvido pelo TenantGuard). A rota
+      // global do catálogo não usa este interceptor — monta o array completo de
+      // membership no próprio service (ADR-020).
+      this.prisma.withTenant([req.tenantId], () =>
         // next.handle() é um Observable; consumimos dentro da tx para que o
         // SET LOCAL valha por toda a resolução do handler.
         firstValueFromHandle(next),

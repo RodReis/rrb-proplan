@@ -19,11 +19,12 @@ const TENANT_B = '00000000-0000-4000-8000-cccccccccccc2';
 // PrismaService/Nest; aqui exercitamos a mesma mecânica sobre o appClient real).
 async function withTenant<T>(
   client: PrismaClient,
-  tenantId: string,
+  tenantIds: string[],
   fn: (tx: PrismaClient) => Promise<T>,
 ): Promise<T> {
+  const arrayLiteral = `{${tenantIds.join(',')}}`;
   return client.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    await tx.$executeRaw`SELECT set_config('app.tenant_ids', ${arrayLiteral}, true)`;
     return tenantStorage.run(tx as unknown as PrismaClient, () => fn(tx as unknown as PrismaClient));
   });
 }
@@ -67,10 +68,10 @@ describe('withTenant: contexto transaction-scoped (não vaza no pool)', () => {
   });
 
   it('cada withTenant vê só o próprio tenant', async () => {
-    const a = await withTenant(app, TENANT_A, (tx) =>
+    const a = await withTenant(app, [TENANT_A], (tx) =>
       tx.$queryRawUnsafe(`SELECT id FROM projects WHERE id IN ('tc-p-a','tc-p-b')`),
     );
-    const b = await withTenant(app, TENANT_B, (tx) =>
+    const b = await withTenant(app, [TENANT_B], (tx) =>
       tx.$queryRawUnsafe(`SELECT id FROM projects WHERE id IN ('tc-p-a','tc-p-b')`),
     );
     expect((a as Array<{ id: string }>).map((r) => r.id)).toEqual(['tc-p-a']);
@@ -78,7 +79,7 @@ describe('withTenant: contexto transaction-scoped (não vaza no pool)', () => {
   });
 
   it('após withTenant(A), uma query fora de contexto NÃO herda A (pool reuse)', async () => {
-    await withTenant(app, TENANT_A, (tx) =>
+    await withTenant(app, [TENANT_A], (tx) =>
       tx.$queryRawUnsafe(`SELECT id FROM projects WHERE id = 'tc-p-a'`),
     );
     // Mesma conexão do pool (size=1), agora SEM contexto → fail-closed, 0 linhas.

@@ -16,6 +16,10 @@ export interface RepoWithManaged extends RepoSummary {
 /** Um grupo do catálogo = uma instalação do App em uma conta (ADR-015). */
 export interface InstallationGroup {
   installationId: number;
+  /** Tenant 1:1 com a instalação (SPEC-022). null = instalação ainda sem tenant
+   *  (ex.: App instalado mas ainda não reconciliado — PR-5). O front usa para a
+   *  rota /t/:tenant ao abrir um projeto do grupo. */
+  tenantId: string | null;
   account: string;
   accountType: 'User' | 'Organization';
   /** Repos acessíveis. Vazio = "instalação sem repositórios acessíveis". */
@@ -64,12 +68,33 @@ export class CatalogService {
    * dele (leitura respeita a visibilidade real). Reconcilia o `installationStatus`
    * dos projetos gerenciados (repo sumiu de toda instalação → `missing`).
    */
+  /**
+   * Tenants de que o usuário é membro (SPEC-022 E1, ADR-020). Alimenta o
+   * contexto RLS `app.tenant_ids` da rota global do catálogo, que lê projetos
+   * cross-tenant SOB RLS (jamais bypass). `memberships` não tem policy de tenant
+   * — é a fonte da própria autorização — então esta leitura roda no client base.
+   * O array vem do `userId` AUTENTICADO, nunca de input do cliente.
+   */
+  private async membershipTenantIds(userId: string): Promise<string[]> {
+    const rows = await this.prisma.membership.findMany({
+      where: { userId },
+      select: { tenantId: true },
+    });
+    return rows.map((r) => r.tenantId);
+  }
+
   async listInstallations(userId: string): Promise<CatalogInstallations> {
     const token = await this.auth.userToken(userId);
     const installations = await this.installationsClient.list(token);
+    const tenantIds = await this.membershipTenantIds(userId);
 
+    // Leitura de projetos sob contexto multi-tenant (array de membership): a rota
+    // global lê cross-tenant sem desligar RLS (E1). Sem membership → array vazio
+    // → fail-closed (nenhum projeto), nunca "todos".
     const [projects, reposByInstallation] = await Promise.all([
-      this.prisma.project.findMany({ where: { userId } }),
+      this.prisma.withTenant(tenantIds, (tx) =>
+        tx.project.findMany({ where: { userId } }),
+      ),
       Promise.all(
         installations.map((inst) =>
           this.github
@@ -83,6 +108,18 @@ export class CatalogService {
       projects.map((p) => [p.githubRepoId.toString(), p.id]),
     );
 
+    // Mapa installationId → tenantId (1:1, SPEC-022): o front precisa do tenant
+    // para montar a rota /t/:tenant ao abrir um projeto. `memberships`/`tenants`
+    // não têm RLS de tenant — leitura no client base.
+    const tenantsByInstallation = new Map<number, string>();
+    const tenantRows = await this.prisma.tenant.findMany({
+      where: { installationId: { in: installations.map((i) => i.id) } },
+      select: { id: true, installationId: true },
+    });
+    for (const t of tenantRows) {
+      if (t.installationId !== null) tenantsByInstallation.set(t.installationId, t.id);
+    }
+
     // Mapa repoId → installationId visível agora, para reconciliar status.
     const visibleRepoInstallation = new Map<string, number>();
     for (const { inst, repos } of reposByInstallation) {
@@ -90,10 +127,11 @@ export class CatalogService {
         visibleRepoInstallation.set(r.githubRepoId.toString(), inst.id);
       }
     }
-    await this.applyReconcile(projects, visibleRepoInstallation);
+    await this.applyReconcile(projects, visibleRepoInstallation, tenantIds);
 
     const groups: InstallationGroup[] = reposByInstallation.map(({ inst, repos }) => ({
       installationId: inst.id,
+      tenantId: tenantsByInstallation.get(inst.id) ?? null,
       account: inst.account.login,
       accountType: inst.account.type,
       repos: repos.map((r) => ({
@@ -110,6 +148,7 @@ export class CatalogService {
   private async applyReconcile(
     projects: { id: string; githubRepoId: bigint; installationId: number | null; installationStatus: 'active' | 'missing' }[],
     visibleRepoInstallation: Map<string, number>,
+    tenantIds: string[],
   ): Promise<void> {
     const updates = reconcileInstallations(
       projects.map((p) => ({
@@ -120,24 +159,31 @@ export class CatalogService {
       })),
       visibleRepoInstallation,
     );
-    await Promise.all(
-      updates.map((u) =>
-        this.prisma.project.update({
-          where: { id: u.projectId },
-          data: {
-            installationId: u.installationId,
-            installationStatus: u.installationStatus,
-          },
-        }),
+    if (updates.length === 0) return;
+    // UPDATE também é escopado por RLS — roda sob o contexto de membership.
+    await this.prisma.withTenant(tenantIds, (tx) =>
+      Promise.all(
+        updates.map((u) =>
+          tx.project.update({
+            where: { id: u.projectId },
+            data: {
+              installationId: u.installationId,
+              installationStatus: u.installationStatus,
+            },
+          }),
+        ),
       ),
     );
   }
 
   async listProjects(userId: string) {
-    const projects = await this.prisma.project.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const tenantIds = await this.membershipTenantIds(userId);
+    const projects = await this.prisma.withTenant(tenantIds, (tx) =>
+      tx.project.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
     return projects.map((p) => ({ ...p, githubRepoId: Number(p.githubRepoId) }));
   }
 
