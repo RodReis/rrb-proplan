@@ -15,6 +15,19 @@ export type TenantTxClient = Prisma.TransactionClient;
 export const tenantStorage = new AsyncLocalStorage<TenantTxClient>();
 
 /**
+ * Ids de tenant do contexto atual (SPEC-022). Guardados em paralelo ao client
+ * para o Proxy do PrismaService injetar o `set_config` num `$transaction([...])`
+ * em lote — que NÃO passa pela camada de query do client estendido e, sem isto,
+ * rodaria no client base sem o SET LOCAL (RLS fail-closed → delete não vê nada,
+ * createMany colide no unique). Undefined fora de um contexto de tenant.
+ */
+export const tenantIdsStorage = new AsyncLocalStorage<string[]>();
+
+export function currentTenantIds(): string[] | undefined {
+  return tenantIdsStorage.getStore();
+}
+
+/**
  * Client escopado ao tenant do request atual, ou undefined fora de um. Services
  * que DEVEM ser escopados chamam isto e caem no client base só em contexto de
  * sistema (onde RLS corta de qualquer forma se a query tocar tabela de tenant).
