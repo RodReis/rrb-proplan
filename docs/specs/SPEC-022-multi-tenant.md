@@ -8,6 +8,8 @@ updated: 2026-07-17
 # SPEC-022 — Multi-tenant: organizações, RBAC e isolamento (Fatia 8)
 
 > Fecha o "sem escopo" da Fatia 8 (issue #7). Aprovada pelo PI em 2026-07-17 — ver *Perguntas abertas → Resolvidas*.
+>
+> **Emenda 2026-07-17 (reaprovada pelo PI em 2026-07-17).** O contexto RLS passa de `app.tenant_id` (singular) para `app.tenant_ids` (array de membership), para que a **rota global do catálogo** (SPEC-021, em `/`) leia cross-tenant **sem desligar RLS**. A redação aprovada não cobria a rota global e seu contrato singular a deixava em *fail-closed* permanente (zero linhas), o que empurraria a implementação para o anti-padrão de bypass de RLS na query mais ampla do sistema. Mudanças marcadas com **[E1]**. Consolidada em **ADR-020**.
 
 ## Objetivo
 
@@ -30,10 +32,10 @@ Transformar o ProPlan de usuário único (MVP) em multi-tenant: mais de uma pess
    - `viewer` — só leitura.
 3. **Isolamento em profundidade** (três barreiras, não uma):
    - (a) **escopo por tenant na aplicação** — toda query de projeto nasce escopada; a barreira primária, ergonômica;
-   - (b) **Row-Level Security no Postgres** — a rede que corta a query que **esqueceu** o filtro. **Onde `tenant_id` mora é decisão de implementação, não de produto**: o corte recomendado é coluna nas **raízes** (`Project` + tabelas sem projeto, como `Settings` e `LlmUsage`) e **policy por join** nas ~13 filhas em cascade; denormalizar `tenant_id` para todas é o caminho de escala se os planos de RLS-com-join degradarem (barato, porque `tenant_id` é imutável por projeto);
+   - (b) **Row-Level Security no Postgres** — a rede que corta a query que **esqueceu** o filtro. **Onde `tenant_id` mora é decisão de implementação, não de produto**: o corte recomendado é coluna nas **raízes** (`Project` + tabelas sem projeto, como `Settings` e `LlmUsage`) e **policy por join** nas ~13 filhas em cascade; denormalizar `tenant_id` para todas é o caminho de escala se os planos de RLS-com-join degradarem (barato, porque `tenant_id` é imutável por projeto). **[E1]** O **contexto** da policy é o **array de tenants de membership** (`app.tenant_ids`), não um id só: rota escopada seta array de 1, rota global (catálogo) seta o array completo; sem contexto, `= ANY(NULL)` → zero linhas (*fail-closed* preservado). Ver Contratos e o item 4;
    - (c) **teste de auditoria no CI** — barra o merge de query de projeto sem escopo de tenant.
    A visibilidade real do GitHub (leitura via **user-to-server token**, ADR-015) é uma quarta barreira, herdada.
-4. **Roteamento por path** (`/t/:tenant/…`) e seleção do tenant ativo na sessão. Subdomínio fica fora: exigiria DNS wildcard + TLS, inviável no **ambiente 100% local** (CLAUDE.md) — não tem relação com o ADR-009.
+4. **Roteamento por path** (`/t/:tenant/…`) e seleção do tenant ativo na sessão. Subdomínio fica fora: exigiria DNS wildcard + TLS, inviável no **ambiente 100% local** (CLAUDE.md) — não tem relação com o ADR-009. **[E1] Rotas globais** — o **catálogo** em `/` (SPEC-021) — **não** carregam tenant no path: escopam pelo **array de membership** do usuário (`app.tenant_ids` com todos os tenants de que é membro), não por um tenant ativo. É o único ponto onde uma request lê legitimamente mais de um tenant, e a leitura continua **sob RLS** (jamais bypass ou role owner). Ao entrar num projeto pelo catálogo, a sessão fixa o tenant daquele projeto e as rotas voltam a `/t/:tenant/…`.
 5. **Migração do usuário único**: os dados atuais viram o **tenant pessoal** do dono (instalação pessoal), sem perda.
 6. **Teto de IA por tenant**: o ledger e o teto do ADR-016 passam a ser escopados por `tenant_id`.
 
@@ -53,10 +55,17 @@ Transformar o ProPlan de usuário único (MVP) em multi-tenant: mais de uma pess
 **Isolamento por RLS (a fronteira de segurança)**
 
 - [ ] Setup: tenants A e B, cada um com ≥1 projeto e um usuário membro. Autenticado como membro de A, `GET /t/A/projects` lista **só** projetos de A; `GET /t/B/projects` retorna **403** (não-membro) — nunca um único registro de B em nenhum campo da resposta.
-- [ ] A RLS protege **abaixo** da aplicação, não só nela: com o role de aplicação do Postgres e **sem** `app.tenant_id` setado no contexto, um `SELECT` direto em `projects`/`issues`/`ai_ledger`/`insights` devolve **zero linhas** — nenhuma tabela de projeto responde sem o tenant no contexto.
+- [ ] A RLS protege **abaixo** da aplicação, não só nela: com o role de aplicação do Postgres e **sem** `app.tenant_ids` setado no contexto, um `SELECT` direto em `projects`/`issues`/`ai_ledger`/`insights` devolve **zero linhas** — nenhuma tabela de projeto responde sem o tenant no contexto.
 - [ ] Teste de regressão deliberado: uma query de projeto escrita **sem** cláusula de `tenant_id` (simulando o bug humano) **não vaza** — a policy RLS corta. O teste que prova isso fica versionado e nomeado.
 - [ ] Checagem automatizada no build: **toda** tabela com dado de tenant tem **policy RLS habilitada** (não inspeção manual). A coluna `tenant_id` própria é exigida só nas raízes (`Project` + tabelas sem projeto); as filhas podem herdar por join — mas **nenhuma** tabela de projeto pode ficar sem policy.
-- [ ] O contexto do tenant é **transaction-scoped**: uma segunda request que reusa a conexão do pool **não herda** o `tenant_id` da anterior (provado forçando reuso de conexão e observando isolamento — o `SET LOCAL` morreu no commit da tx anterior).
+- [ ] O contexto do tenant é **transaction-scoped**: uma segunda request que reusa a conexão do pool **não herda** o `tenant_ids` da anterior (provado forçando reuso de conexão e observando isolamento — o `SET LOCAL` morreu no commit da tx anterior).
+
+**Rota global do catálogo sob RLS (a costura com a SPEC-021) — [E1]**
+
+- [ ] Setup: tenants A e B com o usuário membro de **ambos**, e um tenant C onde ele **não** é membro (cada um com ≥1 projeto). `GET /projects` (catálogo, **sem** tenant no path) lista **exatamente** a união de A e B — nenhum projeto de C, em nenhum campo da resposta. Provado com o role de aplicação (RLS ativa), **não** com bypass.
+- [ ] O array de contexto vem da **identidade autenticada**: forjar no request (body/query/header) um `tenant_ids` contendo o id de C **não** faz projeto de C aparecer — o array é derivado do `userId` da sessão, nunca de input do cliente.
+- [ ] *Fail-closed* na rota global: **sem** `app.tenant_ids` setado, `GET /projects` e um `SELECT` direto em `projects` devolvem **zero linhas** (`= ANY(NULL)`), jamais "todos".
+- [ ] Nenhum caminho de leitura global usa role com `BYPASSRLS` nem conexão como owner — checagem versionada que barra o merge se aparecer.
 
 **RBAC (papéis)**
 
@@ -91,13 +100,14 @@ Transformar o ProPlan de usuário único (MVP) em multi-tenant: mais de uma pess
 ## Contratos (esboço — assinaturas, não implementação)
 
 - Modelo: `Tenant { id (PK própria), installationId (link 1:1, re-apontável no reinstall) }`, `Membership { userId, tenantId, role }`. `Project`, `Issue`(cache), `AiLedger`, `Insight` ganham `tenantId` (FK para `Tenant.id`).
-- Policies RLS por tabela, escopadas a `current_setting('app.tenant_id')` — direto nas raízes, por join a `Project` nas filhas. O `app.tenant_id` é setado com **`SET LOCAL` dentro de uma transação interativa por request** (nunca `SET` de sessão — vazaria no pool).
+- **[E1]** Policies RLS por tabela, escopadas a `tenant_id = ANY (current_setting('app.tenant_ids', true)::uuid[])` — direto nas raízes, por join a `Project` nas filhas. Uma **policy só** serve os dois casos: **rota escopada** (`/t/:tenant`) seta array de **1** id; **rota global** (catálogo) seta o array de **todos** os tenants de membership do usuário. O `app.tenant_ids` é setado com **`SET LOCAL` dentro de uma transação interativa por request** (nunca `SET` de sessão — vazaria no pool). O array é derivado do `userId` **autenticado** (via `identity`), jamais de input do cliente. O `true` em `current_setting` faz o *unset* retornar NULL → `= ANY(NULL)` → zero linhas (**fail-closed**). Bypass de RLS, role `BYPASSRLS` ou conexão como owner para leitura global são **proibidos**.
 - `identity` expõe `currentMembership()` e um guard de papel para os outros módulos (interface pública, sem vazar entidade — ADR-001).
 
 ## Notas técnicas
 
 - **RLS**: roda em Postgres puro (dev local) e Supabase; o custo registrado é complicar migração/seed — o `prisma/seed.ts` precisa setar o tenant de contexto. Aceito pelo PI como preço da fronteira de segurança forte.
-- **Prisma + pool + RLS (risco conhecido — não repetir o erro)**: `SET app.tenant_id` de **sessão** vaza entre requests que reusam a conexão do pool. O contexto tem de ser **transaction-scoped**: `SET LOCAL` dentro de uma transação interativa por request (via client extension do Prisma), morrendo no commit/rollback. É o padrão documentado Supabase/Prisma. O critério de aceite de "transaction-scoped" existe para provar que essa armadilha foi evitada.
+- **Prisma + pool + RLS (risco conhecido — não repetir o erro)**: `SET app.tenant_ids` de **sessão** vaza entre requests que reusam a conexão do pool. O contexto tem de ser **transaction-scoped**: `SET LOCAL` dentro de uma transação interativa por request (via client extension do Prisma), morrendo no commit/rollback. É o padrão documentado Supabase/Prisma. O critério de aceite de "transaction-scoped" existe para provar que essa armadilha foi evitada.
+- **[E1] A query que monta `app.tenant_ids` é o novo elo crítico**: deriva de `Membership` filtrada pelo `userId` **autenticado** (token da sessão), com RLS própria keyed por usuário — nunca por um `userId` que chega no request. Se o atacante injeta o próprio array, o RLS inteiro vira teatro. Coberto pelo critério de aceite "array vem da identidade autenticada". A rota global paga **um** passo a mais por request (montar o array) — aceitável e muito abaixo do custo de iterar N transações por tenant.
 - **Placement de `tenant_id` (raízes vs. toda tabela)**: começar nas raízes (`Project` + órfãs) + join nas filhas é o menor diff; denormalizar `tenant_id` para as ~13 filhas é a saída se o join na policy pesar nos planos — migração barata porque `tenant_id` é **imutável** por projeto (write-once, sem risco de drift).
 - **Reinstall re-liga, não recria**: quando uma instalação é removida e recriada, o sync deve reconhecer o `Tenant` existente (por conta/org) e **re-apontar** `installationId` para o novo id — nunca criar um `Tenant` duplicado nem orfanar os dados do antigo. Vale um critério de teste na implementação.
 - **Papel derivado do GitHub** evita um segundo sistema de convite; o preço é acoplar o acesso ao GitHub — reversível no dia em que SSO entrar.
@@ -106,6 +116,8 @@ Transformar o ProPlan de usuário único (MVP) em multi-tenant: mais de uma pess
 ## Perguntas abertas
 
 Nenhuma. **Resolvidas com o PI em 2026-07-17:**
+
+- **[E1] Rota global do catálogo sob RLS** → **aprovado como está** (Emenda 2026-07-17, consolidada em **ADR-020**). A redação aprovada modelava o contexto como `app.tenant_id` **singular** e **não mencionava o catálogo** (rota global em `/`, SPEC-021), que lê cross-tenant — o contrato singular o deixaria em *fail-closed* permanente, empurrando para o anti-padrão de desligar RLS na query mais ampla. Resolução: contexto vira `app.tenant_ids` (array de membership); policy `tenant_id = ANY(...)`; rota escopada = array de 1, catálogo = array completo; array derivado da identidade autenticada; *fail-closed* preservado; bypass proibido. Uma policy só serve as duas rotas.
 
 - **Billing** → **fora**, fatia própria posterior (não incha esta com cobrança).
 - **Tenant** → **entidade própria do ProPlan, vinculada 1:1 a uma instalação** (PK própria, `installationId` re-apontável). Comportamento 1:1 no 1º corte, como aprovado; a PK própria só evita orfanar dado no reinstall e não fecha a porta para N instalações. (A redação anterior "Tenant = instalação" era ambígua — corrigida em 2026-07-17 após o Claude Code apontar a divergência com o schema Prisma.)

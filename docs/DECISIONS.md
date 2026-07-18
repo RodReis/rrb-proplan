@@ -390,3 +390,18 @@ O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013)
 6. **Operacional**: comando `pnpm test:report`; Playwright em job separado, sempre; Redis no CI só se um teste de integração exercitar BullMQ de verdade.
 
 **Consequências**: ganhamos o "print de testes verdes" como evidência infalsificável, tocada à fonte de verdade (o PR), sem produzir o auto-relato que o produto combate. Custo: montar `apps/web` do zero para testes (Vitest + Testing Library + Playwright) — hoje não há runner de tela; tratar como esforço próprio. Tooling é portável para projetos futuros (workflow + gerador + config), cumprindo o objetivo de já vir "de fábrica". Esta é a **primeira ADR de processo** no arquivo — governa como desenvolvemos, não a arquitetura do produto.
+
+## ADR-020 — Isolamento multi-tenant: RLS com contexto por array de membership; bypass proibido
+
+**Status**: **aprovado pelo PI em 2026-07-17**. Rege a **Fatia 8** (SPEC-022). Consolida em nível de ADR o que a SPEC-022 já decide — para a regra sobreviver à spec e ficar greppável.
+
+**Contexto**: RLS é a **fronteira de segurança entre donos diferentes** (isolamento real, não organização lógica). A SPEC-021 tem uma **rota global** — o catálogo em `/` — que lê projetos de **todos** os tenants de que o usuário é membro. Um contexto RLS **singular** (`app.tenant_id`) não serve essa leitura: ou deixa o catálogo em *fail-closed* (zero linhas), ou empurra para **desligar RLS na query mais ampla do sistema** — o pior lugar para abrir mão da rede. (A SPEC-022 nasceu singular e não mencionava o catálogo; corrigido pela emenda de 2026-07-17.)
+
+**Decisão**: o contexto RLS é o **array de tenants de membership** do usuário (`app.tenant_ids`), não um id só. Uma policy — `tenant_id = ANY (current_setting('app.tenant_ids', true)::uuid[])` — serve **rota escopada** (`/t/:tenant`, array de 1) e **rota global** (catálogo, array completo). Regras não-negociáveis:
+
+1. O array é derivado do `userId` **autenticado** (via `identity`), **nunca** de input do cliente (body/query/header) — senão o RLS vira teatro.
+2. `SET LOCAL` **transaction-scoped** (nunca `SET` de sessão — vaza no pool do Prisma).
+3. *Fail-closed*: sem contexto, `= ANY(NULL)` → **zero linhas**. Nunca defaultar para "todos".
+4. **Proibido**: bypass de RLS, role `BYPASSRLS`, conexão como owner para leitura global. A garantia mora no **banco**, não no service. Checagem no CI barra o merge que reintroduzir bypass.
+
+**Consequências**: o catálogo lê cross-tenant **sob RLS**, com uma policy só (simplifica, não incha). Custo: a rota global monta o array de membership por request — um passo, o **elo crítico**, que deriva da identidade autenticada. Este ADR existe para que ninguém reabra bypass "só para um relatório" sem confrontar a decisão datada. Complementa ADR-015 (auth/tenant) e ADR-016 (teto de IA por tenant).
