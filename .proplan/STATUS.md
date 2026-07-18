@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-17
+updated: 2026-07-18
 ---
 <!-- gerado pelo ProPlan a partir das Issues — não edite à mão -->
 # Status
@@ -14,7 +14,6 @@ updated: 2026-07-17
 ## A Fazer
 
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
-- Fatia 8 — Multi-tenant: RBAC, organizações, billing (#7, prio: baixa)
 
 ## Em Andamento
 
@@ -43,6 +42,7 @@ _(vazio)_
 - Fatia 6.2 — Formato de Deploy: 3 eixos (ambiente × componente × infra de apoio) (#53, prio: media, finalizado em: 2026-07-15)
 - Fatia 6.1 — Aba Deploy: documento primeiro, painel de ambientes como enriquecimento (SPEC-012) (#38, prio: media, finalizado em: 2026-07-15)
 - Correção — tela de Mapeamento exibe coleção como "ausente" (#36, prio: media, finalizado em: 2026-07-15)
+- Fatia 8 — Multi-tenant: RBAC, organizações, billing (#7, prio: baixa, finalizado em: 2026-07-18)
 - Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão (#6, prio: baixa, finalizado em: 2026-07-15)
 - Fatia 7 — Insight semântico: nível 3 da escada (classificação semântica), arestas inferidas com supressão manual + fallback IA de Arquitetura/Design com promoção a documento (#12, prio: baixa, finalizado em: 2026-07-13)
 - Fatia 6 — Resolução de documentos (ADR-014) + abas: DocumentResolver (convenção → alias → .proplan/config.yml → ausente), tela de mapeamento, aba Decisões (arquivo ou coleção adr/), Arquitetura, Design, Testes, Deploy, Skills & Agentes; mermaid no viewer (#11, prio: baixa, finalizado em: 2026-07-13)
