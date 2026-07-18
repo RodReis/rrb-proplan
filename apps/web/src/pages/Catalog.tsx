@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   api,
   CatalogInstallations,
@@ -277,11 +278,18 @@ function AccountGroup({
               busy={busyRepoId === repo.githubRepoId}
               onManage={() => onManage(repo)}
               onAskUnmanage={() => onAskUnmanage(repo)}
-              onOpen={() =>
-                repo.managedProjectId &&
-                group.tenantId &&
-                onOpen(group.tenantId, repo.managedProjectId)
-              }
+              onOpen={() => {
+                if (!repo.managedProjectId) return;
+                // tenantId null = instalação ainda não reconciliada a um tenant
+                // (PR-5). Sinaliza em vez de engolir o clique em silêncio.
+                if (!group.tenantId) {
+                  toast.error(
+                    'Este repositório ainda não foi vinculado a um tenant. Sincronize o catálogo e tente de novo.',
+                  );
+                  return;
+                }
+                onOpen(group.tenantId, repo.managedProjectId);
+              }}
             />
           ))}
         </ul>

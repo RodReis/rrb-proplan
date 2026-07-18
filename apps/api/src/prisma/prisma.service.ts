@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { tenantStorage, type TenantTxClient } from './tenant-context';
 
 @Injectable()
@@ -7,6 +7,39 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  constructor() {
+    super();
+    // Proxy que roteia o ACESSO a um model (this.project, this.insight, …) para
+    // o client transacional do contexto de tenant, quando há um ativo (SPEC-022).
+    //
+    // Sem isto, um service que chama `this.prisma.project.findFirst` usaria uma
+    // conexão do pool SEM o SET LOCAL do withTenant — o RLS veria contexto vazio
+    // e cortaria tudo (404 "Projeto não encontrado", listas vazias). O
+    // interceptor abre withTenant e põe o tx no AsyncLocalStorage; aqui, o
+    // acesso ao model devolve o delegate do MESMO tx, então a query roda na
+    // conexão que tem o contexto.
+    //
+    // Só models são redirecionados. Métodos que começam com `$` ($transaction,
+    // $executeRaw, $connect) e o próprio withTenant usam o client base — senão
+    // o withTenant recursaria (o tx dele veria a si mesmo no ALS).
+    return new Proxy(this, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof prop !== 'string' || prop.startsWith('$') || prop === 'withTenant') {
+          return value;
+        }
+        // Só intercepta delegates de model (objetos com métodos como findFirst).
+        // Propriedades não-model (métodos próprios, etc.) passam direto.
+        const tx = tenantStorage.getStore();
+        if (tx && value && typeof value === 'object') {
+          const delegate = (tx as unknown as Record<string, unknown>)[prop];
+          if (delegate) return delegate;
+        }
+        return value;
+      },
+    });
+  }
+
   async onModuleInit() {
     await this.$connect();
   }
