@@ -26,13 +26,35 @@ export interface UpdateSettingsInput {
 export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Tenant pessoal do usuário (SPEC-022). Settings é por tenant e a tabela tem
+   * RLS — as rotas de settings/usage são globais (sem TenantGuard), então o
+   * contexto é aberto aqui, com o tenant do próprio usuário. No 1º corte há um
+   * tenant pessoal por usuário (1:1); se houver mais, usa o owner (billing/teto
+   * moram no tenant que o dono administra). Deriva do userId autenticado.
+   */
+  async personalTenantId(userId: string): Promise<string> {
+    const m = await this.prisma.membership.findFirst({
+      where: { userId },
+      // enum Role declarado owner|member|viewer → 'asc' traz owner primeiro (o
+      // tenant que o usuário administra, dono do teto/billing).
+      orderBy: { role: 'asc' },
+      select: { tenantId: true },
+    });
+    if (!m) throw new Error(`Usuário ${userId} sem tenant — migração incompleta`);
+    return m.tenantId;
+  }
+
   /** Settings do usuário, criando a linha padrão (Anthropic, 90d, 5/20 USD) se faltar. */
   async get(userId: string): Promise<SettingsView> {
-    const s = await this.prisma.settings.upsert({
-      where: { userId },
-      create: { userId },
-      update: {},
-    });
+    const tenantId = await this.personalTenantId(userId);
+    const s = await this.prisma.withTenant([tenantId], (tx) =>
+      tx.settings.upsert({
+        where: { userId },
+        create: { userId, tenantId },
+        update: {},
+      }),
+    );
     return {
       llmProvider: s.llmProvider,
       docsStalenessThresholdDays: s.docsStalenessThresholdDays,
@@ -43,13 +65,16 @@ export class SettingsService {
     };
   }
 
-  /** Teto de gasto de IA do usuário (SPEC-009). Usado pelo gate do UsageService. */
+  /** Teto de gasto de IA do tenant (ADR-016 por tenant). Gate do UsageService. */
   async capsOf(userId: string): Promise<{ alert: Prisma.Decimal; hardCap: Prisma.Decimal }> {
-    const s = await this.prisma.settings.upsert({
-      where: { userId },
-      create: { userId },
-      update: {},
-    });
+    const tenantId = await this.personalTenantId(userId);
+    const s = await this.prisma.withTenant([tenantId], (tx) =>
+      tx.settings.upsert({
+        where: { userId },
+        create: { userId, tenantId },
+        update: {},
+      }),
+    );
     return { alert: s.llmAlertUsdMonthly, hardCap: s.llmHardCapUsdMonthly };
   }
 
@@ -72,10 +97,13 @@ export class SettingsService {
     const alert = parseUsd(input.llmAlertUsdMonthly, 'Alerta de gasto');
     const hardCap = parseUsd(input.llmHardCapUsdMonthly, 'Teto de gasto');
     const canon = canonThreshold !== undefined ? { canonicalRefusalThreshold: canonThreshold } : {};
-    await this.prisma.settings.upsert({
+    const tenantId = await this.personalTenantId(userId);
+    await this.prisma.withTenant([tenantId], (tx) =>
+    tx.settings.upsert({
       where: { userId },
       create: {
         userId,
+        tenantId,
         llmProvider: input.llmProvider,
         docsStalenessThresholdDays: threshold,
         ...(alert !== undefined ? { llmAlertUsdMonthly: alert } : {}),
@@ -89,7 +117,8 @@ export class SettingsService {
         ...(hardCap !== undefined ? { llmHardCapUsdMonthly: hardCap } : {}),
         ...canon,
       },
-    });
+    }),
+    );
     return this.get(userId);
   }
 

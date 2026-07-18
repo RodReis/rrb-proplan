@@ -21,11 +21,15 @@ export class UsageController {
   }
 
   @Get()
-  async report(@Query('from') from?: string, @Query('to') to?: string) {
+  async report(
+    @Req() req: AuthenticatedRequest,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
     // Padrão: mês corrente. Datas ISO opcionais.
     const now = new Date();
     const fromDate = from ? new Date(from) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const toDate = to ? new Date(to) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-    return this.usage.report(fromDate, toDate);
+    return this.usage.report(req.userId, fromDate, toDate);
   }
 }

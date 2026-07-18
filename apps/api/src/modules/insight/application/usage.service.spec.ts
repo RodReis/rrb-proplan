@@ -5,17 +5,23 @@ const D = (v: string | number) => new Prisma.Decimal(v);
 
 /** Prisma mock: soma injetável + contagem de priceMissing. */
 function makePrisma(sumCostUsd: string | null, missing = 0, project: any = { userId: 'u1' }) {
-  return {
+  const client: any = {
     llmUsage: {
       aggregate: jest.fn().mockResolvedValue({ _sum: { costUsd: sumCostUsd === null ? null : D(sumCostUsd) } }),
       count: jest.fn().mockResolvedValue(missing),
     },
     project: { findUnique: jest.fn().mockResolvedValue(project) },
-  } as any;
+  };
+  // withTenant (SPEC-022) roda a fn com o próprio client como tx transacional.
+  client.withTenant = jest.fn((_ids: string[], fn: (tx: any) => any) => fn(client));
+  return client;
 }
 
 function makeSettings(alert: string, hardCap: string) {
-  return { capsOf: jest.fn().mockResolvedValue({ alert: D(alert), hardCap: D(hardCap) }) } as any;
+  return {
+    capsOf: jest.fn().mockResolvedValue({ alert: D(alert), hardCap: D(hardCap) }),
+    personalTenantId: jest.fn().mockResolvedValue('t-personal'),
+  } as any;
 }
 
 const NOW = new Date('2026-07-14T12:00:00Z');
