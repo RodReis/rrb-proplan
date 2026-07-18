@@ -16,6 +16,12 @@ const base = {
 
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
+  // Serial no nível raiz (maxWorkers por-project o jest ignora): as suítes de
+  // integração do project `banco` compartilham o mesmo Postgres de teste, e
+  // rodar em paralelo faz seed/contexto de uma vazar na outra (RLS + SET LOCAL
+  // numa conexão reusada). O project `regras` é puro e rápido — 1 worker não
+  // pesa. Banco real = execução sequencial.
+  maxWorkers: 1,
   projects: [
     {
       ...base,

@@ -21,6 +21,8 @@ import { useBoardMutation } from './useBoardMutation';
 interface Props {
   projectId: string;
   syncNonce: number;
+  /** Papel no tenant (SPEC-022). viewer → board somente leitura. */
+  role: 'owner' | 'member' | 'viewer';
 }
 
 type State =
@@ -28,7 +30,7 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready'; board: BoardView };
 
-export function KanbanTab({ projectId, syncNonce }: Props) {
+export function KanbanTab({ projectId, syncNonce, role }: Props) {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [editing, setEditing] = useState<BoardCard | null>(null);
@@ -131,6 +133,11 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
 
   const board = state.board;
 
+  // viewer não escreve no board (SPEC-022): esconde os controles de criar/
+  // editar/arrastar. A API também recusa (403) — defesa em profundidade. Modo
+  // não-active já era read-only por outra razão; viewer soma a isso.
+  const readOnly = role === 'viewer' || board.mode !== 'active';
+
   if (board.mode === 'no-installation') {
     return (
       <Banner tone="warning">
@@ -166,9 +173,9 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
       )}
 
       <DndContext
-        sensors={sensors}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
+        sensors={readOnly ? [] : sensors}
+        onDragStart={readOnly ? undefined : onDragStart}
+        onDragEnd={readOnly ? undefined : onDragEnd}
       >
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-6">
           {COLUMN_ORDER.map((column) => (
@@ -183,9 +190,10 @@ export function KanbanTab({ projectId, syncNonce }: Props) {
                   ? () => toggleCollapse(column)
                   : undefined
               }
-              onEdit={setEditing}
+              onEdit={readOnly ? undefined : setEditing}
               onCreate={
-                column === 'backlog' || column === 'todo' || column === 'doing'
+                !readOnly &&
+                (column === 'backlog' || column === 'todo' || column === 'doing')
                   ? (title) => void createCard(column, title)
                   : undefined
               }

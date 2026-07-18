@@ -9,7 +9,7 @@ interface Props {
   card: BoardCard;
   /** Mutação em voo → borda pulsante até a API confirmar (applied). */
   pending?: boolean;
-  onEdit: (card: BoardCard) => void;
+  onEdit?: (card: BoardCard) => void;
 }
 
 /**
@@ -93,7 +93,7 @@ export function KanbanCard({ card, pending, onEdit }: Props) {
       style={style}
       {...attributes}
       {...listeners}
-      onClick={() => onEdit(card)}
+      onClick={onEdit ? () => onEdit(card) : undefined}
       className={
         'group relative cursor-grab rounded-[10px] border p-2.5 ' +
         'transition-[transform,border-color] duration-150 hover:-translate-y-px hover:border-hoverb ' +

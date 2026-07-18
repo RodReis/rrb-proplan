@@ -7,15 +7,20 @@ import {
   Post,
   Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { RoleGuard } from '../../identity/presentation/require-role.decorator';
+import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { ContextService } from '../application/context.service';
 
-@Controller('projects/:id/assertions')
-@UseGuards(JwtAuthGuard)
+@Controller('t/:tenant/projects/:id/assertions')
+@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
+@UseInterceptors(TenantContextInterceptor)
 export class ContextController {
   constructor(private readonly context: ContextService) {}
 

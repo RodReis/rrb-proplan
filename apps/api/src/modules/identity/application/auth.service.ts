@@ -5,11 +5,21 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { CryptoService } from '../infrastructure/crypto.service';
 import { GithubOauthClient } from '../infrastructure/github-oauth.client';
 
+export interface SessionTenant {
+  id: string;
+  accountLogin: string;
+  role: string; // owner | member | viewer
+}
+
 export interface SessionUser {
   id: string;
   login: string;
   name: string | null;
   avatarUrl: string | null;
+  // Tenants de que o usuário é membro (SPEC-022). O front usa para o seletor de
+  // tenant e para esconder controles por papel. Vazio = usuário sem tenant
+  // (estado degradado — não deveria ocorrer após a migração do usuário único).
+  tenants: SessionTenant[];
 }
 
 @Injectable()
@@ -61,13 +71,23 @@ export class AuthService {
   }
 
   async me(userId: string): Promise<SessionUser> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        memberships: { include: { tenant: true } },
+      },
+    });
     if (!user) throw new UnauthorizedException();
     return {
       id: user.id,
       login: user.login,
       name: user.name,
       avatarUrl: user.avatarUrl,
+      tenants: user.memberships.map((m) => ({
+        id: m.tenantId,
+        accountLogin: m.tenant.accountLogin,
+        role: m.role,
+      })),
     };
   }
 }

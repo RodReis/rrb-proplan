@@ -689,6 +689,48 @@ Pedido do PI ao vivo (2026-07-17). Sem spec: ajuste de UX pequeno, definido na h
 3. `feito` — **`useAutoClose.ts`** (hook novo, 5 testes): arma só quando pedido, re-arma no `bumpToken`, e **re-render sem interação NÃO reinicia** — senão o polling do feed (2s) seguraria a gaveta aberta pra sempre; o teste trava isso. `Workspace` arma no sync e desarma na pílula; `ActivityPanel` emite `onActivity` em interação e enquanto `running.length > 0`.
 4. `feito` — tsc + vite build limpos, 46 testes de tela verdes (+5). **Verificação ao vivo pendente** (atrás do OAuth): abre no sync → 4s → fecha; hover cancela; job rodando adia; pílula não fecha.
 
-## Fatia 8 — Multi-tenant — `sem-spec`
+## Fatia 8 — Multi-tenant — `em-andamento` (SPEC-022, issue #7)
 
-Condicionada à decisão do PI de produtizar. Não iniciar.
+Spec `aprovada-pi` (2026-07-17). Entregue em 6 PRs (`refs #7`, nunca `closes`). Plano completo em `docs/specs/SPEC-022-multi-tenant.md`.
+
+**Eixo:** RLS + `SET LOCAL app.tenant_id` por request tornam o filtro de tenant invisível e obrigatório na camada de banco — os services deixam de carregar `where:{tenantId}`. Barreira primária = guard que recusa não-membro; RLS = a rede (F1).
+
+**PR-1 — Fundação de banco** (`em-andamento`):
+1. `feito` — **role `proplan_app` NÃO-owner/NÃO-superuser** (`docker/postgres-init/01-app-role.sql`). Sem isto, RLS é no-op silencioso: `proplan` é superuser+owner e o Postgres pula RLS para ambos. Provado: `pg_roles` mostra `rolsuper=f` para `proplan_app`; ela conecta e lê `projects` (grants ok). Volume `pgdata` já existente NÃO re-roda o init — aplicar o SQL à mão (feito no dev).
+2. `feito` — **duas URLs**: `DATABASE_URL` (app → `proplan_app`, sujeita a RLS) e `DIRECT_URL` (migrations/seed → `proplan` owner). `datasource { url, directUrl }` no schema; `.env` e `docker-compose.yml` atualizados. `prisma validate` ok.
+3. `feito` — **harness do jest `banco`** (`test/int/db-harness.ts`): `ownerClient`/`appClient` + `applyMigrations`. Asserções de isolamento usam `appClient` (owner mentiria — pula RLS). Banco de teste separado do dev.
+
+**PR-2 — Schema + migração + RLS** (`em-andamento`):
+1. `feito` — **`Tenant` (PK própria + `installationId` re-apontável) e `Membership {userId, tenantId, role}`**; `tenantId` em Project/Settings (NOT NULL após backfill) e LlmUsage (nullable permanente, F4). 13 filhas SEM coluna — herdam por join.
+2. `feito` — **migração `fatia_8_multi_tenant`** (SQL à mão via `migrate diff`): backfill idempotente do usuário único → tenant pessoal (id determinístico + `ON CONFLICT` + `WHERE tenant_id IS NULL` ⇒ roda 2× sem duplicar, F3). `SET NOT NULL` nas raízes é o guarda contra backfill incompleto.
+3. `feito` — **RLS em profundidade**: `ENABLE`+`FORCE` em 15 tabelas. Raízes casam por `tenant_id`; `llm_usage` trata NULL como tenant ativo; 12 filhas por `project_id IN (SELECT ... FROM projects WHERE tenant_id = current_setting('app.tenant_id', true))`. `missing_ok=true` ⇒ sem contexto = fail-closed.
+4. `feito` — **8 int-specs contra Postgres real** (`rls-isolation`, `rls-audit`), conectando como `proplan_app`: fail-closed sem contexto · isolamento A/B nas raízes · herança nas filhas · cobertura de policy (`pg_policies` sobre toda tabela de tenant) · backfill idempotente. **Provado ao vivo** no `proplan_test`. `regras` segue 509/509.
+
+Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb com banco vazio (no-op); o harness re-concede pós-migração (`grantAppRole`). Em prod fresh o `ALTER DEFAULT PRIVILEGES` cobre.
+
+**PR-3 — Contexto + guards** (`em-andamento`):
+1. `feito` — **`PrismaService.withTenant(tenantId, fn)`**: `$transaction` + `set_config('app.tenant_id', id, true)` (SET LOCAL, morre no commit) + AsyncLocalStorage (`tenant-context.ts`) expõe o client-tx sem reescrever assinatura de service. **Nunca `SET` de sessão** (vazaria no pool).
+2. `feito` — **`TenantGuard`** (lê `:tenant`, resolve Membership, 403 se não-membro, popula `req.tenantId`/`req.role`) · **`RoleGuard` + `@RequireRole`** (hierarquia owner>member>viewer) · **`MembershipService.currentMembership()`** exposto pelo identity (ADR-001) · **`TenantContextInterceptor`** abre `withTenant` por request após os guards.
+3. `feito` — **arch-spec `tenant-scope`**: varredura estática (molde do `installation-token-usage`) barra qualquer arquivo que sete `app.tenant_id` fora do `withTenant` — o contexto tem um único setter (F2).
+4. `feito` — **testes**: unit dos guards (RoleGuard 8, TenantGuard 3) em `regras` (521/521); int-spec `tenant-context` prova que o SET LOCAL **não vaza no pool** (pool=1, `withTenant(A)` → query fora de contexto = 0 linhas). `banco` 10/10. Jest project `banco` agora `maxWorkers:1` (suítes compartilham o Postgres de teste — serial evita colisão de seed/contexto).
+
+**PR-4 — RBAC do board + gate owner** (`em-andamento`):
+1. `feito` — **gate owner na finalização** (`board-mutation.service.ts`): `closesIssue(input)` (mover para `finalized`/`discarded` ou `discard_card`) exige `role === 'owner'`, senão 403 — **antes** de tocar o banco/criar o job. É o único ponto síncrono com o papel: depois do enqueue o worker carrega só `{mutationId, projectId}` e não reautentica. Nenhuma automação finaliza. Cobre finalizado **e** descartado (decisão do PI: qualquer fechamento de issue é ato do dono, além da letra da spec que cita só `finalizado`).
+2. `feito` — **board controller sob `/t/:tenant`**: `@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)` + `TenantContextInterceptor`. GETs sem exigência (viewer **lê** o board); POSTs de escrita com `@RequireRole('member')` (viewer barrado). `enqueue` recebe `req.role`.
+3. `feito` — **11 testes** do gate (`board-mutation.spec.ts`): `closesIssue` por coluna; owner finaliza, member/viewer → 403 sem enfileirar; gate roda antes do banco. `regras` 532/532.
+
+**Pendência consciente**: só o **board** migrou para `/t/:tenant`; os outros 8 controllers (tabs, activity, canonical, freshness, context, handoff, ingestion, insight) seguem em `/projects/:id` até o **PR-6** (roteamento completo + frontend). A app não roda ponta-a-ponta até lá — esperado numa pilha de PRs não-mergeados.
+
+**Teto de IA por tenant → PR próprio (PR-4b)**: `SettingsService` é chaveado por `userId` em ~8 métodos + callers cross-module; migrar `userId→tenantId` não cabe junto do RBAC. Fica isolado. O `aggregate` de `LlmUsage` já escopa por tenant via RLS quando roda sob contexto — a mudança restante é a chave do Settings.
+
+**Emenda E1 (ADR-020) + PR-6 — multi-tenant ponta-a-ponta** (`em-andamento`):
+1. `feito` — **Contexto por array de membership** (`app.tenant_ids`, ADR-020): migração `e1_tenant_ids_array` recria as 15 policies com `tenant_id = ANY(NULLIF(current_setting('app.tenant_ids', true), '')::text[])`. Uma policy serve rota escopada (array de 1) e rota global do catálogo (array completo). `NULLIF` trata string vazia (Postgres retorna `''` numa conexão que já viu a var) → fail-closed. `withTenant` passa a receber `string[]`.
+2. `feito` — **Rota global do catálogo sob RLS** (resolve o 500 do dogfooding): `CatalogService` monta o array de membership do usuário (`membershipTenantIds`) e lê projetos via `withTenant(array)` — cross-tenant sem bypass. `InstallationGroup` ganha `tenantId` (1:1 com instalação) para o front montar `/t/:tenant`.
+3. `feito` — **8 controllers restantes sob `/t/:tenant`** (activity, tabs, canonical, freshness, context, handoff, ingestion, insight): `TenantGuard` + `RoleGuard` + `TenantContextInterceptor`, mesmo padrão do board. `canonical`/`insight` ganharam `IdentityModule`. `usage`/`catalog`/`auth` seguem globais.
+4. `feito` — **`me()` estendido** com `tenants:[{id, accountLogin, role}]` (do `Membership`).
+5. `feito` — **Frontend `/t/:tenant`**: rotas prefixadas (`App.tsx`), `TenantSync` fixa o tenant ativo da URL (`api.setActiveTenant`), `request()` prefixa `/projects/` → `/t/:tenant/projects/` num ponto (callers intactos), catálogo abre `/t/:tenant/p/:id`, navigates com tenant, **viewer read-only** no board (`readOnly = role==='viewer' || mode!=='active'` desliga DnD/criar/editar). Build web ok.
+6. `feito` — **int-spec do catálogo** (array [A,B] vê os dois) + `regras` 532/532, `banco` 11/11. **Corrigido**: `maxWorkers:1` estava no project (jest ignora) → movido pra raiz do config (serial de verdade).
+
+**Verificação ao vivo pendente** (atrás do OAuth, teste do PI): abrir o catálogo (não deve mais dar 500), entrar num projeto (`/t/:tenant/p/:id`), navegar abas, F5 preserva tenant/projeto/aba.
+
+Próximos: PR-4b teto por tenant · PR-5 papel/reinstall (deriva papel do GitHub — hoje só o tenant pessoal existe).

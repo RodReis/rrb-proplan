@@ -1,12 +1,23 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Req,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { RoleGuard } from '../../identity/presentation/require-role.decorator';
+import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { CanonicalService } from '../application/canonical.service';
 
-@Controller('projects/:id')
-@UseGuards(JwtAuthGuard)
+@Controller('t/:tenant/projects/:id')
+@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
+@UseInterceptors(TenantContextInterceptor)
 export class CanonicalController {
   constructor(private readonly canonical: CanonicalService) {}
 

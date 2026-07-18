@@ -24,7 +24,7 @@ type State =
  * precisa dela, e é uma chamada só para os dois usos.
  */
 export function WorkspaceRoute({ user, onLogout }: Props) {
-  const { projectId, tab } = useParams<{ projectId: string; tab: string }>();
+  const { tenant, projectId, tab } = useParams<{ tenant: string; projectId: string; tab: string }>();
   const navigate = useNavigate();
   const [state, setState] = useState<State>({ status: 'loading' });
 
@@ -65,17 +65,22 @@ export function WorkspaceRoute({ user, onLogout }: Props) {
 
   // Aba desconhecida na URL → aba padrão (contrato da SPEC-020).
   const known = WORKSPACE_TABS.some((t) => t.id === tab);
-  if (!known) return <Navigate to={`/p/${state.project.id}/overview`} replace />;
+  if (!known) return <Navigate to={`/t/${tenant}/p/${state.project.id}/overview`} replace />;
+
+  // Papel do usuário no tenant ativo (SPEC-022). viewer → board read-only.
+  // Ausente (não deveria, pós-migração) = viewer por segurança (menos privilégio).
+  const role = user.tenants.find((t) => t.id === tenant)?.role ?? 'viewer';
 
   return (
     <Workspace
       key={state.project.id}
       user={user}
+      role={role}
       project={state.project}
       projects={state.projects}
       activeTab={tab!}
-      onSelectTab={(next) => navigate(`/p/${state.project.id}/${next}`)}
-      onSelectProject={(id) => navigate(`/p/${id}/overview`)}
+      onSelectTab={(next) => navigate(`/t/${tenant}/p/${state.project.id}/${next}`)}
+      onSelectProject={(id) => navigate(`/t/${tenant}/p/${id}/overview`)}
       onBackToCatalog={() => navigate('/')}
       onLogout={onLogout}
     />

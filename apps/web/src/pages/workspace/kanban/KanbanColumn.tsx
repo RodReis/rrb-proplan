@@ -13,7 +13,7 @@ interface Props {
   pendingNumbers: Set<number>;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
-  onEdit: (card: BoardCard) => void;
+  onEdit?: (card: BoardCard) => void;
   onCreate?: (title: string) => void;
 }
 

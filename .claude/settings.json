@@ -17,7 +17,19 @@
       "Bash(git rev-list *)",
       "Bash(rm -f .git/index.lock .git/HEAD.lock; echo \"locks removidos\"; echo \"---estado atual---\"; git status --short)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git reset *)",
+      "Bash(git stash *)",
+      "Bash(docker compose *)",
+      "Bash(docker exec *)",
+      "Bash(npx prisma *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git rebase *)",
+      "mcp__claude_ai_GitHub_MCP__create_pull_request",
+      "Bash(DATABASE_URL=\"postgresql://proplan_app:proplan_app@localhost:5433/proplan_test\" DIRECT_URL=\"postgresql://proplan:proplan@localhost:5433/proplan_test\" npx prisma migrate deploy)",
+      "Skill(commit-commands:commit-push-pr)",
+      "Skill(commit-commands:commit-push-pr:*)"
     ],
     "additionalDirectories": [
       "C:\\Desenv\\Projetos\\rrb-proplan\\.git"

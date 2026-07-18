@@ -1,8 +1,19 @@
-import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { RoleGuard } from '../../identity/presentation/require-role.decorator';
+import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { HandoffService } from '../application/handoff.service';
 import { HandoffCommitService } from '../application/handoff-commit.service';
 import { renderHandoffMarkdown } from '../domain/handoff';
@@ -12,8 +23,9 @@ import { renderHandoffMarkdown } from '../domain/handoff';
  * markdown pronto (a UI mostra preview e oferece download); `POST /commit`
  * escreve `.proplan/HANDOFF.md`. Sem IA no caminho (ADR-002).
  */
-@Controller('projects/:id/handoff')
-@UseGuards(JwtAuthGuard)
+@Controller('t/:tenant/projects/:id/handoff')
+@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
+@UseInterceptors(TenantContextInterceptor)
 export class HandoffController {
   constructor(
     private readonly handoff: HandoffService,

@@ -42,16 +42,22 @@ export class UsageService {
    */
   async currentMonth(userId: string, now = new Date()): Promise<CurrentMonthUsage> {
     const { alert, hardCap } = await this.settings.capsOf(userId);
+    const tenantId = await this.settings.personalTenantId(userId);
     const from = monthStart(now);
     const to = nextMonthStart(now);
 
-    const agg = await this.prisma.llmUsage.aggregate({
-      where: { createdAt: { gte: from, lt: to } },
-      _sum: { costUsd: true },
-    });
-    const missingPriceCount = await this.prisma.llmUsage.count({
-      where: { createdAt: { gte: from, lt: to }, priceMissing: true },
-    });
+    // llm_usage tem RLS — a soma do mês roda sob o contexto do tenant do usuário.
+    // Linhas órfãs (tenant_id NULL, histórico pré-Fatia-8) entram pela policy
+    // (F4: NULL pertence ao contexto ativo). O gasto é POR TENANT (ADR-016).
+    const { agg, missingPriceCount } = await this.prisma.withTenant([tenantId], async (tx) => ({
+      agg: await tx.llmUsage.aggregate({
+        where: { createdAt: { gte: from, lt: to } },
+        _sum: { costUsd: true },
+      }),
+      missingPriceCount: await tx.llmUsage.count({
+        where: { createdAt: { gte: from, lt: to }, priceMissing: true },
+      }),
+    }));
 
     const spent = agg._sum.costUsd ?? new D(0);
     // Teto 0 desliga o bloqueio (SPEC-009).
@@ -92,20 +98,27 @@ export class UsageService {
    * total de tokens e nº de chamadas. Tudo derivado do `SUM` bruto do banco — a
    * UI não tem conta própria (critério de aceite).
    */
-  async report(from: Date, to: Date) {
+  async report(userId: string, from: Date, to: Date) {
     const where = { createdAt: { gte: from, lt: to } };
+    const tenantId = await this.settings.personalTenantId(userId);
 
-    const [total, byProvider, byKind, byStatus, byProject] = await Promise.all([
-      this.prisma.llmUsage.aggregate({
-        where,
-        _sum: { costUsd: true, inputTokens: true, outputTokens: true, cacheCreationTokens: true, cacheReadTokens: true },
-        _count: true,
-      }),
-      this.prisma.llmUsage.groupBy({ by: ['provider', 'model'], where, _sum: { costUsd: true }, _count: true }),
-      this.prisma.llmUsage.groupBy({ by: ['kind'], where, _sum: { costUsd: true }, _count: true }),
-      this.prisma.llmUsage.groupBy({ by: ['status'], where, _sum: { costUsd: true }, _count: true }),
-      this.prisma.llmUsage.groupBy({ by: ['projectId'], where, _sum: { costUsd: true }, _count: true }),
-    ]);
+    // Relatório POR TENANT (ADR-016): llm_usage tem RLS, roda sob contexto.
+    const { total, byProvider, byKind, byStatus, byProject, missingPriceCount } =
+      await this.prisma.withTenant([tenantId], async (tx) => {
+        const [total, byProvider, byKind, byStatus, byProject] = await Promise.all([
+          tx.llmUsage.aggregate({
+            where,
+            _sum: { costUsd: true, inputTokens: true, outputTokens: true, cacheCreationTokens: true, cacheReadTokens: true },
+            _count: true,
+          }),
+          tx.llmUsage.groupBy({ by: ['provider', 'model'], where, _sum: { costUsd: true }, _count: true }),
+          tx.llmUsage.groupBy({ by: ['kind'], where, _sum: { costUsd: true }, _count: true }),
+          tx.llmUsage.groupBy({ by: ['status'], where, _sum: { costUsd: true }, _count: true }),
+          tx.llmUsage.groupBy({ by: ['projectId'], where, _sum: { costUsd: true }, _count: true }),
+        ]);
+        const missingPriceCount = await tx.llmUsage.count({ where: { ...where, priceMissing: true } });
+        return { total, byProvider, byKind, byStatus, byProject, missingPriceCount };
+      });
 
     const totalCost = total._sum.costUsd ?? new D(0);
     // Taxa de desperdício: % do custo em chamadas error/discarded. Denuncia bug.
@@ -113,8 +126,6 @@ export class UsageService {
       .filter((s) => s.status === 'error' || s.status === 'discarded')
       .reduce((acc, s) => acc.add(s._sum.costUsd ?? new D(0)), new D(0));
     const wasteRate = totalCost.gt(0) ? wasted.div(totalCost).mul(100).toDecimalPlaces(1).toString() : '0';
-
-    const missingPriceCount = await this.prisma.llmUsage.count({ where: { ...where, priceMissing: true } });
 
     const money = (d: Prisma.Decimal | null) => (d ?? new D(0)).toString();
     return {

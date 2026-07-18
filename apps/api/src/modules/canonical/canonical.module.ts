@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ContextModule } from '../context/context.module';
+import { IdentityModule } from '../identity/identity.module';
 import { IngestionModule } from '../ingestion/ingestion.module';
 import { SettingsModule } from '../settings/settings.module';
 import { CanonicalService } from './application/canonical.service';
@@ -13,7 +14,7 @@ import { CanonicalController } from './presentation/canonical.controller';
  * sem ingestion conhecer este módulo.
  */
 @Module({
-  imports: [IngestionModule, SettingsModule, ContextModule],
+  imports: [IngestionModule, SettingsModule, ContextModule, IdentityModule],
   controllers: [CanonicalController],
   providers: [CanonicalService, CanonicalListener],
   exports: [CanonicalService],

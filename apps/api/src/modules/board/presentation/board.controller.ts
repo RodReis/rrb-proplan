@@ -7,11 +7,15 @@ import {
   Post,
   Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { RoleGuard, RequireRole } from '../../identity/presentation/require-role.decorator';
+import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { InsightService } from '../../insight/application/insight.service';
 import { BoardService } from '../application/board.service';
 import {
@@ -20,8 +24,14 @@ import {
 } from '../application/board-mutation.service';
 import { BoardImportService, CardToCreate } from '../application/board-import.service';
 
-@Controller('projects/:id/board')
-@UseGuards(JwtAuthGuard)
+// Rota sob /t/:tenant (SPEC-022): o TenantGuard resolve tenant + papel; o
+// interceptor abre a transação com contexto (RLS). Sem @RequireRole na classe:
+// viewer LÊ o board (GET), só não escreve (a spec pede viewer read-only, não
+// cego). Escritas marcam @RequireRole('member'); fechar issue exige owner (gate
+// no service, closesIssue).
+@Controller('t/:tenant/projects/:id/board')
+@UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
+@UseInterceptors(TenantContextInterceptor)
 export class BoardController {
   constructor(
     private readonly board: BoardService,
@@ -36,13 +46,16 @@ export class BoardController {
   }
 
   @Post('mutations')
+  @RequireRole('member')
   @HttpCode(202)
   mutate(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() input: MutationInput,
   ) {
-    return this.mutations.enqueue(req.userId, id, input);
+    // role! garantido pelo TenantGuard (rota sob /t/:tenant). O gate owner de
+    // fechamento (finalizado/descartado) mora no service (closesIssue).
+    return this.mutations.enqueue(req.userId, id, input, req.role!);
   }
 
   @Get('mutations/:mutationId')
@@ -61,6 +74,7 @@ export class BoardController {
   }
 
   @Post('import-from-status')
+  @RequireRole('member')
   @HttpCode(201)
   applyImport(
     @Req() req: AuthenticatedRequest,
@@ -74,11 +88,13 @@ export class BoardController {
 
   // Bootstrap por IA: propõe cards (revisão na UI) → cria as issues aprovadas.
   @Post('bootstrap')
+  @RequireRole('member')
   proposeCards(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.insight.proposeCards(req.userId, id);
   }
 
   @Post('bootstrap/apply')
+  @RequireRole('member')
   @HttpCode(201)
   applyBootstrap(
     @Req() req: AuthenticatedRequest,
