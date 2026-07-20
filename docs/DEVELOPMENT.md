@@ -760,4 +760,17 @@ Sem spec: o comportamento correto já está na SPEC-022 §Notas técnicas (*"Rei
 
 **Achado de ambiente (não é bug do código)**: uma execução da suíte `banco` falhou com *Unique constraint failed* no `worker-context.int-spec`. Não era regressão — o `prisma generate` havia falhado com `EPERM` porque o `pnpm dev` segurava a DLL do query engine, então os testes rodaram contra um client **sem** o `accountId`. Matar os processos do dev e regerar resolveu; verificado contra a árvore limpa (18/18 antes e depois). Mesma família da nota de watchers órfãos já registrada — vale o reflexo: **`EPERM` no generate invalida a rodada de teste seguinte.**
 
-**Verificação ao vivo pendente** (atrás do OAuth, teste do PI): o re-liga só se prova de verdade desinstalando e reinstalando o App na conta — o `installationId` deve mudar no mesmo `Tenant` (mesma PK), com projetos e settings preservados, sem tenant duplicado.
+### Verificação ao vivo executada (2026-07-20, banco de dev real)
+
+Contra o `Tenant` real do dogfooding (`00000000-…-e48e206abe39`, instalação `146171535`, `account_id` **nulo** — linha pré-migration, justamente o caso do fallback), com um projeto semeado sob contexto RLS para que a prova não fosse vazia:
+
+- ✅ **Re-liga, não recria**: `installationId` `146171535` → `999888777` **no mesmo `Tenant`** (PK idêntica antes e depois). `tenants` continua com **1 linha** — nenhum duplicado.
+- ✅ **Nada orfanou**: os **8 projetos** do tenant (7 reais + 1 seed) e a membership seguem ligados após o re-liga.
+- ✅ **Fallback da linha pré-migration**: `account_id` `null` → `80895`, casado por login, exatamente uma vez.
+- ✅ **Estado restaurado**: seed removido, `installationId`/`account_id` de volta ao original; 7 projetos reais intactos, conferidos como owner.
+
+**O que só o PI pode provar**: o reinstall **real** no GitHub (desinstalar + reinstalar o App). Aqui a emissão do id novo foi simulada — o que se provou é que, dado um id novo para a mesma conta, o tenant é re-apontado e nada orfana. A janela não coberta é o GitHub emitir algo diferente do previsto.
+
+**Dois achados da verificação, ambos do RLS funcionando:**
+1. **O seed foi barrado** (`42501: new row violates row-level security policy`) ao tentar inserir projeto **fora** de contexto de tenant. É o fail-closed do PR-3 fazendo o trabalho dele — o script passou a semear sob `SET LOCAL`, como a app faz.
+2. **Quase li um falso positivo**: o `count()` final acusou **0 projetos** e pareceu perda de dados. Era o mesmo fail-closed — aquele count rodou fora de contexto. Conferido como owner: **7 projetos intactos**. Registrado porque o padrão vai voltar: **contagem fora de contexto sempre devolve zero, e zero parece dano.**
