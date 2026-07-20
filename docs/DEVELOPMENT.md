@@ -743,4 +743,34 @@ Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb co
 
 **PR-5 — papel derivado do GitHub + reinstall re-liga**: **não entregue nesta fatia**. Virou a issue **#88** (`proplan:todo`) por decisão do PI em 2026-07-20, depois de a #7 ter sido aceita sem ele. Cobre os 2 critérios de aceite da SPEC-022 que seguem abertos: papel cai no próximo sync quando o acesso do usuário some do GitHub; reinstall re-aponta `installationId` no `Tenant` existente sem duplicar nem orfanar.
 
-**Aguardando spec do Cowork** (decisão do PI em 2026-07-20) — não iniciar antes de `aprovada-pi`. Abri o código para implementar e recuei: **nada cria `Tenant`/`Membership`**, os dois vêm do backfill SQL da migration `fatia_8_multi_tenant`, e o `MembershipService` só lê. Não há caminho a consertar — o PR-5 o constrói, o que é escopo novo e não bug documentado. As 4 perguntas abertas (fonte da permissão · em qual sync recalcular · tenant pessoal sem "admin da org" · guarda contra o PI se auto-rebaixar) estão no corpo da #88 e no `STATUS.md`.
+**Card cortado em dois** (decisão do PI em 2026-07-20), porque os dois eixos têm maturidade diferente:
+
+- **Eixo-1 — derivação de papel do GitHub → #88**, **aguardando spec do Cowork**; não iniciar antes de `aprovada-pi`. Abri o código para implementar e recuei: **nada cria `Tenant`/`Membership`**, os dois vêm do backfill SQL da migration `fatia_8_multi_tenant`, e o `MembershipService` só lê. Não há caminho a consertar — o PR-5 o constrói, o que é escopo novo e não bug documentado. As 4 perguntas abertas (fonte da permissão · em qual sync recalcular · tenant pessoal sem "admin da org" · guarda contra o PI se auto-rebaixar) estão no corpo da #88.
+- **Eixo-2 — reinstall re-liga → #89**, entregue (ver seção própria abaixo). Dispensa spec: comportamento já definido na SPEC-022.
+
+## Multi-tenant — reinstall re-liga o Tenant (eixo-2 do PR-5) — `feito` (issue #89)
+
+Sem spec: o comportamento correto já está na SPEC-022 §Notas técnicas (*"Reinstall re-liga, não recria"*) e no Escopo 1 — bug documentado pela tabela do `CLAUDE.md`.
+
+1. `feito` — **A decisão que travou a implementação (levada ao PI, opção B escolhida)**: o critério da spec é casar o tenant *"por conta/org"*, mas o `Tenant` só guardava `accountLogin` (**texto mutável**). Casar por login **quebra num rename de conta** — não acha o tenant e cria um duplicado, que é exatamente o dano que este card existe para impedir. Seria repetir, um nível acima, o erro que a PK própria do `Tenant` já corrige: trocar um id instável por um login instável. **Opção B**: coluna `accountId` (id numérico da conta, o único identificador estável que o GitHub expõe aqui) + migration `tenant_account_id`.
+2. `feito` — **`accountId` nullable, e o backfill não chama a rede** (sub-decisão minha, dentro do escopo): as linhas existentes nascem sem `accountId` porque uma migration que faz request de rede torna o deploy dependente de token válido e da disponibilidade da API. O primeiro `listInstallations` preenche, casando por login — fallback que roda **no máximo uma vez por tenant**, já que o re-liga grava o `accountId`. Índice único ignora NULLs no Postgres, então as linhas pré-migration convivem.
+3. `feito` — **Domínio puro `tenant-reconcile.ts`** (molde do `installation-reconcile.ts`): casa por `accountId`, cai no login só quando ele é nulo, devolve diff mínimo. **Tenant sem instalação visível fica intacto** — ausência aqui é *"não vi agora"* (falta de permissão, token de outro usuário), nunca *"não existe mais"*; desligar por silêncio orfanaria os dados que o módulo protege.
+4. `feito` — **Fiação em `CatalogService.relinkTenants`**, antes de montar o mapa `installationId→tenantId` (senão o tenant re-instalado não seria encontrado e o front abriria sem tenant). Escopado aos tenants de membership — nunca varre a tabela. `InstallationAccount.id` novo no client (o GitHub já devolvia; só não persistíamos).
+5. `feito` — **8 testes de domínio**, incluindo os dois que provam a escolha da opção B: rename da conta **não** cria tenant novo; e `accountId` vence o login quando um **homônimo** toma o login liberado — casar por login pegaria a conta errada e re-apontaria o tenant para a instalação de um terceiro (vazamento entre tenants). API **544/544**, `banco` 18/18 (rodado 2×), tsc + nest build limpos.
+
+**Achado de ambiente (não é bug do código)**: uma execução da suíte `banco` falhou com *Unique constraint failed* no `worker-context.int-spec`. Não era regressão — o `prisma generate` havia falhado com `EPERM` porque o `pnpm dev` segurava a DLL do query engine, então os testes rodaram contra um client **sem** o `accountId`. Matar os processos do dev e regerar resolveu; verificado contra a árvore limpa (18/18 antes e depois). Mesma família da nota de watchers órfãos já registrada — vale o reflexo: **`EPERM` no generate invalida a rodada de teste seguinte.**
+
+### Verificação ao vivo executada (2026-07-20, banco de dev real)
+
+Contra o `Tenant` real do dogfooding (`00000000-…-e48e206abe39`, instalação `146171535`, `account_id` **nulo** — linha pré-migration, justamente o caso do fallback), com um projeto semeado sob contexto RLS para que a prova não fosse vazia:
+
+- ✅ **Re-liga, não recria**: `installationId` `146171535` → `999888777` **no mesmo `Tenant`** (PK idêntica antes e depois). `tenants` continua com **1 linha** — nenhum duplicado.
+- ✅ **Nada orfanou**: os **8 projetos** do tenant (7 reais + 1 seed) e a membership seguem ligados após o re-liga.
+- ✅ **Fallback da linha pré-migration**: `account_id` `null` → `80895`, casado por login, exatamente uma vez.
+- ✅ **Estado restaurado**: seed removido, `installationId`/`account_id` de volta ao original; 7 projetos reais intactos, conferidos como owner.
+
+**O que só o PI pode provar**: o reinstall **real** no GitHub (desinstalar + reinstalar o App). Aqui a emissão do id novo foi simulada — o que se provou é que, dado um id novo para a mesma conta, o tenant é re-apontado e nada orfana. A janela não coberta é o GitHub emitir algo diferente do previsto.
+
+**Dois achados da verificação, ambos do RLS funcionando:**
+1. **O seed foi barrado** (`42501: new row violates row-level security policy`) ao tentar inserir projeto **fora** de contexto de tenant. É o fail-closed do PR-3 fazendo o trabalho dele — o script passou a semear sob `SET LOCAL`, como a app faz.
+2. **Quase li um falso positivo**: o `count()` final acusou **0 projetos** e pareceu perda de dados. Era o mesmo fail-closed — aquele count rodou fora de contexto. Conferido como owner: **7 projetos intactos**. Registrado porque o padrão vai voltar: **contagem fora de contexto sempre devolve zero, e zero parece dano.**

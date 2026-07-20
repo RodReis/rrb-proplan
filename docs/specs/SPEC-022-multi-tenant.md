@@ -3,13 +3,15 @@ proplan: v1
 spec: SPEC-022
 fatia: 8
 status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
-updated: 2026-07-17
+updated: 2026-07-18
 ---
 # SPEC-022 — Multi-tenant: organizações, RBAC e isolamento (Fatia 8)
 
 > Fecha o "sem escopo" da Fatia 8 (issue #7). Aprovada pelo PI em 2026-07-17 — ver *Perguntas abertas → Resolvidas*.
 >
 > **Emenda 2026-07-17 (reaprovada pelo PI em 2026-07-17).** O contexto RLS passa de `app.tenant_id` (singular) para `app.tenant_ids` (array de membership), para que a **rota global do catálogo** (SPEC-021, em `/`) leia cross-tenant **sem desligar RLS**. A redação aprovada não cobria a rota global e seu contrato singular a deixava em *fail-closed* permanente (zero linhas), o que empurraria a implementação para o anti-padrão de bypass de RLS na query mais ampla do sistema. Mudanças marcadas com **[E1]**. Consolidada em **ADR-020**.
+>
+> **Emenda E2 (2026-07-18, aprovada pelo PI).** O PR-5 (issue #88) revelou que a **derivação de papel a partir do GitHub** (critério "remover acesso → no próximo sync o papel cai") é **escopo novo, não conserto**: nada no código cria `Tenant`/`Membership` — ambos vêm do backfill da migration; e `GET /user/installations` (único endpoint de instalação em uso) devolve `id`+`account`, **não** a permissão do membro. Faltavam 4 decisões de produto/superfície de API, agora resolvidas (ver *Emenda E2 → Decisões*). O card #88 é **cortado em dois** (ver *Corte do card*). Mudanças marcadas com **[E2]**.
 
 ## Objetivo
 
@@ -109,13 +111,41 @@ Transformar o ProPlan de usuário único (MVP) em multi-tenant: mais de uma pess
 - **Prisma + pool + RLS (risco conhecido — não repetir o erro)**: `SET app.tenant_ids` de **sessão** vaza entre requests que reusam a conexão do pool. O contexto tem de ser **transaction-scoped**: `SET LOCAL` dentro de uma transação interativa por request (via client extension do Prisma), morrendo no commit/rollback. É o padrão documentado Supabase/Prisma. O critério de aceite de "transaction-scoped" existe para provar que essa armadilha foi evitada.
 - **[E1] A query que monta `app.tenant_ids` é o novo elo crítico**: deriva de `Membership` filtrada pelo `userId` **autenticado** (token da sessão), com RLS própria keyed por usuário — nunca por um `userId` que chega no request. Se o atacante injeta o próprio array, o RLS inteiro vira teatro. Coberto pelo critério de aceite "array vem da identidade autenticada". A rota global paga **um** passo a mais por request (montar o array) — aceitável e muito abaixo do custo de iterar N transações por tenant.
 - **Placement de `tenant_id` (raízes vs. toda tabela)**: começar nas raízes (`Project` + órfãs) + join nas filhas é o menor diff; denormalizar `tenant_id` para as ~13 filhas é a saída se o join na policy pesar nos planos — migração barata porque `tenant_id` é **imutável** por projeto (write-once, sem risco de drift).
-- **Reinstall re-liga, não recria**: quando uma instalação é removida e recriada, o sync deve reconhecer o `Tenant` existente (por conta/org) e **re-apontar** `installationId` para o novo id — nunca criar um `Tenant` duplicado nem orfanar os dados do antigo. Vale um critério de teste na implementação.
+- **Reinstall re-liga, não recria** **[E2]**: quando uma instalação é removida e recriada, o sync deve reconhecer o `Tenant` existente (por conta/org) e **re-apontar** `installationId` para o novo id — nunca criar um `Tenant` duplicado nem orfanar os dados do antigo. Vale um critério de teste na implementação. **É o eixo-2 do corte E2 (card próprio, sem spec adicional): aplica ao `Tenant` o mesmo shape puro que `reconcileInstallations()` (`catalog/domain/installation-reconcile.ts`) já faz para o `Project`.** Escopo **estrito ao re-link** — App removido e **não** recriado (tenant órfão / estado `missing` do tenant) fica **fora** deste corte (não decidido; exigiria nova pergunta).
 - **Papel derivado do GitHub** evita um segundo sistema de convite; o preço é acoplar o acesso ao GitHub — reversível no dia em que SSO entrar.
 - Revisar **ADR-004** só se o primeiro corte exigir fan-out entre tenants (improvável).
 
+## Emenda E2 — derivação de papel (PR-5) e corte do card
+
+### Corte do card #88
+
+O #88 empacotava **dois comportamentos independentes com status de spec diferente** — mis-sizing. Dividido em dois cards (`card = fatia`):
+
+| card | eixo | escopo | gate |
+|---|---|---|---|
+| **#88** (permanece) | derivação de papel | traduzir permissão do GitHub → `owner`/`member`/`viewer`; as 4 decisões abaixo | libera com esta emenda E2 (`aprovada-pi`) |
+| **novo card** | re-link de instalação | re-apontar `Tenant.installationId` no reinstall, estrito (ver Nota técnica [E2]) | **sem spec adicional** — comportamento já definido (linha "Reinstall re-liga") + padrão `reconcileInstallations` existente |
+
+O eixo-2 não espera o eixo-1. Execução do board (criar o 2º card, ajustar #88) é do **Claude Code** via GitHub MCP — não do Cowork.
+
+### Decisões (PI, 2026-07-18)
+
+1. **O que conta como "admin"** → **role de membership de organização = `admin`/`owner`** no GitHub vira `owner` do tenant. Fonte: `GET /orgs/{org}/memberships/{username}` (**1 request por org** por recálculo). Permissão **por repositório** (repo-scoped admin) fica **fora** deste corte. *(Qual endpoint exatamente é escolha do Code; o que é "admin" e o custo por-sync é a decisão registrada aqui.)*
+2. **Quando o papel é recalculado** → na **listagem de instalações** (abertura do catálogo / `listInstallations`), **não** a cada sync de docs. Com **throttle** para não virar tempestade de request. Frequência limitada é o trade-off aceito contra frescor.
+3. **Tenant pessoal (`account.type === 'User'`)** → o dono da conta é **sempre `owner`, por definição** — **zero** lookup de papel no GitHub. Carve-out explícito: a regra "admin da org → owner" **não** cobre conta pessoal.
+4. **Guarda anti-rebaixamento** → a derivação **nunca** rebaixa o **único `owner`** de um tenant, nem auto-rebaixa o usuário que dispara o recálculo se isso deixar o tenant **sem `owner`**. Sem a guarda, a derivação poderia tirar do dono o direito de finalizar/aceitar issue (ADR-011) — inclusive de aceitar esta própria entrega.
+
+### Critérios de aceite [E2]
+
+- [ ] Setup: usuário é admin da org X no GitHub. Após o recálculo (abertura do catálogo), seu `Membership` no tenant de X tem `role = owner`; usuário com acesso mas não-admin → `member`; sem escrita → `viewer`.
+- [ ] O recálculo dispara **na listagem de instalações**, não no sync de docs (conferível em rede/logs); com throttle observável (recálculos repetidos em janela curta não multiplicam requests ao GitHub).
+- [ ] Tenant pessoal (`User`): o dono é `owner` **sem** nenhuma chamada a `/orgs/.../memberships` (conferível em rede/logs).
+- [ ] Guarda: forçar cenário em que a derivação rebaixaria o único `owner` → o papel `owner` **permanece**; nenhuma issue perde a capacidade de ser finalizada por falta de owner.
+- [ ] Re-link (eixo-2, card próprio): instalação removida e recriada na mesma conta/org → o `Tenant` existente é reconhecido e `installationId` re-apontado; **nenhum** `Tenant` duplicado, **nenhum** dado orfanado.
+
 ## Perguntas abertas
 
-Nenhuma. **Resolvidas com o PI em 2026-07-17:**
+Nenhuma. **[E2] Resolvidas com o PI em 2026-07-18** (as 4 decisões acima). **Resolvidas com o PI em 2026-07-17:**
 
 - **[E1] Rota global do catálogo sob RLS** → **aprovado como está** (Emenda 2026-07-17, consolidada em **ADR-020**). A redação aprovada modelava o contexto como `app.tenant_id` **singular** e **não mencionava o catálogo** (rota global em `/`, SPEC-021), que lê cross-tenant — o contrato singular o deixaria em *fail-closed* permanente, empurrando para o anti-padrão de desligar RLS na query mais ampla. Resolução: contexto vira `app.tenant_ids` (array de membership); policy `tenant_id = ANY(...)`; rota escopada = array de 1, catálogo = array completo; array derivado da identidade autenticada; *fail-closed* preservado; bypass proibido. Uma policy só serve as duas rotas.
 

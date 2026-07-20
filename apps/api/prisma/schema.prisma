@@ -38,6 +38,12 @@ model Tenant {
   // Nullable: tenant pessoal pode nascer sem instalação de org. @unique: a
   // relação é 1:1 e re-apontável no reinstall.
   installationId Int?         @unique @map("installation_id")
+  // Id numérico da conta no GitHub — a chave de casamento no reinstall. É o
+  // ÚNICO identificador estável da conta: `installationId` muda a cada
+  // reinstall e `accountLogin` muda num rename. Nullable porque as linhas
+  // pré-existentes nascem sem ele (a migration não chama a rede); o primeiro
+  // `listInstallations` preenche. @unique: uma conta = um tenant (1:1).
+  accountId      Int?         @unique @map("account_id")
   accountLogin   String       @map("account_login")
   accountType    String       @map("account_type") // User | Organization
   createdAt      DateTime     @default(now()) @map("created_at")

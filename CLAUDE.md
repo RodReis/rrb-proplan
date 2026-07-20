@@ -1,70 +1,34 @@
 # CLAUDE.md — RRB ProPlan
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+## Diretrizes de implementação (Code)
 
-Tradeoff: These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+Priorizam cautela sobre velocidade; em tarefa trivial, bom senso.
 
-1. Think Before Coding
-Don't assume. Don't hide confusion. Surface tradeoffs.
-
-Before implementing:
-
-State your assumptions explicitly. If uncertain, ask.
-If multiple interpretations exist, present them - don't pick silently.
-If a simpler approach exists, say so. Push back when warranted.
-If something is unclear, stop. Name what's confusing. Ask.
-2. Simplicity First
-Minimum code that solves the problem. Nothing speculative.
-
-No features beyond what was asked.
-No abstractions for single-use code.
-No "flexibility" or "configurability" that wasn't requested.
-No error handling for impossible scenarios.
-If you write 200 lines and it could be 50, rewrite it.
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-3. Surgical Changes
-Touch only what you must. Clean up only your own mess.
-
-When editing existing code:
-
-Don't "improve" adjacent code, comments, or formatting.
-Don't refactor things that aren't broken.
-Match existing style, even if you'd do it differently.
-If you notice unrelated dead code, mention it - don't delete it.
-When your changes create orphans:
-
-Remove imports/variables/functions that YOUR changes made unused.
-Don't remove pre-existing dead code unless asked.
-The test: Every changed line should trace directly to the user's request.
-
-4. Goal-Driven Execution
-Define success criteria. Loop until verified.
-
-Transform tasks into verifiable goals:
-
-"Add validation" → "Write tests for invalid inputs, then make them pass"
-"Fix the bug" → "Write a test that reproduces it, then make it pass"
-"Refactor X" → "Ensure tests pass before and after"
-For multi-step tasks, state a brief plan:
-
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+- **Pense antes de codificar.** Não presuma: declare suposições, exponha
+  interpretações alternativas, aponte a abordagem mais simples. Em dúvida, pare
+  e pergunte ao PI (já é regra: sem spec → perguntar).
+- **Simplicidade primeiro.** Código mínimo que resolve. Sem abstração de uso
+  único, sem flexibilidade não pedida, sem tratar cenário impossível.
+- **Alterações cirúrgicas.** Cada linha alterada rastreável ao pedido. Não
+  refatore o que não quebrou; mantenha o estilo existente; código morto não
+  relacionado se aponta, não se apaga. **Exceção:** atualizar `docs/` é escopo
+  obrigatório da entrega, não "melhoria adjacente".
+- **Execução verificável.** Traduza tarefa em critério checável ("adicionar
+  validação" → "teste para entrada inválida passa"). `dev`, `test`, `lint`
+  verdes é o piso.
 
 ## Papéis e governança
 
 - **Rodrigo Reis (PI)** — decide escopo, prioridades e trade-offs; aprova specs e aceita entregas.
-- **Claude Cowork (planejamento)** — especifica e mantém `docs/` e as specs em `docs/specs/`. Antes de finalizar qualquer spec, apresenta as perguntas abertas e dúvidas ao PI — spec só vira `aprovada-pi` com todas resolvidas (evitar retrabalho). **Nunca implementa código** — implementação é exclusiva do Claude Code.
-- **Claude Code (você)** — planeja, codifica, testa (código, UX e UI — pode usar as skills do impeccable), atualiza a documentação e **sempre commita todos os documentos de `docs/`** junto da entrega. Implementa a partir deste arquivo + `docs/` + spec da feature em `docs/specs/`. Pode criticar arquitetura, **não escopo**. Sem spec para a tarefa, ou spec ambígua → perguntar ao PI antes de codificar, nunca assumir. Deve apontar problemas técnicos da spec — a correção passa pelo PI.
+- **Claude Cowork (planejamento)** — especifica e mantém `docs/` e as specs em `docs/specs/`. Antes de finalizar qualquer spec, apresenta as perguntas abertas e dúvidas ao PI — spec só vira `aprovada-pi` com todas resolvidas (evitar retrabalho). Quando a spec vira `aprovada-pi`, **cria a issue-fatia no board** (coluna Backlog, assignee PI). **Nunca implementa código** — implementação é exclusiva do Claude Code.
+- **Claude Code (você)** — planeja, codifica, testa (código, UX e UI — pode usar as skills do impeccable), atualiza a documentação e **sempre commita todos os documentos de `docs/`** junto da entrega. Implementa a partir deste arquivo + `docs/` + spec da feature em `docs/specs/`. **Não cria a issue** (é do Cowork) — pega o card, move pelo fluxo e entrega com PR. Pode criticar arquitetura, **não escopo**. Sem spec para a tarefa, ou spec ambígua → perguntar ao PI antes de codificar, nunca assumir. Deve apontar problemas técnicos da spec — a correção passa pelo PI.
 
 ### Ciclo de vida de uma fatia (processo do trio — **não é feature do produto**)
 
-Isto é convenção **nossa**, executada à mão pelo Code via GitHub MCP. **Nada disso vira código do ProPlan** — o ADR-014 é explícito: o ProPlan se adapta ao repo, nunca impõe convenção. Se um segundo repo adotar `docs/specs/`, reavaliar.
+Isto é convenção **nossa**, executada à mão via GitHub MCP: o **Cowork cria** a issue, o **Code move e entrega**. **Nada disso vira código do ProPlan** — o ADR-014 é explícito: o ProPlan se adapta ao repo, nunca impõe convenção. Se um segundo repo adotar `docs/specs/`, reavaliar.
 
-1. **Spec vira `aprovada-pi`** → o **Code** cria a issue no board: coluna **A Fazer** (`proplan:todo`), título = a fatia, corpo com link para o arquivo da spec, assignee = **PI**.
-2. **Code começa** → move para **Em Andamento** (`proplan:doing`) e se atribui.
+1. **Spec vira `aprovada-pi`** → o **Cowork** cria a issue no board: coluna **Backlog** (`proplan:backlog`), título = a fatia, corpo com link para o arquivo da spec, assignee = **PI**.
+2. **Code começa** → move da Backlog para **A Fazer** (`proplan:todo`) ao pegar e para **Em Andamento** (`proplan:doing`) ao iniciar; se atribui.
 3. **Code entrega** → abre PR com **`refs #N`** no corpo. **NUNCA `closes #N`** — fecharia a issue no merge e **forjaria o aceite do PI** (ADR-011). Só **depois do merge**, o Code aplica `proplan:done` → card vai para **Feito**, com o **link do PR** no corpo da issue. Declarar "terminei" **sem PR mergeado** é o "fechamento frágil" que este produto existe para detectar — não o produza aqui dentro.
 4. **PI aceita** → **só o PI** fecha a issue e aplica `proplan:finalizado`. **A issue só fecha quando o trabalho realmente acabou.** Nenhuma automação pode forjar aceite (ADR-011). O Code **nunca** fecha issue nem move card para Finalizado.
 

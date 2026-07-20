@@ -1,11 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GithubAuth } from '../../identity/application/github-auth.service';
-import { GithubInstallationsClient } from '../../identity/infrastructure/github-installations.client';
+import {
+  GithubInstallationsClient,
+  Installation,
+} from '../../identity/infrastructure/github-installations.client';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { computeFreshness, Freshness } from '../domain/freshness';
 import { reconcileInstallations } from '../domain/installation-reconcile';
+import { reconcileTenantInstallations } from '../domain/tenant-reconcile';
 import { GithubClient, RepoSummary } from '../infrastructure/github.client';
 
 export interface RepoWithManaged extends RepoSummary {
@@ -34,6 +39,8 @@ export interface CatalogInstallations {
 
 @Injectable()
 export class CatalogService {
+  private readonly logger = new Logger(CatalogService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: GithubAuth,
@@ -108,6 +115,12 @@ export class CatalogService {
       projects.map((p) => [p.githubRepoId.toString(), p.id]),
     );
 
+    // Reinstall re-liga (SPEC-022): o installationId muda a cada reinstall, então
+    // os tenants do usuário são reconciliados por id de conta ANTES de montar o
+    // mapa — senão o tenant existente não seria encontrado e o front abriria sem
+    // tenant. Restrito aos tenants de membership: nunca varre a tabela inteira.
+    await this.relinkTenants(tenantIds, installations);
+
     // Mapa installationId → tenantId (1:1, SPEC-022): o front precisa do tenant
     // para montar a rota /t/:tenant ao abrir um projeto. `memberships`/`tenants`
     // não têm RLS de tenant — leitura no client base.
@@ -142,6 +155,66 @@ export class CatalogService {
     }));
 
     return { groups, empty: installations.length === 0 };
+  }
+
+  /**
+   * Reinstall re-liga, não recria (SPEC-022, §Notas técnicas). Re-aponta
+   * `installationId` no tenant EXISTENTE quando o GitHub emite um id novo, e
+   * preenche/atualiza `accountId`/`accountLogin`. Casamento por id de conta —
+   * o login muda num rename e criaria um tenant duplicado, orfanando os dados.
+   *
+   * `tenants` não tem policy de tenant (é a fonte da própria autorização), então
+   * roda no client base — mas escopado aos tenants de membership do usuário,
+   * nunca à tabela inteira.
+   */
+  private async relinkTenants(
+    tenantIds: string[],
+    installations: Installation[],
+  ): Promise<void> {
+    if (tenantIds.length === 0 || installations.length === 0) return;
+
+    const tenants = await this.prisma.tenant.findMany({
+      where: { id: { in: tenantIds } },
+      select: { id: true, installationId: true, accountId: true, accountLogin: true },
+    });
+
+    const relinks = reconcileTenantInstallations(
+      tenants,
+      installations.map((i) => ({
+        installationId: i.id,
+        accountId: i.account.id,
+        accountLogin: i.account.login,
+      })),
+    );
+
+    for (const r of relinks) {
+      try {
+        await this.prisma.tenant.update({
+          where: { id: r.tenantId },
+          data: {
+            installationId: r.installationId,
+            accountId: r.accountId,
+            accountLogin: r.accountLogin,
+          },
+        });
+      } catch (e) {
+        // O re-liga é best-effort dentro de uma rota de LEITURA: falhar aqui não
+        // pode derrubar o catálogo inteiro. `installationId`/`accountId` são
+        // @unique — duas requests concorrentes podem colidir (P2002), e nesse
+        // caso a outra já gravou o que esta tentava gravar. Segue: o estado
+        // converge na próxima leitura (a reconciliação é idempotente).
+        if (
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          this.logger.warn(
+            `Re-liga do tenant ${r.tenantId} colidiu (P2002) — outra request reconciliou antes; seguindo.`,
+          );
+          continue;
+        }
+        throw e;
+      }
+    }
   }
 
   /** Persiste o diff de installationStatus/id calculado pelo domínio. */
