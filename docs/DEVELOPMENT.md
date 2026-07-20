@@ -742,3 +742,5 @@ Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb co
 **PR-4b — teto de IA por tenant**: `feito` (mergeado, commit `f93fc82` — Settings/Usage sob contexto, fix do 500).
 
 **PR-5 — papel derivado do GitHub + reinstall re-liga**: **não entregue nesta fatia**. Virou a issue **#88** (`proplan:todo`) por decisão do PI em 2026-07-20, depois de a #7 ter sido aceita sem ele. Cobre os 2 critérios de aceite da SPEC-022 que seguem abertos: papel cai no próximo sync quando o acesso do usuário some do GitHub; reinstall re-aponta `installationId` no `Tenant` existente sem duplicar nem orfanar.
+
+**Aguardando spec do Cowork** (decisão do PI em 2026-07-20) — não iniciar antes de `aprovada-pi`. Abri o código para implementar e recuei: **nada cria `Tenant`/`Membership`**, os dois vêm do backfill SQL da migration `fatia_8_multi_tenant`, e o `MembershipService` só lê. Não há caminho a consertar — o PR-5 o constrói, o que é escopo novo e não bug documentado. As 4 perguntas abertas (fonte da permissão · em qual sync recalcular · tenant pessoal sem "admin da org" · guarda contra o PI se auto-rebaixar) estão no corpo da #88 e no `STATUS.md`.
