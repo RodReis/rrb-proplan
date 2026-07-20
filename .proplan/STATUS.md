@@ -15,9 +15,9 @@ updated: 2026-07-20
 
 ## A Fazer
 
-- [TESTE] Fatia-filha — deve cair em "A Fazer" sob o épico (#96, prio: media)
 - [MVP2][SPEC-024][F18] Épicos: hierarquia MVP→fatia no board via GitHub sub-issues (#97, prio: baixa)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
+- [TESTE] Fatia-filha — deve cair em "A Fazer" sob o épico (#96)
 - [TESTE] Épico — validação de hierarquia (SPEC-024) (#95)
 
 ## Em Andamento
