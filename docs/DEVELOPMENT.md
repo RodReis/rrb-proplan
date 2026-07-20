@@ -748,9 +748,23 @@ Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb co
 - **Eixo-1 — derivação de papel do GitHub → #88**, entregue (ver seção própria abaixo). Ficou bloqueado por ~1h enquanto eu afirmava faltar decisão do PI: as 4 perguntas **já estavam respondidas** na **emenda E2** da SPEC-022 (aprovada em 2026-07-18), que estava na árvore de trabalho **sem commit** — eu não a via. Commitada em `96234d3`. Lição: **verificar o working tree antes de declarar bloqueio**, não só o que está versionado.
 - **Eixo-2 — reinstall re-liga → #89**, entregue (ver seção própria abaixo). Dispensa spec: comportamento já definido na SPEC-022.
 
-## Multi-tenant — derivação de papel a partir do GitHub (eixo-1 do PR-5) — `feito` (issue #88)
+## Multi-tenant — derivação de papel a partir do GitHub (eixo-1 do PR-5) — `feito` (mergeado PR #92 squash `49c0c95`, `refs #88`; aguardando aceite do PI)
 
-Spec: **SPEC-022, emenda E2** (`aprovada-pi` em 2026-07-18), que resolve as 4 decisões. Branch **empilhado sobre o PR #90** (decisão do PI): o #88 toca `listInstallations`, o mesmo método do #89 — partir da `main` daria conflito.
+Spec: **SPEC-022, emenda E2** (`aprovada-pi` em 2026-07-18), que resolve as 4 decisões. Entregue em branch **empilhado sobre o PR #90** (decisão do PI): o #88 toca `listInstallations`, o mesmo método do #89 — partir da `main` daria conflito. Mergeado depois do #90, com rebase (o squash do #90 fez o git descartar sozinho os 4 commits já na `main`).
+
+**Com o #89, o PR-5 inteiro está entregue — a SPEC-022 não tem mais critério de aceite em aberto.**
+
+### Achado no merge: a suíte `banco` nunca rodou verde no CI
+
+Descoberto ao tentar mergear o #90 — e maior que os dois cards. O workflow definia `DATABASE_URL` na **5432** (porta do serviço do runner), mas o harness dos int-specs resolve por `TEST_DIRECT_URL`/`TEST_DATABASE_URL`, com **fallback para a 5433** do dev local. Nomes e portas diferentes ⇒ o `prisma migrate deploy` falhava com `P1001` e **toda** a suíte `banco` caía. Faltava também a role `proplan_app` no runner: no dev ela nasce do `docker-entrypoint-initdb.d`, que o serviço do CI não roda.
+
+O comentário que estava no próprio workflow entrega a idade do problema: *"Categoria Banco ainda vazia; a DB de teste já fica pronta para quando os `*.int-spec.ts` existirem"*. Eles passaram a existir no **PR-2 da Fatia 8** e ninguém atualizou o workflow — o run do `feat/spec-022-pr6-e2e` **também falhou e foi mergeado assim mesmo**.
+
+**A consequência é a que mais incomoda**: o `reports/TESTS.md` — o artefato do ADR-019, que existe justamente para ser evidência *verificada* em vez de narrada — registrava **"Banco 0"**. Não era "zero teste"; eram **18 testes que nunca rodavam**. O número estava correto sobre a execução e falso sobre a realidade, que é a forma mais difícil de detectar.
+
+Corrigido no PR #90: `TEST_*` apontando para a 5432 + step que cria a role (**não-superuser de propósito** — o Postgres pula RLS para superuser e owner, então com a role errada os testes de isolamento passariam *sem provar nada*, SPEC-022 F1). Estado atual do relatório: **Regras 564 · Banco 18 · Tela 46**, todos verdes.
+
+**A régua que fica**: quando uma categoria de teste nasce, o workflow precisa nascer com ela — e um `0` no `TESTS.md` merece a mesma desconfiança que um número errado.
 
 1. `feito` — **`role-derivation.ts`** (`identity/domain`, puro): traduz permissão do GitHub → `owner`/`member`/`viewer`, com a guarda da decisão 4. Mora no `identity` porque papel é autorização; o `catalog` só dispara e não conhece `Membership` (ADR-001).
 2. `feito` — **Decisão 1 (admin)**: `GET /orgs/{org}/memberships/{username}`, 1 request por org por recálculo, sempre com **token do usuário** (ADR-015 — e aqui é duplamente necessário: o endpoint responde sobre a relação *daquele* usuário com a org; com installation token a pergunta nem faria sentido). **Ambiguidade resolvida dentro do escopo**: a decisão fala "sem escrita → `viewer`", mas este endpoint só distingue `admin` de `member` — permissão repo-scoped ficou **fora** do corte E2, e é ela que revelaria acesso somente-leitura. Então `viewer` aqui significa **não-membro da org** (perdeu acesso), não "membro sem escrita". Registrado no código.
@@ -777,7 +791,7 @@ O cenário 4 emitiu o **log da guarda de verdade** (`WARN [RoleSyncService] … 
 
 **O que só o PI pode provar** (exige OAuth e uma org real): que o papel bate com a permissão **real** no GitHub — aqui a resposta do endpoint foi injetada. Roteiro: abrir o catálogo com uma org onde você é admin → `role = owner`; remover o próprio acesso admin nessa org → o papel **permanece** `owner` se você for o único (guarda), e cai se houver outro owner.
 
-## Multi-tenant — reinstall re-liga o Tenant (eixo-2 do PR-5) — `feito` (issue #89)
+## Multi-tenant — reinstall re-liga o Tenant (eixo-2 do PR-5) — `feito` (mergeado PR #90 squash `071e614`, `refs #89`; aguardando aceite do PI)
 
 Sem spec: o comportamento correto já está na SPEC-022 §Notas técnicas (*"Reinstall re-liga, não recria"*) e no Escopo 1 — bug documentado pela tabela do `CLAUDE.md`.
 
