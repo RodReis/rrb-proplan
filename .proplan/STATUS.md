@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-18
+updated: 2026-07-20
 ---
 <!-- gerado pelo ProPlan a partir das Issues — não edite à mão -->
 # Status
@@ -13,11 +13,12 @@ updated: 2026-07-18
 
 ## A Fazer
 
+- Multi-tenant PR-5 — papel derivado do GitHub + reinstall re-liga o Tenant (resto da SPEC-022) (#88, prio: media)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
 
 ## Em Andamento
 
-_(vazio)_
+- Multi-tenant — reinstall re-liga o Tenant em vez de orfanar (eixo-2 do PR-5) (#89, prio: media)
 
 ## Feito
 
@@ -56,3 +57,4 @@ _(vazio)_
 ## Descartado
 
 - Fatia 10 — docs/CONTEXT.md: captura de asserção humana, "o que não mexer", validade por SHA (ADR-013) (#2, prio: alta, descartado em: 2026-07-17)
+- identity: re-link de installationId no reinstall (Fatia 8) (#91, descartado em: 2026-07-20)
