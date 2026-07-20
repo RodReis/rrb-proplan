@@ -689,9 +689,11 @@ Pedido do PI ao vivo (2026-07-17). Sem spec: ajuste de UX pequeno, definido na h
 3. `feito` — **`useAutoClose.ts`** (hook novo, 5 testes): arma só quando pedido, re-arma no `bumpToken`, e **re-render sem interação NÃO reinicia** — senão o polling do feed (2s) seguraria a gaveta aberta pra sempre; o teste trava isso. `Workspace` arma no sync e desarma na pílula; `ActivityPanel` emite `onActivity` em interação e enquanto `running.length > 0`.
 4. `feito` — tsc + vite build limpos, 46 testes de tela verdes (+5). **Verificação ao vivo pendente** (atrás do OAuth): abre no sync → 4s → fecha; hover cancela; job rodando adia; pílula não fecha.
 
-## Fatia 8 — Multi-tenant — `em-andamento` (SPEC-022, issue #7)
+## Fatia 8 — Multi-tenant — `finalizado` (SPEC-022, issue #7 fechada + `proplan:finalizado`; aceita pelo PI em 2026-07-18)
 
 Spec `aprovada-pi` (2026-07-17). Entregue em 6 PRs (`refs #7`, nunca `closes`). Plano completo em `docs/specs/SPEC-022-multi-tenant.md`.
+
+**Aceita com o PR-5 pendente.** O PI fechou a #7 em 2026-07-18 sem a derivação de papel do GitHub e sem o re-liga do reinstall — os dois critérios de aceite da spec seguem abertos. Decisão do PI (2026-07-20): o resto **vira card próprio (#88)**, a #7 não reabre. Enquanto o #88 não entrega, só o tenant pessoal existe e `Membership.role` não deriva de nada.
 
 **Eixo:** RLS + `SET LOCAL app.tenant_id` por request tornam o filtro de tenant invisível e obrigatório na camada de banco — os services deixam de carregar `where:{tenantId}`. Barreira primária = guard que recusa não-membro; RLS = a rede (F1).
 
@@ -737,4 +739,6 @@ Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb co
 
 **Verificação ao vivo pendente** (atrás do OAuth, teste do PI): abrir o catálogo (não deve mais dar 500), entrar num projeto (`/t/:tenant/p/:id`), navegar abas, F5 preserva tenant/projeto/aba. **Re-testar o sync** (era o item quebrado): disparar Sincronizar e ver o run sair de `queued` → `running` → `success` sem timeout; jobs antigos presos na fila do Redis de antes da correção falham com erro claro (sem `tenantId`) — limpar com `docker compose restart redis` se poluírem a Atividade. Nota: a 1ª tentativa de um sync pode logar "SyncRun não encontrado" e curar no retry de 2s — o enqueue roda dentro da tx do request e o job pode chegar ao worker antes do commit; se aparecer com frequência, mover o enqueue para pós-commit.
 
-Próximos: PR-4b teto por tenant · PR-5 papel/reinstall (deriva papel do GitHub — hoje só o tenant pessoal existe).
+**PR-4b — teto de IA por tenant**: `feito` (mergeado, commit `f93fc82` — Settings/Usage sob contexto, fix do 500).
+
+**PR-5 — papel derivado do GitHub + reinstall re-liga**: **não entregue nesta fatia**. Virou a issue **#88** (`proplan:todo`) por decisão do PI em 2026-07-20, depois de a #7 ter sido aceita sem ele. Cobre os 2 critérios de aceite da SPEC-022 que seguem abertos: papel cai no próximo sync quando o acesso do usuário some do GitHub; reinstall re-aponta `installationId` no `Tenant` existente sem duplicar nem orfanar.
