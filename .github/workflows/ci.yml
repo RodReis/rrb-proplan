@@ -29,15 +29,41 @@ jobs:
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
     env:
-      # Categoria "Banco" ainda vazia; a DB de teste já fica pronta para quando
-      # os *.int-spec.ts/*.e2e-spec.ts existirem, sem mexer no workflow.
       DATABASE_URL: postgresql://proplan:proplan@localhost:5432/proplan_test
+      # A suíte `banco` (int-specs da Fatia 8) resolve a URL por TEST_*, com
+      # fallback para a 5433 do dev local — no CI o Postgres é serviço e
+      # responde na 5432. Sem estas duas, o harness tentava a 5433, o
+      # `migrate deploy` falhava com P1001 e TODA a suíte caía.
+      TEST_DIRECT_URL: postgresql://proplan:proplan@localhost:5432/proplan_test
+      TEST_DATABASE_URL: postgresql://proplan_app:proplan_app@localhost:5432/proplan_test
       REPORT_PR: "#${{ github.event.pull_request.number }}"
       # O GitHub já tem a URL pronta — o gerador não precisa saber montar link
       # de GitHub (segue repo-agnóstico, TESTING.md §7).
       REPORT_PR_URL: ${{ github.event.pull_request.html_url }}
     steps:
       - uses: actions/checkout@v4
+
+      # No dev esta role nasce do docker-entrypoint-initdb.d
+      # (docker/postgres-init/01-app-role.sql); o serviço do CI não roda aquele
+      # init, então ela é criada aqui. Sem ela os int-specs não conectam.
+      # NÃO-superuser de propósito: o Postgres PULA row-level security para
+      # superuser e para o owner da tabela — com a role errada o RLS vira no-op
+      # silencioso e os testes de isolamento passariam sem provar nada
+      # (SPEC-022, F1). Os GRANTs de tabela ficam com o harness, que os aplica
+      # depois das migrations.
+      - name: Cria a role de aplicação (não-owner, sujeita a RLS)
+        env:
+          PGPASSWORD: proplan
+        run: |
+          psql -h localhost -p 5432 -U proplan -d proplan_test -v ON_ERROR_STOP=1 -c \
+            "DO \$\$ BEGIN
+               IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'proplan_app') THEN
+                 CREATE ROLE proplan_app WITH LOGIN PASSWORD 'proplan_app'
+                   NOSUPERUSER NOCREATEDB NOCREATEROLE;
+               END IF;
+             END \$\$;"
+          psql -h localhost -p 5432 -U proplan -d proplan_test -v ON_ERROR_STOP=1 -c \
+            "GRANT USAGE ON SCHEMA public TO proplan_app;"
 
       # A ISSUE da fatia sai do `refs #N` do corpo do PR — NÃO é o número do PR
       # (ADR-011: `closes #N` é proibido, então `refs #N` é o elo canônico
