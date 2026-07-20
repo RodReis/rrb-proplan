@@ -760,7 +760,22 @@ Spec: **SPEC-022, emenda E2** (`aprovada-pi` em 2026-07-18), que resolve as 4 de
 6. `feito` — **Best-effort em toda a cadeia**: o recálculo roda dentro de uma rota de **leitura**; falha do GitHub, do banco ou do próprio serviço é logada e seguida, nunca derruba o catálogo.
 7. `feito` — **19 testes** (11 de domínio + 8 do serviço). Os do serviço **contam as chamadas ao GitHub**, não só o papel gravado: um teste que olhasse apenas o `role` passaria mesmo com a tempestade de request. **Provados contra o bug**: removi o throttle → 1 falha; removi o carve-out da conta pessoal → 1 falha; restaurei → 8/8. API **564/564**, `banco` 18/18, tsc + build limpos.
 
-**Verificação ao vivo pendente** (atrás do OAuth, teste do PI): abrir o catálogo e conferir em rede/logs que (a) uma org consulta `/orgs/.../memberships` **uma vez**, (b) reabrir dentro de 15min **não** repete a chamada, (c) o tenant pessoal **não** gera chamada nenhuma, (d) o papel bate com a permissão real no GitHub. A guarda (d-bis) só se prova removendo seu próprio acesso admin numa org de teste.
+### Verificação ao vivo executada (2026-07-20, `RoleSyncService` real + banco de dev)
+
+Contra o `Membership` real do dogfooding (`RodReis`, tenant `User`, `owner`, `role_synced_at` **nulo**), com o serviço de produção instanciado e um client instrumentado que **conta as chamadas** que teriam ido ao GitHub — porque o critério da E2 é *"conferível em rede/logs"*, e olhar só o papel gravado não distinguiria o caminho certo da tempestade de request:
+
+| cenário | chamadas ao GitHub | papel |
+|---|---|---|
+| tenant pessoal (`User`), nunca sincronizado | **0** ✅ | `owner` ✅ |
+| org, carimbo de 1min atrás (dentro da janela) | **0** ✅ | inalterado ✅ |
+| org, carimbo de 20min atrás (fora da janela) | **1** ✅ | `owner` ✅ |
+| org, GitHub diz "sem acesso", **único owner** | 1 | `owner` — **não rebaixado** ✅ |
+
+O cenário 4 emitiu o **log da guarda de verdade** (`WARN [RoleSyncService] … seria rebaixado, mas é o único owner do tenant`), não apenas o valor correto no banco — era o que faltava provar da decisão 4.
+
+**Estado restaurado**: `role`/`roleSyncedAt` de volta ao original, 7 projetos e o tenant intactos.
+
+**O que só o PI pode provar** (exige OAuth e uma org real): que o papel bate com a permissão **real** no GitHub — aqui a resposta do endpoint foi injetada. Roteiro: abrir o catálogo com uma org onde você é admin → `role = owner`; remover o próprio acesso admin nessa org → o papel **permanece** `owner` se você for o único (guarda), e cai se houver outro owner.
 
 ## Multi-tenant — reinstall re-liga o Tenant (eixo-2 do PR-5) — `feito` (issue #89)
 
