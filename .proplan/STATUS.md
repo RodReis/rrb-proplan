@@ -10,15 +10,15 @@ updated: 2026-07-20
 - Configurações: desconectar / reconectar o GitHub (#93, prio: media)
 - Costura identidade ⊥ conexão (Google como 1º IdP) (#94, prio: media)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (#10, prio: media)
-- [MVP2][SPEC-024][F18] Épicos: hierarquia MVP→fatia no board via GitHub sub-issues (#97, prio: baixa)
 - Defasagem por documento (badge por aba) — só se o alerta global do ADR-010 se provar útil (#9, prio: baixa)
-- [TESTE] Épico — validação de hierarquia (SPEC-024) (#95)
 - Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4)
 
 ## A Fazer
 
 - [TESTE] Fatia-filha — deve cair em "A Fazer" sob o épico (#96, prio: media)
+- [MVP2][SPEC-024][F18] Épicos: hierarquia MVP→fatia no board via GitHub sub-issues (#97, prio: baixa)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
+- [TESTE] Épico — validação de hierarquia (SPEC-024) (#95)
 
 ## Em Andamento
 
