@@ -54,15 +54,27 @@ export function reconcileTenantInstallations(
   // `accountId`. Casar por login é frágil (rename), mas para essas linhas é a
   // única chave disponível — e o re-liga já grava o accountId, então cada
   // tenant passa por aqui no máximo uma vez.
-  const byLogin = new Map<string, VisibleInstallation>();
-  for (const inst of visible) byLogin.set(inst.accountLogin.toLowerCase(), inst);
+  //
+  // Login AMBÍGUO não casa. Se duas instalações visíveis normalizam para o mesmo
+  // login, não há como saber qual é a conta certa — e chutar re-apontaria o
+  // tenant para a instalação de OUTRA conta. Diante da dúvida, não faz nada: o
+  // tenant fica intacto e a próxima leitura (ou o preenchimento do accountId por
+  // outro caminho) resolve. Silenciosamente pegar "a última" seria o vazamento
+  // que o accountId existe para impedir.
+  const byLogin = new Map<string, VisibleInstallation | null>();
+  for (const inst of visible) {
+    const key = inst.accountLogin.toLowerCase();
+    byLogin.set(key, byLogin.has(key) ? null : inst);
+  }
 
   const relinks: TenantRelink[] = [];
   for (const t of tenants) {
+    // `?? undefined` colapsa o null-de-ambiguidade em "não casou" — o `continue`
+    // trata os dois casos igual, que é o certo: sem certeza, não mexe.
     const match =
       t.accountId !== null
         ? byAccountId.get(t.accountId)
-        : byLogin.get(t.accountLogin.toLowerCase());
+        : (byLogin.get(t.accountLogin.toLowerCase()) ?? undefined);
     if (!match) continue;
 
     const changed =

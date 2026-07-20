@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GithubAuth } from '../../identity/application/github-auth.service';
 import {
@@ -38,6 +39,8 @@ export interface CatalogInstallations {
 
 @Injectable()
 export class CatalogService {
+  private readonly logger = new Logger(CatalogService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: GithubAuth,
@@ -185,14 +188,32 @@ export class CatalogService {
     );
 
     for (const r of relinks) {
-      await this.prisma.tenant.update({
-        where: { id: r.tenantId },
-        data: {
-          installationId: r.installationId,
-          accountId: r.accountId,
-          accountLogin: r.accountLogin,
-        },
-      });
+      try {
+        await this.prisma.tenant.update({
+          where: { id: r.tenantId },
+          data: {
+            installationId: r.installationId,
+            accountId: r.accountId,
+            accountLogin: r.accountLogin,
+          },
+        });
+      } catch (e) {
+        // O re-liga é best-effort dentro de uma rota de LEITURA: falhar aqui não
+        // pode derrubar o catálogo inteiro. `installationId`/`accountId` são
+        // @unique — duas requests concorrentes podem colidir (P2002), e nesse
+        // caso a outra já gravou o que esta tentava gravar. Segue: o estado
+        // converge na próxima leitura (a reconciliação é idempotente).
+        if (
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          this.logger.warn(
+            `Re-liga do tenant ${r.tenantId} colidiu (P2002) — outra request reconciliou antes; seguindo.`,
+          );
+          continue;
+        }
+        throw e;
+      }
     }
   }
 

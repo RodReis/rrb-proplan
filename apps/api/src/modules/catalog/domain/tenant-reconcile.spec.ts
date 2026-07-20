@@ -91,6 +91,23 @@ describe('reconcileTenantInstallations', () => {
     expect(out).toEqual([]);
   });
 
+  it('linha pré-migration com login AMBÍGUO não casa (não chuta a conta)', () => {
+    // O buraco que o code review pegou: o teste de homônimo abaixo usa
+    // accountId preenchido, então exercita o byAccountId — NÃO o fallback.
+    // Aqui a linha é pré-migration (accountId null), que é justamente quando
+    // o fallback por login manda. Duas instalações normalizam para o mesmo
+    // login: pegar "a última" re-apontaria o tenant para a instalação de outra
+    // conta. Sem certeza, não mexe.
+    const out = reconcileTenantInstallations(
+      [tenant({ accountId: null, accountLogin: 'RodReis' })],
+      [
+        installation({ accountId: 55, accountLogin: 'RodReis', installationId: 100 }),
+        installation({ accountId: 99, accountLogin: 'rodreis', installationId: 900 }),
+      ],
+    );
+    expect(out).toEqual([]);
+  });
+
   it('accountId vence o login: mesma conta renomeada não casa com homônimo alheio', () => {
     // Cenário real de rename: o login "RodReis" foi liberado e outra conta o
     // tomou. Casar por login pegaria a conta ERRADA e re-apontaria o tenant
