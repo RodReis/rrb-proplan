@@ -745,8 +745,37 @@ Descoberto e corrigido: o `GRANT ON ALL TABLES` do init (PR-1) roda no initdb co
 
 **Card cortado em dois** (decisão do PI em 2026-07-20), porque os dois eixos têm maturidade diferente:
 
-- **Eixo-1 — derivação de papel do GitHub → #88**, **aguardando spec do Cowork**; não iniciar antes de `aprovada-pi`. Abri o código para implementar e recuei: **nada cria `Tenant`/`Membership`**, os dois vêm do backfill SQL da migration `fatia_8_multi_tenant`, e o `MembershipService` só lê. Não há caminho a consertar — o PR-5 o constrói, o que é escopo novo e não bug documentado. As 4 perguntas abertas (fonte da permissão · em qual sync recalcular · tenant pessoal sem "admin da org" · guarda contra o PI se auto-rebaixar) estão no corpo da #88.
+- **Eixo-1 — derivação de papel do GitHub → #88**, entregue (ver seção própria abaixo). Ficou bloqueado por ~1h enquanto eu afirmava faltar decisão do PI: as 4 perguntas **já estavam respondidas** na **emenda E2** da SPEC-022 (aprovada em 2026-07-18), que estava na árvore de trabalho **sem commit** — eu não a via. Commitada em `96234d3`. Lição: **verificar o working tree antes de declarar bloqueio**, não só o que está versionado.
 - **Eixo-2 — reinstall re-liga → #89**, entregue (ver seção própria abaixo). Dispensa spec: comportamento já definido na SPEC-022.
+
+## Multi-tenant — derivação de papel a partir do GitHub (eixo-1 do PR-5) — `feito` (issue #88)
+
+Spec: **SPEC-022, emenda E2** (`aprovada-pi` em 2026-07-18), que resolve as 4 decisões. Branch **empilhado sobre o PR #90** (decisão do PI): o #88 toca `listInstallations`, o mesmo método do #89 — partir da `main` daria conflito.
+
+1. `feito` — **`role-derivation.ts`** (`identity/domain`, puro): traduz permissão do GitHub → `owner`/`member`/`viewer`, com a guarda da decisão 4. Mora no `identity` porque papel é autorização; o `catalog` só dispara e não conhece `Membership` (ADR-001).
+2. `feito` — **Decisão 1 (admin)**: `GET /orgs/{org}/memberships/{username}`, 1 request por org por recálculo, sempre com **token do usuário** (ADR-015 — e aqui é duplamente necessário: o endpoint responde sobre a relação *daquele* usuário com a org; com installation token a pergunta nem faria sentido). **Ambiguidade resolvida dentro do escopo**: a decisão fala "sem escrita → `viewer`", mas este endpoint só distingue `admin` de `member` — permissão repo-scoped ficou **fora** do corte E2, e é ela que revelaria acesso somente-leitura. Então `viewer` aqui significa **não-membro da org** (perdeu acesso), não "membro sem escrita". Registrado no código.
+3. `feito` — **Decisão 2 (throttle)**: recálculo na `listInstallations`, **nunca** no sync de docs. Campo `Membership.roleSyncedAt` + migration `membership_role_synced_at`, janela de 15min. **Persistente, não em memória**: throttle em memória zera a cada reinício da API e, com múltiplas instâncias, cada uma manteria a própria janela — viraria a tempestade de request que a decisão evita.
+4. `feito` — **Decisão 3 (tenant pessoal)**: `accountType === 'User'` → dono é `owner` por definição. O short-circuit está **no serviço**, não só no domínio puro — o critério de aceite é *"sem nenhuma chamada a `/orgs/.../memberships`, conferível em rede"*, e um domínio que decide certo depois da chamada não satisfaz isso.
+5. `feito` — **Decisão 4 (guarda anti-rebaixamento)**: a derivação nunca rebaixa o **único `owner`** do tenant. Rebaixar um owner **entre vários** é legítimo — a guarda não é trava-tudo. Ela também **não promove**: protege quem já é owner, não inventa um. Falha de rede devolve `null` (tratado como "sem acesso"), e é a guarda que impede uma indisponibilidade transitória do GitHub de deixar o tenant sem owner.
+6. `feito` — **Best-effort em toda a cadeia**: o recálculo roda dentro de uma rota de **leitura**; falha do GitHub, do banco ou do próprio serviço é logada e seguida, nunca derruba o catálogo.
+7. `feito` — **19 testes** (11 de domínio + 8 do serviço). Os do serviço **contam as chamadas ao GitHub**, não só o papel gravado: um teste que olhasse apenas o `role` passaria mesmo com a tempestade de request. **Provados contra o bug**: removi o throttle → 1 falha; removi o carve-out da conta pessoal → 1 falha; restaurei → 8/8. API **564/564**, `banco` 18/18, tsc + build limpos.
+
+### Verificação ao vivo executada (2026-07-20, `RoleSyncService` real + banco de dev)
+
+Contra o `Membership` real do dogfooding (`RodReis`, tenant `User`, `owner`, `role_synced_at` **nulo**), com o serviço de produção instanciado e um client instrumentado que **conta as chamadas** que teriam ido ao GitHub — porque o critério da E2 é *"conferível em rede/logs"*, e olhar só o papel gravado não distinguiria o caminho certo da tempestade de request:
+
+| cenário | chamadas ao GitHub | papel |
+|---|---|---|
+| tenant pessoal (`User`), nunca sincronizado | **0** ✅ | `owner` ✅ |
+| org, carimbo de 1min atrás (dentro da janela) | **0** ✅ | inalterado ✅ |
+| org, carimbo de 20min atrás (fora da janela) | **1** ✅ | `owner` ✅ |
+| org, GitHub diz "sem acesso", **único owner** | 1 | `owner` — **não rebaixado** ✅ |
+
+O cenário 4 emitiu o **log da guarda de verdade** (`WARN [RoleSyncService] … seria rebaixado, mas é o único owner do tenant`), não apenas o valor correto no banco — era o que faltava provar da decisão 4.
+
+**Estado restaurado**: `role`/`roleSyncedAt` de volta ao original, 7 projetos e o tenant intactos.
+
+**O que só o PI pode provar** (exige OAuth e uma org real): que o papel bate com a permissão **real** no GitHub — aqui a resposta do endpoint foi injetada. Roteiro: abrir o catálogo com uma org onde você é admin → `role = owner`; remover o próprio acesso admin nessa org → o papel **permanece** `owner` se você for o único (guarda), e cai se houver outro owner.
 
 ## Multi-tenant — reinstall re-liga o Tenant (eixo-2 do PR-5) — `feito` (issue #89)
 
@@ -769,7 +798,23 @@ Contra o `Tenant` real do dogfooding (`00000000-…-e48e206abe39`, instalação 
 - ✅ **Fallback da linha pré-migration**: `account_id` `null` → `80895`, casado por login, exatamente uma vez.
 - ✅ **Estado restaurado**: seed removido, `installationId`/`account_id` de volta ao original; 7 projetos reais intactos, conferidos como owner.
 
-**O que só o PI pode provar**: o reinstall **real** no GitHub (desinstalar + reinstalar o App). Aqui a emissão do id novo foi simulada — o que se provou é que, dado um id novo para a mesma conta, o tenant é re-apontado e nada orfana. A janela não coberta é o GitHub emitir algo diferente do previsto.
+### Reinstall REAL executado pelo PI (2026-07-20) — a prova definitiva
+
+O PI desinstalou o App no GitHub (`Danger zone → Uninstall`) e reinstalou pelo CTA **"Instalar no GitHub"** do próprio catálogo. O GitHub emitiu um `installationId` **novo**, e o re-liga rodou no `listInstallations`:
+
+| checagem | antes | depois | veredito |
+|---|---|---|---|
+| `Tenant.id` | `00000000-…e48e206abe39` | **idêntico** | ✅ re-apontou, não recriou |
+| `installation_id` | 146171535 | **147870965** | ✅ o id do GitHub **mudou de fato** |
+| linhas em `tenants` | 1 | **1** | ✅ não duplicou |
+| projetos / órfãos | 7 / 0 | **7 / 0** | ✅ nada orfanou |
+| `account_id` | 80895 | 80895 | ✅ casou por **id**, não pelo fallback de login |
+
+**A premissa do card confirmada empiricamente**: `146171535 → 147870965`. O id de instalação do GitHub realmente não é estável — é o fato que justifica a PK própria do `Tenant` e todo este eixo. **Sem este código, o reinstall teria criado um `Tenant` duplicado** e os 7 projetos ficariam presos ao tenant antigo, apontando para uma instalação morta.
+
+**Observado de quebra**: `role_synced_at` **não** mudou no reinstall (seguiu `19:07:35`) — é o throttle da decisão 2 (#88) agindo em cenário real, sem ter sido forçado.
+
+**Bug de documentação corrigido no caminho**: eu indiquei ao PI a URL pública `github.com/apps/rrb-proplan` para reinstalar, que dá **404** — ela só vale para Apps públicos, e este é privado. O caminho correto é `github.com/settings/apps/<slug>/installations`, ou — melhor — o **CTA do próprio catálogo**, que monta a URL certa via `GET /catalog/install-url` (Fatia 4.5). O estado vazio ("O ProPlan ainda não está instalado em nenhum repositório") foi exercitado ao vivo pela primeira vez e renderizou correto.
 
 **Dois achados da verificação, ambos do RLS funcionando:**
 1. **O seed foi barrado** (`42501: new row violates row-level security policy`) ao tentar inserir projeto **fora** de contexto de tenant. É o fail-closed do PR-3 fazendo o trabalho dele — o script passou a semear sob `SET LOCAL`, como a app faz.

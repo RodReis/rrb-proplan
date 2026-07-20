@@ -1,0 +1,13 @@
+-- Derivação de papel a partir do GitHub (SPEC-022, emenda E2, decisão 2).
+--
+-- Carimbo do último recálculo, que sustenta o THROTTLE: o papel é recalculado
+-- na abertura do catálogo, e sem janela isso viraria 1 request por org a cada
+-- listagem — "tempestade de request", nas palavras da decisão.
+--
+-- Persistente e não em memória: um throttle em memória zera a cada reinício da
+-- API e, com múltiplas instâncias, cada uma manteria a própria janela.
+--
+-- NULL = nunca recalculado (linhas pré-migration), o que força o primeiro
+-- cálculo na próxima listagem. É o default correto: nenhum papel derivado
+-- ainda existe no banco.
+ALTER TABLE "memberships" ADD COLUMN "role_synced_at" TIMESTAMP(3);

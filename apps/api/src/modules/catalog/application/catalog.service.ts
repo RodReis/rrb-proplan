@@ -7,6 +7,7 @@ import {
   Installation,
 } from '../../identity/infrastructure/github-installations.client';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
+import { RoleSyncService } from '../../identity/application/role-sync.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { computeFreshness, Freshness } from '../domain/freshness';
 import { reconcileInstallations } from '../domain/installation-reconcile';
@@ -48,6 +49,7 @@ export class CatalogService {
     private readonly installationsClient: GithubInstallationsClient,
     private readonly ingestion: IngestionService,
     private readonly settings: SettingsService,
+    private readonly roleSync: RoleSyncService,
   ) {}
 
   /**
@@ -133,6 +135,12 @@ export class CatalogService {
       if (t.installationId !== null) tenantsByInstallation.set(t.installationId, t.id);
     }
 
+    // Recálculo do papel a partir do GitHub (SPEC-022 E2, decisão 2): aqui, na
+    // listagem — nunca no sync de docs. Roda DEPOIS do re-liga, quando os
+    // tenants já casam com as instalações vivas. O `identity` decide o papel;
+    // o catalog só dispara e não conhece `Membership` (ADR-001).
+    await this.syncRolesFor(userId, token, installations, tenantsByInstallation);
+
     // Mapa repoId → installationId visível agora, para reconciliar status.
     const visibleRepoInstallation = new Map<string, number>();
     for (const { inst, repos } of reposByInstallation) {
@@ -214,6 +222,43 @@ export class CatalogService {
         }
         throw e;
       }
+    }
+  }
+
+  /**
+   * Dispara o recálculo de papel (SPEC-022 E2). Best-effort: a listagem do
+   * catálogo é rota de leitura e não pode cair porque o GitHub não respondeu.
+   */
+  private async syncRolesFor(
+    userId: string,
+    token: string,
+    installations: Installation[],
+    tenantsByInstallation: Map<number, string>,
+  ): Promise<void> {
+    const accounts = installations
+      .map((i) => ({
+        tenantId: tenantsByInstallation.get(i.id),
+        accountLogin: i.account.login,
+        accountType: i.account.type as string,
+      }))
+      .filter(
+        (a): a is { tenantId: string; accountLogin: string; accountType: string } =>
+          a.tenantId !== undefined,
+      );
+    if (accounts.length === 0) return;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { login: true },
+    });
+    if (!user) return;
+
+    try {
+      await this.roleSync.syncRoles(userId, user.login, token, accounts);
+    } catch (e) {
+      this.logger.warn(
+        `Recálculo de papel falhou: ${e instanceof Error ? e.message : e}`,
+      );
     }
   }
 
