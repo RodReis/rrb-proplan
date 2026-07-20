@@ -93,7 +93,19 @@ describe('BoardService.getBoard — épicos fora das colunas (SPEC-024)', () => 
     const todoCards = board.columns.find((c) => c.column === 'todo')!.cards;
     expect(todoCards.map((c) => c.number)).toEqual([96]); // épico NÃO está na coluna
     expect(todoCards[0].parentNumber).toBe(95);
-    expect(board.epics).toEqual([{ number: 95, title: 'Épico', htmlUrl: 'u' }]);
+    expect(board.epics).toEqual([
+      { number: 95, title: 'Épico', htmlUrl: 'u', closedChildren: 0, totalChildren: 1 },
+    ]);
+  });
+
+  it('conta filhas fechadas/total na faixa (SPEC-024)', async () => {
+    const svc = makeSvc([
+      issueRow({ number: 95, title: 'Épico', hasSubIssues: true }),
+      issueRow({ number: 96, column: 'doing', parentNumber: 95, state: 'open' }),
+      issueRow({ number: 97, column: 'finalized', parentNumber: 95, state: 'closed' }),
+    ]);
+    const board = await svc.getBoard('u1', 'p1');
+    expect(board.epics[0]).toMatchObject({ closedChildren: 1, totalChildren: 2 });
   });
 
   it('épico fechado não vira faixa (some das colunas abertas)', async () => {

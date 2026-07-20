@@ -10,9 +10,10 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, BoardCard, BoardColumn, BoardView } from '../../../lib/api';
-import { COLUMN_ORDER } from './columns';
+import { COLUMN_LABEL, COLUMN_ORDER } from './columns';
 import { KanbanCard } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
+import { columnFromDropId, KanbanSwimlane, NO_EPIC_KEY } from './KanbanSwimlane';
 import { EditCardPopover } from './EditCardPopover';
 import { BootstrapDialog } from './BootstrapDialog';
 import { ImportBanner } from './ImportBanner';
@@ -91,12 +92,15 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
     setActiveCard(null);
     if (state.status !== 'ready' || !e.over) return;
     const number = Number(e.active.id);
-    // `over.id` é a COLUNA quando se solta na área vazia, mas é o NÚMERO de um
-    // card quando se solta SOBRE outro card (o card é sortable). Nesse caso a
-    // coluna de destino sai do `data.card.column` do card alvo — senão
-    // `toColumn` viraria um número e `transitionTo` receberia lixo.
+    // `over.id` identifica o destino. Solto SOBRE um card → a coluna sai do
+    // `data.card.column` do alvo. Solto numa área de drop → o id é a coluna nua
+    // (board plano) ou `epicKey:column` (swimlane) — `columnFromDropId` devolve a
+    // coluna em ambos (sem `:`, retorna a string inteira). O épico do destino é
+    // ignorado: arrastar muda a coluna, nunca o pai (SPEC-024, leitura apenas).
     const overCard = e.over.data.current?.card as BoardCard | undefined;
-    const toColumn = (overCard ? overCard.column : e.over.id) as BoardColumn;
+    const toColumn = overCard
+      ? overCard.column
+      : columnFromDropId(String(e.over.id));
     const card = findCard(state.board, number);
     if (!card || card.column === toColumn) return;
 
@@ -177,29 +181,57 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
         onDragStart={readOnly ? undefined : onDragStart}
         onDragEnd={readOnly ? undefined : onDragEnd}
       >
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-6">
-          {COLUMN_ORDER.map((column) => (
-            <KanbanColumn
-              key={column}
-              column={column}
-              cards={cardsByColumn(board, column)}
-              pendingNumbers={pending}
-              collapsed={collapsed.has(column)}
-              onToggleCollapse={
-                column === 'finalized' || column === 'discarded'
-                  ? () => toggleCollapse(column)
-                  : undefined
-              }
-              onEdit={readOnly ? undefined : setEditing}
-              onCreate={
-                !readOnly &&
-                (column === 'backlog' || column === 'todo' || column === 'doing')
-                  ? (title) => void createCard(column, title)
-                  : undefined
-              }
-            />
-          ))}
-        </div>
+        {board.epics.length === 0 ? (
+          // Sem épico → board plano idêntico ao atual (SPEC-024: nenhuma
+          // regressão em repos sem sub-issues).
+          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-6">
+            {COLUMN_ORDER.map((column) => (
+              <KanbanColumn
+                key={column}
+                column={column}
+                cards={cardsByColumn(board, column)}
+                pendingNumbers={pending}
+                collapsed={collapsed.has(column)}
+                onToggleCollapse={
+                  column === 'finalized' || column === 'discarded'
+                    ? () => toggleCollapse(column)
+                    : undefined
+                }
+                onEdit={readOnly ? undefined : setEditing}
+                onCreate={
+                  !readOnly &&
+                  (column === 'backlog' || column === 'todo' || column === 'doing')
+                    ? (title) => void createCard(column, title)
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          // Swimlanes (SPEC-024): faixa por épico + faixa "sem épico". Cabeçalho
+          // de coluna uma vez no topo; cada faixa é uma grade de células.
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-6">
+            <div className="flex shrink-0 gap-3 pl-1">
+              {COLUMN_ORDER.map((column) => (
+                <div
+                  key={column}
+                  className="w-72 shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-faint"
+                >
+                  {COLUMN_LABEL[column]}
+                </div>
+              ))}
+            </div>
+            {orderedSwimlanes(board).map(({ epic, cardsByColumn: grid }) => (
+              <KanbanSwimlane
+                key={epic ? epic.number : NO_EPIC_KEY}
+                epic={epic}
+                cardsByColumn={grid}
+                pendingNumbers={pending}
+                onEdit={readOnly ? undefined : setEditing}
+              />
+            ))}
+          </div>
+        )}
 
         <DragOverlay>
           {activeCard && (
@@ -235,6 +267,41 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
       )}
     </div>
   );
+}
+
+/**
+ * Monta as faixas da swimlane (SPEC-024): uma por épico + a "sem épico" por
+ * último. Cada faixa traz seus cards já agrupados por coluna. Ordem dos épicos
+ * derivada do número (crescente); só filhas de um épico presente entram na sua
+ * faixa — filhas cujo pai fechou (não está em `epics`) caem em "sem épico".
+ */
+export function orderedSwimlanes(board: BoardView): {
+  epic: BoardView['epics'][number] | null;
+  cardsByColumn: Map<BoardColumn, BoardCard[]>;
+}[] {
+  const epicNumbers = new Set(board.epics.map((e) => e.number));
+  const emptyGrid = () => new Map(COLUMN_ORDER.map((c) => [c, [] as BoardCard[]]));
+
+  const byEpic = new Map<number | null, Map<BoardColumn, BoardCard[]>>();
+  for (const e of board.epics) byEpic.set(e.number, emptyGrid());
+  byEpic.set(null, emptyGrid());
+
+  for (const col of board.columns) {
+    for (const card of col.cards) {
+      // Filha de épico presente vai para a faixa dele; senão "sem épico".
+      const key =
+        card.parentNumber != null && epicNumbers.has(card.parentNumber)
+          ? card.parentNumber
+          : null;
+      byEpic.get(key)!.get(col.column)!.push(card);
+    }
+  }
+
+  const lanes = [...board.epics]
+    .sort((a, b) => a.number - b.number)
+    .map((epic) => ({ epic, cardsByColumn: byEpic.get(epic.number)! }));
+  lanes.push({ epic: null as never, cardsByColumn: byEpic.get(null)! });
+  return lanes;
 }
 
 /** Move um card de coluna no estado local (otimista). */

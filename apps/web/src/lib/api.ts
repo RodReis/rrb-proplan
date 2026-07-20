@@ -376,12 +376,26 @@ export interface BoardCard {
   closedAt: string | null;
   /** Fechada fora do ProPlan (closed sem label) — badge em Finalizado. */
   closedOutside: boolean;
+  /** Número do épico-pai (null = raiz). A swimlane agrupa por este campo (SPEC-024). */
+  parentNumber: number | null;
+}
+
+/** Épico = faixa da swimlane (issue com sub-issues), não card (SPEC-024). */
+export interface BoardEpic {
+  number: number;
+  title: string;
+  htmlUrl: string;
+  /** Filhas fechadas / total — a faixa mostra `fechadas/total` (SPEC-024). */
+  closedChildren: number;
+  totalChildren: number;
 }
 
 export interface BoardView {
   mode: BoardMode;
   needsIssueImport: boolean;
   columns: { column: BoardColumn; cards: BoardCard[] }[];
+  /** Épicos abertos, para renderizar as faixas da swimlane. */
+  epics: BoardEpic[];
 }
 
 export interface BoardMutationState {
