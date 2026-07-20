@@ -15,6 +15,10 @@ export interface GithubIssue {
   updated_at: string;
   /** Presente ⇒ é PR, não issue (armadilha da REST API — descartar). */
   pull_request?: unknown;
+  /** Número da issue-pai (épico), se esta for sub-issue. null = raiz (SPEC-024). */
+  parentNumber?: number | null;
+  /** Tem sub-issues ⇒ é épico estrutural, excluído das colunas (SPEC-024). */
+  hasSubIssues?: boolean;
 }
 
 @Injectable()
@@ -41,6 +45,78 @@ export class GithubIssuesClient {
       const batch = (await res.json()) as GithubIssue[];
       all.push(...batch.filter((i) => !i.pull_request));
       url = nextLink(res.headers.get('link'));
+    }
+    return all;
+  }
+
+  /**
+   * Lista issues com a hierarquia de sub-issues (SPEC-024): cada issue carrega
+   * `parentNumber` (épico-pai, se for sub-issue) e `hasSubIssues` (é épico).
+   * Via GraphQL (`parent`/`subIssues`) — os campos são GA mas ainda opt-in pelo
+   * header `GraphQL-Features: sub_issues`. Falha do GraphQL (shape mudou, feature
+   * indisponível) → **fallback** para o REST `listIssues` (sem hierarquia, mas o
+   * board volta a funcionar plano). Token do usuário — leitura (ADR-015).
+   */
+  async listIssuesWithHierarchy(
+    userToken: string,
+    owner: string,
+    repo: string,
+  ): Promise<GithubIssue[]> {
+    try {
+      return await this.listIssuesGraphql(userToken, owner, repo);
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      // Shape/feature indisponível: degrada para o board plano em vez de quebrar.
+      return this.listIssues(userToken, owner, repo);
+    }
+  }
+
+  private async listIssuesGraphql(
+    userToken: string,
+    owner: string,
+    repo: string,
+  ): Promise<GithubIssue[]> {
+    const all: GithubIssue[] = [];
+    let cursor: string | null = null;
+
+    // `repository.issues` no GraphQL v4 traz só issues (PRs vivem em
+    // `pullRequests`) — não precisa do filtro `pull_request` do REST.
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const query = `query($owner:String!,$repo:String!,$cursor:String){
+        repository(owner:$owner,name:$repo){
+          issues(first:100,after:$cursor,states:[OPEN,CLOSED]){
+            pageInfo{ hasNextPage endCursor }
+            nodes{
+              number title state url createdAt closedAt updatedAt
+              labels(first:20){ nodes{ name } }
+              assignees(first:10){ nodes{ login avatarUrl } }
+              parent{ number }
+              subIssues{ totalCount }
+            }
+          }
+        }
+      }`;
+      const res = await fetch('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: {
+          ...authHeaders(userToken),
+          'content-type': 'application/json',
+          'GraphQL-Features': 'sub_issues',
+        },
+        body: JSON.stringify({ query, variables: { owner, repo, cursor } }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (res.status === 401) throw new UnauthorizedException('Token GitHub inválido');
+      if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}`);
+      const body = (await res.json()) as GraphqlIssuesResponse;
+      if (body.errors?.length) throw new Error(`GitHub GraphQL: ${body.errors[0].message}`);
+
+      const conn = body.data?.repository?.issues;
+      if (!conn) throw new Error('GitHub GraphQL: resposta sem issues');
+      all.push(...conn.nodes.map(mapGraphqlIssue));
+
+      if (!conn.pageInfo.hasNextPage) break;
+      cursor = conn.pageInfo.endCursor;
     }
     return all;
   }
@@ -155,6 +231,49 @@ export class GithubIssuesClient {
 
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+}
+
+interface GraphqlIssueNode {
+  number: number;
+  title: string;
+  state: 'OPEN' | 'CLOSED';
+  url: string;
+  createdAt: string;
+  closedAt: string | null;
+  updatedAt: string;
+  labels: { nodes: { name: string }[] };
+  assignees: { nodes: { login: string; avatarUrl: string }[] };
+  parent: { number: number } | null;
+  subIssues: { totalCount: number };
+}
+
+interface GraphqlIssuesResponse {
+  data?: {
+    repository?: {
+      issues: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: GraphqlIssueNode[];
+      };
+    } | null;
+  };
+  errors?: { message: string }[];
+}
+
+/** Nó do GraphQL → o `GithubIssue` (formato REST) que o resto do board espera. */
+function mapGraphqlIssue(n: GraphqlIssueNode): GithubIssue {
+  return {
+    number: n.number,
+    title: n.title,
+    state: n.state === 'CLOSED' ? 'closed' : 'open',
+    labels: n.labels.nodes,
+    assignees: n.assignees.nodes.map((a) => ({ login: a.login, avatar_url: a.avatarUrl })),
+    html_url: n.url,
+    created_at: n.createdAt,
+    closed_at: n.closedAt,
+    updated_at: n.updatedAt,
+    parentNumber: n.parent?.number ?? null,
+    hasSubIssues: n.subIssues.totalCount > 0,
+  };
 }
 
 function nextLink(header: string | null): string | null {
