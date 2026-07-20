@@ -5,6 +5,8 @@ import { GithubAuth } from './application/github-auth.service';
 import { CryptoService } from './infrastructure/crypto.service';
 import { GithubOauthClient } from './infrastructure/github-oauth.client';
 import { GithubInstallationsClient } from './infrastructure/github-installations.client';
+import { GithubOrgMembershipClient } from './infrastructure/github-org-membership.client';
+import { RoleSyncService } from './application/role-sync.service';
 import { InstallationTokenService } from './infrastructure/installation-token.service';
 import { RedisProvider } from './infrastructure/redis.provider';
 import { AuthController } from './presentation/auth.controller';
@@ -33,6 +35,8 @@ import { TenantContextInterceptor } from './presentation/tenant-context.intercep
     RedisProvider,
     JwtAuthGuard,
     MembershipService,
+    RoleSyncService,
+    GithubOrgMembershipClient,
     TenantGuard,
     RoleGuard,
     TenantContextInterceptor,
@@ -43,6 +47,7 @@ import { TenantContextInterceptor } from './presentation/tenant-context.intercep
     GithubInstallationsClient,
     JwtAuthGuard,
     MembershipService,
+    RoleSyncService,
     TenantGuard,
     RoleGuard,
     TenantContextInterceptor,

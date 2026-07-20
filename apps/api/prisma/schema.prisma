@@ -69,6 +69,11 @@ model Membership {
   tenantId  String   @map("tenant_id")
   role      Role
   createdAt DateTime @default(now()) @map("created_at")
+  // Último recálculo do papel a partir do GitHub (SPEC-022 E2, decisão 2).
+  // Throttle PERSISTENTE: em memória, cada reinício da API zeraria a janela e
+  // toda abertura de catálogo viraria request à API do GitHub. Nullable: linhas
+  // pré-migration nunca foram recalculadas, e null força o primeiro cálculo.
+  roleSyncedAt DateTime? @map("role_synced_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
