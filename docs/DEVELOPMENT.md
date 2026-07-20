@@ -798,7 +798,23 @@ Contra o `Tenant` real do dogfooding (`00000000-…-e48e206abe39`, instalação 
 - ✅ **Fallback da linha pré-migration**: `account_id` `null` → `80895`, casado por login, exatamente uma vez.
 - ✅ **Estado restaurado**: seed removido, `installationId`/`account_id` de volta ao original; 7 projetos reais intactos, conferidos como owner.
 
-**O que só o PI pode provar**: o reinstall **real** no GitHub (desinstalar + reinstalar o App). Aqui a emissão do id novo foi simulada — o que se provou é que, dado um id novo para a mesma conta, o tenant é re-apontado e nada orfana. A janela não coberta é o GitHub emitir algo diferente do previsto.
+### Reinstall REAL executado pelo PI (2026-07-20) — a prova definitiva
+
+O PI desinstalou o App no GitHub (`Danger zone → Uninstall`) e reinstalou pelo CTA **"Instalar no GitHub"** do próprio catálogo. O GitHub emitiu um `installationId` **novo**, e o re-liga rodou no `listInstallations`:
+
+| checagem | antes | depois | veredito |
+|---|---|---|---|
+| `Tenant.id` | `00000000-…e48e206abe39` | **idêntico** | ✅ re-apontou, não recriou |
+| `installation_id` | 146171535 | **147870965** | ✅ o id do GitHub **mudou de fato** |
+| linhas em `tenants` | 1 | **1** | ✅ não duplicou |
+| projetos / órfãos | 7 / 0 | **7 / 0** | ✅ nada orfanou |
+| `account_id` | 80895 | 80895 | ✅ casou por **id**, não pelo fallback de login |
+
+**A premissa do card confirmada empiricamente**: `146171535 → 147870965`. O id de instalação do GitHub realmente não é estável — é o fato que justifica a PK própria do `Tenant` e todo este eixo. **Sem este código, o reinstall teria criado um `Tenant` duplicado** e os 7 projetos ficariam presos ao tenant antigo, apontando para uma instalação morta.
+
+**Observado de quebra**: `role_synced_at` **não** mudou no reinstall (seguiu `19:07:35`) — é o throttle da decisão 2 (#88) agindo em cenário real, sem ter sido forçado.
+
+**Bug de documentação corrigido no caminho**: eu indiquei ao PI a URL pública `github.com/apps/rrb-proplan` para reinstalar, que dá **404** — ela só vale para Apps públicos, e este é privado. O caminho correto é `github.com/settings/apps/<slug>/installations`, ou — melhor — o **CTA do próprio catálogo**, que monta a URL certa via `GET /catalog/install-url` (Fatia 4.5). O estado vazio ("O ProPlan ainda não está instalado em nenhum repositório") foi exercitado ao vivo pela primeira vez e renderizou correto.
 
 **Dois achados da verificação, ambos do RLS funcionando:**
 1. **O seed foi barrado** (`42501: new row violates row-level security policy`) ao tentar inserir projeto **fora** de contexto de tenant. É o fail-closed do PR-3 fazendo o trabalho dele — o script passou a semear sob `SET LOCAL`, como a app faz.
