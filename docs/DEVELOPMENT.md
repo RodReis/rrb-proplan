@@ -849,3 +849,16 @@ Uma fatia, **4 PRs** (`card = fatia`, ADR-011; os passos vivem aqui, não viram 
 **Dogfooding ao vivo (issues de teste #95/#96):** a faixa **#95** renderiza com `0/1`, o card **#96** cai em **A Fazer** sob ela, o resto na faixa **"sem épico"**. **Duas regressões pegas pelo PI e corrigidas**: (a) Finalizado/Descartado tinham perdido o colapso na swimlane, e (b) o rótulo da coluna se repetia por faixa — agora o cabeçalho de coluna é **sticky** no topo (toggle sempre visível ao rolar) e a célula colapsada vira slot fino só com o contador. **Um teste que não vê a regressão é decoração**: as duas eram visuais e não tinham cobertura unitária — pegas no olho, no board real.
 
 **Piso**: API board **101/101**, web **50/50** (inclui `orderedSwimlanes` e `columnFromDropId`), `nest`+`vite build` limpos. Projeto **não tem ESLint** — o piso real é `test`+`build`. `refs #97` nos 4 PRs, nunca `closes` (ADR-011). `proplan:done` só pós-merge dos 4; aceite/fechar é do PI.
+
+**Aceita pelo PI em 2026-07-20** (#97 fechada + `proplan:finalizado`). O aceite foi precedido do teste que fecha a prova: o PI finalizou a filha **#96** e a contagem da faixa foi de `0/1` para **`1/1`** — o pipeline inteiro (GraphQL → cache → `getBoard` → swimlane) exercitado com dado real. Issues de teste **#95/#96** descartadas em seguida (`proplan:descartado`, com carimbo).
+
+## Kanban — Finalizado ordena por data de finalização — `feito` (decisão do PI 2026-07-20)
+
+Pedido do PI ao vivo, olhando o board. **Emenda à SPEC-005 linha 109**, que fixava *"prioridade, depois `updated_at` desc"* para **todas** as colunas — a spec vigente contradizia o pedido, então a mudança foi ao PI antes de qualquer linha de código (não é correção de bug: o comportamento anterior estava correto por spec).
+
+1. `feito` — **A regra**: **Finalizado** passa a ordenar por `closedAt` **desc** (mais recente primeiro). Numa coluna fechada a prioridade é ruído — o trabalho acabou; o que importa é *quando foi aceito*. **Só Finalizado** muda (decisão do PI): Descartado e as colunas abertas seguem `prioridade + updated_at`.
+2. `feito` — **Ordenação em memória**, não uma segunda query: o `getBoard` já faz um `findMany` único e agrupa por coluna; reordenar só a lista de `finalized` depois do agrupamento é menor que ramificar o `orderBy` do Prisma por coluna.
+3. `feito` — **Sem `closedAt` não inventa data**: issue *fechada fora do ProPlan* pode não ter `closed_at`; essas caem para o **fim** da coluna preservando a ordem que veio do banco. Comparação por string ISO-8601 (ordena lexicograficamente, sem `new Date()` por item).
+4. `feito` — **3 testes, provados contra o bug**: removi o `sort` de propósito → **2 falharam**; restaurei → **8/8** passam. Cobrem: prioridade ignorada em Finalizado, `closedAt` nulo no fim, e colunas abertas **inalteradas** (o teste que impede a mudança vazar para o board de trabalho). API board **104/104**, `nest build` limpo, `reports/TESTS.md` regenerado (Regras 577→**580**).
+
+**Pendência de processo**: a **SPEC-005 linha 109** segue dizendo *"prioridade, depois `updated_at` desc"* para todas as colunas — o Cowork precisa emendá-la para refletir a exceção de Finalizado. O código e a spec divergem até lá, e isso está registrado aqui de propósito: divergência anotada é dívida; divergência silenciosa é a mentira que este produto existe para detectar.

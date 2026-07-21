@@ -199,6 +199,19 @@ export class BoardService {
       });
     }
 
+    // Finalizado é histórico de aceite, não fila de trabalho: ordena pela data
+    // de finalização (mais recente primeiro), não por prioridade — numa coluna
+    // fechada a prioridade é ruído (decisão do PI 2026-07-20; emenda à SPEC-005
+    // linha 109, que fixava prioridade+updated_at para TODAS as colunas).
+    // Sem `closedAt` (ex.: fechada fora do ProPlan) cai para o fim, preservando
+    // a ordem que veio do banco — nunca inventa data.
+    byColumn.get('finalized')?.sort((a, b) => {
+      if (a.closedAt === b.closedAt) return 0;
+      if (a.closedAt === null) return 1;
+      if (b.closedAt === null) return -1;
+      return b.closedAt.localeCompare(a.closedAt); // ISO-8601 ordena como string
+    });
+
     return {
       mode,
       needsIssueImport: project.needsIssueImport,
