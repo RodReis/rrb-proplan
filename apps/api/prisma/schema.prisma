@@ -482,6 +482,11 @@ model Issue {
   // Cai em Finalizado com badge "fechada fora do ProPlan" (SPEC-005 linha 119):
   // a falta de evidência de aceite é sinalizada, nunca disfarçada.
   closedOutside Boolean    @default(false) @map("closed_outside")
+  // Hierarquia de sub-issues (SPEC-024). `parentNumber` = número do épico-pai
+  // (null = raiz); `hasSubIssues` = é épico estrutural, excluído das colunas.
+  // Derivados no sync via GraphQL; leitura apenas (não editamos a hierarquia).
+  parentNumber Int?        @map("parent_number")
+  hasSubIssues Boolean     @default(false) @map("has_sub_issues")
   project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, number])

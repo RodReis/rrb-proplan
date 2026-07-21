@@ -83,6 +83,9 @@ export class BoardService {
         createdAt: new Date(i.created_at),
         closedAt: i.closed_at ? new Date(i.closed_at) : null,
         updatedAt: new Date(i.updated_at),
+        // Hierarquia (SPEC-024): ausentes no fallback REST → raiz/não-épico.
+        parentNumber: i.parentNumber ?? null,
+        hasSubIssues: i.hasSubIssues ?? false,
       };
     });
 
