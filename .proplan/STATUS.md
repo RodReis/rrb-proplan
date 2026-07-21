@@ -17,10 +17,6 @@ updated: 2026-07-21
 
 ## A Fazer
 
-### [TESTE] Épico — validação de hierarquia (SPEC-024) (#95)
-
-- [TESTE] Fatia-filha — deve cair em "A Fazer" sob o épico (#96)
-
 ### Sem épico
 
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
@@ -34,6 +30,10 @@ _(vazio)_
 _(vazio)_
 
 ## Finalizado
+
+### [TESTE] Épico — validação de hierarquia (SPEC-024) (#95)
+
+- [TESTE] Fatia-filha — deve cair em "A Fazer" sob o épico (#96, finalizado em: 2026-07-21)
 
 ### Sem épico
 
