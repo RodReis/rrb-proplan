@@ -14,6 +14,7 @@ const card = (over: Partial<ProjectionCard>): ProjectionCard => ({
   priority: null,
   column: 'backlog',
   closedAt: null,
+  parentNumber: null,
   ...over,
 });
 
@@ -39,6 +40,32 @@ describe('generateProjection', () => {
       '2026-07-12',
     );
     expect(md).toContain('- Tela de config (#42, prio: alta)');
+  });
+
+  it('agrupa cards por épico em H3 dentro da coluna; raiz sob "Sem épico" (SPEC-024)', () => {
+    const md = generateProjection(
+      [
+        card({ number: 96, title: 'Filha', column: 'todo', parentNumber: 95 }),
+        card({ number: 8, title: 'Raiz', column: 'todo', parentNumber: null }),
+      ],
+      '2026-07-20',
+      [{ number: 95, title: 'Épico de teste' }],
+    );
+    expect(md).toContain('### Épico de teste (#95)');
+    expect(md).toContain('- Filha (#96)');
+    expect(md).toContain('### Sem épico');
+    expect(md).toContain('- Raiz (#8)');
+    // O épico aparece antes da raiz dentro da coluna.
+    expect(md.indexOf('### Épico de teste')).toBeLessThan(md.indexOf('### Sem épico'));
+  });
+
+  it('coluna sem épicos: só "Sem épico" com os cards raiz', () => {
+    const md = generateProjection(
+      [card({ number: 1, title: 'Só raiz', column: 'backlog' })],
+      '2026-07-20',
+    );
+    expect(md).toContain('### Sem épico');
+    expect(md).toContain('- Só raiz (#1)');
   });
 
   it('Feito usa "fechado em" com a data real; Descartado usa "descartado em"', () => {

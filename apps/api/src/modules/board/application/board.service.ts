@@ -6,6 +6,7 @@ import {
   COLUMNS,
   columnOf,
   isClosedOutsideProplan,
+  isEpic,
   priorityOf,
 } from '../domain/column-mapping';
 import { isGeneratedProjection } from '../domain/status-parser';
@@ -23,6 +24,15 @@ export interface BoardCard {
   closedAt: string | null;
   /** Fechada fora do ProPlan (closed sem label) — badge em Finalizado (SPEC-005). */
   closedOutside: boolean;
+  /** Número do épico-pai (null = raiz). A UI agrupa os cards por este campo (SPEC-024). */
+  parentNumber: number | null;
+}
+
+/** Épico = faixa/agrupador (SPEC-024). Não anda pelas colunas; a UI o usa como cabeçalho. */
+export interface BoardEpic {
+  number: number;
+  title: string;
+  htmlUrl: string;
 }
 
 export type BoardMode = 'active' | 'degraded' | 'no-installation';
@@ -31,6 +41,8 @@ export interface BoardView {
   mode: BoardMode;
   needsIssueImport: boolean;
   columns: { column: BoardColumn; cards: BoardCard[] }[];
+  /** Épicos abertos (issues com sub-issues), para a UI renderizar as faixas. */
+  epics: BoardEpic[];
 }
 
 @Injectable()
@@ -139,7 +151,17 @@ export class BoardService {
 
     const byColumn = new Map<BoardColumn, BoardCard[]>();
     for (const col of COLUMNS) byColumn.set(col, []);
+    const epics: BoardEpic[] = [];
     for (const i of issues) {
+      // Épico é faixa, não card: sai da classificação de coluna (SPEC-024).
+      // Épico fechado não vira faixa — some das colunas abertas (só expomos os
+      // que estão em coluna aberta, isto é, `state === 'open'`).
+      if (isEpic(i.hasSubIssues)) {
+        if (i.state === 'open') {
+          epics.push({ number: i.number, title: i.title, htmlUrl: i.htmlUrl });
+        }
+        continue;
+      }
       byColumn.get(i.column)?.push({
         number: i.number,
         title: i.title,
@@ -152,6 +174,7 @@ export class BoardService {
         createdAt: i.createdAt.toISOString(),
         closedAt: i.closedAt?.toISOString() ?? null,
         closedOutside: i.closedOutside,
+        parentNumber: i.parentNumber ?? null,
       });
     }
 
@@ -159,6 +182,7 @@ export class BoardService {
       mode,
       needsIssueImport: project.needsIssueImport,
       columns: COLUMNS.map((column) => ({ column, cards: byColumn.get(column) ?? [] })),
+      epics,
     };
   }
 

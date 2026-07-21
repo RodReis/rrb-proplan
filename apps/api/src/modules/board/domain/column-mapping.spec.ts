@@ -4,6 +4,7 @@ import {
   DISCARDED_LABEL,
   FINALIZED_LABEL,
   isClosedOutsideProplan,
+  isEpic,
   priorityOf,
   transitionTo,
 } from './column-mapping';
@@ -135,5 +136,14 @@ describe('transitionTo', () => {
     // issue; transitionTo(12) retornava undefined e estourava undefined.removeLabels.
     expect(() => transitionTo(12 as never)).toThrow(/inválida/);
     expect(() => transitionTo('finalizado' as never)).toThrow(/inválida/); // valor != enum
+  });
+});
+
+describe('isEpic', () => {
+  it('tem sub-issues → é épico (estrutural, SPEC-024)', () => {
+    expect(isEpic(true)).toBe(true);
+  });
+  it('sem sub-issues → não é épico', () => {
+    expect(isEpic(false)).toBe(false);
   });
 });

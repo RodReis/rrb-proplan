@@ -78,6 +78,16 @@ export function isClosedOutsideProplan(state: IssueState, labels: string[]): boo
   return state === 'closed' && !labels.includes(FINALIZED_LABEL) && !labels.includes(DISCARDED_LABEL);
 }
 
+/**
+ * Épico estrutural (SPEC-024): é épico toda issue que *tem* sub-issues. Épico é
+ * faixa/agrupador, não anda pelas colunas — `getBoard` o exclui da classificação
+ * de coluna e o expõe como cabeçalho. A label `proplan:mvp` é opcional e não
+ * entra nesta decisão (a estrutura manda, não o rótulo).
+ */
+export function isEpic(hasSubIssues: boolean): boolean {
+  return hasSubIssues;
+}
+
 /** Prioridade a partir das labels `prio:*` (a primeira que casar). */
 export function priorityOf(labels: string[]): IssuePriority | null {
   if (labels.includes(PRIORITY_LABELS.alta)) return 'alta';

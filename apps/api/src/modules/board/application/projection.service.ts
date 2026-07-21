@@ -5,10 +5,12 @@ import {
   GithubWritebackClient,
   WritebackConflictError,
 } from '../../../shared/github/github-writeback.client';
+import { isEpic } from '../domain/column-mapping';
 import {
   generateProjection,
   PROJECTION_COMMIT_MESSAGE,
   ProjectionCard,
+  ProjectionEpic,
 } from '../domain/projection';
 
 const PROJECTION_PATH = '.proplan/STATUS.md';
@@ -43,14 +45,25 @@ export class ProjectionService {
       where: { projectId },
       orderBy: [{ column: 'asc' }, { priority: 'asc' }, { updatedAt: 'desc' }],
     });
-    const cards: ProjectionCard[] = issues.map((i) => ({
-      number: i.number,
-      title: i.title,
-      priority: i.priority,
-      column: i.column,
-      closedAt: i.closedAt,
-    }));
-    const content = generateProjection(cards, updated);
+    // Épico é subcabeçalho, não card na coluna (SPEC-024) — separa os dois.
+    const epics: ProjectionEpic[] = [];
+    const cards: ProjectionCard[] = [];
+    for (const i of issues) {
+      if (isEpic(i.hasSubIssues)) {
+        // Épico fechado não aparece na projeção (só faixas de colunas abertas).
+        if (i.state === 'open') epics.push({ number: i.number, title: i.title });
+        continue;
+      }
+      cards.push({
+        number: i.number,
+        title: i.title,
+        priority: i.priority,
+        column: i.column,
+        closedAt: i.closedAt,
+        parentNumber: i.parentNumber ?? null,
+      });
+    }
+    const content = generateProjection(cards, updated, epics);
 
     const token = await this.auth.installationToken(projectId);
     for (let attempt = 0; attempt < 2; attempt++) {
