@@ -108,6 +108,41 @@ describe('BoardService.getBoard — épicos fora das colunas (SPEC-024)', () => 
     expect(board.epics[0]).toMatchObject({ closedChildren: 1, totalChildren: 2 });
   });
 
+  it('Finalizado ordena por data de finalização (mais recente primeiro), ignorando prioridade', async () => {
+    // Decisão do PI 2026-07-20 (emenda à SPEC-005 linha 109): em coluna fechada
+    // a prioridade é ruído — o que importa é quando foi aceito. O mock devolve
+    // na ordem do banco (prioridade asc), e o serviço tem de reordenar.
+    const svc = makeSvc([
+      issueRow({ number: 1, column: 'finalized', state: 'closed', priority: 'alta', closedAt: new Date('2026-06-01T10:00:00Z') }),
+      issueRow({ number: 2, column: 'finalized', state: 'closed', priority: 'baixa', closedAt: new Date('2026-07-18T10:00:00Z') }),
+      issueRow({ number: 3, column: 'finalized', state: 'closed', priority: 'media', closedAt: new Date('2026-07-01T10:00:00Z') }),
+    ]);
+    const board = await svc.getBoard('u1', 'p1');
+    const finalized = board.columns.find((c) => c.column === 'finalized')!.cards;
+    // #2 (18/07) → #3 (01/07) → #1 (01/06), apesar de #1 ser prio alta.
+    expect(finalized.map((c) => c.number)).toEqual([2, 3, 1]);
+  });
+
+  it('Finalizado sem closedAt (fechada fora do ProPlan) vai para o fim, sem inventar data', async () => {
+    const svc = makeSvc([
+      issueRow({ number: 1, column: 'finalized', state: 'closed', closedAt: null }),
+      issueRow({ number: 2, column: 'finalized', state: 'closed', closedAt: new Date('2026-07-18T10:00:00Z') }),
+    ]);
+    const board = await svc.getBoard('u1', 'p1');
+    const finalized = board.columns.find((c) => c.column === 'finalized')!.cards;
+    expect(finalized.map((c) => c.number)).toEqual([2, 1]);
+  });
+
+  it('colunas abertas mantêm a ordem do banco (prioridade), não a de Finalizado', async () => {
+    const svc = makeSvc([
+      issueRow({ number: 1, column: 'todo', priority: 'alta', closedAt: null }),
+      issueRow({ number: 2, column: 'todo', priority: 'baixa', closedAt: null }),
+    ]);
+    const board = await svc.getBoard('u1', 'p1');
+    const todo = board.columns.find((c) => c.column === 'todo')!.cards;
+    expect(todo.map((c) => c.number)).toEqual([1, 2]);
+  });
+
   it('épico fechado não vira faixa (some das colunas abertas)', async () => {
     const svc = makeSvc([
       issueRow({ number: 90, title: 'Épico fechado', column: 'finalized', state: 'closed', hasSubIssues: true }),
