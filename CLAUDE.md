@@ -27,12 +27,33 @@ Priorizam cautela sobre velocidade; em tarefa trivial, bom senso.
 
 Isto é convenção **nossa**, executada à mão via GitHub MCP: o **Cowork cria** a issue, o **Code move e entrega**. **Nada disso vira código do ProPlan** — o ADR-014 é explícito: o ProPlan se adapta ao repo, nunca impõe convenção. Se um segundo repo adotar `docs/specs/`, reavaliar.
 
-1. **Spec vira `aprovada-pi`** → o **Cowork** cria a issue no board: coluna **Backlog** (`proplan:backlog`), título = a fatia, corpo com link para o arquivo da spec, assignee = **PI**.
+1. **Spec vira `aprovada-pi`** → o **Cowork** cria a issue no board: coluna **Backlog** (`proplan:backlog`), título no **Padrão de título de issue** (ver abaixo), corpo com link para o arquivo da spec, assignee = **PI**.
 2. **Code começa** → move da Backlog para **A Fazer** (`proplan:todo`) ao pegar e para **Em Andamento** (`proplan:doing`) ao iniciar; se atribui.
 3. **Code entrega** → abre PR com **`refs #N`** no corpo. **NUNCA `closes #N`** — fecharia a issue no merge e **forjaria o aceite do PI** (ADR-011). Só **depois do merge**, o Code aplica `proplan:done` → card vai para **Feito**, com o **link do PR** no corpo da issue. Declarar "terminei" **sem PR mergeado** é o "fechamento frágil" que este produto existe para detectar — não o produza aqui dentro.
 4. **PI aceita** → **só o PI** fecha a issue e aplica `proplan:finalizado`. **A issue só fecha quando o trabalho realmente acabou.** Nenhuma automação pode forjar aceite (ADR-011). O Code **nunca** fecha issue nem move card para Finalizado.
 
 **`card = fatia`** — uma issue por fatia, **nunca por passo da spec**. Os passos vivem no `docs/DEVELOPMENT.md` (ADR-011).
+
+### Padrão de título de issue (acordo PI, 2026-07-20)
+
+Todo título de card **começa** com tokens em colchetes, **nesta ordem**, seguidos de um espaço e o título livre. Motivo: olhando o board, dá pra ler **qual MVP** e **qual SPEC** — não só a fatia. Reforça a regra do `STATUS.md`: *nunca o número nu, sempre o par*.
+
+**Forma:** `[MVP<n>][SPEC-<nnn>][<fatia|tipo>] <título livre>`
+
+- **`[MVP<n>]`** — `[MVP1]`/`[MVP2]`/`[MVP3]`, quando a fatia pertence a um MVP conhecido.
+- **`[SPEC-<nnn>]`** — 3 dígitos (`[SPEC-024]`), quando há spec. **Permanece** em correção que conserta comportamento definido numa spec.
+- **`[F<n>]`** — a fatia (`[F18]`). Para card que **não é fatia**, entra no lugar um **token de tipo**: `[FIX]` (correção de bug) ou `[INFRA]` (processo/infra).
+
+**Regra de ouro:** só entra token que é **verdade** — nunca inventar SPEC ou fatia. Card carrega os tokens que existem, na ordem; os que não existem, omite.
+
+Exemplos:
+
+- Fatia com spec → `[MVP2][SPEC-024][F18] Épicos: hierarquia MVP→fatia no board`
+- Correção ligada a uma spec → `[MVP2][SPEC-022][FIX] reinstall re-liga o Tenant`
+- Correção ligada só a ADR/doc (sem spec) → `[MVP1][FIX] Kanban atualiza sem F5`
+- Processo/infra sem MVP/SPEC → `[INFRA] CI: relatório de testes por SPEC/issue`
+
+O par MVP↔SPEC↔Fatia deriva do **Índice Fatia ↔ SPEC** do `docs/STATUS.md` (fonte única). Card de teste/descartável leva `[TEST]` no lugar do tipo.
 
 ### Fatia exige spec. Correção de bug documentado, não.
 

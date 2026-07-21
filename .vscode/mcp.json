@@ -1,0 +1,10 @@
+{
+	"servers": {
+		"composio": {
+			"type": "stdio",
+			"command": "install",
+			"args": []
+		}
+	},
+	"inputs": []
+}
