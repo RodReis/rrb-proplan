@@ -119,3 +119,4 @@ O repo tem um grafo de conhecimento persistente em `graphify-out/` (gerado pela 
 - `docs/DESIGN.md` — design system Carbono/Claro: shell workspace, tokens, componentes e regras de comportamento (protótipos em `docs/design/`)
 - `docs/STATUS.md` — Kanban/roadmap deste projeto (mantenha atualizado ao concluir fatias)
 - `docs/LANDSCAPE.md` — **cenário competitivo datado**: o que o mercado já faz, o que morreu por causa disso, e os gatilhos que obrigam a revisar. Ler antes de propor feature de MVP2 — evita reconstruir o que já existe de graça (ADR-017)
+- `docs/TESTING.md` — Teste de QA, Resultado dos teste das SPEC.
