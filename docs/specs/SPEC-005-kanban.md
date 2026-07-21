@@ -106,7 +106,7 @@ A SPEC-003 entregou "gerar proposta de `STATUS.md` por IA → aprovar → commit
 - **Atribuir/desatribuir** pelo popover de edição: lista de colaboradores do repo (`GET /repos/{o}/{r}/assignees`), seleção única, opção "ninguém".
 - Criar card inline no topo da coluna; editar em popover; **descartar** = mover para a coluna Descartado (confirmação).
 - **Coluna Descartado**: visível, colapsada por padrão (não polui o board), com contador. Visual distinto de Feito (cinza/riscado vs. verde) — Feito é conquista, Descartado é decisão.
-- Ordenação dentro da coluna: **determinística** (prioridade, depois `updated_at` desc). Reordenar manualmente **não entra** (Issues não tem ordem; exigiria Projects v2).
+- Ordenação dentro da coluna: **determinística** (prioridade, depois `updated_at` desc). **Exceção — Finalizado** (emenda do PI, 2026-07-20): ordena por **`closed_at` desc** (mais recente primeiro), ignorando prioridade — numa coluna fechada o trabalho acabou, e o que importa é *quando foi aceito*; prioridade ali é ruído. Card sem `closed_at` (fechado fora do ProPlan) vai para o **fim**, sem data inventada. **Descartado não muda** (segue prioridade + `updated_at`). Reordenar manualmente **não entra** (Issues não tem ordem; exigiria Projects v2).
 
 ## Fora de escopo
 
