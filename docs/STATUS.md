@@ -45,6 +45,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 15 | SPEC-020 | `SPEC-020-shell-workspace.md` | Shell workspace |
 | 16 | SPEC-021 | `SPEC-021-login-catalogo.md` | Login + catálogo |
 | 17 | SPEC-023 | `SPEC-023-stack-sbom.md` | Stack detectada via SBOM + confronto doc×real (issue #8; spec `aprovada-pi` 2026-07-17) |
+| 18 | SPEC-024 | `SPEC-024-epicos-hierarquia.md` | Épicos: hierarquia MVP→fatia no board via GitHub sub-issues (MVP2; spec `aprovada-pi` 2026-07-20) |
 
 ## Backlog
 
@@ -116,7 +117,9 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 _(vazio)_
 
 ## Em Andamento
-_(vazio)_
+- **Fatia 18 (SPEC-024) — Épicos: hierarquia MVP→fatia no board via GitHub sub-issues** — prio: **baixa** (MVP2). Issue **#97** em `proplan:doing`. Uma fatia, **4 PRs empilhados** abertos, `refs #97`: **#98** (leitura GraphQL de sub-issues → `parentNumber`/`hasSubIssues`, fallback REST) · **#99** (schema `parentNumber`/`hasSubIssues` + migração + persistência no `syncIssues`) · **#100** (`isEpic` estrutural fora das colunas + `getBoard` agrupado + espelho `.proplan/STATUS.md` em H3 por épico) · **#101** (swimlane na UI: faixa por épico atravessando as colunas + contagem `fechadas/total`). Escopo = issue #97 + `docs/specs/SPEC-024` (batem; a spec é a v2 completa `aprovada-pi`). Layout **swimlane** é decisão da spec, não da implementação.
+  - **Dogfooding ao vivo** com as issues de teste **#95** (épico) / **#96** (filha): a faixa #95 renderiza com `0/1`, o #96 cai em A Fazer sob ela, o resto na faixa "sem épico". **Duas regressões visuais pegas pelo PI e corrigidas**: o colapso de Finalizado/Descartado sumia na swimlane e o rótulo da coluna se repetia por faixa → cabeçalho de coluna agora **sticky** (toggle sempre visível) + célula colapsada vira slot fino. Sem cobertura unitária (eram visuais) — pegas no board real.
+  - **Piso**: API board **101/101**, web **50/50**, builds limpos. Aguarda: merge dos 4 PRs (na ordem #98→#99→#100→#101), depois `proplan:done`; aceite/fechar é do PI (ADR-011).
 
 ## Feito
 - **Correção — a suíte `banco` nunca rodou verde no CI** (achado ao mergear o #90; entregue junto no PR #90). O workflow definia a porta **5432**, mas o harness dos int-specs resolve por `TEST_DIRECT_URL`/`TEST_DATABASE_URL` com **fallback para a 5433** do dev local ⇒ `prisma migrate deploy` falhava com `P1001` e **toda** a suíte caía. Faltava também a role `proplan_app` no runner (no dev ela nasce do init do docker). **Desde o PR-2 da Fatia 8**, quando os int-specs nasceram — o comentário do próprio workflow entregava a idade (*"Categoria Banco ainda vazia; a DB de teste já fica pronta para quando os `*.int-spec.ts` existirem"*). O run do `feat/spec-022-pr6-e2e` **também falhou e foi mergeado assim mesmo**.

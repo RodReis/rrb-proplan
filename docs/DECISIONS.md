@@ -405,3 +405,33 @@ O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013)
 4. **Proibido**: bypass de RLS, role `BYPASSRLS`, conexão como owner para leitura global. A garantia mora no **banco**, não no service. Checagem no CI barra o merge que reintroduzir bypass.
 
 **Consequências**: o catálogo lê cross-tenant **sob RLS**, com uma policy só (simplifica, não incha). Custo: a rota global monta o array de membership por request — um passo, o **elo crítico**, que deriva da identidade autenticada. Este ADR existe para que ninguém reabra bypass "só para um relatório" sem confrontar a decisão datada. Complementa ADR-015 (auth/tenant) e ADR-016 (teto de IA por tenant).
+
+## ADR-021 — Identidade é o GitHub App no MVP; login genérico (Google/outros) desacoplado das conexões fica para o módulo `identity`
+
+**Status**: **aprovado pelo PI em 2026-07-20**. Não altera código no MVP — registra uma decisão de *não fazer agora* e a costura que a viabiliza depois. Complementa ADR-015 (auth) e ADR-020 (tenant); não toca SPEC-021 (login/catálogo), que segue de pé.
+
+**Contexto**: o PI levantou trocar o ponto de entrada — **login pelo Google → catálogo → e só então a integração com o GitHub** —, motivado por o ProPlan "não ser só git" (ideias futuras de outras fontes). A pergunta embutida era se isso resolveria o item pendente *"Configurações: desconectar/reconectar o GitHub App"*.
+
+**Por que não agora**:
+
+1. **Não resolve o problema que motivou a pergunta.** Desconectar/reconectar o GitHub App é um fluxo de **conexão**, ortogonal à **identidade**. A conexão pode ser revogada, expirar ou precisar de re-consent independentemente de quem é o IdP primário — a tela de Configurações é necessária com Google ou com GitHub. Trocar a identidade não elimina esse botão.
+2. **Conflita com o modelo de dois tokens do ADR-015.** Toda **leitura** usa o token **user-to-server** do GitHub, que respeita a visibilidade real do usuário (leitura com installation token é proibida). Se o Google vira a identidade, o token user-to-server do GitHub **ainda precisa existir e ser vinculado** — o OAuth do GitHub não sai de cena, o Google entra **por cima**. Resultado: mais superfície de auth, não menos.
+3. **Contradiz "single-user + 100% local até o fim do MVP".** Google OAuth é um segundo IdP externo (registro de app, callback, nuvem) para um sistema de **um usuário** que **precisa** conectar o GitHub para fazer qualquer coisa. Login Google no MVP é uma credencial a mais sem benefício — atrito puro.
+
+**Decisão**:
+
+- O **MVP mantém o GitHub App como identidade** (SPEC-021/ADR-015 intactos). Não reabrir agora.
+- A tela **desconectar/reconectar o GitHub App** é especificada **independentemente** desta discussão (SPEC-025) — é o item que estava na fila e continua valendo.
+- A intuição de **desacoplar identidade das conexões** é correta e fica **desenhada como costura**: o módulo `identity` (que **já existe** — hoje GitHub-App-auth *é* a identidade) passa a **não hardcodar GitHub como IdP**; conexões (GitHub App hoje; GitLab/Jira/Notion amanhã) são recursos plugáveis pendurados numa identidade, não a identidade em si. É **refatoração** de módulo vivo, não greenfield (ver SPEC-026). Construir o login genérico é YAGNI até haver segunda fonte ou multi-tenant.
+
+**Gatilho de revisão**: quando entrar **segunda fonte de ingestão** (não-GitHub) **ou** multi-tenant/comercialização — aí a identidade genérica + conexões plugáveis passam a ter razão real, e este ADR vira o ponto de partida.
+
+**Alternativa rejeitada**: *trocar já a entrada para Google + integração GitHub posterior*. Resolve um problema que não temos (multi-fonte) e não resolve o que temos (desconectar/reconectar), ao custo de reabrir o ADR-015 e furar o local-only.
+
+**Atualização 2026-07-20 (mesmo dia, após esclarecimento do PI)**: o PI apontou o caso de uso concreto que torna a separação valiosa — com identidade separada, **desconectar deixa de ser deslogar**: a sessão do app sobrevive à perda do GitHub e o usuário fica dentro do produto (catálogo com botão *conectar GitHub*), podendo usar features que não dependem do GitHub. Decisão refinada:
+
+- **Nada muda no MVP1.** Continua GitHub-como-identidade; nada a codificar agora.
+- A costura **identidade ⊥ conexão, com Google como primeiro IdP**, é o **primeiro item pós-MVP1** (fora do escopo/tese do MVP2 em `docs/specs/MVP2.md`, que é memória verificável — esta é outra frente). Desenhada agora, codificada depois. Spec: **SPEC-026** (`aprovada-pi` 2026-07-20). Decisões: encerra o "100% local" (+ IdP fake no dev) · `Connection` 1:N no schema, 1 na UI · migração automática no 1º login pós-deploy · sem feature não-GitHub por ora (costura dormente).
+- No mundo pós-costura, **desconectar é não-destrutivo → cai no Catálogo** (mantém a sessão do app; projetos viram cards read-only com selo "GitHub desconectado"). Spec: **SPEC-025** (`aprovada-pi` 2026-07-20, depende da SPEC-026). Botão **"Desconectar GitHub"** em vermelho, distinto de **"Sair da conta"**.
+- Google-como-IdP deixa de ser YAGNI **porque** a frente pós-MVP1 já assume multi-usuário/comercialização (a janela do ADR-015). A costura permanece **IdP-plugável** e **conexão-plugável** (GitHub hoje; GitLab/Jira/Notion depois) — não amarra o produto ao Google nem ao GitHub.
+- **Ponto de integração a respeitar**: a identidade (venha do Google) precisa alimentar o **mesmo módulo `identity`** de que o ADR-020 deriva o array de membership de tenant; e a leitura continua exigindo o token user-to-server do GitHub (ADR-015) — *conectar GitHub* segue sendo o OAuth do App inteiro, só reposicionado no catálogo.
