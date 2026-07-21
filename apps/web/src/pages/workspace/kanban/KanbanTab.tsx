@@ -209,17 +209,49 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
           </div>
         ) : (
           // Swimlanes (SPEC-024): faixa por épico + faixa "sem épico". Cabeçalho
-          // de coluna uma vez no topo; cada faixa é uma grade de células.
+          // de coluna uma vez no topo (sticky, para o toggle de colapso ficar
+          // sempre visível ao rolar); cada faixa é uma grade de células.
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-6">
-            <div className="flex shrink-0 gap-3 pl-1">
-              {COLUMN_ORDER.map((column) => (
-                <div
-                  key={column}
-                  className="w-72 shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-faint"
-                >
-                  {COLUMN_LABEL[column]}
-                </div>
-              ))}
+            <div className="sticky top-0 z-10 flex shrink-0 gap-3 bg-bg pb-2 pl-1">
+              {COLUMN_ORDER.map((column) => {
+                const isCol = collapsed.has(column);
+                const canCollapse = column === 'finalized' || column === 'discarded';
+                return (
+                  <button
+                    key={column}
+                    onClick={canCollapse ? () => toggleCollapse(column) : undefined}
+                    disabled={!canCollapse}
+                    title={
+                      canCollapse
+                        ? `${isCol ? 'Expandir' : 'Recolher'} ${COLUMN_LABEL[column]}`
+                        : undefined
+                    }
+                    className={
+                      'flex shrink-0 items-center gap-1 truncate text-left font-mono text-[9px] uppercase tracking-[0.14em] text-faint disabled:cursor-default ' +
+                      (canCollapse ? 'hover:text-text ' : '') +
+                      (isCol ? 'w-[34px] justify-center' : 'w-72')
+                    }
+                  >
+                    {canCollapse && (
+                      <svg
+                        aria-hidden
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="shrink-0"
+                      >
+                        <path d={isCol ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'} />
+                      </svg>
+                    )}
+                    {!isCol && <span className="truncate">{COLUMN_LABEL[column]}</span>}
+                  </button>
+                );
+              })}
             </div>
             {orderedSwimlanes(board).map(({ epic, cardsByColumn: grid }) => (
               <KanbanSwimlane
@@ -227,6 +259,8 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
                 epic={epic}
                 cardsByColumn={grid}
                 pendingNumbers={pending}
+                collapsedColumns={collapsed}
+                onToggleColumn={toggleCollapse}
                 onEdit={readOnly ? undefined : setEditing}
               />
             ))}
