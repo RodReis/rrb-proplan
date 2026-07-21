@@ -33,6 +33,9 @@ export interface BoardEpic {
   number: number;
   title: string;
   htmlUrl: string;
+  /** Filhas fechadas / total — a faixa exibe `fechadas/total` (SPEC-024, sem barra). */
+  closedChildren: number;
+  totalChildren: number;
 }
 
 export type BoardMode = 'active' | 'degraded' | 'no-installation';
@@ -149,6 +152,18 @@ export class BoardService {
       orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }],
     });
 
+    // Contagem de filhas por épico (fechadas/total) para o rótulo da faixa
+    // (SPEC-024). Toda issue com `parentNumber` é filha; fechada = state closed.
+    const childTotal = new Map<number, number>();
+    const childClosed = new Map<number, number>();
+    for (const i of issues) {
+      if (i.parentNumber == null) continue;
+      childTotal.set(i.parentNumber, (childTotal.get(i.parentNumber) ?? 0) + 1);
+      if (i.state === 'closed') {
+        childClosed.set(i.parentNumber, (childClosed.get(i.parentNumber) ?? 0) + 1);
+      }
+    }
+
     const byColumn = new Map<BoardColumn, BoardCard[]>();
     for (const col of COLUMNS) byColumn.set(col, []);
     const epics: BoardEpic[] = [];
@@ -158,7 +173,13 @@ export class BoardService {
       // que estão em coluna aberta, isto é, `state === 'open'`).
       if (isEpic(i.hasSubIssues)) {
         if (i.state === 'open') {
-          epics.push({ number: i.number, title: i.title, htmlUrl: i.htmlUrl });
+          epics.push({
+            number: i.number,
+            title: i.title,
+            htmlUrl: i.htmlUrl,
+            closedChildren: childClosed.get(i.number) ?? 0,
+            totalChildren: childTotal.get(i.number) ?? 0,
+          });
         }
         continue;
       }
