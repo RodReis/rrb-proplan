@@ -10,7 +10,7 @@ describe('BoardService.syncIssues — modo degradado', () => {
     const auth = { userToken: jest.fn().mockResolvedValue('tok') } as any;
     const issues = {
       issuesEnabled: jest.fn().mockResolvedValue(false),
-      listIssues: jest.fn(),
+      listIssuesWithHierarchy: jest.fn(),
     } as any;
 
     const svc = new BoardService(prisma, auth, issues);
@@ -19,6 +19,6 @@ describe('BoardService.syncIssues — modo degradado', () => {
     // Cache órfão de sync anterior tem de ser removido — banco = cache, repo é fonte de verdade.
     expect(deleteMany).toHaveBeenCalledWith({ where: { projectId: 'p1' } });
     // Não relê issues em modo degradado (read-only).
-    expect(issues.listIssues).not.toHaveBeenCalled();
+    expect(issues.listIssuesWithHierarchy).not.toHaveBeenCalled();
   });
 });

@@ -65,7 +65,7 @@ export class BoardService {
       return;
     }
 
-    const remote = await this.issues.listIssues(token, project.owner, project.name);
+    const remote = await this.issues.listIssuesWithHierarchy(token, project.owner, project.name);
     const cards = remote.map((i) => {
       const labels = i.labels.map((l) => l.name);
       const assignee = i.assignees[0];
