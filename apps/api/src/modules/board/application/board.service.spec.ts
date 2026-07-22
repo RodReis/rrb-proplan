@@ -1,16 +1,19 @@
+import { transactionMock } from '../../../../test/prisma-transaction-mock';
 import { BoardService } from './board.service';
 
 describe('BoardService.syncIssues — persistência da hierarquia (SPEC-024)', () => {
   it('grava parentNumber e hasSubIssues no cache a partir do sync', async () => {
     const createMany = jest.fn().mockResolvedValue({ count: 3 });
-    const prisma = {
+    // `any` explicito: o `$transaction` referencia o proprio fake (o `tx` do
+    // callback e ele mesmo); sem a anotacao o TS acusa auto-referencia.
+    const prisma: any = {
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: 'p1', userId: 'u1', owner: 'o', name: 'r' }),
         update: jest.fn().mockResolvedValue({}),
       },
       issue: { deleteMany: jest.fn(), createMany },
       document: { findUnique: jest.fn().mockResolvedValue(null) },
-      $transaction: jest.fn().mockImplementation((ops: unknown[]) => Promise.all(ops)),
+      $transaction: transactionMock(() => prisma),
     } as any;
     const auth = { userToken: jest.fn().mockResolvedValue('tok') } as any;
     const issues = {

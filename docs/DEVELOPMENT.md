@@ -954,3 +954,70 @@ O que cada número prova, em cadeia:
 **Pendência de operação, não de código**: rotacionar o `POSTGRES_PASSWORD` — foi exposto em texto claro durante o setup.
 
 **Write-back provado junto**: o commit `d7e30b7` em `.proplan/STATUS.md` foi feito por **`rrb-proplan[bot]`** — a projeção do board gerada em produção, listando as próprias issues #106 e #109 como finalizadas. Prova o installation token do ADR-015 (escrita com identidade de bot) e o ADR-011 (projeção em `.proplan/`, nunca em `docs/`), sem nenhum teste artificial: o produto escreveu no repo por conta própria.
+
+## FIX #113 — `$transaction` em lote quebra sob `runInTenantContext` — `feito`
+
+Bug de **produto**, não de teste. Achado pelo `--check` do ADR-019 no CI do PR
+#112 (`Banco 18|17|1`) e **confirmado em produção pelo PI**: o painel de
+Atividade mostrou `Sincronização falhou: Invalid prisma.documentResolution.createMany()
+invocation: Unique constraint failed`.
+
+Sem spec: o comportamento correto já está no `ARCHITECTURE.md` → Resiliência
+(invariante do `withTenant`) — bug documentado pela tabela do `CLAUDE.md`.
+
+### O defeito, provado por SQL
+
+Com `log_statement='all'` no Postgres, o `$transaction([deleteMany, createMany])`
+dentro de `runInTenantContext`:
+
+```
+[41969] set_config('app.tenant_ids', …)   ← contexto na conexão 41969
+[41968] INSERT INTO document_resolutions  ← INSERT na 41968
+[41968] COMMIT
+[41969] DELETE FROM document_resolutions  ← DELETE na 41969, DEPOIS
+[41969] COMMIT
+```
+
+PIDs distintos = conexões distintas. **Não é uma transação, são duas**, e a
+ordem inverteu: o INSERT commitou antes do DELETE. Quando o INSERT ganha a
+corrida, colide no unique `(project_id, entity)` e o sync morre.
+
+**Causa**: o client estendido (`$allOperations`) embrulha cada operação na sua
+própria `$transaction([set_config, query])`. Esses `PrismaPromise` já-construídos
+não se fundem ao lote externo — cada um executa por conta própria.
+
+### Tentativa descartada
+
+Carimbar a intenção (`{model, operation, args}`) na promise e refazer a operação
+no client base. **O Prisma reembrulha o retorno do `$allOperations` e a marca não
+sobrevive** (`TEM_MARCA: false`). Revertida.
+
+### A correção
+
+`$transaction` **interativo** nos seis call sites de replace-all — `resolution`,
+`canonical`, `context`, `link`, `board`, `inferred-links`. O `tx` do callback é
+**uma** conexão para as duas operações, na ordem escrita.
+
+Não recai no problema que o PR #86 corrigiu: lá o defeito era segurar a transação
+pelo **job inteiro**, com chamadas de rede dentro. Aqui é delete+insert puro,
+milissegundos.
+
+O Proxy do `PrismaService` passou a injetar o `set_config` **também** na forma
+interativa. O comentário antigo afirmava que o `tx` "já roda na conexão do
+contexto" — era **falso**, e passou despercebido porque nenhum call site usava
+essa forma dentro de um contexto de tenant.
+
+### Verificação
+
+- Teste novo (`worker-context.int-spec.ts`) que **falha sem o fix** — confirmado
+  rodando com o `prisma.service.ts` em stash.
+- SQL depois do fix: `[43366] DELETE` → `[43366] INSERT`, **mesma conexão, ordem
+  certa**, nas duas rodadas do `rebuild`.
+- **620 testes** na API (+1), 50 na web, build verde.
+
+### Nota — o mock que escondia o bug
+
+Os seis fakes de `$transaction` só entendiam a forma em array, então um call site
+que quebraria em produção passava no teste. Extraí `test/prisma-transaction-mock.ts`,
+que suporta as duas formas, e todos os specs passaram a usá-lo. **Mock frouxo é
+o que deixou este bug viver** — a nota está no `ARCHITECTURE.md`.

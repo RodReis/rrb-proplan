@@ -40,11 +40,10 @@ export class LinkService {
 
     // Apaga só as arestas explícitas (extraídas do conteúdo) — as inferidas
     // (kind: 'inferred') são geridas pelo insight/supressão, nunca pelo sync.
-    await this.prisma.$transaction([
-      this.prisma.docLink.deleteMany({ where: { projectId, kind: 'explicit' } }),
-      ...(rows.length > 0
-        ? [this.prisma.docLink.createMany({ data: rows })]
-        : []),
-    ]);
+    // Interativa, não em lote (issue #113) — ver resolution.rebuild.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.docLink.deleteMany({ where: { projectId, kind: 'explicit' } });
+      if (rows.length > 0) await tx.docLink.createMany({ data: rows });
+    });
   }
 }

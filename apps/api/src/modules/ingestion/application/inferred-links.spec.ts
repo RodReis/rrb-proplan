@@ -1,9 +1,12 @@
+import { transactionMock } from '../../../../test/prisma-transaction-mock';
 import { Prisma } from '@prisma/client';
 import { IngestionService } from './ingestion.service';
 
 function makeSvc(overrides: any = {}) {
   const created: any[] = [];
-  const prisma = {
+  // `any` explícito: o `$transaction` referencia `prisma` (o `tx` do callback é
+  // o próprio fake), e sem a anotação o TS acusa auto-referência.
+  const prisma: any = {
     document: { findMany: jest.fn().mockResolvedValue(overrides.docs ?? []) },
     suppressedLink: {
       findMany: jest.fn().mockResolvedValue(overrides.suppressed ?? []),
@@ -14,7 +17,7 @@ function makeSvc(overrides: any = {}) {
       createMany: jest.fn().mockImplementation(({ data }: any) => { created.push(...data); return Promise.resolve({}); }),
     },
     project: { findFirst: jest.fn().mockResolvedValue({ id: 'p1' }) },
-    $transaction: jest.fn().mockImplementation((ops: any[]) => Promise.all(ops)),
+    $transaction: transactionMock(() => prisma),
   };
   return { svc: new IngestionService(prisma as any, {} as any, {} as any, {} as any), prisma, created };
 }

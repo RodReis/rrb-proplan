@@ -105,12 +105,14 @@ export class BoardService {
     });
 
     // Replace-all em transação: o cache reflete exatamente o remoto.
-    await this.prisma.$transaction([
-      this.prisma.issue.deleteMany({ where: { projectId } }),
-      ...(cards.length
-        ? [this.prisma.issue.createMany({ data: cards })]
-        : []),
-    ]);
+    // Interativa, não em lote (issue #113): o lote em array quebra sob
+    // `runInTenantContext` — cada operação vem embrulhada na própria transação,
+    // DELETE e INSERT saem em conexões diferentes e o INSERT pode commitar
+    // primeiro, colidindo no unique.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.issue.deleteMany({ where: { projectId } });
+      if (cards.length) await tx.issue.createMany({ data: cards });
+    });
 
     await this.updateNeedsIssueImport(projectId, remote.length > 0);
   }

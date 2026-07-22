@@ -1,3 +1,4 @@
+import { transactionMock } from '../../../../test/prisma-transaction-mock';
 import { ResolutionService } from './resolution.service';
 
 function makePrisma(
@@ -5,7 +6,10 @@ function makePrisma(
   inferredRows: any[] = [],
 ) {
   const created: any[] = [];
-  return {
+  // `any` explícito no fake: o `$transaction` referencia `fake.prisma` (o `tx`
+  // do callback é o próprio fake) e sem a anotação o TS acusa auto-referência.
+  // O `created` acima segue tipado — é dele que os testes leem.
+  const fake: { created: any[]; prisma: any } = {
     created,
     prisma: {
       document: {
@@ -23,9 +27,10 @@ function makePrisma(
         }),
       },
       project: { update: jest.fn().mockResolvedValue({}) },
-      $transaction: jest.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
+      $transaction: transactionMock(() => fake.prisma),
     } as any,
   };
+  return fake;
 }
 
 describe('ResolutionService.rebuild', () => {

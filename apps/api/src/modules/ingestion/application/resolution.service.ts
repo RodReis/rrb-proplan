@@ -73,10 +73,22 @@ export class ResolutionService {
       };
     });
 
-    await this.prisma.$transaction([
-      this.prisma.documentResolution.deleteMany({ where: { projectId } }),
-      this.prisma.documentResolution.createMany({ data: rows }),
-    ]);
+    // Transação INTERATIVA, não em lote (issue #113). O lote em array quebra sob
+    // `runInTenantContext` — que é como o sync roda: lá o acesso ao model devolve
+    // o delegate do client estendido, que embrulha CADA operação na sua própria
+    // `$transaction([set_config, query])`. Esses PrismaPromise já-construídos não
+    // se fundem ao lote externo: o SQL mostra o DELETE numa conexão e o INSERT em
+    // outra, com o INSERT commitando ANTES — e aí o `createMany` colide no unique
+    // `(project_id, entity)`, derrubando o sync com "Unique constraint failed".
+    //
+    // Na forma interativa o `tx` é UMA conexão para as duas operações, na ordem
+    // escrita. É curta de propósito (só delete+insert, sem rede no meio), então
+    // não recai no problema que o PR #86 corrigiu — lá o defeito era segurar uma
+    // transação pelo job INTEIRO, com chamadas ao GitHub dentro.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.documentResolution.deleteMany({ where: { projectId } });
+      await tx.documentResolution.createMany({ data: rows });
+    });
 
     await this.prisma.project.update({
       where: { id: projectId },
