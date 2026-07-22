@@ -3,7 +3,7 @@ proplan: v1
 spec: SPEC-022
 fatia: 8
 status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
-updated: 2026-07-18
+updated: 2026-07-22
 ---
 # SPEC-022 — Multi-tenant: organizações, RBAC e isolamento (Fatia 8)
 
@@ -12,6 +12,8 @@ updated: 2026-07-18
 > **Emenda 2026-07-17 (reaprovada pelo PI em 2026-07-17).** O contexto RLS passa de `app.tenant_id` (singular) para `app.tenant_ids` (array de membership), para que a **rota global do catálogo** (SPEC-021, em `/`) leia cross-tenant **sem desligar RLS**. A redação aprovada não cobria a rota global e seu contrato singular a deixava em *fail-closed* permanente (zero linhas), o que empurraria a implementação para o anti-padrão de bypass de RLS na query mais ampla do sistema. Mudanças marcadas com **[E1]**. Consolidada em **ADR-020**.
 >
 > **Emenda E2 (2026-07-18, aprovada pelo PI).** O PR-5 (issue #88) revelou que a **derivação de papel a partir do GitHub** (critério "remover acesso → no próximo sync o papel cai") é **escopo novo, não conserto**: nada no código cria `Tenant`/`Membership` — ambos vêm do backfill da migration; e `GET /user/installations` (único endpoint de instalação em uso) devolve `id`+`account`, **não** a permissão do membro. Faltavam 4 decisões de produto/superfície de API, agora resolvidas (ver *Emenda E2 → Decisões*). O card #88 é **cortado em dois** (ver *Corte do card*). Mudanças marcadas com **[E2]**.
+>
+> **Emenda E3 (2026-07-22, correção autorizada pelo PI ao vivo — não é escopo novo).** O primeiro banco de **produção** (SPEC-027) a nascer vazio **expôs — não causou** — dois bugs **da própria SPEC-022**, cujo comportamento correto já estava no Escopo 1/3 e nas **decisões 1 e 3**. Fechados como **correção de comportamento documentado** (issues **#106**/**#109**, PRs **#105**/**#108**), sem spec nova: **(1)** o furo que a **E2 registrava** — *"nada no código cria `Tenant`/`Membership`; ambos vêm do backfill da migration"* — **está fechado**: `MembershipService.ensureTenants()` cria `Tenant`+`Membership` no **primeiro acesso** (no `identity`, ADR-001; conta pessoal nasce `owner` pela decisão 3 sem consultar o GitHub, org nasce `member` e o `RoleSyncService` promove). O backfill deixa de ser a **única** origem — banco novo já não deixa o usuário sem tenant com o RLS barrando toda escrita. **(2)** `addProject` gravava o `Project` **sem `tenantId`** e **fora do `withTenant`** (a policy vale para o INSERT e `NULL = ANY(app.tenant_ids)` é sempre falso → `42501`), e `enqueueSync`/`removeProject` liam a tabela escopada **fora** do contexto (linha recém-inserida invisível → `NotFoundException` **depois** do upsert já commitado: projeto criado, sync nunca enfileirado). Corrigidos gravando/lendo **sob `withTenant`**; o **catálogo** (rota global, ADR-020) abre o **seu próprio** contexto. Invariante consolidada na `ARCHITECTURE.md` → Resiliência e **travada por teste de arquitetura**. Mudanças marcadas com **[E3]**.
 
 ## Objetivo
 
