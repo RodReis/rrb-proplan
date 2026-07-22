@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-21
+updated: 2026-07-22
 ---
 <!-- gerado pelo ProPlan a partir das Issues — não edite à mão -->
 # Status
@@ -19,6 +19,7 @@ updated: 2026-07-21
 
 ### Sem épico
 
+- [SPEC-027][INFRA] Deploy em produção: Railway + Hostinger DNS (#103, prio: alta)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
 
 ## Em Andamento
@@ -30,10 +31,6 @@ _(vazio)_
 _(vazio)_
 
 ## Finalizado
-
-### [TESTE] Épico — validação de hierarquia (SPEC-024) (#95)
-
-- [TESTE] Fatia-filha — deve cair em "A Fazer" sob o épico (#96, finalizado em: 2026-07-21)
 
 ### Sem épico
 
@@ -69,6 +66,10 @@ _(vazio)_
 - Fatia 7.5 — Consumo de IA: ledger, custo e teto de gasto (#25, finalizado em: 2026-07-14)
 
 ## Descartado
+
+### #95 (#95)
+
+- [TESTE] Fatia-filha — deve cair em "A Fazer" sob o épico (#96, descartado em: 2026-07-21)
 
 ### Sem épico
 
