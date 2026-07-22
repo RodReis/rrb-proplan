@@ -9,7 +9,6 @@ updated: 2026-07-22
 
 ### Sem épico
 
-- [MVP2][SPEC-022][FIX] worker-context.int-spec é instável no CI — afterAll não limpa document_resolutions (#113, prio: media)
 - Configurações: desconectar / reconectar o GitHub (#93, prio: media)
 - Costura identidade ⊥ conexão (Google como 1º IdP) (#94, prio: media)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (#10, prio: media)
@@ -36,6 +35,7 @@ _(vazio)_
 
 ### Sem épico
 
+- [MVP2][SPEC-022][FIX] $transaction em lote sob runInTenantContext quebra em 2 conexões — DELETE/INSERT fora de ordem (#113, prio: alta, finalizado em: 2026-07-22)
 - [INFRA][FIX] entrega merge sem linha no histórico do TESTS.md — nada barra (#110, prio: alta, finalizado em: 2026-07-22)
 - [SPEC-027][INFRA] Deploy em produção: Railway + Hostinger DNS (#103, prio: alta, finalizado em: 2026-07-22)
 - [MVP2][SPEC-022][FIX] rota global do catálogo acessa tabela escopada fora do withTenant (#109, prio: alta, finalizado em: 2026-07-22)
