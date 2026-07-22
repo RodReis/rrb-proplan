@@ -40,6 +40,9 @@ describe('arquitetura: catalog (rota global) acessa tabela escopada sob withTena
       'addProject',
       'removeProject',
       'listProjects',
+      // SPEC-028: `/resolve` também é rota global (não tem `:tenant` no path —
+      // é o que ela descobre), então abre o próprio contexto como as demais.
+      'resolveSlugs',
     ];
 
     const offenders: string[] = [];

@@ -320,6 +320,77 @@ export class CatalogService {
     return projects.map((p) => ({ ...p, githubRepoId: Number(p.githubRepoId) }));
   }
 
+  /**
+   * Traduz `(tenant, project)` da URL — slug OU uuid — nos ids canônicos
+   * (SPEC-028). Alimenta o deep-link/F5 em `/t/:tenantSlug/p/:projectSlug`, que
+   * não pode baixar o catálogo global inteiro só para achar dois ids.
+   *
+   * Rota GLOBAL (ADR-020): não passa pelo TenantGuard/TenantContextInterceptor,
+   * então abre o próprio contexto — igual ao `listProjects`. Fora do
+   * `withTenant` o RLS de `projects` é fail-closed e a resolução devolveria 404
+   * com o projeto existindo.
+   *
+   * **404, nunca 403** — e nunca diferencia "não existe" de "não é seu": o
+   * `tenants` é filtrado pelo array de membership do usuário AUTENTICADO antes
+   * de qualquer casamento, então um tenant alheio some do universo em vez de
+   * ser negado. O 403 do `TenantGuard` (SPEC-022) segue valendo na rota
+   * escopada: rotas diferentes, jobs diferentes, ambas não-diferenciais.
+   */
+  async resolveSlugs(
+    userId: string,
+    tenantToken: string,
+    projectToken: string,
+  ): Promise<{
+    tenantId: string;
+    projectId: string;
+    tenantSlug: string;
+    projectSlug: string;
+  }> {
+    // Query string ausente/vazia não é "casa qualquer um": sem token não há o
+    // que resolver. Explícito para o `find` abaixo nunca receber `''`.
+    if (!tenantToken || !projectToken) {
+      throw new NotFoundException('Não encontrado');
+    }
+
+    const tenantIds = await this.membershipTenantIds(userId);
+    if (tenantIds.length === 0) throw new NotFoundException('Não encontrado');
+
+    // Só os tenants de membership entram no universo de busca — o casamento por
+    // slug/id nunca alcança tenant alheio (fail-closed, não "negado depois").
+    const tenants = await this.prisma.tenant.findMany({
+      where: { id: { in: tenantIds } },
+      select: { id: true, accountLogin: true },
+    });
+    const wanted = tenantToken.toLowerCase();
+    const tenant = tenants.find(
+      (t) => t.id === tenantToken || t.accountLogin.toLowerCase() === wanted,
+    );
+    if (!tenant) throw new NotFoundException('Não encontrado');
+
+    // Casamento do projeto sob o contexto do tenant resolvido (não o array
+    // inteiro): `/t/a/p/x` não pode achar o projeto `x` que vive no tenant `b`.
+    const project = await this.prisma.withTenant([tenant.id], (tx) =>
+      tx.project.findFirst({
+        where: {
+          userId,
+          tenantId: tenant.id,
+          // `name` casa case-insensitive (o GitHub garante nome único por
+          // owner); o uuid casa `id`. Sem coluna de tipo: a forma do token basta.
+          OR: [{ id: projectToken }, { name: { equals: projectToken, mode: 'insensitive' } }],
+        },
+        select: { id: true, name: true },
+      }),
+    );
+    if (!project) throw new NotFoundException('Não encontrado');
+
+    return {
+      tenantId: tenant.id,
+      projectId: project.id,
+      tenantSlug: tenant.accountLogin.toLowerCase(),
+      projectSlug: project.name.toLowerCase(),
+    };
+  }
+
   async addProject(userId: string, repo: RepoSummary & { installationId: number }) {
     // O projeto NASCE dentro de um tenant (SPEC-022): `projects` tem policy de
     // RLS `tenant_id = ANY(app.tenant_ids)`, que — sem WITH CHECK próprio — vale

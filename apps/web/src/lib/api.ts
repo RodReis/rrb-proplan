@@ -55,6 +55,18 @@ export interface CatalogInstallations {
 }
 
 /**
+ * Ids canônicos + slugs canônicos (lowercase) de uma rota de workspace
+ * (SPEC-028). Os **ids** são o que vai para `setActiveTenant` e para as
+ * chamadas de projeto; os **slugs** são o que a barra de endereço mostra.
+ */
+export interface ResolvedRoute {
+  tenantId: string;
+  projectId: string;
+  tenantSlug: string;
+  projectSlug: string;
+}
+
+/**
  * Prefixa `/projects/...` com o tenant ativo (`/t/:tenant/projects/...`), SPEC-022.
  * Rotas globais passam intactas. Se não há tenant ativo, deixa como está — o
  * backend responde 401/403 e o app redireciona ao catálogo.
@@ -208,6 +220,15 @@ export const api = {
   removeProject: (id: string) =>
     request<void>(`/catalog/projects/${id}`, { method: 'DELETE' }),
   projects: () => request<Project[]>('/catalog/projects'),
+  /**
+   * Traduz os tokens da URL (slug ou uuid) nos ids canônicos (SPEC-028). Rota
+   * global: resolve o deep-link sem baixar o catálogo inteiro. 404 quando o
+   * tenant/projeto não é do usuário ou não existe.
+   */
+  resolve: (tenant: string, project: string) =>
+    request<ResolvedRoute>(
+      `/resolve?tenant=${encodeURIComponent(tenant)}&project=${encodeURIComponent(project)}`,
+    ),
   portfolio: () => request<PortfolioRow[]>('/portfolio'),
   sync: (projectId: string) =>
     request<{ syncRunId: string }>(`/projects/${projectId}/sync`, {
