@@ -1,10 +1,11 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { api, setActiveTenant, SessionUser, UnauthorizedError } from './lib/api';
+import { api, SessionUser, UnauthorizedError } from './lib/api';
 import { useTheme } from './theme';
 import { Login } from './pages/Login';
 import { Catalog } from './pages/Catalog';
+import { ResolveRoute } from './pages/workspace/ResolveRoute';
 import { WorkspaceRoute } from './pages/workspace/WorkspaceRoute';
 
 type AuthState =
@@ -48,19 +49,23 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Catalog user={auth.user} onLogout={logout} />} />
-        {/* Rotas de projeto sob /t/:tenant (SPEC-022). O TenantSync fixa o
-            tenant ativo (api.setActiveTenant) a partir da URL antes de renderizar
-            o workspace — assim toda chamada de projeto já sai escopada. */}
+        {/* Rotas de projeto sob /t/:tenant (SPEC-022), com slug legível no lugar
+            do UUID (SPEC-028). O ResolveRoute traduz os tokens da URL — slug ou
+            uuid — nos ids canônicos e fixa o tenant ativo (api.setActiveTenant)
+            com o ID resolvido antes de renderizar o workspace, para toda chamada
+            de projeto já sair escopada. */}
         <Route
-          path="/t/:tenant/p/:projectId/:tab"
+          path="/t/:tenant/p/:project/:tab"
           element={
-            <TenantSync>
-              <WorkspaceRoute user={auth.user} onLogout={logout} />
-            </TenantSync>
+            <ResolveRoute>
+              {(resolved) => (
+                <WorkspaceRoute user={auth.user} onLogout={logout} resolved={resolved} />
+              )}
+            </ResolveRoute>
           }
         />
         {/* Sem aba na URL → aba padrão, preservando tenant e projeto. */}
-        <Route path="/t/:tenant/p/:projectId" element={<RedirectToDefaultTab />} />
+        <Route path="/t/:tenant/p/:project" element={<RedirectToDefaultTab />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {/* Toast segue o tema ativo, canto inferior direito (DESIGN.md §6) — o par
@@ -75,24 +80,12 @@ export default function App() {
   );
 }
 
-/** `/t/:tenant/p/:id` → `/t/:tenant/p/:id/overview`. */
-function RedirectToDefaultTab() {
-  const { tenant, projectId } = useParams();
-  return <Navigate to={`/t/${tenant}/p/${projectId}/overview`} replace />;
-}
-
 /**
- * Fixa o tenant ativo (api.setActiveTenant) a partir da URL, para que as
- * chamadas de projeto saiam escopadas em /t/:tenant (SPEC-022). Limpa ao
- * desmontar (sair do workspace) — o catálogo é rota global, sem tenant fixo.
- * Trocar de tenant remonta este componente (a key de tenant na rota), então o
- * efeito re-roda e reaponta — o estado do tenant anterior não sobrevive.
+ * `/t/:tenant/p/:project` → `/t/:tenant/p/:project/overview`. Preserva os tokens
+ * como vieram (slug ou uuid); a canonização para slug é do ResolveRoute, depois
+ * de resolver.
  */
-function TenantSync({ children }: { children: ReactNode }) {
-  const { tenant } = useParams();
-  useEffect(() => {
-    setActiveTenant(tenant ?? null);
-    return () => setActiveTenant(null);
-  }, [tenant]);
-  return <>{children}</>;
+function RedirectToDefaultTab() {
+  const { tenant, project } = useParams();
+  return <Navigate to={`/t/${tenant}/p/${project}/overview`} replace />;
 }

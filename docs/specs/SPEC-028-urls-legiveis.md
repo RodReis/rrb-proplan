@@ -3,7 +3,7 @@ proplan: v1
 spec: SPEC-028
 fatia: URLs legíveis (UX de roteamento) — pós-MVP
 status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
-updated: 2026-07-22
+updated: 2026-07-22 # + esclarecimentos de implementação (módulo, arch test, 404×403)
 ---
 # SPEC-028 — URLs legíveis: slug de tenant e projeto em vez de UUID
 
@@ -115,6 +115,30 @@ o modelo de isolamento.
   contexto/membership → 404 (não vaza existência de tenant/projeto alheio).
 - **SPEC-022 §4 intacta**: `/t/:tenant` permanece, o catálogo em `/` permanece;
   muda só o token. ADR-020, RLS e `withTenant` não são tocados.
+- **Módulo e padrão de implementação**: `/resolve` mora no `catalog` (é onde
+  vivem `MembershipService` e o acesso a `projects` sob RLS). O handler reusa o
+  padrão do `listProjects` — `membershipTenantIds(userId)` monta o array de
+  contexto e `prisma.withTenant([...], tx => …)` faz a leitura. Não é rota
+  escopada: **não** passa pelo `TenantGuard`/`TenantContextInterceptor`; abre o
+  próprio contexto, como o resto do catálogo (ADR-020). Resolver o tenant no
+  `identity` e o projeto no `catalog` seria over-engineering para um endpoint
+  barato — um método só, no `catalog`.
+- **Teste de arquitetura estendido**: o método global novo (`resolveSlugs` ou
+  similar) entra em `GLOBAL_METHODS` do `global-route-scope.arch.spec.ts`, para a
+  mesma varredura garantir que todo acesso a tabela escopada passa por
+  `withTenant` (o `noop` fail-closed do RLS morde silencioso fora do contexto).
+- **404 no `/resolve` × 403 no `TenantGuard` — convivência deliberada, não
+  contradição**: são endpoints diferentes com jobs diferentes, e **ambos são
+  não-diferenciais**. O `TenantGuard` dá 403 sempre que não há membership — tanto
+  para "tenant existe, não sou membro" quanto para "tenant não existe" — então o
+  403 não vaza existência; o 404 do `/resolve` também não. Pelo fluxo slug o
+  não-membro bate no 404 do `/resolve` antes de chegar ao 403 (que exige forjar
+  uma URL com UUID de tenant real — justamente o que o `/resolve` se recusa a
+  entregar). Sem regressão: o 403 é contrato entregue da SPEC-022, **fora do
+  escopo desta fatia**, e não se toca. A divergência é só de código de status em
+  rotas distintas — um comentário curto no handler do `/resolve` documenta a
+  escolha; **ADR seria overkill** (não há decisão estrutural, só esclarecimento
+  de contrato).
 
 ## Perguntas abertas
 

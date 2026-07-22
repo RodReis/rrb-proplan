@@ -200,7 +200,11 @@ export function Catalog({ user, onLogout }: Props) {
                 busyRepoId={busyRepoId}
                 onManage={(r) => void manage(r)}
                 onAskUnmanage={setConfirmRemove}
-                onOpen={(tenantId, id) => navigate(`/t/${tenantId}/p/${id}/overview`)}
+                // URL por slug legível (SPEC-028). Vem do que o catálogo já tem
+                // em mãos — conta e nome do repo —, sem chamada extra.
+                onOpen={(tenantSlug, projectSlug) =>
+                  navigate(`/t/${tenantSlug}/p/${projectSlug}/overview`)
+                }
                 onInstall={() => void openInstall()}
               />
             ))}
@@ -240,7 +244,7 @@ function AccountGroup({
   busyRepoId: number | null;
   onManage: (repo: Repo) => void;
   onAskUnmanage: (repo: Repo) => void;
-  onOpen: (tenantId: string, projectId: string) => void;
+  onOpen: (tenantSlug: string, projectSlug: string) => void;
   onInstall: () => void;
 }) {
   const managed = group.repos.filter((r) => r.managedProjectId).length;
@@ -288,7 +292,9 @@ function AccountGroup({
                   );
                   return;
                 }
-                onOpen(group.tenantId, repo.managedProjectId);
+                // Slugs canônicos (lowercase), a mesma forma que o /resolve
+                // devolve — assim a URL já nasce canônica e não é reescrita.
+                onOpen(group.account.toLowerCase(), repo.name.toLowerCase());
               }}
             />
           ))}

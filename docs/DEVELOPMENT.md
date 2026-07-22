@@ -1021,3 +1021,53 @@ Os seis fakes de `$transaction` só entendiam a forma em array, então um call s
 que quebraria em produção passava no teste. Extraí `test/prisma-transaction-mock.ts`,
 que suporta as duas formas, e todos os specs passaram a usá-lo. **Mock frouxo é
 o que deixou este bug viver** — a nota está no `ARCHITECTURE.md`.
+## SPEC-028 — URLs legíveis: slug em vez de UUID — `em andamento` (issue #107)
+
+Spec `aprovada-pi` (2026-07-22), incluindo os esclarecimentos de implementação
+(módulo, teste de arquitetura, 404×403) que o Cowork acrescentou depois de eu
+levantar os dois pontos. Fatia pós-MVP, sem número. **Zero migration.**
+
+De `/t/00000000-…/p/402e31cc-…/kanban` para `/t/rodreis/p/rrb-proplan/kanban`.
+
+### Passos
+
+- [x] **API — `resolveSlugs`** (`catalog.service.ts`): traduz `(tenant, project)`
+      — slug **ou** uuid — nos ids canônicos. Rota **global** (ADR-020): abre o
+      próprio `withTenant`, como `listProjects`/`removeProject`. O universo de
+      busca é o array de membership do usuário autenticado, então tenant alheio
+      **some** antes do casamento em vez de ser negado depois.
+- [x] **API — `GET /resolve`** (`resolve.controller.ts`): só `JwtAuthGuard`. Sem
+      `TenantGuard`/`TenantContextInterceptor` — não há `:tenant` no path para
+      eles resolverem; é o que o endpoint existe para descobrir.
+- [x] **Teste de arquitetura estendido**: `resolveSlugs` entra em
+      `GLOBAL_METHODS` do `global-route-scope.arch.spec.ts`. Sem isso, um acesso
+      futuro via `this.prisma.project` passaria despercebido e o RLS morderia em
+      silêncio (fail-closed fora de contexto).
+- [x] **9 testes** (`resolve-slugs.spec.ts`), com dois que travam o desenho:
+      *resolve por UUID depois do rename* (prova que a identidade é o id, não o
+      slug) e *projeto de outro tenant não resolve sob o tenant da URL* (prova
+      que o contexto aberto é o do tenant resolvido, não o array inteiro).
+- [x] **Web — `ResolveRoute`**: resolve no mount (deep-link/F5), fixa
+      `setActiveTenant(tenantId)` com o **id** e reescreve a URL para a forma
+      canônica (`history.replace`) quando se entra por UUID ou com caixa
+      diferente. É o antigo `TenantSync` com a tradução na frente.
+- [x] **Web — rotas por slug**: `App.tsx` (`/t/:tenant/p/:project/:tab`),
+      `WorkspaceRoute` (recebe os ids resolvidos, navega por slug) e `Catalog`
+      (abre já na forma canônica, sem passar por UUID).
+- [x] **Docs**: `ARCHITECTURE.md` → Comunicação (roteamento: slug na URL, id no
+      contrato), este arquivo e o `STATUS.md`.
+- [ ] **Dogfooding no navegador** — bloqueado: `pnpm dev` não sobe porque o
+      `.env` da raiz tem `DIRECT_URL` com placeholder do Railway
+      (`${{Postgres.RAILWAY_PRIVATE_DOMAIN}}`), que o docker compose rejeita.
+      Ambiente local do PI; não editei (credencial de produção).
+
+### Nota — a nota da SPEC-022 §4 não é minha
+
+O Escopo 6 da SPEC-028 pede uma nota de refinamento na SPEC-022 §4. **Não a
+escrevi**: `docs/specs/` é do Cowork, e o Code gravar ali sobrescreveria edições
+do PI. Fica registrado aqui como pendência de quem tem a caneta.
+
+### Verificação
+
+`tsc --noEmit` limpo na API e na web · **API 628 testes** (+27 na sessão, 9
+meus) · **web 50** · `pnpm build` verde. Nenhuma migration no diff.

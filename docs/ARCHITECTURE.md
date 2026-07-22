@@ -70,6 +70,13 @@ Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb
 ## Comunicação
 
 - **Frontend → API**: REST. Mutação de Kanban é assíncrona por natureza (commit + webhook): a API responde `202` com estado otimista; UI reconcilia quando o webhook confirmar (polling do estado do `sync_run` ou SSE).
+- **Roteamento da web — slug na URL, id no contrato** (SPEC-028, refina a SPEC-022 §4). A URL do workspace é `/t/:tenantSlug/p/:projectSlug/:tab` (`/t/rodreis/p/rrb-proplan/kanban`), onde `tenantSlug` = `Tenant.accountLogin` e `projectSlug` = `Project.name`, ambos lowercase. O **slug é conveniência de leitura**; a **identidade continua nos ids estáveis** (`Tenant.id`, `Project.id`) — renomear a conta ou o repo no GitHub muda o slug no próximo sync, e é por isso que a URL por **UUID nunca deixa de resolver**.
+
+  **Como resolve**: `GET /resolve?tenant=<slug|uuid>&project=<slug|uuid>` → `{ tenantId, projectId, tenantSlug, projectSlug }`. É **rota global** (ADR-020) — não tem `:tenant` no path, que é justamente o que ela descobre —, então **não** passa pelo `TenantGuard`/`TenantContextInterceptor` e **abre o seu próprio `withTenant`**, como o resto do catálogo. O universo de busca é o array de membership do usuário autenticado: tenant alheio **some** antes de qualquer casamento, em vez de ser negado depois. Existe para o deep-link/F5 não precisar baixar o catálogo global inteiro só para achar dois ids.
+
+  **Códigos**: `/resolve` responde **404** para inexistente *e* para alheio (não-diferencial); a rota escopada `/t/:tenant/…` segue no **403** do `TenantGuard` (SPEC-022), que também não diferencia. Rotas distintas, jobs distintos — nenhuma vaza existência.
+
+  **No cliente**: `setActiveTenant` recebe o **id resolvido**, nunca o token da URL — o prefixo `/t/:tenant/projects/…` das chamadas de projeto continua sendo por id, e o contrato de escopo da SPEC-022 não muda. Entrar por UUID (ou com caixa diferente) reescreve a barra de endereço para a forma canônica via `history.replace`.
 - **GitHub → API**: webhook `push` (filtrado por paths de docs) dispara sync incremental. Fallback: polling agendado (repos sem webhook configurado).
 - **Interno**: chamadas de módulo via services públicos. Eventos de domínio in-process (`@nestjs/event-emitter`) para desacoplar (ex.: `DocsSynced` → invalidar cache + enfileirar insight-job se `docs_tree_sha` mudou).
 
