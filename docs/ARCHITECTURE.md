@@ -25,7 +25,7 @@ flowchart TB
         AIJ[insight-job]
     end
 
-    PG[(PostgreSQL<br/>Supabase)]
+    PG[(PostgreSQL<br/>Railway)]
     RD[(Redis<br/>cache + filas)]
     GH[GitHub API<br/>Contents · Trees · Webhooks]
     AI[Anthropic API]

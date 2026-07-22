@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
@@ -15,18 +16,14 @@ import { ContextModule } from './modules/context/context.module';
 import { HandoffModule } from './modules/handoff/handoff.module';
 import { PortfolioModule } from './modules/portfolio/portfolio.module';
 import { McpModule } from './modules/mcp/mcp.module';
-
-const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
+import { redisConnectionFromUrl } from './shared/redis-connection';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
     BullModule.forRoot({
-      connection: {
-        host: redisUrl.hostname,
-        port: Number(redisUrl.port) || 6379,
-      },
+      connection: redisConnectionFromUrl(process.env.REDIS_URL),
     }),
     PrismaModule,
     IdentityModule,
@@ -42,5 +39,6 @@ const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
     PortfolioModule,
     McpModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

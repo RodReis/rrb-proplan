@@ -435,3 +435,32 @@ O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013)
 - No mundo pós-costura, **desconectar é não-destrutivo → cai no Catálogo** (mantém a sessão do app; projetos viram cards read-only com selo "GitHub desconectado"). Spec: **SPEC-025** (`aprovada-pi` 2026-07-20, depende da SPEC-026). Botão **"Desconectar GitHub"** em vermelho, distinto de **"Sair da conta"**.
 - Google-como-IdP deixa de ser YAGNI **porque** a frente pós-MVP1 já assume multi-usuário/comercialização (a janela do ADR-015). A costura permanece **IdP-plugável** e **conexão-plugável** (GitHub hoje; GitLab/Jira/Notion depois) — não amarra o produto ao Google nem ao GitHub.
 - **Ponto de integração a respeitar**: a identidade (venha do Google) precisa alimentar o **mesmo módulo `identity`** de que o ADR-020 deriva o array de membership de tenant; e a leitura continua exigindo o token user-to-server do GitHub (ADR-015) — *conectar GitHub* segue sendo o OAuth do App inteiro, só reposicionado no catálogo.
+
+## ADR-022 — Encerramento do "local-only": produção no Railway, DNS na Hostinger, Supabase reservado
+
+**Status**: **aprovado pelo PI em 2026-07-21**. Implementado na SPEC-027 (issue #103). Revoga a regra *"ambiente 100% local até o fim do MVP; sem deploy em nuvem"* do `CLAUDE.md`. Runbook operacional: `docs/DEPLOY.md`.
+
+**Contexto**: o local-only existia para evitar gastar tempo com infra antes de haver produto. O produto existe: MVP1 entregue e o MVP2 já pressupõe deploy (o `DEPLOY.md` "precisa ter onde escrever"). Manter a regra passou a custar mais que levantá-la — o ADR-021 e a SPEC-026 já citavam "encerra o 100% local" como pré-requisito de frentes suas.
+
+**Decisão**:
+
+- **Compute, banco e fila num só provedor: Railway.** Quatro serviços no mesmo projeto (`web`, `api`, `Postgres`, `Redis`), compartilhando a rede privada.
+- **Hostinger só resolve DNS** (`proplan.rrbtrading.com.br` e `api.proplan.rrbtrading.com.br` → Railway). Nenhum arquivo hospedado lá.
+- **Supabase fica reservado, sem função ativa.** O free tier pausa após 7 dias sem request — impróprio para uma app que fica ociosa. Se um dia entrar (ex.: object storage), exige ADR próprio dizendo **que dado** vai para lá.
+- **CI/CD**: auto-deploy no push para `main`; `prisma migrate deploy` roda como release command **antes** de o processo assumir tráfego. Migração que falha aborta o deploy e mantém a versão anterior no ar.
+
+**Por que um provedor só** (e não banco no Supabase + compute no Railway):
+
+1. **Cookie same-site sem gambiarra.** web e api sob o mesmo domínio registrável ⇒ `SameSite=Lax` basta; `SameSite=None` fica fora.
+2. **Sem egress entre provedores** e latência de rede privada entre api↔banco↔fila.
+3. **Custo marginal**: a conta é Railway Pro, então o Postgres não adiciona assinatura — paga-se consumo.
+
+**O que esta decisão obriga no código** (o que a SPEC-027 entregou): imagens de produção para api e web; `/health` para o healthcheck; leitura de `PORT`; `secure` nos cookies quando em produção; e o **bootstrap explícito da role não-owner `proplan_app`** — o init do Docker que a cria no dev **não roda** no Postgres gerenciado.
+
+**Risco aceito, com guarda**: rodar a app como owner/superuser desliga o RLS **silenciosamente** (o Postgres pula RLS para essas roles) — o isolamento multi-tenant do ADR-020 viraria no-op sem nenhum erro visível. Por isso `scripts/bootstrap-app-role.mjs` **falha explicitamente** se a role tiver `rolsuper`/`rolbypassrls`, e a `DATABASE_URL` de runtime aponta para `proplan_app`, nunca para o owner (que fica só na `DIRECT_URL`, para migrations).
+
+**Fora desta decisão**: staging/preview (só produção por ora), webhook do GitHub, observabilidade/alertas e qualquer migração destrutiva — cada um com sua fatia. O **servidor MCP não vai para o Railway**: a SPEC-016 o define como processo **local (stdio)**, sem porta HTTP; um container dele subiria sem nada para conversar.
+
+**ADR-003 intacto**: deployar o próprio ProPlan não é o ProPlan inspecionando infra alheia. Ele continua lendo apenas `docs/` dos repos-alvo.
+
+**Gatilho de revisão**: multi-tenant comercial com carga real (hoje o Postgres é single-instance sem réplica), necessidade de staging, ou custo do Railway saindo do crédito do Pro.
