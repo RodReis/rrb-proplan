@@ -12,6 +12,7 @@ updated: 2026-07-22
 - Configurações: desconectar / reconectar o GitHub (#93, prio: media)
 - Costura identidade ⊥ conexão (Google como 1º IdP) (#94, prio: media)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (#10, prio: media)
+- [SPEC-028] URLs legíveis: slug de tenant/projeto em vez de UUID (#107, prio: baixa)
 - Defasagem por documento (badge por aba) — só se o alerta global do ADR-010 se provar útil (#9, prio: baixa)
 - Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4)
 
@@ -19,7 +20,6 @@ updated: 2026-07-22
 
 ### Sem épico
 
-- [SPEC-027][INFRA] Deploy em produção: Railway + Hostinger DNS (#103, prio: alta)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
 
 ## Em Andamento
@@ -34,6 +34,8 @@ _(vazio)_
 
 ### Sem épico
 
+- [SPEC-027][INFRA] Deploy em produção: Railway + Hostinger DNS (#103, prio: alta, finalizado em: 2026-07-22)
+- [MVP2][SPEC-022][FIX] rota global do catálogo acessa tabela escopada fora do withTenant (#109, prio: alta, finalizado em: 2026-07-22)
 - Correção — a guarda anti-drift não guardava: nem o histórico do TESTS.md, nem a si mesma (#74, prio: alta, finalizado em: 2026-07-17)
 - Correção — TESTS.md sobrescreve o histórico em vez de acumular (append-only quebrado) (#72, prio: alta, finalizado em: 2026-07-16)
 - Fatia 11 — MCP Server do ProPlan: contrato de evidência obrigatório + 6 tools (#3, prio: alta, finalizado em: 2026-07-16)
@@ -41,6 +43,7 @@ _(vazio)_
 - Fatia 13.6 — Probe HTTP de URL declarada: o confronto com o mundo (SPEC-013.6) (#42, prio: alta, finalizado em: 2026-07-15)
 - Fatia 13 — Drift de deploy: confronto de fontes, sem coroar verdade (SPEC-013 v2.1) (#5, prio: alta, finalizado em: 2026-07-15)
 - Fatia 7.7 — Invalidação de inferência por inputHash (SPEC-011) (#31, prio: alta, finalizado em: 2026-07-14)
+- [MVP2][SPEC-022][FIX] primeiro acesso não cria Tenant; addProject escreve fora do contexto (#106, prio: media, finalizado em: 2026-07-22)
 - Multi-tenant — reinstall re-liga o Tenant em vez de orfanar (eixo-2 do PR-5) (#89, prio: media, finalizado em: 2026-07-20)
 - Multi-tenant PR-5 — papel derivado do GitHub + reinstall re-liga o Tenant (resto da SPEC-022) (#88, prio: media, finalizado em: 2026-07-20)
 - Atividade — gaveta fecha sozinha 4s após abrir pelo sync (#80, prio: media, finalizado em: 2026-07-17)
