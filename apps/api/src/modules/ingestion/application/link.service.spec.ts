@@ -1,7 +1,10 @@
+import { transactionMock } from '../../../../test/prisma-transaction-mock';
 import { LinkService } from './link.service';
 
 function makePrisma(docs: { id: string; path: string; content: string }[]) {
-  return {
+  // `any` explicito: o `$transaction` referencia o proprio fake (o `tx` do
+  // callback e ele mesmo); sem a anotacao o TS acusa auto-referencia.
+  const prisma: any = {
     document: {
       findMany: jest.fn().mockResolvedValue(docs),
     },
@@ -9,8 +12,9 @@ function makePrisma(docs: { id: string; path: string; content: string }[]) {
       deleteMany: jest.fn().mockResolvedValue({}),
       createMany: jest.fn().mockResolvedValue({}),
     },
-    $transaction: jest.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
+    $transaction: transactionMock(() => prisma),
   } as any;
+  return prisma;
 }
 
 describe('LinkService.rebuildLinks', () => {

@@ -118,6 +118,10 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 ### Achados aguardando decisão do PI (não iniciar)
 _(vazio)_
 
+### Correções entregues (card criado pelo Code)
+
+- **`$transaction` em lote quebrava o sync (#113)** — **entregue** (PR próprio). Bug de **produto**: sob `runInTenantContext`, um `$transaction([deleteMany, createMany])` saía em **duas conexões**, com o INSERT commitando antes do DELETE — colisão de unique e `Sincronização falhou` visível no painel de Atividade em produção. Provado por `log_statement='all'` (DELETE na conexão 41969, INSERT na 41968). Corrigido nos **seis** call sites de replace-all com `$transaction` interativo; o Proxy passou a injetar o `set_config` também nessa forma. Achado pela guarda do ADR-019 no CI do PR #112 — que barrou o merge **corretamente**, por defeito alheio ao PR.
+
 ## Em Andamento
 _(vazio)_
 

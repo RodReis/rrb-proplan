@@ -264,9 +264,12 @@ export class ContextService {
 
     const withStatus = await this.applyValidity(projectId, assertions);
 
-    await this.prisma.$transaction([
-      this.prisma.assertion.deleteMany({ where: { projectId } }),
-      this.prisma.assertion.createMany({
+    // Interativa, não em lote (issue #113): sob `runInTenantContext` o lote em
+    // array separa DELETE e INSERT em conexões distintas, e o INSERT pode
+    // commitar antes — colidindo no unique.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.assertion.deleteMany({ where: { projectId } });
+      await tx.assertion.createMany({
         data: withStatus.map((a) => ({
           projectId,
           statement: a.statement,
@@ -278,8 +281,8 @@ export class ContextService {
           body: a.body,
           contextPath: CONTEXT_PATH,
         })),
-      }),
-    ]);
+      });
+    });
   }
 
   /**

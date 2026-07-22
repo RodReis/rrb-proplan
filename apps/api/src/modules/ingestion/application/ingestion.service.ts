@@ -245,12 +245,11 @@ export class IngestionService {
         reason: e.reason,
       }));
 
-    await this.prisma.$transaction([
-      this.prisma.docLink.deleteMany({
-        where: { projectId, kind: 'inferred' },
-      }),
-      ...(rows.length ? [this.prisma.docLink.createMany({ data: rows })] : []),
-    ]);
+    // Interativa, não em lote (issue #113) — ver resolution.rebuild.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.docLink.deleteMany({ where: { projectId, kind: 'inferred' } });
+      if (rows.length) await tx.docLink.createMany({ data: rows });
+    });
   }
 
   /** Supressão manual de uma aresta inferida (persiste e some — não volta na regeneração). */

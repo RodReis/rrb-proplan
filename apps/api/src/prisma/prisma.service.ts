@@ -44,13 +44,11 @@ export class PrismaService
           // As sobrecargas de $transaction (batch × callback) confundem `.call`;
           // tratamos como função genérica e só desviamos a forma em array.
           const original = value as (...a: unknown[]) => unknown;
+          const arrayLiteral = tenantArrayLiteral(tenantIds);
           return function (arg: unknown, ...rest: unknown[]) {
-            // Só o lote em array precisa do reforço; a forma interativa
-            // (callback) recebe um `tx` que já roda na conexão do contexto
-            // (não é o caso hoje, mas fica correto se surgir).
             if (Array.isArray(arg)) {
               const withContext = [
-                target.$executeRaw`SELECT set_config('app.tenant_ids', ${tenantArrayLiteral(tenantIds)}, true)`,
+                target.$executeRaw`SELECT set_config('app.tenant_ids', ${arrayLiteral}, true)`,
                 ...arg,
               ];
               // O 1º elemento (set_config) é descartado pelo caller — a ordem
@@ -58,6 +56,29 @@ export class PrismaService
               return (
                 original.call(target, withContext) as Promise<unknown[]>
               ).then((results) => results.slice(1));
+            }
+            // Forma INTERATIVA (callback): também precisa do contexto (issue
+            // #113). O `tx` é uma conexão NOVA do pool, sem o SET LOCAL — sem
+            // isto o RLS é fail-closed e o callback não enxerga linha nenhuma.
+            //
+            // O comentário antigo aqui dizia que o `tx` "já roda na conexão do
+            // contexto"; era falso, e passou despercebido porque nenhum call
+            // site usava a forma interativa dentro de um contexto de tenant. O
+            // `resolution.rebuild` passou a usar (é a correção do lote quebrado),
+            // então a afirmação virou código.
+            if (typeof arg === 'function') {
+              const callback = arg as (tx: TenantTxClient) => Promise<unknown>;
+              return original.call(
+                target,
+                async (tx: TenantTxClient) => {
+                  await tx.$executeRaw`SELECT set_config('app.tenant_ids', ${arrayLiteral}, true)`;
+                  // O model access dentro do callback deve ir para ESTE tx, não
+                  // para o client estendido do contexto externo — senão cada
+                  // operação volta a abrir transação própria (o bug original).
+                  return tenantStorage.run(tx, () => callback(tx));
+                },
+                ...rest,
+              );
             }
             return original.call(target, arg, ...rest);
           };

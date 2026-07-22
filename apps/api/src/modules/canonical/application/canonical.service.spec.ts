@@ -1,3 +1,4 @@
+import { transactionMock } from '../../../../test/prisma-transaction-mock';
 import { CanonicalService } from './canonical.service';
 
 function makeSvc(over: {
@@ -10,7 +11,9 @@ function makeSvc(over: {
   assertions?: any[];
 } = {}) {
   const created: any[] = [];
-  const prisma = {
+  // `any` explicito: o `$transaction` referencia o proprio fake (o `tx` do
+  // callback e ele mesmo); sem a anotacao o TS acusa auto-referencia.
+  const prisma: any = {
     project: {
       findUnique: jest.fn().mockResolvedValue(
         over.project ?? {
@@ -26,7 +29,7 @@ function makeSvc(over: {
       createMany: jest.fn((arg: any) => { created.push(...arg.data); return Promise.resolve({}); }),
       findMany: jest.fn().mockResolvedValue(over.fieldRows ?? []),
     },
-    $transaction: jest.fn((ops: any[]) => Promise.all(ops)),
+    $transaction: transactionMock(() => prisma),
   } as any;
   const resolution = {
     allResolutionsOf: jest.fn().mockResolvedValue(over.resolutions ?? []),

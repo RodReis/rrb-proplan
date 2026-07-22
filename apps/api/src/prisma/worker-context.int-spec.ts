@@ -133,6 +133,43 @@ describe('runInTenantContext: contexto por operação para workers', () => {
     );
   });
 
+  it('$transaction(callback) interativo roda sob contexto e numa conexão só (issue #113)', async () => {
+    // Forma que o `resolution.rebuild` passou a usar. O lote em array quebra
+    // aqui dentro: cada operação vem do client estendido já embrulhada na sua
+    // própria transação, então DELETE e INSERT saem em conexões diferentes e
+    // fora de ordem — o INSERT commita antes e colide no unique.
+    //
+    // Na forma interativa o `tx` é UMA conexão para as duas operações. Este
+    // teste falha (fail-closed do RLS, ou colisão de unique) se o contexto não
+    // for injetado no `tx`.
+    const rebuild = () =>
+      svc.runInTenantContext([TENANT_A], () =>
+        svc.$transaction(async (tx) => {
+          await tx.documentResolution.deleteMany({ where: { projectId: 'wc-p-a' } });
+          await tx.documentResolution.createMany({
+            data: [
+              { projectId: 'wc-p-a', entity: 'architecture', level: 4, source: 'absent', confidence: 0 },
+              { projectId: 'wc-p-a', entity: 'testing', level: 4, source: 'absent', confidence: 0 },
+            ],
+          });
+        }),
+      );
+
+    // 2× prova a idempotência: o 2º delete PRECISA enxergar o que o 1º inseriu.
+    // Sem contexto no `tx`, o RLS esconde as linhas e o unique estoura.
+    await rebuild();
+    await expect(rebuild()).resolves.not.toThrow();
+
+    const rows = await svc.runInTenantContext([TENANT_A], () =>
+      svc.documentResolution.findMany({ where: { projectId: 'wc-p-a' } }),
+    );
+    expect(rows).toHaveLength(2);
+
+    await owner.$executeRawUnsafe(
+      `DELETE FROM document_resolutions WHERE project_id = 'wc-p-a'`,
+    );
+  });
+
   it('rejeita contexto vazio ou sem tenant (fail fast, não silêncio)', async () => {
     await expect(svc.runInTenantContext([], async () => null)).rejects.toThrow(
       /tenantId/,

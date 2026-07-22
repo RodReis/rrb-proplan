@@ -91,10 +91,13 @@ export class CanonicalService {
       ...assertionsToCanonicalFields(assertions, project.docsScopeHash ?? ''),
     );
 
-    // Replace-all em transação (padrão resolution.rebuild).
-    await this.prisma.$transaction([
-      this.prisma.canonicalField.deleteMany({ where: { projectId } }),
-      this.prisma.canonicalField.createMany({
+    // Replace-all em transação INTERATIVA, não em lote (padrão
+    // resolution.rebuild — issue #113). O lote em array quebra sob
+    // `runInTenantContext`: DELETE e INSERT acabam em conexões diferentes, fora
+    // de ordem, e o INSERT colide no unique.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.canonicalField.deleteMany({ where: { projectId } });
+      await tx.canonicalField.createMany({
         data: fields.map((f) => ({
           projectId,
           entity: f.entity,
@@ -106,8 +109,8 @@ export class CanonicalService {
           confidenceMath: f.confidenceMath as unknown as Prisma.InputJsonValue,
           docsScopeHash: f.docsScopeHash,
         })),
-      }),
-    ]);
+      });
+    });
   }
 
   /**
