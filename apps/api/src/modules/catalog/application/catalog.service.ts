@@ -7,6 +7,7 @@ import {
   Installation,
 } from '../../identity/infrastructure/github-installations.client';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
+import { MembershipService } from '../../identity/application/membership.service';
 import { RoleSyncService } from '../../identity/application/role-sync.service';
 import { SettingsService } from '../../settings/application/settings.service';
 import { computeFreshness, Freshness } from '../domain/freshness';
@@ -50,6 +51,7 @@ export class CatalogService {
     private readonly ingestion: IngestionService,
     private readonly settings: SettingsService,
     private readonly roleSync: RoleSyncService,
+    private readonly membership: MembershipService,
   ) {}
 
   /**
@@ -123,6 +125,19 @@ export class CatalogService {
     // tenant. Restrito aos tenants de membership: nunca varre a tabela inteira.
     await this.relinkTenants(tenantIds, installations);
 
+    // Instalação visível ainda SEM tenant ganha um agora (SPEC-022 decisões 1 e
+    // 3). Roda DEPOIS do re-liga: se a conta já tem tenant com id de instalação
+    // antigo, o re-liga acabou de reconciliá-lo e nada é criado aqui. Sem este
+    // passo, um banco novo (sem o backfill da migration) deixa o usuário sem
+    // tenant nenhum — `app.tenant_ids` vazio e RLS barrando toda escrita.
+    await this.membership.ensureTenants(userId, installations);
+
+    // Recarrega: `tenantIds` foi lido ANTES do ensureTenants e, no primeiro
+    // acesso, estaria vazio — o `applyReconcile` abaixo escreve sob esse array e
+    // seria barrado pelo RLS. Uma segunda leitura barata evita que a correção só
+    // valha a partir da 2ª abertura do catálogo.
+    const effectiveTenantIds = await this.membershipTenantIds(userId);
+
     // Mapa installationId → tenantId (1:1, SPEC-022): o front precisa do tenant
     // para montar a rota /t/:tenant ao abrir um projeto. `memberships`/`tenants`
     // não têm RLS de tenant — leitura no client base.
@@ -148,7 +163,7 @@ export class CatalogService {
         visibleRepoInstallation.set(r.githubRepoId.toString(), inst.id);
       }
     }
-    await this.applyReconcile(projects, visibleRepoInstallation, tenantIds);
+    await this.applyReconcile(projects, visibleRepoInstallation, effectiveTenantIds);
 
     const groups: InstallationGroup[] = reposByInstallation.map(({ inst, repos }) => ({
       installationId: inst.id,
@@ -306,38 +321,67 @@ export class CatalogService {
   }
 
   async addProject(userId: string, repo: RepoSummary & { installationId: number }) {
-    const existing = await this.prisma.project.findUnique({
-      where: {
-        userId_githubRepoId: {
-          userId,
-          githubRepoId: BigInt(repo.githubRepoId),
-        },
-      },
+    // O projeto NASCE dentro de um tenant (SPEC-022): `projects` tem policy de
+    // RLS `tenant_id = ANY(app.tenant_ids)`, que — sem WITH CHECK próprio — vale
+    // também para o INSERT. Gravar sem `tenantId`, ou fora do `withTenant`,
+    // resulta em 42501 ("new row violates row-level security policy"). O tenant
+    // sai da instalação (relação 1:1) que o front já envia no corpo.
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { installationId: repo.installationId },
       select: { id: true },
     });
+    if (!tenant) {
+      throw new NotFoundException(
+        'Instalação sem tenant — abra o catálogo para reconciliar antes de gerenciar o repositório.',
+      );
+    }
 
-    const project = await this.prisma.project.upsert({
-      where: {
-        userId_githubRepoId: {
-          userId,
-          githubRepoId: BigInt(repo.githubRepoId),
+    // Membership confere que o usuário pertence AO tenant da instalação: sem
+    // isso, o `tenantId` viria do corpo da request por via indireta e um usuário
+    // poderia criar projeto no tenant de outro (o RLS barraria, mas a checagem
+    // explícita dá o 404 correto em vez de um 500 opaco).
+    const membershipTenantIds = await this.membershipTenantIds(userId);
+    if (!membershipTenantIds.includes(tenant.id)) {
+      throw new NotFoundException('Instalação não pertence a nenhum tenant seu');
+    }
+
+    const existing = await this.prisma.withTenant(membershipTenantIds, (tx) =>
+      tx.project.findUnique({
+        where: {
+          userId_githubRepoId: {
+            userId,
+            githubRepoId: BigInt(repo.githubRepoId),
+          },
         },
-      },
-      create: {
-        userId,
-        githubRepoId: BigInt(repo.githubRepoId),
-        owner: repo.owner,
-        name: repo.name,
-        description: repo.description,
-        defaultBranch: repo.defaultBranch,
-        isPrivate: repo.isPrivate,
-        installationId: repo.installationId,
-        installationStatus: 'active',
-      },
-      // Re-marcar um repo já gerenciado atualiza a instalação corrente
-      // (pode ter reinstalado noutra conta/instalação).
-      update: { installationId: repo.installationId, installationStatus: 'active' },
-    });
+        select: { id: true },
+      }),
+    );
+
+    const project = await this.prisma.withTenant(membershipTenantIds, (tx) =>
+      tx.project.upsert({
+        where: {
+          userId_githubRepoId: {
+            userId,
+            githubRepoId: BigInt(repo.githubRepoId),
+          },
+        },
+        create: {
+          userId,
+          tenantId: tenant.id,
+          githubRepoId: BigInt(repo.githubRepoId),
+          owner: repo.owner,
+          name: repo.name,
+          description: repo.description,
+          defaultBranch: repo.defaultBranch,
+          isPrivate: repo.isPrivate,
+          installationId: repo.installationId,
+          installationStatus: 'active',
+        },
+        // Re-marcar um repo já gerenciado atualiza a instalação corrente
+        // (pode ter reinstalado noutra conta/instalação).
+        update: { installationId: repo.installationId, installationStatus: 'active' },
+      }),
+    );
 
     // Primeira vez que o repo é marcado como gerenciado → primeira ingestão
     // automática (SPEC-002 critério de aceite). Re-marcar não re-enfileira.
