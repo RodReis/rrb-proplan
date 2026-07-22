@@ -102,31 +102,32 @@ describe('runInTenantContext: contexto por operação para workers', () => {
     });
   });
 
-  it('$transaction([deleteMany, createMany]) roda sob contexto (regressão do resolution.rebuild)', async () => {
-    // Reproduz o padrão exato que quebrou ao vivo: um batch delete+insert que,
-    // sem o SET LOCAL, roda no client base → RLS fail-closed → o delete não vê
-    // as linhas, o createMany colide no unique. Rodar 2× prova idempotência
-    // (era o 2º sync que quebrava: 1º insere, 2º deveria limpar e reinserir).
-    const rebuild = () =>
-      svc.runInTenantContext([TENANT_A], () =>
-        svc.$transaction([
-          svc.documentResolution.deleteMany({ where: { projectId: 'wc-p-a' } }),
-          svc.documentResolution.createMany({
-            data: [
-              { projectId: 'wc-p-a', entity: 'architecture', level: 4, source: 'absent', confidence: 0 },
-              { projectId: 'wc-p-a', entity: 'testing', level: 4, source: 'absent', confidence: 0 },
-            ],
-          }),
-        ]),
-      );
-
-    await rebuild();
-    await expect(rebuild()).resolves.not.toThrow();
+  it('$transaction em LOTE sob contexto: 1 operação é segura; delete+insert NÃO é (issue #113)', async () => {
+    // Este teste nasceu (PR #86) exercitando `$transaction([deleteMany,
+    // createMany])` e passava de forma INTERMITENTE — foi assim que o bug
+    // sobreviveu meses. A #113 provou por SQL o porquê: sob
+    // `runInTenantContext` cada operação do lote já vem embrulhada na sua
+    // própria transação pelo client estendido, então DELETE e INSERT saem em
+    // CONEXÕES DIFERENTES e fora de ordem. Não há como o lote garantir
+    // atomicidade aqui — o teste antigo cobrava uma promessa que a forma não
+    // podia cumprir.
+    //
+    // O que segue verdadeiro e vale travar: uma operação SOZINHA no lote roda
+    // sob o contexto (o `set_config` injetado pelo Proxy vale para ela).
+    await svc.runInTenantContext([TENANT_A], () =>
+      svc.$transaction([
+        svc.documentResolution.createMany({
+          data: [
+            { projectId: 'wc-p-a', entity: 'architecture', level: 4, source: 'absent', confidence: 0 },
+          ],
+        }),
+      ]),
+    );
 
     const rows = await svc.runInTenantContext([TENANT_A], () =>
       svc.documentResolution.findMany({ where: { projectId: 'wc-p-a' } }),
     );
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(1);
 
     await owner.$executeRawUnsafe(
       `DELETE FROM document_resolutions WHERE project_id = 'wc-p-a'`,
