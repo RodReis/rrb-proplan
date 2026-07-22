@@ -13,7 +13,6 @@ updated: 2026-07-22
 - Costura identidade ⊥ conexão (Google como 1º IdP) (#94, prio: media)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (#10, prio: media)
 - Defasagem por documento (badge por aba) — só se o alerta global do ADR-010 se provar útil (#9, prio: baixa)
-- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4)
 
 ## A Fazer
 
@@ -21,6 +20,7 @@ updated: 2026-07-22
 
 - [SPEC-028] URLs legíveis: slug de tenant/projeto em vez de UUID (#107, prio: alta)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
+- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4)
 
 ## Em Andamento
 
