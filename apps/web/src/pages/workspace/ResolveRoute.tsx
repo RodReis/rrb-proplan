@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, ResolvedRoute, setActiveTenant } from '../../lib/api';
 import { ProjectNotFound } from '../ProjectNotFound';
+import { canonicalUrl } from './canonicalUrl';
 
 /**
  * Resolve `/t/:tenant/p/:project` — slug OU uuid — nos ids canônicos antes de
@@ -57,12 +58,8 @@ export function ResolveRoute({
   // `replace` (não push) para o botão Voltar não cair na URL feia de novo.
   useEffect(() => {
     if (state.status !== 'ready') return;
-    const { tenantSlug, projectSlug } = state.resolved;
-    if (tenant === tenantSlug && project === projectSlug) return;
-    const suffix = tab ? `/${tab}` : '';
-    navigate(`/t/${tenantSlug}/p/${projectSlug}${suffix}${search}${hash}`, {
-      replace: true,
-    });
+    const url = canonicalUrl(state.resolved, tenant, project, tab, `${search}${hash}`);
+    if (url) navigate(url, { replace: true });
   }, [state, tenant, project, tab, search, hash, navigate]);
 
   if (state.status === 'loading') {
