@@ -1071,3 +1071,60 @@ do PI. Fica registrado aqui como pendência de quem tem a caneta.
 
 `tsc --noEmit` limpo na API e na web · **API 628 testes** (+27 na sessão, 9
 meus) · **web 50** · `pnpm build` verde. Nenhuma migration no diff.
+
+## Correção — combo não trocava de projeto (issue #115)
+
+O dogfooding que faltava na SPEC-028 aconteceu em 2026-07-22 e **encontrou uma
+regressão dela**: trocar de projeto pelo combo da sidebar não funcionava — a URL
+"piscava e voltava" para o projeto anterior.
+
+Comportamento correto já documentado ⇒ correção, não fatia. Fonte: **SPEC-020**,
+critério de aceite — *"trocar de projeto pelo combo carrega o workspace do outro
+projeto sem passar pelo catálogo"*.
+
+### Causa
+
+Corrida entre os **dois efeitos** de `ResolveRoute.tsx`. O efeito de canonização
+lia duas fontes que mudam em tempos diferentes:
+
+- `project` — token da URL, **já** o do projeto novo;
+- `state.resolved` — resolução do `/resolve`, **ainda** a do projeto anterior.
+
+Nesse commit intermediário `project === projectSlug` é falso, a guarda não
+segura, e o `navigate(..., { replace: true })` reescreve a URL **de volta** ao
+projeto anterior — desfazendo a troca que o combo tinha acabado de fazer.
+
+O `/resolve` do projeto novo respondia **200**: a troca funcionava e era
+desfeita logo depois. Por isso o sintoma parecia "o combo não faz nada".
+
+### Diagnóstico — o que o Network provou
+
+```
+resolve?tenant=rodreis&project=rrb-jarvisos   200   ← a troca funcionou
+resolve?tenant=rodreis&project=rrb-proplan    200   ← o navigate a desfez
+```
+
+Registro honesto: **minha primeira hipótese estava errada** (achei que era
+projeto em tenant diferente, com o `urlFor` montando a URL com o tenant errado).
+Uma query no Postgres derrubou — há um único tenant. A causa real só apareceu
+com o Network do PI. Hipótese sem evidência custa uma rodada.
+
+### Correção
+
+Decisão extraída para `apps/web/src/pages/workspace/canonicalUrl.ts` — função
+pura que devolve a URL canônica **ou `null`**. Devolve `null` também quando a
+resolução **não corresponde** aos tokens que a URL pede agora: resolução
+obsoleta não manda em URL que não é dela.
+
+O casamento aceita **slug, uuid e slug em outra caixa** — deep-link, F5 e
+bookmark por UUID da SPEC-028 continuam resolvendo. O efeito no `ResolveRoute`
+virou duas linhas.
+
+### Verificação
+
+- 7 testes em `canonicalUrl.test.ts`, um deles reproduzindo a regressão
+- **Teste comprovado contra o bug**: removida a guarda → 2 falhas; restaurada → 7/7
+- Suíte web **57/57** verde · `tsc --noEmit` limpo
+- **Dogfooding local do PI**: três trocas seguidas pelo combo
+  (`rrb-organize` → `rrb-proplan` → `rrb-jarvisOS`), URL/sidebar/breadcrumb
+  coerentes em todas
