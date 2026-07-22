@@ -1128,3 +1128,16 @@ virou duas linhas.
 - **Dogfooding local do PI**: três trocas seguidas pelo combo
   (`rrb-organize` → `rrb-proplan` → `rrb-jarvisOS`), URL/sidebar/breadcrumb
   coerentes em todas
+
+### Entrega
+
+**Mergeado — PR #116 (squash `3fcc5ee`), `refs #115`**, em 2026-07-22. Aguarda
+aceite do PI. Falta confirmar em produção depois do deploy: o dogfooding foi
+local.
+
+A guarda do ADR-019 **barrou a primeira tentativa de merge** — os testes
+passavam, mas faltava a linha de carimbo da entrega em `reports/TESTS.md`. Eu
+tinha regenerado o relatório com `--issue 115`, que atualiza os totais mas não
+grava o histórico datado; o comando certo passa as variáveis
+(`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`), como o próprio CI instrui na
+mensagem de erro. Corrigido em `b627390`.
