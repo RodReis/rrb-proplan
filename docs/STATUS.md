@@ -47,6 +47,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 17 | SPEC-023 | `SPEC-023-stack-sbom.md` | Stack detectada via SBOM + confronto doc×real (issue #8; spec `aprovada-pi` 2026-07-17) |
 | 18 | SPEC-024 | `SPEC-024-epicos-hierarquia.md` | Épicos: hierarquia MVP→fatia no board via GitHub sub-issues (MVP2; spec `aprovada-pi` 2026-07-20) |
 | Deploy | SPEC-027 | `SPEC-027-deploy-railway.md` | Deploy em produção: Railway (compute+banco+fila) + Hostinger (DNS) — pós-MVP, sem número de fatia; issue #103 (spec `aprovada-pi` 2026-07-21) |
+| URLs legíveis | SPEC-028 | `SPEC-028-urls-legiveis.md` | URLs legíveis: slug de tenant/projeto em vez de UUID (refina SPEC-022 §4) — pós-MVP, sem número de fatia; issue #107 (spec `aprovada-pi` 2026-07-22) |
 
 ## Backlog
 
