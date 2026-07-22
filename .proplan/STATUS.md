@@ -23,9 +23,7 @@ updated: 2026-07-22
 
 ## Em Andamento
 
-### Sem épico
-
-- [SPEC-028] URLs legíveis: slug de tenant/projeto em vez de UUID (#107, prio: alta)
+_(vazio)_
 
 ## Feito
 
@@ -35,6 +33,7 @@ _(vazio)_
 
 ### Sem épico
 
+- [SPEC-028] URLs legíveis: slug de tenant/projeto em vez de UUID (#107, prio: alta, finalizado em: 2026-07-22)
 - [MVP2][SPEC-022][FIX] $transaction em lote sob runInTenantContext quebra em 2 conexões — DELETE/INSERT fora de ordem (#113, prio: alta, finalizado em: 2026-07-22)
 - [INFRA][FIX] entrega merge sem linha no histórico do TESTS.md — nada barra (#110, prio: alta, finalizado em: 2026-07-22)
 - [SPEC-027][INFRA] Deploy em produção: Railway + Hostinger DNS (#103, prio: alta, finalizado em: 2026-07-22)
