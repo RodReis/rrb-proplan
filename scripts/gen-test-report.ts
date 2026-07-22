@@ -323,8 +323,36 @@ function reportAtBase(cfg: Config): string | null {
   }
 }
 
+/**
+ * A entrega tem linha no histórico? (guarda nascida em 2026-07-22, issue #110)
+ *
+ * O furo que fecha: os metadados da linha (`REPORT_ISSUE`/`REPORT_SPEC`/
+ * `REPORT_PR`) só existem no CI, que os extrai do corpo do PR. Rodando
+ * `pnpm test:report` na máquina do dev eles não existem, e o gerador —
+ * corretamente — atualiza só o "Estado atual" e **não** acrescenta linha
+ * (`| — | — | — |` não é evidência de entrega). Nada verificava que a linha
+ * passou a existir: SPEC-027 e SPEC-022 mergearam com o histórico mudo, e a
+ * tabela passou a sugerir que aquelas entregas não tiveram teste — sendo que
+ * tiveram 671 testes verdes.
+ *
+ * Não substitui o `--check`: aquele prova que os NÚMEROS não foram forjados;
+ * este prova que a ENTREGA foi carimbada. Formas diferentes de mentir.
+ *
+ * Recebe o documento e a issue esperada; devolve `true` se já há linha dela.
+ */
+export function hasHistoryEntry(docRaw: string, issue: string): boolean {
+  if (!issue || issue === '—') return false;
+  // A issue é a 2ª coluna: `| data | #N | SPEC | categoria | …`. Casar a célula
+  // inteira evita que `#10` valide um PR que referencia a `#1`.
+  return keepHistory(docRaw).some((line) => {
+    const cells = line.split('|').map((c) => c.trim());
+    return cells[2] === issue;
+  });
+}
+
 function main() {
   const check = process.argv.includes('--check');
+  const requireEntry = process.argv.includes('--require-entry');
   const cfg = loadConfig();
   meta = buildMeta(cfg);
   const reportAbs = resolve(ROOT, cfg.reportPath);
@@ -366,8 +394,23 @@ function main() {
       process.exit(1);
     }
 
+    // 3. CARIMBO — a entrega tem linha no histórico? Só quando o CI pede
+    //    (`--require-entry`), porque exige uma issue conhecida: rodando local,
+    //    sem PR, não há `refs #N` e a cobrança seria impossível de satisfazer.
+    if (requireEntry && !hasHistoryEntry(existing, meta.issue)) {
+      console.error(
+        `[gen-test-report] ENTREGA SEM CARIMBO: ${cfg.reportPath} não tem linha de histórico para a issue ${meta.issue}.\n` +
+          'Este PR altera testes, então a entrega precisa de evidência datada (ADR-019, TESTING.md §4).\n' +
+          'Rode, na raiz do repo:\n' +
+          `  REPORT_ISSUE=${meta.issue} REPORT_SPEC=${meta.spec} REPORT_PR=${meta.pr} pnpm test:report\n` +
+          'e commite o reports/TESTS.md. Sem isso a tabela sugere que a entrega não teve teste.',
+      );
+      process.exit(1);
+    }
+
     console.log(
-      '[gen-test-report] --check OK: os números batem com a execução limpa e o histórico está íntegro.',
+      '[gen-test-report] --check OK: os números batem com a execução limpa e o histórico está íntegro.' +
+        (requireEntry ? ` Entrega ${meta.issue} carimbada no histórico.` : ''),
     );
     return;
   }

@@ -115,10 +115,36 @@ jobs:
       # reports/TESTS.md COMMITADO no PR. Se o dev editou um número à mão (ou
       # esqueceu de rodar `pnpm test:report` e commitar), diverge → falha aqui.
       # NÃO reescreve o arquivo — senão nunca pegaria a forja do commit.
+      # O carimbo (linha no histórico) só é exigido de PR que MEXE em teste —
+      # PR só de docs não deve ser barrado. Compara contra a base do PR, já
+      # buscada acima. `--diff-filter=d` ignora arquivo removido: apagar um
+      # spec não cria entrega a carimbar.
+      - name: O PR altera testes?
+        if: github.event_name == 'pull_request'
+        run: |
+          changed=$(git diff --name-only --diff-filter=d \
+            "origin/${{ github.base_ref }}...HEAD" \
+            -- '*.spec.ts' '*.int-spec.ts' '*.test.ts' '*.test.tsx' 'apps/web/e2e/**' || true)
+          if [ -n "$changed" ]; then
+            echo "REQUIRE_ENTRY=1" >> "$GITHUB_ENV"
+            echo "PR altera testes — o carimbo no histórico será exigido:"
+            printf '%s\n' "$changed"
+          else
+            echo "PR não altera teste — carimbo dispensado."
+          fi
+
       - name: Rodar testes + guarda anti-drift
         env:
           REPORT_BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm test:report:check
+
+      # Terceira guarda (issue #110): números certos + histórico íntegro ainda
+      # deixavam passar uma entrega SEM linha no histórico — foi assim que
+      # SPEC-027 e SPEC-022 mergearam com a tabela sugerindo que não tiveram
+      # teste. Roda depois do --check para que a falha de números apareça antes.
+      - name: Guarda — a entrega está carimbada no histórico?
+        if: env.REQUIRE_ENTRY == '1'
+        run: pnpm test:report:check --require-entry
 
       - name: Publicar tabela no job summary
         if: always()

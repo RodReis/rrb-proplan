@@ -7,6 +7,9 @@
  *   node scripts/test-report.mjs --check     # roda tudo + falha se divergir
  *   node scripts/test-report.mjs --no-run    # só gera do que já existe em reports/.raw
  *   node scripts/test-report.mjs --selfcheck # só prova o gerador (não roda runners)
+ *   node scripts/test-report.mjs --check --require-entry
+ *                                            # + exige linha da entrega no histórico
+ *                                            # (CI, em PR que altera teste — issue #110)
  *
  * Testes que falham NÃO abortam o relatório — o número de falhas é o dado. Só o
  * gerador (via --check) barra o CI, e por divergência de número, não por falha.
@@ -62,6 +65,10 @@ process.env.TS_NODE_COMPILER_OPTIONS = '{"module":"commonjs"}';
 const entry = selfcheck ? 'scripts/gen-test-report.selfcheck.ts' : 'scripts/gen-test-report.ts';
 const genArgs = ['ts-node', resolve(ROOT, entry)];
 if (check) genArgs.push('--check');
+// Repasse explícito: o wrapper filtra as flags que conhece, então uma flag nova
+// do gerador seria descartada em silêncio — e uma guarda que nunca roda é pior
+// que guarda nenhuma, porque parece estar protegendo (issue #110).
+if (process.argv.includes('--require-entry')) genArgs.push('--require-entry');
 // cwd = apps/api: é de lá que o ts-node resolve (o script vive fora de qualquer workspace).
 const status = run('npx', genArgs, resolve(ROOT, 'apps/api'));
 process.exit(status);
