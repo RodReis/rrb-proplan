@@ -19,8 +19,8 @@ updated: 2026-07-22
 ### Sem épico
 
 - [SPEC-028] URLs legíveis: slug de tenant/projeto em vez de UUID (#107, prio: alta)
+- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4, prio: media)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
-- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4)
 
 ## Em Andamento
 
