@@ -189,14 +189,27 @@ ato deliberado do PI (ADR-011); o CI só torna a *evidência* impossível de fal
 
 ## 7. Reutilização em projetos futuros
 
-O objetivo é ter isto "de fábrica" nos próximos projetos. Os artefatos portáveis são:
+O objetivo é ter isto "de fábrica" nos próximos projetos.
 
-- `.github/workflows/ci.yml`
-- `scripts/gen-test-report.ts` (repo-agnóstico — lê tudo do config)
-- `test-report.config.json` (o mapa categoria→diretório; **o único arquivo que muda por projeto**)
-- as convenções de sufixo (`*.spec.ts` / `*.int-spec.ts` / `*.e2e-spec.ts` / `*.test.tsx`)
+> **Passo a passo completo: [`PORTAR-TESTS-REPORT.md`](PORTAR-TESTS-REPORT.md)** — o que copiar,
+> o que adaptar, o trecho do workflow pronto e as **cinco armadilhas** que custaram CI verde
+> mentindo (2026-07-22).
 
-Cair num projeto novo = copiar os três primeiros, ajustar o config, criar `reports/`.
+Os artefatos:
+
+| Arquivo | Porte |
+|---|---|
+| `scripts/gen-test-report.ts` | **copia** — repo-agnóstico, lê tudo do config |
+| `scripts/gen-test-report.selfcheck.ts` | **copia** — quem guarda a guarda |
+| `scripts/test-report.mjs` | **copia e ajusta** — os diretórios dos apps e os comandos dos runners estão **fixos no código** |
+| `test-report.config.json` | **reescreve** — o mapa categoria→JSON |
+| `.github/workflows/ci.yml` | **adapta** — os 4 passos das guardas |
+| convenções de sufixo | `*.spec.ts` / `*.int-spec.ts` / `*.e2e-spec.ts` / `*.test.tsx` / `*.selfcheck.ts` |
+
+> **Correção de 2026-07-22.** Esta seção dizia *"copiar os três primeiros e ajustar o config"* e
+> omitia o `test-report.mjs` — que **não** é agnóstico, apesar de o comentário do config afirmar
+> que ele é *"o único arquivo que muda por projeto"*. Quem seguisse a receita ao pé da letra
+> teria um orquestrador procurando `apps/api` num repo sem essa pasta.
 
 ## 8. Critérios de aceite (verificáveis pelo PI)
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "Mapa categoria→origem para o gerador de relatório (ADR-019 §3). ÚNICO arquivo que muda por projeto — o gen-test-report.ts é repo-agnóstico. Sufixos são convenção, não hardcode no código.",
+  "$comment": "Mapa categoria→origem para o gerador de relatório (ADR-019 §3). O gen-test-report.ts é repo-agnóstico e lê tudo daqui. ATENÇÃO ao portar: o scripts/test-report.mjs NÃO é — os diretórios dos apps e os comandos dos runners estão fixos no código dele. Ver docs/PORTAR-TESTS-REPORT.md. Sufixos são convenção, não hardcode no gerador.",
   "reportPath": "reports/TESTS.md",
   "$comment_repoUrl": "Base para montar o link do PR quando REPORT_PR_URL não vem do CI. Opcional: sem ele (e sem a env), a coluna Link PR fica '—'.",
   "repoUrl": "https://github.com/RodReis/rrb-proplan",
