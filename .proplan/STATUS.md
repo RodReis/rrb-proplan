@@ -9,6 +9,7 @@ updated: 2026-07-22
 
 ### Sem épico
 
+- [MVP2][SPEC-022][FIX] worker-context.int-spec é instável no CI — afterAll não limpa document_resolutions (#113, prio: media)
 - Configurações: desconectar / reconectar o GitHub (#93, prio: media)
 - Costura identidade ⊥ conexão (Google como 1º IdP) (#94, prio: media)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (#10, prio: media)
@@ -18,13 +19,14 @@ updated: 2026-07-22
 
 ### Sem épico
 
-- [SPEC-028] URLs legíveis: slug de tenant/projeto em vez de UUID (#107, prio: alta)
 - Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4, prio: media)
 - Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
 
 ## Em Andamento
 
-_(vazio)_
+### Sem épico
+
+- [SPEC-028] URLs legíveis: slug de tenant/projeto em vez de UUID (#107, prio: alta)
 
 ## Feito
 
@@ -34,6 +36,7 @@ _(vazio)_
 
 ### Sem épico
 
+- [INFRA][FIX] entrega merge sem linha no histórico do TESTS.md — nada barra (#110, prio: alta, finalizado em: 2026-07-22)
 - [SPEC-027][INFRA] Deploy em produção: Railway + Hostinger DNS (#103, prio: alta, finalizado em: 2026-07-22)
 - [MVP2][SPEC-022][FIX] rota global do catálogo acessa tabela escopada fora do withTenant (#109, prio: alta, finalizado em: 2026-07-22)
 - Correção — a guarda anti-drift não guardava: nem o histórico do TESTS.md, nem a si mesma (#74, prio: alta, finalizado em: 2026-07-17)
