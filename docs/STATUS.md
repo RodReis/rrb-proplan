@@ -46,6 +46,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 16 | SPEC-021 | `SPEC-021-login-catalogo.md` | Login + catálogo |
 | 17 | SPEC-023 | `SPEC-023-stack-sbom.md` | Stack detectada via SBOM + confronto doc×real (issue #8; spec `aprovada-pi` 2026-07-17) |
 | 18 | SPEC-024 | `SPEC-024-epicos-hierarquia.md` | Épicos: hierarquia MVP→fatia no board via GitHub sub-issues (MVP2; spec `aprovada-pi` 2026-07-20) |
+| Deploy | SPEC-027 | `SPEC-027-deploy-railway.md` | Deploy em produção: Railway (compute+banco+fila) + Hostinger (DNS) — pós-MVP, sem número de fatia; issue #103 (spec `aprovada-pi` 2026-07-21) |
 
 ## Backlog
 
@@ -105,6 +106,9 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - Defasagem por documento (badge por aba) — só se o alerta global do ADR-010 se provar útil (prio: baixa)
 - Observabilidade: métricas de sync/jobs, alertas de rate limit (prio: baixa)
 - **Botão "Regenerar" nos fallbacks de Arquitetura/Design** — cortado da Fatia 7 (2026-07-13). **Só depois da Fatia 7.5**, protegido pelo teto de gasto (ADR-016): hoje seria botão de chamada de IA sem cap, na fatia que mais consome IA. Caso legítimo que o justifica: artefato cacheado por `docs_tree_sha` nunca reaplica um provedor novo (ADR-008) — Regenerar é a única via. `POST /insights/:kind/regenerate` com `force: true` + ConfirmDialog de custo (prio: baixa)
+
+### Pós-MVP — Produção
+- **Deploy em produção — Railway + Hostinger DNS (SPEC-027)** — prio: **média**. **Encerra o "local-only"** do `CLAUDE.md` (decisão do PI 2026-07-21). Tudo no **Railway** (web + api + Redis + **Postgres**); **Hostinger só DNS** (`proplan.rrbtrading.com.br` + `api.proplan…`). **Supabase reservado**, sem função ativa — o free-tier pausa após 7 dias sem request, impróprio para prod; conta **Railway Pro** cobre o Postgres com custo marginal. **CI/CD:** auto-deploy no push para `main`, `prisma migrate deploy` no release. Achados que viraram escopo (checados no código): sem `Dockerfile` em `apps/api`/`apps/web`, sem `/health`, cookie de sessão sem `Secure`, `main.ts` só lê `API_PORT`, role `proplan_app` (RLS) nasce do init do Docker e **não roda** no Railway → bootstrap explícito. Entrega atualiza `CLAUDE.md` (levanta "sem deploy em nuvem"), `ARCHITECTURE.md` (banco: Supabase → Railway) e novo ADR em `DECISIONS.md`. **Issue #103** (`proplan:backlog`, assignee PI). Spec `aprovada-pi` 2026-07-21: `docs/specs/SPEC-027-deploy-railway.md`; runbook `docs/DEPLOY.md`.
 
 ## A Fazer
 
