@@ -28,3 +28,15 @@ Append-only — linhas de entregas passadas são imutáveis.
 | 2026-07-20 | #97 | SPEC-024 | Regras de Negócio | 577 | 577 | 0 | 76.1 | #101 | [#101](https://github.com/RodReis/rrb-proplan/pull/101) |
 | 2026-07-20 | #97 | SPEC-024 | Banco | 18 | 18 | 0 | 91.9 | #101 | [#101](https://github.com/RodReis/rrb-proplan/pull/101) |
 | 2026-07-20 | #97 | SPEC-024 | Tela | 52 | 52 | 0 | 14.3 | #101 | [#101](https://github.com/RodReis/rrb-proplan/pull/101) |
+| 2026-07-22 | #103 | SPEC-027 | Regras de Negócio | 601 | 601 | 0 | 75.8 | #104 | [#104](https://github.com/RodReis/rrb-proplan/pull/104) |
+| 2026-07-22 | #103 | SPEC-027 | Banco | 18 | 18 | 0 | 91.9 | #104 | [#104](https://github.com/RodReis/rrb-proplan/pull/104) |
+| 2026-07-22 | #103 | SPEC-027 | Tela | 52 | 52 | 0 | 14.3 | #104 | [#104](https://github.com/RodReis/rrb-proplan/pull/104) |
+| 2026-07-22 | #106 | SPEC-022 | Regras de Negócio | 601 | 601 | 0 | 75.8 | #105 | [#105](https://github.com/RodReis/rrb-proplan/pull/105) |
+| 2026-07-22 | #106 | SPEC-022 | Banco | 18 | 18 | 0 | 91.9 | #105 | [#105](https://github.com/RodReis/rrb-proplan/pull/105) |
+| 2026-07-22 | #106 | SPEC-022 | Tela | 52 | 52 | 0 | 14.3 | #105 | [#105](https://github.com/RodReis/rrb-proplan/pull/105) |
+| 2026-07-22 | #109 | SPEC-022 | Regras de Negócio | 601 | 601 | 0 | 75.8 | #108 | [#108](https://github.com/RodReis/rrb-proplan/pull/108) |
+| 2026-07-22 | #109 | SPEC-022 | Banco | 18 | 18 | 0 | 91.9 | #108 | [#108](https://github.com/RodReis/rrb-proplan/pull/108) |
+| 2026-07-22 | #109 | SPEC-022 | Tela | 52 | 52 | 0 | 14.3 | #108 | [#108](https://github.com/RodReis/rrb-proplan/pull/108) |
+| 2026-07-22 | #110 | — | Regras de Negócio | 601 | 601 | 0 | 75.8 | #111 | [#111](https://github.com/RodReis/rrb-proplan/pull/111) |
+| 2026-07-22 | #110 | — | Banco | 18 | 18 | 0 | 91.9 | #111 | [#111](https://github.com/RodReis/rrb-proplan/pull/111) |
+| 2026-07-22 | #110 | — | Tela | 52 | 52 | 0 | 14.3 | #111 | [#111](https://github.com/RodReis/rrb-proplan/pull/111) |

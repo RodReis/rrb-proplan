@@ -104,8 +104,21 @@ O histórico é **append-only** (linhas de entregas passadas são imutáveis). U
 
 > **Corrigido em 2026-07-16.** O item 3 dizia *"**upsert** das linhas da issue atual"* — contradizendo o append-only do §4 duas seções acima. O código seguiu o upsert e o append-only virou só texto. Pior: o gerador **descartava o histórico inteiro** quando rodava sem `refs #N` (o caso de `pnpm test:report` local, antes do PR) — foi assim que o registro da SPEC-016 sumiu, recuperado depois do commit `5a3fea4`. Hoje: **sem issue preserva e não acrescenta** (uma linha `| — | — | — |` não é evidência de entrega); **com issue, acrescenta**.
 
+> **Como carimbar a entrega (o comando que o Code roda).** Os metadados da linha vêm de
+> variáveis de ambiente — o CI as extrai do corpo do PR, mas numa execução **local** elas não
+> existem, e sem elas o gerador (corretamente) só atualiza o `Estado atual`. Para deixar a linha
+> no histórico, rode na raiz do repo:
+>
+> ```bash
+> REPORT_ISSUE=#103 REPORT_SPEC=SPEC-027 REPORT_PR=#104 pnpm test:report
+> ```
+>
+> `REPORT_DATE` e `REPORT_PR_URL` são opcionais (a data cai para hoje; o link é montado do
+> `repoUrl` do config). **Esquecer isso não é mais silencioso** — ver a prova 3 abaixo.
+
 **Guarda anti-drift (o que torna o arquivo confiável):** no PR, o CI roda o gerador em
-**`--check`**, que faz **duas provas independentes** — são duas formas distintas de forjar:
+**`--check`**, que faz **três provas independentes** — são três formas distintas de a evidência
+mentir:
 
 1. **Números** — recomputa os totais numa execução limpa e compara com a seção `## Estado atual`
    commitada. Divergiu → **CI falha**. O número só "cola" se sobreviver a uma reexecução
@@ -115,6 +128,23 @@ O histórico é **append-only** (linhas de entregas passadas são imutáveis). U
    Append-only é verificável por **continência de conjunto**, não por igualdade: o histórico novo
    pode ter linhas a mais (a entrega atual), nunca a menos. Por isso não sofre do problema dos
    metadados que motivou o recorte da prova 1.
+3. **Carimbo da entrega** (`--require-entry`, desde 2026-07-22) — prova que a entrega **deixou
+   linha** no histórico. Só é exigida de PR que **altera arquivo de teste** (PR só de `docs/` não
+   é barrado) e compara pela issue do `refs #N`. Sem linha → **CI falha**, com o comando exato a
+   rodar na mensagem.
+
+> **Por que a prova 3 nasceu (achado do PI em 2026-07-22).** As provas 1 e 2 cobrem *número
+> forjado* e *histórico apagado* — nenhuma cobre **histórico que nunca foi escrito**. As entregas
+> da **SPEC-027** (#103) e da **SPEC-022** (#106, #109) mergearam com CI verde e **nenhuma linha**
+> no histórico: o Code rodou `pnpm test:report` local, sem as env vars, e o gerador — como manda o
+> §4 — atualizou só o `Estado atual`. Olhando a tabela, parecia que aquelas entregas **não tiveram
+> teste**, quando havia 671 testes verdes. É a falha mais insidiosa deste arquivo: não um número
+> errado, mas um **silêncio que se lê como ausência**. O gerador não tinha bug — faltava a trava.
+>
+> **Por que o CI não passou a commitar a linha** (alternativa levantada e rejeitada pelo PI): o
+> `--check` **não reescreve** o arquivo de propósito — se reescrevesse, um número editado à mão
+> seria silenciosamente sobrescrito em vez de barrado, e a prova 1 morreria. Guarda que corrige
+> não é guarda. Então o CI **barra**, e quem carimba continua sendo quem entrega.
 
 > **Corrigido em 2026-07-16 (a guarda não guardava).** A prova 2 não existia: o `--check` olhava
 > só os números. O bug que apagou o registro da SPEC-016 passou por **CI verde em 3 PRs seguidos**

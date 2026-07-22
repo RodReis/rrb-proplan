@@ -12,7 +12,7 @@
  */
 import { strict as assert } from 'node:assert';
 
-import { droppedHistory, keepHistory } from './gen-test-report';
+import { droppedHistory, hasHistoryEntry, keepHistory } from './gen-test-report';
 
 const LINHA_A =
   '| 2026-07-16 | #3 | SPEC-016 | Regras de Negócio | 501 | 501 | 0 | 76.7 | #65 | [#65](https://x/pull/65) |';
@@ -102,4 +102,47 @@ run('CRLF não mascara perda real', () => {
   assert.deepEqual(droppedHistory(commitado, doc([LINHA_A])), [LINHA_B]);
 });
 
-console.log('[selfcheck] OK — 10 checks');
+// --- carimbo da entrega (issue #110) ---------------------------------------
+// A guarda que barra o merge quando um PR altera testes e não deixa linha no
+// histórico. Sem estes checks, um bug nela a desligaria em silêncio — que foi
+// exatamente como o registro da SPEC-016 sumiu sob CI verde.
+
+run('reconhece a linha da issue no histórico', () => {
+  assert.equal(hasHistoryEntry(doc([LINHA_A, LINHA_B]), '#3'), true);
+});
+
+run('issue sem linha no histórico é recusada', () => {
+  assert.equal(hasHistoryEntry(doc([LINHA_A]), '#99'), false);
+});
+
+run('histórico vazio recusa qualquer issue', () => {
+  assert.equal(hasHistoryEntry(doc([]), '#3'), false);
+});
+
+// O furo real: rodar local sem PR gera meta.issue = '—'. Se isso contasse como
+// carimbo, a guarda passaria justamente no caso que ela existe para pegar.
+run("issue '—' (execução local, sem PR) nunca conta como carimbo", () => {
+  assert.equal(hasHistoryEntry(doc([LINHA_A]), '—'), false);
+  assert.equal(hasHistoryEntry(doc([LINHA_A]), ''), false);
+});
+
+// Casa a célula inteira: com `includes`, '#1' validaria a linha da '#10'.
+run('não confunde #1 com #10 (prefixo não basta)', () => {
+  const linha10 = LINHA_A.replace('| #3 |', '| #10 |');
+  assert.equal(hasHistoryEntry(doc([linha10]), '#1'), false);
+  assert.equal(hasHistoryEntry(doc([linha10]), '#10'), true);
+});
+
+run('CRLF não impede reconhecer o carimbo', () => {
+  const crlf = doc([LINHA_A]).replace(/\n/g, '\r\n');
+  assert.equal(hasHistoryEntry(crlf, '#3'), true);
+});
+
+// O 'Estado atual' tem linhas `| — | — | — |` por contrato; se o parser as
+// lesse, toda entrega pareceria carimbada.
+run('linha do Estado atual não é confundida com carimbo', () => {
+  const estado = '| — | — | — | Regras de Negócio | 601 | 601 | 0 | 75.8 | — | — |';
+  assert.equal(hasHistoryEntry(doc([], [estado]), '#3'), false);
+});
+
+console.log('[selfcheck] OK — 17 checks');

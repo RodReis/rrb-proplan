@@ -74,10 +74,20 @@ jobs:
           # Via env, nunca interpolado no script: o corpo do PR é texto de
           # usuário e ${{ }} direto no `run` seria injeção de shell.
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
           PR_UPDATED_AT: ${{ github.event.pull_request.updated_at }}
         run: |
           issue=$(printf '%s' "$PR_BODY" | grep -oiE 'refs #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
-          spec=$(printf '%s' "$PR_BODY" | grep -oiE 'SPEC-[0-9]{3}' | head -1 || true)
+          # A SPEC sai do TÍTULO, não do corpo: o corpo cita outras specs em
+          # prosa (contexto, comparação) e o `head -1` pegava a primeira menção,
+          # não a da entrega — o PR #111 carimbaria "SPEC-016" só por citá-la.
+          # O título segue o padrão `[MVP2][SPEC-022][FIX] …` (CLAUDE.md), onde
+          # a SPEC entre colchetes é, por convenção, a da entrega. Sem ela no
+          # título, cai para o corpo (PRs antigos) e por fim para '—'.
+          spec=$(printf '%s' "$PR_TITLE" | grep -oiE '\[SPEC-[0-9]{3}\]' | head -1 | grep -oiE 'SPEC-[0-9]{3}' || true)
+          if [ -z "$spec" ]; then
+            spec=$(printf '%s' "$PR_BODY" | grep -oiE 'SPEC-[0-9]{3}' | head -1 || true)
+          fi
           echo "REPORT_ISSUE=${issue:+#$issue}" >> "$GITHUB_ENV"
           echo "REPORT_SPEC=${spec:-}" >> "$GITHUB_ENV"
           echo "REPORT_DATE=$(date -u -d "$PR_UPDATED_AT" +%Y-%m-%d)" >> "$GITHUB_ENV"
@@ -115,10 +125,47 @@ jobs:
       # reports/TESTS.md COMMITADO no PR. Se o dev editou um número à mão (ou
       # esqueceu de rodar `pnpm test:report` e commitar), diverge → falha aqui.
       # NÃO reescreve o arquivo — senão nunca pegaria a forja do commit.
+      # O carimbo (linha no histórico) só é exigido de PR que MEXE em teste —
+      # PR só de docs não deve ser barrado. Compara contra a base do PR, já
+      # buscada acima. `--diff-filter=d` ignora arquivo removido: apagar um
+      # spec não cria entrega a carimbar.
+      - name: O PR altera testes?
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          # Diff de DOIS pontos contra a base: `...` (três pontos) precisa do
+          # ancestral comum, que o fetch raso (--depth=1) não traz — dava
+          # "fatal: no merge base", `changed` vazio e a guarda se dispensava
+          # sozinha, passando verde. Guarda que falha ABERTA é pior que guarda
+          # nenhuma. Em PR, HEAD já é o merge commit, então `..` compara
+          # exatamente a base com o resultado do PR.
+          # `*.selfcheck.ts` está na lista de propósito: é o teste do gerador e
+          # não casa `*.spec.ts`. Sem ele, um PR que só mexe na guarda (como o
+          # #111, que a criou) se dispensaria da própria regra.
+          changed=$(git diff --name-only --diff-filter=d \
+            "origin/${{ github.base_ref }}..HEAD" \
+            -- '*.spec.ts' '*.int-spec.ts' '*.test.ts' '*.test.tsx' \
+               '*.selfcheck.ts' 'apps/web/e2e/**')
+          if [ -n "$changed" ]; then
+            echo "REQUIRE_ENTRY=1" >> "$GITHUB_ENV"
+            echo "PR altera testes — o carimbo no histórico será exigido:"
+            printf '%s\n' "$changed"
+          else
+            echo "PR não altera teste — carimbo dispensado."
+          fi
+
       - name: Rodar testes + guarda anti-drift
         env:
           REPORT_BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: pnpm test:report:check
+
+      # Terceira guarda (issue #110): números certos + histórico íntegro ainda
+      # deixavam passar uma entrega SEM linha no histórico — foi assim que
+      # SPEC-027 e SPEC-022 mergearam com a tabela sugerindo que não tiveram
+      # teste. Roda depois do --check para que a falha de números apareça antes.
+      - name: Guarda — a entrega está carimbada no histórico?
+        if: env.REQUIRE_ENTRY == '1'
+        run: pnpm test:report:check --require-entry
 
       - name: Publicar tabela no job summary
         if: always()
