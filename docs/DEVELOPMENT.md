@@ -924,3 +924,33 @@ O PR #105 corrigiu o `addProject`, mas **não a classe do bug**. O 500 virou **4
 11. `feito` — **Piso**: API **619/619** (95 suites), build limpo. `reports/TESTS.md`: Regras 599 → **601**.
 
 **Lição de método, que é o ponto**: no PR #105 eu li o call site que doeu e corrigi só ele. `enqueueSync` e `removeProject` estavam a poucas linhas dali. Bug de RLS não se conserta no call site que apareceu — se conserta varrendo quem mais escreve na mesma condição, e travando a regra com teste. O 404 foi o preço de não ter feito isso da primeira vez.
+
+### Verificação em produção — pipeline completo (2026-07-22, após o deploy do PR #108)
+
+Fecha o último item em aberto da issue #109 e o **critério de aceite #4 da SPEC-027** (login GitHub ponta a ponta), o único que o Code não conseguia provar sozinho — exige um humano autenticando no browser.
+
+Estado do banco de produção depois do PI marcar o `rrb-proplan` no catálogo:
+
+```
+projetos: rrb-proplan | todos com tenant: true
+syncRuns: 1 → success (12:36)
+documentos ingeridos: 64
+issues (cache do board): 44
+insights (IA): 2
+```
+
+O que cada número prova, em cadeia:
+
+- **`syncRuns: 1 → success`** — o `enqueueSync` volta a enfileirar. Era exatamente isto que o 404 impedia: o projeto nascia e o sync nunca era criado.
+- **64 documentos** — a ingestão leu `docs/` do repo-alvo via Trees/Contents API (ADR-003: nunca clona).
+- **44 issues** — o board montou o cache a partir das GitHub Issues (ADR-011).
+- **2 insights** — a `ANTHROPIC_API_KEY` está operante e a inferência versionada roda em produção.
+- **`todos com tenant: true`** — o `tenantId` é gravado no INSERT (PR #105) e o RLS deixa passar.
+
+**Dogfooding real**: o board do ProPlan em produção renderizou as próprias entregas do dia — #103, #106 e #109 em Finalizado. O produto exibindo o próprio ciclo de vida é o teste de aceite mais honesto que esta fatia podia ter.
+
+**Critérios da SPEC-027 — todos verificados**: SPA com fallback (1) · `/health` 200 (2) · migration antes do tráfego (3) · **login ponta a ponta (4)** · RLS com role não-owner (5) · workers BullMQ com o Redis do Railway (6, provado pelo sync) · documentos atualizados (7–10).
+
+**Pendência de operação, não de código**: rotacionar o `POSTGRES_PASSWORD` — foi exposto em texto claro durante o setup.
+
+**Write-back provado junto**: o commit `d7e30b7` em `.proplan/STATUS.md` foi feito por **`rrb-proplan[bot]`** — a projeção do board gerada em produção, listando as próprias issues #106 e #109 como finalizadas. Prova o installation token do ADR-015 (escrita com identidade de bot) e o ADR-011 (projeção em `.proplan/`, nunca em `docs/`), sem nenhum teste artificial: o produto escreveu no repo por conta própria.
