@@ -71,7 +71,9 @@ Exemplo vivo: **sync SHA-aware** (elimina o `noop` falso) — não tem spec e **
 
 - **Idioma**: documentação, specs, commits e comunicação sempre em português (pt-BR); código e identificadores em inglês.
 - **Sem hardcode e sem mock** — dado local de desenvolvimento entra via seed (`prisma/seed.ts`), criado na primeira fatia que precisar.
-- **Ambiente 100% local até o fim do MVP** (docker-compose; sem deploy em nuvem).
+- **Desenvolvimento é local** (docker-compose) — **e existe produção** desde a
+  SPEC-027 (ADR-022, 2026-07-21): Railway (web + api + Postgres + Redis) com
+  Hostinger só no DNS. Runbook operacional em `docs/DEPLOY.md`.
 - **Portas**: web `5180` (strictPort — se ocupada, falha em vez de trocar), API `3311` (era 3000; remapeada por colisão com outros stacks locais — configurável via `API_PORT`). Postgres host `5433`, Redis host `6380` (host bindings remapeados; rede interna do compose segue 5432/6379).
 
 ## O que é
@@ -94,7 +96,7 @@ Painel de gestão visual de projetos de software. Ingere documentação (nunca c
 
 ## Stack
 
-NestJS + TypeScript · React + Vite (react-flow, dnd-kit) · PostgreSQL/Supabase · Prisma · Redis/BullMQ · GitHub API via fetch (Octokit v4+ é ESM-only e conflita com o build CJS do Nest — não reintroduzir sem resolver isso) · Anthropic API.
+NestJS + TypeScript · React + Vite (react-flow, dnd-kit) · PostgreSQL (Railway em produção; docker-compose no dev) · Prisma · Redis/BullMQ · GitHub API via fetch (Octokit v4+ é ESM-only e conflita com o build CJS do Nest — não reintroduzir sem resolver isso) · Anthropic API.
 
 ## Convenções de código
 

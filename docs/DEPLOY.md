@@ -54,18 +54,28 @@ incluso no Pro.
 
 Projeto: `https://railway.com/project/e598fd0c-45bb-4f0f-ac32-e419ba695f8e`
 
-Três/quatro serviços no mesmo projeto (compartilham a rede privada):
+Quatro serviços no mesmo projeto (compartilham a rede privada):
 
-1. **Postgres** — plugin do Railway. Expõe as *reference variables*
+1. **Postgres** — template do Railway. Expõe as *reference variables*
    (`${{Postgres.DATABASE_URL}}`, host/porta/usuário privados).
-2. **Redis** — plugin do Railway. Expõe `${{Redis.REDIS_URL}}`.
-3. **api** — root do repo apontando para `apps/api` (monorepo pnpm). Build via
-   Dockerfile de produção (a criar na SPEC-027). Healthcheck em `/health`.
-4. **web** — root apontando para `apps/web`. Build do Vite; serve estático.
+2. **Redis** — template do Railway. Expõe `${{Redis.REDIS_URL}}`.
+3. **`@proplan/api`** — build via `apps/api/Dockerfile`. Healthcheck em `/health`,
+   release command com `prisma migrate deploy` (`apps/api/railway.json`).
+4. **`@proplan/web`** — build via `apps/web/Dockerfile` (nginx servindo o build
+   do Vite, com fallback SPA).
 
-> **Monorepo:** cada serviço define seu *root directory* (`apps/api`, `apps/web`)
-> e o Railway builda só aquela pasta. O `pnpm-workspace.yaml` continua sendo a
-> fonte das dependências.
+> **Monorepo — atenção ao contexto de build:** o *root directory* dos serviços
+> **não** pode ser restrito a `apps/api`/`apps/web`. Os dois Dockerfiles esperam
+> o contexto na **raiz** do repositório, porque `pnpm-lock.yaml` e
+> `pnpm-workspace.yaml` vivem lá e sem eles o `pnpm install --frozen-lockfile`
+> não resolve o workspace. O `dockerfilePath` de cada `railway.json` aponta para
+> o arquivo dentro de `apps/*`.
+
+> **O servidor MCP não é um serviço do Railway.** A SPEC-016 o define como
+> processo **local (stdio)**: ele não escuta porta HTTP, então um container dele
+> sobe sem nada com que conversar e morre no healthcheck. O serviço
+> `@proplan/mcp` que a autodetecção do monorepo criou deve ser **removido** do
+> projeto (a remoção exige 2FA no dashboard — não é possível por token de API).
 
 ---
 
@@ -83,7 +93,8 @@ Base em `.env.example`. **Nenhum secret entra no repo** — todos vivem nas
 | `REDIS_URL` | `${{Redis.REDIS_URL}}` | reference variable |
 | `FRONTEND_URL` | `https://proplan.rrbtrading.com.br` | fixo |
 | `API_URL` | `https://api.proplan.rrbtrading.com.br` | fixo |
-| `API_PORT` | porta que o Railway injeta (`$PORT`) — a API deve ler `PORT`/`API_PORT` | Railway |
+| `NODE_ENV` | `production` | **obrigatória** — é o gate do `Secure` no cookie de sessão. Sem ela o login não persiste em HTTPS |
+| `PORT` | injetada pelo Railway; a API lê `PORT` e cai em `API_PORT`/3311 | Railway (automática) |
 | `GITHUB_APP_ID` | ID numérico do App | GitHub App |
 | `GITHUB_APP_CLIENT_ID` | `Iv23...` | GitHub App |
 | `GITHUB_APP_CLIENT_SECRET` | secret do App | GitHub App |
@@ -137,11 +148,31 @@ produção a role é criada por um **passo de bootstrap explícito**, uma vez po
 banco (detalhado na SPEC-027):
 
 1. Provisionar o Postgres no Railway.
-2. Rodar o script de bootstrap (equivalente ao `01-app-role.sql`) com a **senha
-   de produção** de `proplan_app` vinda de secret — **nunca** commitada.
-3. Montar `DATABASE_URL` com `proplan_app:<senha>@<host privado>`.
+2. Rodar o bootstrap da role, **uma vez por banco**, com a senha de produção
+   vinda de secret (nunca commitada). Da raiz do repo, com a conexão **owner**:
+
+   ```bash
+   DIRECT_URL="postgres://postgres:<senha-owner>@<host-publico>:<porta>/railway" \
+   APP_DB_PASSWORD="<senha-forte-de-proplan_app>" \
+   pnpm bootstrap:role
+   ```
+
+   O script (`scripts/bootstrap-app-role.mjs`) é **idempotente** — rodar de novo
+   troca a senha e re-aplica os grants. Ele termina verificando que a role **não**
+   tem `superuser`/`bypassrls` e **falha** se tiver: essa é a guarda contra o RLS
+   virar no-op silencioso.
+
+3. Montar `DATABASE_URL` com `proplan_app:<senha>@<host privado>:5432/railway` e
+   gravá-la nas *Variables* do serviço `api`. **Não** aponte a `DATABASE_URL`
+   para o usuário owner — isso desliga o isolamento multi-tenant sem erro visível.
 4. `prisma migrate deploy` (usando `DIRECT_URL`, role owner) aplica o schema +
-   as políticas RLS que já vivem nas migrations da SPEC-022.
+   as políticas RLS que já vivem nas migrations da SPEC-022. Isso roda sozinho a
+   cada deploy, como release command — o passo manual é só o da role.
+
+> **Ordem importa:** o passo 2 precisa acontecer **antes** de o serviço `api`
+> subir com a `DATABASE_URL` de runtime; caso contrário a role ainda não existe
+> e a conexão falha. As migrations podem rodar antes ou depois do bootstrap — os
+> grants de `ALTER DEFAULT PRIVILEGES` cobrem as tabelas criadas depois.
 
 > **Migration não chama a rede.** Nada de `fetch` dentro de migration — o deploy
 > não pode depender de token/API de pé (mesmo princípio do `accountId` nullable
@@ -229,4 +260,32 @@ integração que não existe.
 
 ---
 
-_Última atualização: 2026-07-21 — criado junto da SPEC-027 (aprovada-pi)._
+## 11. Estado do provisionamento (2026-07-22)
+
+Feito pela entrega da SPEC-027:
+
+- ✅ **Postgres** e **Redis** provisionados no projeto (deploy SUCCESS).
+- ✅ `@proplan/api` com `DIRECT_URL`, `REDIS_URL`, `NODE_ENV`, `FRONTEND_URL`,
+  `API_URL` (as duas primeiras via *reference variable*).
+- ✅ `@proplan/web` com `VITE_API_URL`.
+- ✅ Imagens validadas localmente: `/health` responde **200** na `PORT` injetada;
+  rota profunda no web cai no `index.html`; `prisma migrate deploy` roda a
+  partir da imagem de runtime.
+
+**Pendente — exige o dono (não é possível por token de API):**
+
+1. **Remover o serviço `@proplan/mcp`** (a remoção pede 2FA no dashboard). Ver §2.
+2. **Preencher os segredos** nas *Variables* do serviço `api`: `JWT_SECRET`,
+   `TOKEN_ENCRYPTION_KEY`, `GITHUB_APP_*`, `ANTHROPIC_API_KEY` e demais chaves de
+   IA (§3.1).
+3. **Rodar o bootstrap da role** e gravar a `DATABASE_URL` de runtime (§5).
+4. **Configurar os CNAMEs na Hostinger** e os custom domains no Railway (§4).
+5. **Atualizar a Callback URL do GitHub App** para o host de produção (§6).
+
+Enquanto (2) e (3) não acontecerem, o deploy da `api` sobe a imagem mas o app
+não completa o boot — falta banco e segredo. Isso é esperado, não regressão.
+
+---
+
+_Última atualização: 2026-07-22 — §2, §3, §5 e §11 revisadas na entrega da
+SPEC-027 (o que a implementação provou na prática)._
