@@ -912,3 +912,15 @@ Dois bugs **da SPEC-022**, não da SPEC-027, que só apareceram no primeiro banc
 **O que já foi feito à mão em produção** (destravar o PI antes do merge): `Tenant` da conta `RodReis` (instalação 147870965) + `Membership` `owner`, inseridos direto no banco. O `ensureTenants` é idempotente — reconhece esse tenant e não duplica.
 
 **Nota de método**: o `42501` é o RLS **funcionando**. O risco #1 da SPEC-027 era o oposto — RLS virar no-op silencioso por a app conectar como owner. Aqui ele barrou a escrita errada e produziu um erro visível, que é exatamente o comportamento desejado de uma barreira de segurança.
+
+### Emenda — o mesmo bug em dois call sites que eu não tinha varrido (2026-07-22)
+
+O PR #105 corrigiu o `addProject`, mas **não a classe do bug**. O 500 virou **404 "Projeto não encontrado"** — com o projeto recém-criado no banco.
+
+7. `feito` — **Causa**: o `addProject` grava sob `withTenant`, mas chamava `enqueueSync` **fora** dele. O `enqueueSync` valida o id lendo `projects` (tabela escopada): sem contexto, o RLS não devolve a linha e ele lança `NotFoundException`. A transação do upsert já tinha commitado ⇒ **projeto criado, sync nunca enfileirado** (`syncRuns: 0` no banco de produção, com o projeto lá).
+8. `feito` — **`removeProject` tinha o mesmo defeito**, ainda não manifestado: `deleteMany` no client base numa rota global não casaria linha alguma → 404 com o projeto existindo. Corrigido junto — foi a varredura que o achou, não um relato.
+9. `feito` — **A regra que faltava estar escrita**: rota `/t/:tenant/...` passa pelo `TenantContextInterceptor`, que abre o contexto e o expõe via `AsyncLocalStorage`; lá `this.prisma.project` é roteado ao `tx` pelo Proxy do `PrismaService` — **é legítimo**. O `catalog` é rota **global** por decisão (ADR-020): sem tenant na URL, sem interceptor. Nele, todo acesso a tabela escopada precisa abrir o seu próprio `withTenant`. `freshness` **não** foi tocado: apesar de morar no `CatalogService`, sua rota é escopada.
+10. `feito` — **Teste de arquitetura** (`global-route-scope.arch.spec.ts`), no padrão do `tenant-scope.arch.spec.ts`: varre os métodos de rota global do `CatalogService` e falha se algum tocar model escopado pelo client base; e exige o `enqueueSync` dentro de `withTenant`. Provado contra o bug: reintroduzi os dois defeitos → **2 falharam**; restaurei → 2/2. É o que impede a próxima rota global de repetir isto.
+11. `feito` — **Piso**: API **619/619** (95 suites), build limpo. `reports/TESTS.md`: Regras 599 → **601**.
+
+**Lição de método, que é o ponto**: no PR #105 eu li o call site que doeu e corrigi só ele. `enqueueSync` e `removeProject` estavam a poucas linhas dali. Bug de RLS não se conserta no call site que apareceu — se conserta varrendo quem mais escreve na mesma condição, e travando a regra com teste. O 404 foi o preço de não ter feito isso da primeira vez.

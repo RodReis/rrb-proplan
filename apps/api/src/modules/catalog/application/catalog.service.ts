@@ -385,17 +385,31 @@ export class CatalogService {
 
     // Primeira vez que o repo é marcado como gerenciado → primeira ingestão
     // automática (SPEC-002 critério de aceite). Re-marcar não re-enfileira.
+    //
+    // Sob `withTenant` porque o `enqueueSync` lê `projects` (tabela escopada)
+    // para validar o id: fora do contexto o RLS não devolve a linha e ele
+    // lança "Projeto não encontrado" — com o projeto recém-criado ali. As
+    // outras chamadas de `enqueueSync` vêm de rotas `/t/:tenant/...`, onde o
+    // TenantContextInterceptor já abriu o contexto; o catálogo é rota global e
+    // não passa por ele (ADR-020), então abre o seu.
     if (!existing) {
-      await this.ingestion.enqueueSync(project.id);
+      await this.prisma.withTenant(membershipTenantIds, () =>
+        this.ingestion.enqueueSync(project.id),
+      );
     }
 
     return { ...project, githubRepoId: Number(project.githubRepoId) };
   }
 
   async removeProject(userId: string, projectId: string): Promise<void> {
-    const { count } = await this.prisma.project.deleteMany({
-      where: { id: projectId, userId },
-    });
+    // Rota GLOBAL (`/catalog/...`): não passa pelo TenantContextInterceptor, que
+    // só cobre `/t/:tenant/...`. Como `projects` é escopada por RLS, o DELETE
+    // fora do contexto não casaria linha nenhuma e devolveria 404 mesmo com o
+    // projeto existindo. Mesmo motivo do `addProject`/`enqueueSync`.
+    const tenantIds = await this.membershipTenantIds(userId);
+    const { count } = await this.prisma.withTenant(tenantIds, (tx) =>
+      tx.project.deleteMany({ where: { id: projectId, userId } }),
+    );
     if (count === 0) throw new NotFoundException('Projeto não encontrado');
   }
 
