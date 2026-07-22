@@ -1131,9 +1131,10 @@ virou duas linhas.
 
 ### Entrega
 
-**Mergeado — PR #116 (squash `3fcc5ee`), `refs #115`**, em 2026-07-22. Aguarda
-aceite do PI. Falta confirmar em produção depois do deploy: o dogfooding foi
-local.
+**Mergeado — PR #116 (squash `3fcc5ee`), `refs #115`**, em 2026-07-22. **Aceito
+pelo PI e verificado em produção** no mesmo dia: em
+`proplan.rrbtrading.com.br`, a troca `rrb-proplan` → `rrb-jarvisOS` pelo combo
+leva URL, sidebar, breadcrumb e conteúdo juntos.
 
 A guarda do ADR-019 **barrou a primeira tentativa de merge** — os testes
 passavam, mas faltava a linha de carimbo da entrega em `reports/TESTS.md`. Eu
