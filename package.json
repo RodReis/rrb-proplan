@@ -13,6 +13,7 @@
     "build": "pnpm --filter @proplan/api build && pnpm --filter @proplan/web build",
     "prisma:migrate": "pnpm --filter @proplan/api prisma:migrate",
     "prisma:seed": "pnpm --filter @proplan/api prisma:seed",
+    "bootstrap:role": "node scripts/bootstrap-app-role.mjs",
     "test:report": "node scripts/test-report.mjs",
     "test:report:check": "node scripts/test-report.mjs --check",
     "test:report:selfcheck": "node scripts/test-report.mjs --selfcheck"

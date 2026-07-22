@@ -1,0 +1,23 @@
+# Fora do contexto de build (SPEC-027). node_modules do host tem binários
+# compilados para a plataforma errada e envenenaria a imagem.
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/test-results
+**/*.tsbuildinfo
+
+.git
+.github
+docs
+graphify-out
+reports
+scripts
+
+**/.env
+**/.env.*
+!**/.env.example
+
+**/*.log
+.vscode
+.idea
