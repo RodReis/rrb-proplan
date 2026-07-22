@@ -884,3 +884,14 @@ Fatia pós-MVP, sem número no índice. Issue **#103** em `proplan:doing`. Encer
 **Fora de escopo, respeitado**: Supabase (reservado, sem código), webhook do GitHub, staging/preview, observabilidade e migrations destrutivas.
 
 **O que trava a produção subir de fato** (só o PI pode, não é possível por token de API): remover o serviço `mcp` · preencher os segredos nas Variables · rodar `pnpm bootstrap:role` e gravar a `DATABASE_URL` de runtime · CNAMEs na Hostinger + custom domains no Railway · Callback URL do GitHub App. Lista operacional em `docs/DEPLOY.md` §11.
+
+### Subida real em produção (2026-07-22, após o merge do PR #104)
+
+O que só apareceu ao subir de verdade — e não estava previsto nos 13 passos:
+
+14. `feito` — **A config gravada no serviço vence o `railway.json` do repo.** Depois do merge, o build da api **continuou falhando com os mesmos 285 erros TS2339**: o serviço tinha `buildCommand: pnpm --filter @proplan/api build` gravado nas settings (herdado da autodetecção), então o Dockerfile era ignorado e o `prisma generate` nunca rodava. Limpar `buildCommand`/`startCommand` e apontar `dockerfilePath` resolveu — o build passou na primeira tentativa seguinte.
+15. `feito` — **O mesmo mecanismo, mais grave: deploy verde com o banco vazio.** Ao limpar os comandos acima, o `preDeployCommand` também ficou `null`. Resultado: o deploy deu **SUCCESS**, a API subiu, e o banco tinha **zero tabelas** — o `prisma migrate deploy` nunca rodou e **nada sinalizou**. Aplicadas as 26 migrations à mão, `preDeployCommand` restaurado, e o redeploy seguinte provou o caminho: log mostra `26 migrations found` → `No pending migrations to apply.` **antes** do `Nest application successfully started`. **Um release command ausente é pior que um que falha** — falha aborta o deploy; ausência deixa o deploy passar mentindo. Registrado na tabela de recuperação do `DEPLOY.md` §10.
+16. `feito` — **Critério de aceite #5 verificado em produção** (o guarda contra vazamento multi-tenant): banco com **20 tabelas, 26 migrations, 15 com RLS ativo**; `proplan_app` com `rolsuper=false`, `rolbypassrls=false` e grant nas 20 tabelas — o `ALTER DEFAULT PRIVILEGES` cobriu as criadas depois da role. `DATABASE_URL` aponta para `proplan_app`; `DIRECT_URL` (owner) fica só para migrations.
+17. `feito` — **Segredos gerados pelo Code**: `JWT_SECRET` e `TOKEN_ENCRYPTION_KEY` (hex 32 bytes) e a senha da `proplan_app`, gravados direto nas Variables do Railway e apagados do disco local. As credenciais do **GitHub App** e as chaves de **IA** seguem com o PI — o Code não as inventa (spec §Processo).
+
+**Estado**: api e web `SUCCESS`, Postgres e Redis Online, `@proplan/mcp` removido. Falta para o produto funcionar ponta a ponta: credenciais do GitHub App, chave de IA, CNAMEs na Hostinger e a Callback URL do App. Lista em `docs/DEPLOY.md` §11.

@@ -252,6 +252,8 @@ integração que não existe.
 | Sintoma | Primeira verificação |
 |---|---|
 | Deploy da api falhou | Logs do release command — quase sempre `prisma migrate deploy` (`DIRECT_URL` errada ou migração destrutiva). |
+| **Deploy verde mas migration não aplicada** | O `preDeployCommand`/`buildCommand` gravado nas *settings do serviço* **vence o `railway.json` do repo** — se estiver `null` lá, o release command **não roda** e o deploy passa mesmo assim. Conferir em Settings → Deploy do serviço, não só no repo. Aconteceu na própria SPEC-027 (§11). |
+| Build da api com centenas de `TS2339: Property 'x' does not exist on type 'PrismaService'` | O build rodou sem `prisma generate` antes — o client nasce sem models. Sinal de que o Railway **não** está usando `apps/api/Dockerfile` (checar `dockerfilePath` e se há `buildCommand` sobrescrevendo). |
 | App sobe mas login não persiste | Cookie `Secure` ausente em HTTPS, ou `FRONTEND_URL`/CORS divergente do host real. |
 | Queries multi-tenant "vendo tudo" | Runtime conectou como **owner/superuser** em vez de `proplan_app` — RLS virou no-op. Conferir a `DATABASE_URL`. |
 | Sync/insight não processam | Redis fora do ar ou `REDIS_URL` não resolvida (reference variable). |
@@ -262,30 +264,47 @@ integração que não existe.
 
 ## 11. Estado do provisionamento (2026-07-22)
 
-Feito pela entrega da SPEC-027:
+**A API está no ar.** Os quatro serviços com deploy `SUCCESS`:
 
-- ✅ **Postgres** e **Redis** provisionados no projeto (deploy SUCCESS).
-- ✅ `@proplan/api` com `DIRECT_URL`, `REDIS_URL`, `NODE_ENV`, `FRONTEND_URL`,
-  `API_URL` (as duas primeiras via *reference variable*).
-- ✅ `@proplan/web` com `VITE_API_URL`.
-- ✅ Imagens validadas localmente: `/health` responde **200** na `PORT` injetada;
-  rota profunda no web cai no `index.html`; `prisma migrate deploy` roda a
-  partir da imagem de runtime.
+- ✅ **Postgres** e **Redis** provisionados; `@proplan/mcp` removido (§2).
+- ✅ `@proplan/api` buildando pelo `apps/api/Dockerfile` e subindo
+  (*"Nest application successfully started"*), conectado como `proplan_app`.
+- ✅ `@proplan/web` servindo o build do Vite por nginx.
+- ✅ **Banco**: 26 migrations aplicadas, 20 tabelas, **15 com RLS ativo**.
+- ✅ **Role verificada em produção**: `proplan_app` com `rolsuper=false` e
+  `rolbypassrls=false`, com grant nas 20 tabelas (o `ALTER DEFAULT PRIVILEGES`
+  cobriu as criadas depois dela). É a prova do critério de aceite de isolamento.
+- ✅ **Release command provado**: o log do deploy mostra `26 migrations found` →
+  `No pending migrations to apply.` **antes** do Nest iniciar.
 
-**Pendente — exige o dono (não é possível por token de API):**
+### Armadilha encontrada na primeira subida (custou o banco ficar vazio)
 
-1. **Remover o serviço `@proplan/mcp`** (a remoção pede 2FA no dashboard). Ver §2.
-2. **Preencher os segredos** nas *Variables* do serviço `api`: `JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, `GITHUB_APP_*`, `ANTHROPIC_API_KEY` e demais chaves de
-   IA (§3.1).
-3. **Rodar o bootstrap da role** e gravar a `DATABASE_URL` de runtime (§5).
-4. **Configurar os CNAMEs na Hostinger** e os custom domains no Railway (§4).
-5. **Atualizar a Callback URL do GitHub App** para o host de produção (§6).
+O deploy passou **verde com o banco sem nenhuma tabela**. Causa: o
+`preDeployCommand` estava `null` nas *settings do serviço*, e **a config do
+serviço vence o `railway.json` do repo** — o release command simplesmente não
+rodou, e nada sinalizou isso. O mesmo mecanismo derrubou os builds anteriores
+com 285 erros `TS2339`: um `buildCommand` gravado no serviço ignorava o
+Dockerfile e o `prisma generate` nunca acontecia.
 
-Enquanto (2) e (3) não acontecerem, o deploy da `api` sobe a imagem mas o app
-não completa o boot — falta banco e segredo. Isso é esperado, não regressão.
+> **Regra que fica:** ao mexer na configuração de um serviço, conferir o que
+> está gravado nas *settings* — não basta o arquivo estar certo no repo. Um
+> release command ausente é pior que um que falha: falha aborta o deploy,
+> ausência deixa o deploy passar mentindo.
+
+**Pendente — exige o dono:**
+
+1. **Credenciais do GitHub App** nas *Variables* do `api`: `GITHUB_APP_ID`,
+   `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` e `GITHUB_APP_PRIVATE_KEY`
+   (PEM em base64, uma linha). Sem elas a API sobe, mas o login não completa —
+   são lidas em tempo de uso, não no boot.
+2. **`ANTHROPIC_API_KEY`** (e demais chaves de IA que quiser habilitar — provedor
+   sem chave fica desabilitado, ADR-008).
+3. **CNAMEs na Hostinger** + custom domains no Railway (§4).
+4. **Callback URL do GitHub App** para o host de produção (§6).
+5. **Rotacionar `POSTGRES_PASSWORD`** — a senha do banco foi exposta em texto
+   claro durante o setup.
 
 ---
 
-_Última atualização: 2026-07-22 — §2, §3, §5 e §11 revisadas na entrega da
-SPEC-027 (o que a implementação provou na prática)._
+_Última atualização: 2026-07-22 — §2, §3, §5, §10 e §11 revisadas na entrega da
+SPEC-027, com o que a implementação e a subida real provaram na prática._
