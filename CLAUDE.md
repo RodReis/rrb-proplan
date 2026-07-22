@@ -21,11 +21,11 @@ Priorizam cautela sobre velocidade; em tarefa trivial, bom senso.
 
 - **Rodrigo Reis (PI)** — decide escopo, prioridades e trade-offs; aprova specs e aceita entregas.
 - **Claude Cowork (planejamento)** — especifica e mantém `docs/` e as specs em `docs/specs/`. Antes de finalizar qualquer spec, apresenta as perguntas abertas e dúvidas ao PI — spec só vira `aprovada-pi` com todas resolvidas (evitar retrabalho). Quando a spec vira `aprovada-pi`, **cria a issue-fatia no board** (coluna Backlog, assignee PI). **Nunca implementa código** — implementação é exclusiva do Claude Code.
-- **Claude Code (você)** — planeja, codifica, testa (código, UX e UI — pode usar as skills do impeccable), atualiza a documentação e **sempre commita todos os documentos de `docs/`** junto da entrega. Implementa a partir deste arquivo + `docs/` + spec da feature em `docs/specs/`. **Não cria a issue** (é do Cowork) — pega o card, move pelo fluxo e entrega com PR. Pode criticar arquitetura, **não escopo**. Sem spec para a tarefa, ou spec ambígua → perguntar ao PI antes de codificar, nunca assumir. Deve apontar problemas técnicos da spec — a correção passa pelo PI.
+- **Claude Code (você)** — planeja, codifica, testa (código, UX e UI — pode usar as skills do impeccable), atualiza a documentação e **sempre commita todos os documentos de `docs/`** junto da entrega. Implementa a partir deste arquivo + `docs/` + spec da feature em `docs/specs/`. **Não cria a issue de fatia** (é do Cowork) — pega o card, move pelo fluxo e entrega com PR. **Exceção: cria a própria issue `[FIX]`** de bug com comportamento correto já documentado (ADR/`ARCHITECTURE.md`/spec existente/`STATUS.md`), citando a fonte no corpo — ver *Correção: o Code cria a própria issue* abaixo. Reclassificar fatia como `[FIX]` para pular spec e aval é proibido. Pode criticar arquitetura, **não escopo**. Sem spec para a tarefa, ou spec ambígua → perguntar ao PI antes de codificar, nunca assumir. Deve apontar problemas técnicos da spec — a correção passa pelo PI.
 
 ### Ciclo de vida de uma fatia (processo do trio — **não é feature do produto**)
 
-Isto é convenção **nossa**, executada à mão via GitHub MCP: o **Cowork cria** a issue, o **Code move e entrega**. **Nada disso vira código do ProPlan** — o ADR-014 é explícito: o ProPlan se adapta ao repo, nunca impõe convenção. Se um segundo repo adotar `docs/specs/`, reavaliar.
+Isto é convenção **nossa**, executada à mão via GitHub MCP: o **Cowork cria** a issue de fatia, o **Code move e entrega** (e cria a própria issue de correção — ver *Correção: o Code cria a própria issue*). **Nada disso vira código do ProPlan** — o ADR-014 é explícito: o ProPlan se adapta ao repo, nunca impõe convenção. Se um segundo repo adotar `docs/specs/`, reavaliar.
 
 1. **Spec vira `aprovada-pi`** → o **Cowork** cria a issue no board: coluna **Backlog** (`proplan:backlog`), título no **Padrão de título de issue** (ver abaixo), corpo com link para o arquivo da spec, assignee = **PI**.
 2. **Code começa** → move da Backlog para **A Fazer** (`proplan:todo`) ao pegar e para **Em Andamento** (`proplan:doing`) ao iniciar; se atribui.
@@ -66,6 +66,19 @@ A regra *"sem spec `aprovada-pi` → não codificar"* existe para impedir **esco
 | **Bug sem comportamento correto definido** | **Sim** — ou pelo menos perguntar ao PI | se o certo ainda não foi decidido, decidir é do PI |
 
 Exemplo vivo: **sync SHA-aware** (elimina o `noop` falso) — não tem spec e **não precisa**. A regra está no `ARCHITECTURE.md` → Resiliência, com os call sites e o que é proibido. Implementar direto.
+
+#### Correção: o Code cria a própria issue (acordo PI, 2026-07-22)
+
+Para bug de comportamento documentado, **o próprio Code cria o card `[FIX]`** (Backlog) e segue o fluxo normal — não espera o Cowork criar nem o PI pegar. **Motivo:** criar issue ≠ fechar issue. O aceite continua sendo só do PI (ADR-011), então nada da garantia se perde; o Code só ganha o ato de abrir o trabalho.
+
+**Duas condições, ambas obrigatórias:**
+
+1. O comportamento correto **já está escrito** num ADR, no `ARCHITECTURE.md`, numa spec existente ou como item no `STATUS.md`.
+2. O corpo da issue **cita essa fonte** (link/âncora do doc que define o certo).
+
+Se o Code precisa **decidir** qual é o comportamento correto, não é correção — é **fatia**: volta pro Cowork + PI (a decisão é de produto). O risco que estas condições fecham não é *quem cria*, é a **reclassificação**: rotular de `[FIX]` uma fatia para escapar da spec e do aval. A citação obrigatória é o que mantém honesto — é o mesmo *"só entra token que é verdade"* do Padrão de título: sem parágrafo que define o certo, não é bug.
+
+Fluxo do FIX auto-criado: Code cria em **Backlog** → `todo`/`doing` → PR com **`refs #N`** (nunca `closes`) → `proplan:done` após o merge. **Só o PI** fecha e aplica `proplan:finalizado`.
 
 ## Regras de trabalho
 
