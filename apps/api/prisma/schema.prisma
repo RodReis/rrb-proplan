@@ -10,9 +10,21 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// Conta no ProPlan (SPEC-026). A identidade é o IdP (Google); o GitHub deixa de
+// ser quem o usuário é e passa a ser o que ele conectou. Por isso `githubId`
+// virou nullable: uma conta nasce só com Google e pode nunca conectar o GitHub.
+// Os campos de token do GitHub seguem aqui por ora — mudam para `Connection` no
+// PR seguinte da #94; movê-los junto com a troca de IdP dobraria o raio de risco
+// sobre o `github-auth.service`, que é o coração da leitura (ADR-015).
 model User {
   id                     String    @id @default(uuid())
-  githubId               BigInt    @unique @map("github_id")
+  githubId               BigInt?   @unique @map("github_id")
+  // Identidade do IdP. `googleId` é o `sub` do OpenID — estável mesmo se o
+  // usuário trocar o email da conta Google. `email` é @unique porque é a chave
+  // que casa o usuário pré-existente (identidade-GitHub) com a conta Google no
+  // primeiro login pós-deploy.
+  googleId               String?   @unique @map("google_id")
+  email                  String?   @unique
   login                  String
   name                   String?
   avatarUrl              String?   @map("avatar_url")

@@ -100,6 +100,8 @@ Base em `.env.example`. **Nenhum secret entra no repo** — todos vivem nas
 | `GITHUB_APP_CLIENT_SECRET` | secret do App | GitHub App |
 | `GITHUB_APP_SLUG` | slug da URL do App | GitHub App |
 | `GITHUB_APP_PRIVATE_KEY` | PEM da chave privada em **base64 (uma linha)** | GitHub App |
+| `GOOGLE_CLIENT_ID` | `...apps.googleusercontent.com` — **IdP da identidade** (SPEC-026), não do GitHub | Google Cloud Console |
+| `GOOGLE_CLIENT_SECRET` | secret do OAuth client | Google Cloud Console |
 | `JWT_SECRET` | `openssl rand -hex 32` | gerado |
 | `TOKEN_ENCRYPTION_KEY` | **exatamente 32 bytes hex** (`openssl rand -hex 32`) | gerado |
 | `ANTHROPIC_API_KEY` | chave | provedor de IA |

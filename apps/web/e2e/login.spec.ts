@@ -8,13 +8,18 @@ import { expect, test } from '@playwright/test';
  * Ancorado no que a tela promete, não em texto decorativo: o título da ação e
  * o CTA do OAuth. O teste anterior procurava "RRB ProPlan", que era o título
  * do login pré-Fatia 16 e sumiu no redesenho — âncora frágil.
+ *
+ * O CTA é o do **Google** desde a SPEC-026: a identidade é o IdP, e o GitHub
+ * virou conexão — pedida de dentro do painel, não na porta de entrada.
  */
-test('tela de Login carrega e mostra o CTA do GitHub', async ({ page }) => {
+test('tela de Login carrega e mostra o CTA do Google', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Entrar no painel' })).toBeVisible();
   await expect(
-    page.getByRole('link', { name: /Entrar com GitHub/i }),
+    page.getByRole('link', { name: /Entrar com Google/i }),
   ).toBeVisible();
+  // Entrar ≠ conectar: a tela precisa dizer que o GitHub vem depois.
+  await expect(page.getByText(/A conexão com o GitHub é feita depois/i)).toBeVisible();
 });
 
 /**
