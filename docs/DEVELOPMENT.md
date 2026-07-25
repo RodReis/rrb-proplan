@@ -1606,3 +1606,26 @@ Levado ao PI, que escolheu **`/t/:tenant/clients`** (+ `/t/:tenant/clients/funil
 nível de tenant, irmão do workspace de repo, espelhando a API da spec. As
 alternativas — aba dentro do workspace (exigiria projeto sentinela) e `/clients`
 na raiz (perderia o tenant no path, contra o ADR-020) — foram descartadas.
+
+### Referência visual do PI (2026-07-25): imagens de Dashboard, Kanban e Clientes
+
+O PI enviou três telas de inspiração no meio da fatia. Elas mostram **mais** do
+que a SPEC-029 define, e um dos pontos era **conflito direto**, não detalhe:
+
+| ponto | imagem | SPEC-029 | decisão do PI |
+|---|---|---|---|
+| **Colunas do Kanban** | 5: *Lead · Briefing · Proposta · Contrato · Entregue* | 4: *Novo/Link enviado · Briefing · Prompt e contrato · Produção e entrega* | **valem as 4 da spec** |
+| Valor em R$ no card | mostra | não define | **fora** — estimativa é a Fatia 22 (SPEC-032) |
+| Dashboard | tela inteira | não pede | **fora** — é a Fatia 24 (SPEC-034) |
+| Badge de origem (`INDICAÇÃO`/`SITE`/`RECORRENTE`) | mostra | não define | **fora** — sem spec do enum nem de quem preenche |
+| Vínculo cliente ↔ repo (`rrb-escola`) | mostra | não define | **fora** — cruzaria a Frente Clientes com o board de repos (ADR-023) |
+
+**As imagens valem como referência VISUAL**: avatar de iniciais, densidade da
+lista, contagem por coluna no cabeçalho, badges de estado, botão "Novo cliente".
+Não valem como escopo — o que elas mostram a mais pertence a fatias que ainda
+não têm spec `aprovada-pi`.
+
+Registro do método, porque é a regra do `CLAUDE.md` operando: escopo é do PI.
+Encolher a spec para caber na imagem, ou inflar a fatia para cobrir a imagem
+inteira, seriam os dois lados do mesmo erro — eu decidindo escopo. Levei o
+conflito e as quatro adições ao PI **antes** de escrever a UI, não depois.

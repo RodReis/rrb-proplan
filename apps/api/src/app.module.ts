@@ -16,6 +16,7 @@ import { ContextModule } from './modules/context/context.module';
 import { HandoffModule } from './modules/handoff/handoff.module';
 import { PortfolioModule } from './modules/portfolio/portfolio.module';
 import { McpModule } from './modules/mcp/mcp.module';
+import { ClientsModule } from './modules/clients/clients.module';
 import { redisConnectionFromUrl } from './shared/redis-connection';
 
 @Module({
@@ -38,6 +39,9 @@ import { redisConnectionFromUrl } from './shared/redis-connection';
     HandoffModule,
     PortfolioModule,
     McpModule,
+    // MVP3 / Frente Clientes (SPEC-029). Domínio disjunto do board de repos
+    // (ADR-023): não fala com GitHub nem toca Project/Issue.
+    ClientsModule,
   ],
   controllers: [HealthController],
 })
