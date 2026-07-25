@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 /** Perfil OpenID do Google. `sub` é o id estável da conta (sobrevive à troca
  *  de email); `email_verified` é o que autoriza usar o email como chave. */
@@ -27,9 +31,28 @@ export class GoogleOauthClient {
     return `${process.env.API_URL ?? 'http://localhost:3311'}/auth/google/callback`;
   }
 
+  /**
+   * Credencial obrigatória, com erro no servidor em vez de string vazia.
+   *
+   * Com `?? ''` a API montava a URL do Google com `client_id=` vazio e mandava
+   * o usuário para lá assim mesmo — que respondia `Erro 400: invalid_request`,
+   * uma tela do Google que não diz o que fazer e parece problema de conta.
+   * Aconteceu no primeiro login em produção (a variável só existia no dev).
+   * Config ausente é defeito de deploy: falha aqui, nomeando a variável.
+   */
+  private required(name: 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET'): string {
+    const value = process.env[name];
+    if (!value) {
+      throw new ServiceUnavailableException(
+        `Login com Google indisponível: ${name} não configurada no ambiente`,
+      );
+    }
+    return value;
+  }
+
   authorizeUrl(state: string): string {
     const params = new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID ?? '',
+      client_id: this.required('GOOGLE_CLIENT_ID'),
       redirect_uri: this.redirectUri(),
       response_type: 'code',
       scope: 'openid email profile',
@@ -45,8 +68,8 @@ export class GoogleOauthClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID ?? '',
-        client_secret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+        client_id: this.required('GOOGLE_CLIENT_ID'),
+        client_secret: this.required('GOOGLE_CLIENT_SECRET'),
         code,
         grant_type: 'authorization_code',
         redirect_uri: this.redirectUri(),
