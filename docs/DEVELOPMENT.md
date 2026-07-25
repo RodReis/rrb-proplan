@@ -1260,8 +1260,28 @@ PI)** — o critério central da spec, provado fora do teste unitário:
 | `GET /catalog/installations` | **401** — nenhuma leitura no GitHub em nome dele |
 | banco | `connections` **0** · `projects` **8** · `users` **1** |
 
-A linha da conexão foi deletada e nada mais se moveu. Falta apenas exercitar o
-mesmo caminho **pela tela**, com o botão — daí a pendência do dogfooding.
+A linha da conexão foi deletada e nada mais se moveu.
+
+**Produção verificada pelo PI (2026-07-25)** — `proplan.rrbtrading.com.br`.
+Deploys **SUCCESS** nos dois serviços: API no `44fdd84` (PR-1, que carrega a
+migration) e web no `aaee6bc` (PR-2). O PI confirmou *"produção ok, tudo
+funcionando"*, com o Kanban carregando normalmente.
+
+**É o Kanban que prova o backfill.** A migration é de uma via — derruba três
+colunas do `users` — e o board lê o GitHub com o `userToken`, que agora só
+existe dentro da `Connection`. Cards renderizando em produção significa que o
+token foi copiado antes do `DROP COLUMN`: se o `INSERT` tivesse falhado, a
+leitura cairia em 401 e o board viria vazio. Diferente da SPEC-026, esta
+migration não precisou de nenhum `UPDATE` manual antes do deploy.
+
+Fatia **aceita e finalizada pelo PI** na mesma data (issue #93 `closed` +
+`proplan:finalizado`).
+
+**O que ficou sem exercitar**: o **reconectar** (refazer o OAuth pelo CTA sem
+reinstalar o App) é o único critério da spec que ninguém rodou — nem por API,
+nem por tela. O caminho é o `/auth/github` que já existia antes desta fatia,
+mas o papel novo dele (conectar com sessão viva, em vez de logar) só tem
+cobertura de teste unitário.
 
 ## SPEC-028 — URLs legíveis: slug em vez de UUID — `em andamento` (issue #107)
 
