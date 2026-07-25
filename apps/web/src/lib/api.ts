@@ -235,6 +235,10 @@ export interface Assertion {
 }
 
 export const api = {
+  /** Entrada da sessão do app (SPEC-026) — a identidade é o IdP, não o GitHub. */
+  googleLoginUrl: `${API_URL}/auth/google`,
+  /** Conexão GitHub (ADR-015). Deixa de ser a porta de entrada: passa a ser
+   *  disparada de dentro do painel, pelo catálogo (#93). */
   loginUrl: `${API_URL}/auth/github`,
   me: () => request<SessionUser>('/auth/me'),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),

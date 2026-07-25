@@ -1021,6 +1021,70 @@ Os seis fakes de `$transaction` só entendiam a forma em array, então um call s
 que quebraria em produção passava no teste. Extraí `test/prisma-transaction-mock.ts`,
 que suporta as duas formas, e todos os specs passaram a usá-lo. **Mock frouxo é
 o que deixou este bug viver** — a nota está no `ARCHITECTURE.md`.
+## SPEC-026 — Costura identidade ⊥ conexão — `em andamento` (issue #94)
+
+Spec `aprovada-pi` (2026-07-20). Frente pós-MVP1, sem número de fatia.
+**REFATORAÇÃO** do módulo `identity`, que já existe e é robusto: hoje a
+identidade **é** o GitHub App — o `userToken` do OAuth do App é a própria sessão.
+
+**Este é o PR-1: a porta de entrada.** A sessão passa a derivar do IdP; o resto
+da costura (entidade `Connection`, IdP fake, CTA no catálogo) vem depois.
+
+### Passos
+
+- [x] **Schema — `User` deixa de ser uma conta GitHub**: `githubId` vira
+      **nullable** e entram `googleId` (o `sub` do OpenID — estável mesmo se o
+      usuário trocar o email) e `email`, ambos `@unique`. Migration
+      `20260725160000_spec_026_identidade_google`, **sem backfill**: as linhas
+      existentes já têm `github_id` e ganham `google_id` no primeiro login.
+- [x] **`GoogleOauthClient`** (`infrastructure/`): `authorizeUrl` /
+      `exchangeCode` / `fetchUser`, escopos `openid email profile`. **Não guarda
+      token do Google** — ele serve para ler o perfil uma vez e montar a sessão;
+      o ProPlan não pede acesso a nada da conta Google além de identificar a
+      pessoa. `email_verified: false` é recusado (ver abaixo).
+- [x] **`AuthService.handleGoogleCallback`**: três casos, nesta ordem —
+      `googleId` conhecido → mesmo usuário · `googleId` novo mas **email já
+      existe** → é o usuário pré-existente migrando, carimba `googleId` na linha
+      que já tem projetos/tenants · nenhum → conta nova, **sem conexão**.
+- [x] **Rotas `/auth/google` e `/auth/google/callback`** (`auth.controller.ts`),
+      espelhando o state anti-CSRF e as flags de cookie do fluxo GitHub.
+      **`/auth/github` fica intacto** — deixa de ser identidade e vira a porta
+      da *conexão* (o front passa a chamá-lo de dentro do painel, na #93).
+- [x] **Web — `Login.tsx`**: CTA "Entrar com Google" (`api.googleLoginUrl`) e a
+      caixa de contexto reescrita para dizer que **entrar ≠ conectar**. O
+      `GithubIcon` saiu daqui junto com o CTA antigo — não virou código morto.
+- [x] **8 testes** (`google-login.spec.ts`), sendo **3 sobre a migração** — o
+      critério caro da spec. O e2e da tela passou a ancorar no CTA do Google.
+- [x] **Docs**: `ARCHITECTURE.md` → Identity reescrito para conta ⊥ conexão
+      (era *"GitHub App = Identity"*), este arquivo e o `STATUS.md`.
+- [ ] **Entidade `Connection`** — mover `userToken`/`installationId`/
+      installation-token do `User` para lá. **PR seguinte, de propósito**: fazer
+      junto com a troca de IdP dobraria o raio de risco sobre o
+      `github-auth.service`, que é o caminho de **toda leitura** (ADR-015).
+- [ ] **IdP fake no dev** e **CTA "conectar GitHub" no catálogo** (#93).
+- [ ] **Dogfooding com as chaves reais do PI** (`GOOGLE_CLIENT_ID` /
+      `GOOGLE_CLIENT_SECRET` no `apps/api/.env`).
+
+### Por que o email precisa ser verificado
+
+A migração casa por **email**, e é ela que entrega os projetos e tenants da conta
+antiga a quem loga. Sem exigir `email_verified`, qualquer um criaria uma conta
+Google com o email de outro e herdaria o acesso — a chave de casamento viraria a
+porta de invasão. Por isso a recusa mora no `fetchUser`, antes de qualquer
+consulta ao banco: o perfil não confiável nunca chega a ser comparado.
+
+O usuário antigo tem email gravado? Só quando a conta GitHub o expõe. Quando não
+tem, o caso 2 não dispara e ele cai no caso 3 — vira conta nova e reconecta o
+GitHub. Não é perda silenciosa: os projetos continuam na linha antiga, e o PR da
+`Connection` é quem fecha essa costura. Daqui em diante todo login grava `email`,
+então a chave existe para todos.
+
+### Verificação
+
+`tsc --noEmit` limpo na API e na web · **API 675 testes** (100 suítes, +8 meus) ·
+**web 67** · `vite build` verde · `reports/TESTS.md` regenerado (ADR-019):
+Regras 656 · Banco 19 · Tela 69, **zero falhas**.
+
 ## SPEC-028 — URLs legíveis: slug em vez de UUID — `em andamento` (issue #107)
 
 Spec `aprovada-pi` (2026-07-22), incluindo os esclarecimentos de implementação

@@ -65,9 +65,25 @@ Abra `http://localhost:5180` e faça login pelo GitHub App. Sem as chaves do App
 >
 > **Compose completo** (smoke prod-like, sem watch): `docker compose up` sobe os quatro serviços (postgres, redis, api, web) construindo as imagens — use para validar o build, não para o dia a dia.
 
-## Autenticação — GitHub App
+## Autenticação — identidade ⊥ conexão
 
-O ProPlan autentica por **GitHub App** (ADR-015 / SPEC-008), não OAuth App. São **dois tokens**: o **user-to-server** (login OAuth do App) faz **toda leitura**, respeitando a visibilidade do usuário; o **installation token** (server-to-server) faz **toda escrita**, com identidade `proplan[bot]`. O catálogo lista só os repos onde o App está instalado.
+Desde a SPEC-026, **quem o usuário é** e **o que ele conectou** são coisas separadas:
+
+- **Identidade** (a sessão do app) vem de um **IdP** — hoje o **Google**, em `/auth/google`. É ela que diz quem dá o aceite.
+- **Conexão** é o **GitHub App**, pedida de dentro do painel. Perder ou desconectar o GitHub **não** encerra a sessão.
+
+### Criar o OAuth client do Google (uma vez, ambiente local)
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+2. **Application type**: *Web application*.
+3. **Authorized redirect URIs**: `http://localhost:3311/auth/google/callback` (em produção, `https://api.proplan.rrbtrading.com.br/auth/google/callback`).
+4. Anote **Client ID** → `GOOGLE_CLIENT_ID` e **Client secret** → `GOOGLE_CLIENT_SECRET` no `apps/api/.env`.
+
+Escopos: `openid email profile` — o ProPlan não pede acesso a nada da conta Google além de identificar a pessoa.
+
+## Conexão — GitHub App
+
+O ProPlan lê repositórios por **GitHub App** (ADR-015 / SPEC-008), não OAuth App. São **dois tokens**: o **user-to-server** (login OAuth do App) faz **toda leitura**, respeitando a visibilidade do usuário; o **installation token** (server-to-server) faz **toda escrita**, com identidade `proplan[bot]`. O catálogo lista só os repos onde o App está instalado.
 
 ### Criar o GitHub App (uma vez, ambiente local)
 

@@ -46,6 +46,38 @@ export class AuthController {
     res.redirect(this.auth.loginUrl(state));
   }
 
+  /** Entrada da sessão do app (SPEC-026). O `/auth/github` acima continua, mas
+   *  como porta da **conexão** GitHub — não da identidade. */
+  @Get('google')
+  googleLogin(@Res() res: Response) {
+    const state = this.auth.createState();
+    res.cookie(STATE_COOKIE, state, {
+      ...cookieFlags,
+      maxAge: 10 * 60 * 1000,
+    });
+    res.redirect(this.auth.googleLoginUrl(state));
+  }
+
+  @Get('google/callback')
+  async googleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const expected = req.cookies?.[STATE_COOKIE];
+    if (!code || !state || !expected || state !== expected) {
+      throw new BadRequestException('OAuth state inválido');
+    }
+    const { jwt } = await this.auth.handleGoogleCallback(code);
+    res.clearCookie(STATE_COOKIE, cookieFlags);
+    res.cookie(SESSION_COOKIE, jwt, {
+      ...cookieFlags,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    res.redirect(process.env.FRONTEND_URL ?? 'http://localhost:5180');
+  }
+
   @Get('github/callback')
   async callback(
     @Query('code') code: string,
