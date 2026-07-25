@@ -59,6 +59,22 @@ export class AuthService {
   }
 
   /**
+   * Lê o `userId` de um cookie de sessão **sem exigir que ele exista ou valha**.
+   * É o que o callback do GitHub usa para saber se está conectando (sessão viva)
+   * ou logando (sem sessão) — ali um cookie ruim não pode virar erro, senão
+   * barraria quem está chegando pela porta de login.
+   */
+  async userIdFromSession(token: string | undefined): Promise<string | undefined> {
+    if (!token) return undefined;
+    try {
+      const payload = await this.jwt.verifyAsync<{ sub: string }>(token);
+      return payload.sub;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Login por Google: cria a sessão do app a partir da identidade, não de
    * nenhuma conexão.
    *
@@ -112,9 +128,46 @@ export class AuthService {
     return { jwt: await this.jwt.signAsync({ sub: user.id }) };
   }
 
-  async handleCallback(code: string): Promise<{ jwt: string }> {
+  /**
+   * Callback do GitHub. Depois da SPEC-025 ele tem **dois** papéis, decididos
+   * por quem está chamando:
+   *
+   * - **Conectar** (`userId` presente = já existe sessão de app): pendura a
+   *   conexão GitHub na identidade que já está logada. É o caminho normal
+   *   pós-SPEC-026 — o CTA "conectar GitHub" do catálogo.
+   * - **Login legado** (`userId` ausente): o GitHub ainda é a identidade,
+   *   como antes da SPEC-026. Mantido porque `/auth/github` continua sendo
+   *   uma porta de entrada válida para quem nunca migrou para o Google.
+   *
+   * Nos dois casos os tokens vão para a `Connection`, nunca para o `User`.
+   */
+  async handleCallback(
+    code: string,
+    userId?: string,
+  ): Promise<{ jwt: string }> {
     const tokens = await this.github.exchangeCode(code);
     const ghUser = await this.github.fetchUser(tokens.accessToken);
+
+    const perfilGithub = {
+      login: ghUser.login,
+      name: ghUser.name,
+      avatarUrl: ghUser.avatar_url,
+    };
+
+    const user = userId
+      ? // Conectando: a identidade é a de quem está logado. O `githubId` é
+        // carimbado para o catálogo saber de quem é a instalação, mas o
+        // `login`/`name` da sessão não são sobrescritos — quem manda no rótulo
+        // é o IdP, não a conexão.
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { githubId: BigInt(ghUser.id) },
+        })
+      : await this.prisma.user.upsert({
+          where: { githubId: BigInt(ghUser.id) },
+          create: { githubId: BigInt(ghUser.id), ...perfilGithub },
+          update: perfilGithub,
+        });
 
     const tokenFields = {
       encryptedUserToken: this.crypto.encrypt(tokens.accessToken),
@@ -122,24 +175,49 @@ export class AuthService {
       tokenExpiresAt: tokens.expiresAt,
     };
 
-    const user = await this.prisma.user.upsert({
-      where: { githubId: BigInt(ghUser.id) },
-      create: {
-        githubId: BigInt(ghUser.id),
-        login: ghUser.login,
-        name: ghUser.name,
-        avatarUrl: ghUser.avatar_url,
-        ...tokenFields,
-      },
-      update: {
-        login: ghUser.login,
-        name: ghUser.name,
-        avatarUrl: ghUser.avatar_url,
-        ...tokenFields,
-      },
+    await this.prisma.connection.upsert({
+      where: { userId_provider: { userId: user.id, provider: 'github' } },
+      create: { userId: user.id, provider: 'github', ...tokenFields },
+      update: tokenFields,
     });
 
     return { jwt: await this.jwt.signAsync({ sub: user.id }) };
+  }
+
+  /**
+   * Desconecta o GitHub (SPEC-025): revoga a autorização no próprio GitHub e
+   * apaga a conexão. **Não toca a sessão do app** — é isso que torna
+   * *desconectar ≠ deslogar*.
+   *
+   * A revogação vem primeiro de propósito, mas a falha dela não impede a
+   * remoção local: se o GitHub recusar (token já expirado, App desinstalado),
+   * insistir deixaria o usuário preso a uma conexão que ele mandou remover. O
+   * token some do nosso lado de qualquer forma.
+   */
+  async disconnectGithub(userId: string): Promise<void> {
+    const connection = await this.prisma.connection.findUnique({
+      where: { userId_provider: { userId, provider: 'github' } },
+    });
+    if (!connection) return;
+
+    if (connection.encryptedUserToken) {
+      try {
+        await this.github.revoke(this.crypto.decrypt(connection.encryptedUserToken));
+      } catch {
+        // Revogação best-effort — ver docstring.
+      }
+    }
+
+    await this.prisma.connection.delete({ where: { id: connection.id } });
+  }
+
+  /** A conexão GitHub do usuário, para o catálogo decidir o que mostrar. */
+  async githubConnection(userId: string): Promise<{ connected: boolean }> {
+    const connection = await this.prisma.connection.findUnique({
+      where: { userId_provider: { userId, provider: 'github' } },
+      select: { id: true },
+    });
+    return { connected: connection !== null };
   }
 
   async me(userId: string): Promise<SessionUser> {

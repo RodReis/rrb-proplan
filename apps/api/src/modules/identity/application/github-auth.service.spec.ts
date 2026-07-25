@@ -20,17 +20,23 @@ describe('needsRefresh', () => {
 });
 
 function build(overrides: Partial<Record<string, unknown>> = {}) {
-  const user = {
-    id: 'u1',
-    encryptedUserToken: 'enc-user',
-    encryptedRefreshToken: 'enc-refresh',
-    tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000), // longe de expirar
-    ...(overrides.user as object),
-  };
+  // `connection: null` no override = usuário sem GitHub conectado (SPEC-025).
+  const connection =
+    'connection' in overrides && overrides.connection === null
+      ? null
+      : {
+          id: 'c1',
+          userId: 'u1',
+          provider: 'github',
+          encryptedUserToken: 'enc-user',
+          encryptedRefreshToken: 'enc-refresh',
+          tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000), // longe de expirar
+          ...(overrides.connection as object),
+        };
   const prisma = {
-    user: {
-      findUnique: jest.fn(async () => user),
-      update: jest.fn(async () => user),
+    connection: {
+      findUnique: jest.fn(async () => connection),
+      update: jest.fn(async () => connection),
     },
     project: {
       findUnique: jest.fn(async () => overrides.project ?? null),
@@ -70,12 +76,12 @@ describe('GithubAuth.userToken', () => {
 
   it('token perto de expirar: renova e persiste os novos tokens', async () => {
     const { svc, oauth, prisma } = build({
-      user: { tokenExpiresAt: new Date(Date.now() + 1000) },
+      connection: { tokenExpiresAt: new Date(Date.now() + 1000) },
     });
     const token = await svc.userToken('u1');
     expect(token).toBe('novo-access');
     expect(oauth.refresh).toHaveBeenCalledWith('dec-refresh');
-    expect(prisma.user.update).toHaveBeenCalledWith(
+    expect(prisma.connection.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           encryptedUserToken: 'enc-novo-access',
@@ -87,10 +93,21 @@ describe('GithubAuth.userToken', () => {
 
   it('falha do refresh derruba a sessão (nunca 401 cru)', async () => {
     const { svc, oauth } = build({
-      user: { tokenExpiresAt: new Date(Date.now() + 1000) },
+      connection: { tokenExpiresAt: new Date(Date.now() + 1000) },
     });
     oauth.refresh.mockRejectedValueOnce(new Error('refresh negado'));
     await expect(svc.userToken('u1')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  // SPEC-025: depois de desconectar (ou numa conta que nasceu do Google e nunca
+  // conectou) não existe linha de conexão. Tem de virar 401 tratado, não
+  // TypeError ao ler campo de `null` — é o caminho de toda leitura (ADR-015).
+  it('sem conexão GitHub: erro tratado, sem tocar o OAuth', async () => {
+    const { svc, oauth } = build({ connection: null });
+    await expect(svc.userToken('u1')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(oauth.refresh).not.toHaveBeenCalled();
   });
 });
 
