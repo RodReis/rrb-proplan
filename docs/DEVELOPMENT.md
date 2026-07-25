@@ -1235,4 +1235,6 @@ assimétricas, com o porquê no código.
 
 ### Entrega
 
-_(pendente: PR com `refs #8`)_
+**PR #117** aberto em 2026-07-25 com `refs #8` — aguardando merge. Depois do
+merge: `proplan:done` no card; **só o PI** fecha e aplica `proplan:finalizado`
+(ADR-011).
