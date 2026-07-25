@@ -16,9 +16,7 @@ updated: 2026-07-25
 
 ## A Fazer
 
-### Sem épico
-
-- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4, prio: media)
+_(vazio)_
 
 ## Em Andamento
 
@@ -80,4 +78,5 @@ _(vazio)_
 ### Sem épico
 
 - Fatia 10 — docs/CONTEXT.md: captura de asserção humana, "o que não mexer", validade por SHA (ADR-013) (#2, prio: alta, descartado em: 2026-07-17)
+- Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4, prio: media, descartado em: 2026-07-25)
 - identity: re-link de installationId no reinstall (Fatia 8) (#91, descartado em: 2026-07-20)
