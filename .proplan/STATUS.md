@@ -1,6 +1,6 @@
 ---
 proplan: v1
-updated: 2026-07-22
+updated: 2026-07-25
 ---
 <!-- gerado pelo ProPlan a partir das Issues — não edite à mão -->
 # Status
@@ -19,7 +19,6 @@ updated: 2026-07-22
 ### Sem épico
 
 - Fatia 12 — Migração do Kanban para Issues como fonte, STATUS.md como projeção gerada (ADR-011) (#4, prio: media)
-- Stack detectada via SBOM/dependency graph nas abas Arquitetura e Deploy (#8, prio: baixa)
 
 ## Em Andamento
 
@@ -58,6 +57,7 @@ _(vazio)_
 - Fatia 6.2 — Formato de Deploy: 3 eixos (ambiente × componente × infra de apoio) (#53, prio: media, finalizado em: 2026-07-15)
 - Fatia 6.1 — Aba Deploy: documento primeiro, painel de ambientes como enriquecimento (SPEC-012) (#38, prio: media, finalizado em: 2026-07-15)
 - Correção — tela de Mapeamento exibe coleção como "ausente" (#36, prio: media, finalizado em: 2026-07-15)
+- [MVP2][SPEC-023][F17] Stack detectada via SBOM + confronto doc×real (#8, prio: baixa, finalizado em: 2026-07-25)
 - [MVP2][SPEC-024][F18] Épicos: hierarquia MVP→fatia no board via GitHub sub-issues (#97, prio: baixa, finalizado em: 2026-07-21)
 - Fatia 8 — Multi-tenant: RBAC, organizações, billing (#7, prio: baixa, finalizado em: 2026-07-18)
 - Fatia 14 — Views: portfólio da fábrica primeiro; depois radar de risco, timeline, matriz de prontidão (#6, prio: baixa, finalizado em: 2026-07-15)
