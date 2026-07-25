@@ -10,6 +10,7 @@ import {
   SessionUser,
 } from '../lib/api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { AppShell } from '../components/AppShell';
 import { useTheme } from '../theme';
 import bannerCarbono from '../assets/catalogo-banner.png';
 import bannerClaro from '../assets/catalogo-banner-claro.jpg';
@@ -53,7 +54,7 @@ export function catalogView(
  */
 export function Catalog({ user, onLogout }: Props) {
   const navigate = useNavigate();
-  const { theme, toggle } = useTheme();
+  const { theme } = useTheme();
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' });
   const [busyRepoId, setBusyRepoId] = useState<number | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Repo | null>(null);
@@ -147,81 +148,9 @@ export function Catalog({ user, onLogout }: Props) {
       : { repos: 0, managed: 0 };
 
   return (
-    <div className="flex min-h-screen flex-col bg-bg text-text">
-      <header className="flex h-[60px] shrink-0 items-center gap-3.5 border-b border-border bg-panel px-7">
-        <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="flex h-8 w-8 items-center justify-center rounded-[9px] text-[15px] font-bold"
-            style={{ background: 'var(--brand-gradient)', color: 'var(--brand-fg)' }}
-          >
-            P
-          </span>
-          <span className="flex flex-col">
-            <span className="text-sm font-semibold">ProPlan</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
-              Catálogo
-            </span>
-          </span>
-        </div>
-
-        <div className="flex-1" />
-
-        <button
-          onClick={toggle}
-          title={dark ? 'Mudar para o tema Claro' : 'Mudar para o tema Carbono'}
-          aria-label={dark ? 'Mudar para o tema Claro' : 'Mudar para o tema Carbono'}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-border2 text-muted transition-colors duration-150 hover:border-hoverb hover:text-text"
-        >
-          <ThemeIcon dark={dark} />
-        </button>
-
-        <button
-          onClick={() => navigate('/settings')}
-          title="Configurações"
-          aria-label="Configurações"
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-border2 text-muted transition-colors duration-150 hover:border-hoverb hover:text-text"
-        >
-          <svg
-            aria-hidden
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
-
-        <div className="flex items-center gap-2.5 border-l border-border pl-3.5">
-          {user.avatarUrl ? (
-            <img
-              src={user.avatarUrl}
-              alt=""
-              className="h-[30px] w-[30px] rounded-full border border-border2"
-            />
-          ) : (
-            <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-card text-xs font-semibold text-body2">
-              {(user.name ?? user.login).charAt(0).toUpperCase()}
-            </span>
-          )}
-          <span className="text-[13px] font-medium">{user.name ?? user.login}</span>
-          <button
-            onClick={onLogout}
-            className="text-xs text-muted transition-colors duration-150 hover:text-text"
-          >
-            Sair
-          </button>
-        </div>
-      </header>
-
+    <AppShell user={user} tenant={user.tenants[0]?.accountLogin ?? null} section="ProPlan" onLogout={onLogout}>
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[920px] flex-col gap-[22px] px-8 pb-16 pt-9">
+        <div className="mx-auto flex max-w-[980px] flex-col gap-[22px] px-8 pb-16 pt-8">
           <section className="relative flex min-h-[160px] items-end overflow-hidden rounded-[18px] border border-border">
             <div
               aria-hidden
@@ -334,7 +263,7 @@ export function Catalog({ user, onLogout }: Props) {
           onCancel={() => setConfirmDisconnect(false)}
         />
       )}
-    </div>
+    </AppShell>
   );
 }
 
@@ -723,27 +652,3 @@ function countRepos(data: CatalogInstallations): { repos: number; managed: numbe
   };
 }
 
-function ThemeIcon({ dark }: { dark: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {dark ? (
-        <>
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-        </>
-      ) : (
-        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8" />
-      )}
-    </svg>
-  );
-}

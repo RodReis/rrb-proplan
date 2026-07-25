@@ -1752,3 +1752,26 @@ existiam. **`Dashboard` fica desabilitado**, com o motivo no `title`: é a Fatia
 24 (SPEC-034) e depende de estimativa (F22) e contratos (F23) — renderizá-lo
 agora exigiria números inventados, que o MVP3 §9 proíbe. Desabilitado e
 explicado é melhor que ausente: some ≠ mentir sobre o que existe.
+
+#### Ajuste de escopo assumido pelo PI: shell global fiel à imagem
+
+O PI esclareceu que a imagem não era só inspiração das páginas novas: ela define
+o **shell global** do app (`Dashboard · ProPlan · Kanban · Clientes ·
+Configuração`). Isso é escopo novo sem spec `aprovada-pi` e redesenha a
+navegação do app inteiro. O PI decidiu explicitamente assumir agora, dentro da
+Fatia 19.
+
+Decisão aplicada:
+
+- **ProPlan = Catálogo** (mensagem do PI: "proplan = catalogo"). A tela `/`
+  agora renderiza dentro do `AppShell`, com o menu global à esquerda.
+- `Clientes` e `Kanban` do menu levam para as telas da Frente Clientes desta
+  fatia (`/t/:tenant/clients` e `/t/:tenant/clients/funil`).
+- `Configuração` segue levando para `/settings`.
+- `Dashboard` continua **desabilitado**, porque é a Fatia 24 (SPEC-034) e
+  dependeria de estimativa/contratos ainda inexistentes. Botão desabilitado com
+  `title` explicando é melhor que esconder ou inventar número.
+
+O `AppShell` extraiu a topbar que antes vivia só no Catálogo; o Catálogo perdeu
+o header próprio. Isso deixa a tela inicial visualmente fiel à imagem: menu
+lateral fixo, breadcrumb `ProPlan / ProPlan`, conteúdo do catálogo à direita.

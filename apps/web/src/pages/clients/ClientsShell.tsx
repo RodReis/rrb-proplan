@@ -25,7 +25,7 @@ export function ClientsShell({ tenant, title, subtitle, actions, children }: Pro
 
   return (
     <div className="flex h-screen bg-bg">
-      <GlobalNav tenant={tenant} />
+      <GlobalNav tenant={tenant} section={title} />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-border px-7 py-3.5">

@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * Ícones do menu global (mesmo traço do `TabIcon` do workspace: 24×24, stroke
@@ -48,8 +48,13 @@ function NavIcon({ id }: { id: string }) {
  * proíbe. Por isso ele aparece desabilitado, com o motivo no `title` — some ≠
  * mentir sobre o que existe.
  */
-export function GlobalNav({ tenant }: { tenant: string }) {
+export function GlobalNav({ tenant, section }: { tenant: string; section: string }) {
   const navigate = useNavigate();
+
+  const normalized = section.toLowerCase();
+  const activeProPlan = normalized === 'proplan' || normalized === 'catálogo';
+  const activeClients = normalized === 'clientes';
+  const activeFunnel = normalized === 'funil' || normalized === 'kanban';
 
   const itemClass = (active: boolean) =>
     'relative flex w-full items-center gap-2.5 rounded-[9px] py-2 pl-3 pr-2.5 text-left text-[12.5px] transition-colors duration-150 ' +
@@ -87,63 +92,64 @@ export function GlobalNav({ tenant }: { tenant: string }) {
           </li>
 
           <li>
-            <button onClick={() => navigate('/')} className={itemClass(false)}>
-              <NavIcon id="proplan" />
+            <button onClick={() => navigate('/')} className={itemClass(activeProPlan)}>
+              {activeProPlan && <ActiveBar />}
+              <span className={activeProPlan ? 'text-accent' : undefined}>
+                <NavIcon id="proplan" />
+              </span>
               ProPlan
             </button>
           </li>
 
           <li>
-            <NavLink to={`/t/${tenant}/clients`} end className={({ isActive }) => itemClass(isActive)}>
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      aria-hidden
-                      className="absolute inset-y-1.5 left-0 w-[2.5px] rounded-full"
-                      style={{ background: 'var(--accent)' }}
-                    />
-                  )}
-                  <span className={isActive ? 'text-accent' : undefined}>
-                    <NavIcon id="clients" />
-                  </span>
-                  Clientes
-                </>
-              )}
-            </NavLink>
-          </li>
-
-          <li>
-            <NavLink
-              to={`/t/${tenant}/clients/funil`}
-              className={({ isActive }) => itemClass(isActive)}
+            <button
+              onClick={() => navigate(`/t/${tenant}/clients/funil`)}
+              className={itemClass(activeFunnel)}
+              disabled={!tenant}
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      aria-hidden
-                      className="absolute inset-y-1.5 left-0 w-[2.5px] rounded-full"
-                      style={{ background: 'var(--accent)' }}
-                    />
-                  )}
-                  <span className={isActive ? 'text-accent' : undefined}>
-                    <NavIcon id="kanban" />
-                  </span>
-                  Funil
-                </>
-              )}
-            </NavLink>
+              {activeFunnel && <ActiveBar />}
+              <span className={activeFunnel ? 'text-accent' : undefined}>
+                <NavIcon id="kanban" />
+              </span>
+              Kanban
+            </button>
           </li>
 
           <li>
-            <button onClick={() => navigate('/settings')} className={itemClass(false)}>
-              <NavIcon id="settings" />
+            <button
+              onClick={() => navigate(`/t/${tenant}/clients`)}
+              className={itemClass(activeClients)}
+              disabled={!tenant}
+            >
+              {activeClients && <ActiveBar />}
+              <span className={activeClients ? 'text-accent' : undefined}>
+                <NavIcon id="clients" />
+              </span>
+              Clientes
+            </button>
+          </li>
+
+          <li>
+            <button onClick={() => navigate('/settings')} className={itemClass(normalized === 'configuração')}>
+              {normalized === 'configuração' && <ActiveBar />}
+              <span className={normalized === 'configuração' ? 'text-accent' : undefined}>
+                <NavIcon id="settings" />
+              </span>
               Configuração
             </button>
           </li>
         </ul>
       </nav>
     </aside>
+  );
+}
+
+function ActiveBar() {
+  return (
+    <span
+      aria-hidden
+      className="absolute inset-y-1.5 left-0 w-[2.5px] rounded-full"
+      style={{ background: 'var(--accent)' }}
+    />
   );
 }
