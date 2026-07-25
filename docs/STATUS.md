@@ -49,6 +49,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | Deploy | SPEC-027 | `SPEC-027-deploy-railway.md` | Deploy em produção: Railway (compute+banco+fila) + Hostinger (DNS) — pós-MVP, sem número de fatia; issue #103 (spec `aprovada-pi` 2026-07-21) |
 | URLs legíveis | SPEC-028 | `SPEC-028-urls-legiveis.md` | URLs legíveis: slug de tenant/projeto em vez de UUID (refina SPEC-022 §4) — pós-MVP, sem número de fatia; issue #107 (spec `aprovada-pi` 2026-07-22) |
 | Identidade | SPEC-026 | `SPEC-026-costura-identidade-conexao.md` | Costura identidade ⊥ conexão: Google como 1º IdP, GitHub vira conexão — pós-MVP1, sem número de fatia; issue #94 (spec `aprovada-pi` 2026-07-20) |
+| Identidade | SPEC-025 | `SPEC-025-desconectar-reconectar-github-app.md` | Configurações: desconectar / reconectar o GitHub — pós-MVP1, sem número de fatia; issue #93 (spec `aprovada-pi` 2026-07-20). 2ª da Frente Identidade, depois da SPEC-026 |
 
 ## Backlog
 
