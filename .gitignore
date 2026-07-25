@@ -13,3 +13,10 @@ reports/.raw/
 apps/web/test-results/
 apps/web/playwright-report.json
 .gstack/
+
+# Config local do Claude Code: contém caminhos absolutos da máquina do dev
+# (`additionalDirectories`) e permissões pessoais. O repo é público desde
+# 2026-07-25 — path local não vai para lá. Os hooks em `.claude/hooks/`
+# CONTINUAM versionados; só o registro deles é por máquina.
+.claude/settings.json
+.claude/settings.local.json

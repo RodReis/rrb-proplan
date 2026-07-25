@@ -1,0 +1,11 @@
+# Dono do repositório — aprovação obrigatória em qualquer PR para `main`.
+#
+# Por que existe: o repo é público desde 2026-07-25. Qualquer pessoa pode abrir
+# PR de um fork, e bots de terceiros abrem PR sozinhos (foi o caso do #118,
+# `ecc-tools[bot]`, com 22 "instintos" inferidos que contradiziam a arquitetura
+# real do repo). Sem CODEOWNERS, nada exige o aval do dono.
+#
+# Alinhado ao ADR-011: aceitar trabalho é ato deliberado do dono, nunca efeito
+# colateral. Aqui vale para o merge; lá vale para o fechamento da issue.
+
+* @RodReis
