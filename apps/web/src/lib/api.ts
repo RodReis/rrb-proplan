@@ -115,6 +115,35 @@ export interface InferencePayload {
   spans: string[];
 }
 
+/**
+ * Veredito do confronto doc × SBOM (SPEC-023). Nenhum valor coroa uma fonte:
+ * `discorda` mostra os dois lados, não elege o certo (ADR-018).
+ */
+export type StackVerdict = 'concorda' | 'discorda' | 'nao_declarado' | 'nao_detectado';
+
+/** Bloco "Stack detectada" (SPEC-023), presente no payload da aba Arquitetura. */
+export interface StackBlock {
+  /** `false` = Dependency Graph desabilitado/vazio → estado informativo. */
+  enabled: boolean;
+  /** Origem do dado: detectado do manifest pelo GitHub, nunca declarado nem IA. */
+  source: 'sbom';
+  /** Ecossistemas detectados, ordenados por nº de pacotes. */
+  ecosystems: string[];
+  /** Ecossistemas que a documentação declara (lado "declarado" do confronto). */
+  declared: string[];
+  verdict: StackVerdict;
+  packageCount: number;
+  /** SHA do HEAD do default branch no momento da coleta. */
+  sourceSha: string | null;
+  observedAt: string | null;
+}
+
+export interface StackPackage {
+  ecosystem: string;
+  name: string;
+  version: string | null;
+}
+
 /** Uma linha do mapeamento manual (Fatia 6, ADR-014): entidade + resolução atual + candidatos do repo. */
 export interface MappingRow {
   entity: Entity;
@@ -295,6 +324,11 @@ export const api = {
     }),
   tab: <P = unknown>(projectId: string, tab: Entity) =>
     request<TabResponse<P>>(`/projects/${projectId}/tabs/${tab}`),
+  /** SPEC-023: lista detalhada de dependências — só quando o usuário expande. */
+  stackPackages: (projectId: string) =>
+    request<{ enabled: boolean; packages: StackPackage[] }>(
+      `/projects/${projectId}/tabs/stack/packages`,
+    ),
   promote: (projectId: string, tab: Entity, content: string) =>
     request<{ operationId: string }>(`/projects/${projectId}/tabs/${tab}/promote`, {
       method: 'POST',

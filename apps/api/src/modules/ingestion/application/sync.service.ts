@@ -21,6 +21,7 @@ import {
 } from '../domain/deploy-drift';
 import { platformFromProbe } from '../domain/deploy-probe';
 import { ciStatusOf } from '../domain/ci-status';
+import { normalizeSbom } from '../domain/stack-detect';
 import { HttpProbe } from '../infrastructure/http-probe';
 
 /** Evento de domínio: docs de um projeto foram sincronizados com hash novo.
@@ -120,6 +121,17 @@ export class SyncService {
           project.defaultBranch,
         );
         await this.updateCiStatus(project.id, token, project.owner, project.name);
+        // Também no noop: `docs_scope_hash` igual diz que a DOC não mudou — os
+        // manifests podem ter mudado no mesmo intervalo (dependência bumpada
+        // não toca `docs/`). Pular aqui congelaria a stack até a próxima edição
+        // de documentação.
+        await this.updateStack(
+          project.id,
+          token,
+          project.owner,
+          project.name,
+          project.defaultBranch,
+        );
 
         // Idem ao caminho `success`: as issues sincronizam ANTES do status
         // final. Aqui importa ainda mais — `noop` diz "os docs não mudaram",
@@ -237,6 +249,13 @@ export class SyncService {
         project.defaultBranch,
       );
       await this.updateCiStatus(project.id, token, project.owner, project.name);
+      await this.updateStack(
+        project.id,
+        token,
+        project.owner,
+        project.name,
+        project.defaultBranch,
+      );
 
       // Issues ANTES de marcar success: `status: success` é o sinal que o
       // cliente espera para recarregar a tela. Emitir depois criava a corrida
@@ -491,6 +510,52 @@ export class SyncService {
       const message = err instanceof Error ? err.message : 'erro';
       this.logger.warn(
         `Coleta de CI falhou (projeto ${projectId}): ${message}`,
+      );
+    }
+  }
+
+  /**
+   * Stack detectada (SPEC-023): lê o SBOM do Dependency Graph, normaliza e
+   * persiste como cache no Project — a aba nunca chama o GitHub no render
+   * (ADR-002). Só a lista SPDX normalizada é gravada: nome, ecossistema e
+   * versão. Nenhum byte de código, nenhum lockfile bruto (ADR-003).
+   *
+   * Tolerante a falha, como `updateCiStatus`/`updateDeploySignals`: SBOM fora
+   * do ar ou rate-limit NÃO derruba o sync de docs — os campos ficam como
+   * estavam e a aba segue mostrando a última detecção.
+   *
+   * Ancorado ao HEAD do default branch, não ao `docs_tree_sha`: o SBOM é função
+   * dos manifests, não de `docs/`. `getHeadSha` falhando não impede a gravação
+   * — o SHA vira null e a UI omite a âncora (detecção sem carimbo ainda vale
+   * mais que detecção nenhuma).
+   */
+  private async updateStack(
+    projectId: string,
+    token: string,
+    owner: string,
+    name: string,
+    defaultBranch: string,
+  ): Promise<void> {
+    try {
+      const raw = await this.git.getSbom(token, owner, name);
+      const detection = normalizeSbom(raw);
+      const sourceSha = detection.enabled
+        ? await this.git.getHeadSha(token, owner, name, defaultBranch)
+        : null;
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: {
+          stackEnabled: detection.enabled,
+          stackEcosystems: detection.ecosystems as unknown as Prisma.InputJsonValue,
+          stackPackages: detection.packages as unknown as Prisma.InputJsonValue,
+          stackSourceSha: sourceSha,
+          stackObservedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'erro';
+      this.logger.warn(
+        `Coleta de stack (SBOM) falhou (projeto ${projectId}): ${message}`,
       );
     }
   }

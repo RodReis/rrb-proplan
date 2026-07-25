@@ -8,6 +8,7 @@ import {
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, Resolution } from '../../ingestion/domain/entity';
+import { compareStack, declaredEcosystems } from '../../ingestion/domain/stack-detect';
 import { InsightService } from '../../insight/application/insight.service';
 import { ActivityService } from '../../activity/application/activity.service';
 import { parseDecisions } from '../domain/decisions-index';
@@ -68,7 +69,13 @@ export class TabsService {
       if (tab === 'architecture' || tab === 'design') {
         const fallback = await this.insight.latestFallbackInternal(projectId, tab);
         const markdown = (fallback?.content as { markdown?: string } | undefined)?.markdown;
-        if (markdown) return { source, payload: { markdown, inferred: true } };
+        // SPEC-023: a stack detectada acompanha a Arquitetura mesmo quando o
+        // doc está ausente — é justamente aí que ela informa mais (repo sem
+        // ARCHITECTURE.md ainda tem manifests, e "não declarado na doc" é o
+        // veredito honesto). Mesma lógica do ramo `deploy` logo abaixo.
+        const stack = tab === 'architecture' ? await this.stackBlock(projectId, markdown ?? null) : {};
+        if (markdown) return { source, payload: { markdown, inferred: true, ...stack } };
+        if ('stack' in stack) return { source, payload: { markdown: '', ...stack } };
       }
       // SPEC-013: deploy ausente (nível 4) ainda pode ter drift a mostrar —
       // `omissa`/`so_github_side` são justamente "sem doc de deploy". Sem este
@@ -88,7 +95,13 @@ export class TabsService {
       : null;
 
     switch (tab) {
-      case 'architecture':
+      case 'architecture': {
+        const markdown = await this.markdownOf(projectId, r.path);
+        // O confronto usa o markdown JÁ resolvido (SPEC-023 nota técnica: reusar
+        // a resolução de documento, não criar parser novo).
+        const stack = await this.stackBlock(projectId, markdown);
+        return { source, payload: { markdown, ...stack, ...inference } };
+      }
       case 'design':
         return { source, payload: { markdown: await this.markdownOf(projectId, r.path), ...inference } };
       case 'decisions': {
@@ -215,6 +228,68 @@ export class TabsService {
       deployVerdict: drift?.deployVerdict ?? null,
       deploySignals: drift?.deploySignals ?? null,
       deployObservedAt: drift?.deployObservedAt ?? null,
+    };
+  }
+
+  /**
+   * SPEC-023: stack detectada via SBOM já persistida pelo sync + o confronto
+   * contra a stack declarada no markdown de Arquitetura. Só lê cache e computa
+   * o confronto em memória — nenhuma chamada externa no render (ADR-002).
+   *
+   * O confronto roda AQUI e não no sync de propósito: o lado declarado depende
+   * da resolução de documento, que muda quando o dono remapeia `.proplan/`
+   * sem que o SBOM mude. Persistir o veredito o deixaria velho nesse caso.
+   *
+   * `packages` NÃO entra no payload da aba (critério de aceite: lista detalhada
+   * só sob demanda). Aqui vai só a contagem, que é o que o botão de expandir
+   * precisa saber para se anunciar.
+   */
+  private async stackBlock(projectId: string, markdown: string | null) {
+    const p = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        stackEnabled: true,
+        stackEcosystems: true,
+        stackSourceSha: true,
+        stackObservedAt: true,
+        stackPackages: true,
+      },
+    });
+    // NULL (nunca coletado) ≠ false (DG desabilitado): sem coleta, a aba não
+    // mostra bloco nenhum — dizer "não habilitado" antes do primeiro sync
+    // mandaria o usuário mexer numa configuração que talvez já esteja certa.
+    if (p?.stackEnabled === null || p?.stackEnabled === undefined) return {};
+
+    const ecosystems = (p.stackEcosystems ?? []) as string[];
+    const detection = { enabled: p.stackEnabled, ecosystems, packages: [] };
+    const declared = declaredEcosystems(markdown);
+    return {
+      stack: {
+        enabled: p.stackEnabled,
+        source: 'sbom' as const,
+        ecosystems,
+        declared,
+        verdict: compareStack(detection, declared),
+        packageCount: ((p.stackPackages ?? []) as unknown[]).length,
+        sourceSha: p.stackSourceSha,
+        observedAt: p.stackObservedAt,
+      },
+    };
+  }
+
+  /**
+   * SPEC-023: a lista detalhada de dependências, buscada só quando o usuário
+   * expande. Fica fora do payload da aba de propósito — um repo grande traz
+   * milhares de pacotes, e ninguém paga esse custo só por abrir Arquitetura.
+   */
+  async getStackPackages(projectId: string) {
+    const p = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { stackPackages: true, stackEnabled: true },
+    });
+    return {
+      enabled: p?.stackEnabled ?? false,
+      packages: (p?.stackPackages ?? []) as unknown[],
     };
   }
 

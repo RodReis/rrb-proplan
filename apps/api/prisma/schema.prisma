@@ -115,6 +115,15 @@ model Project {
   ciStatus         String?   @map("ci_status")
   ciConclusionUrl  String?   @map("ci_conclusion_url")
   ciObservedAt     DateTime? @map("ci_observed_at")
+  // SPEC-023: stack detectada via SBOM. `stackEnabled` false = Dependency Graph
+  // desabilitado/vazio (fallback informativo, não erro). `stackSourceSha` ancora
+  // ao HEAD do default branch — NÃO ao docs_tree_sha: o SBOM é função dos
+  // manifests, não de docs/ (variação registrada no ARCHITECTURE → Resiliência).
+  stackEnabled     Boolean?  @map("stack_enabled")
+  stackEcosystems  Json?     @map("stack_ecosystems")
+  stackPackages    Json?     @map("stack_packages")
+  stackSourceSha   String?   @map("stack_source_sha")
+  stackObservedAt  DateTime? @map("stack_observed_at")
   createdAt    DateTime @default(now()) @map("created_at")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // onDelete: Restrict — não apagar tenant que ainda tem projeto (a migração

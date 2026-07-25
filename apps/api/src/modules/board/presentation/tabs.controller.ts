@@ -54,6 +54,20 @@ export class TabsController {
     return this.mapping.putMapping(projectId, body.entity as Entity, body.path);
   }
 
+  /**
+   * SPEC-023: lista detalhada de dependências, sob demanda (critério de aceite —
+   * não carrega junto com a aba). DECLARADA ANTES de `@Get(':tab')`: o Nest casa
+   * rotas na ordem de declaração, e o parâmetro curinga engoliria este path.
+   */
+  @Get('stack/packages')
+  async getStackPackages(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') projectId: string,
+  ) {
+    await this.tabs.assertOwner(req.userId, projectId);
+    return this.tabs.getStackPackages(projectId);
+  }
+
   @Get(':tab')
   async getTab(
     @Req() req: AuthenticatedRequest,

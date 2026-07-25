@@ -1142,3 +1142,97 @@ tinha regenerado o relatório com `--issue 115`, que atualiza os totais mas não
 grava o histórico datado; o comando certo passa as variáveis
 (`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`), como o próprio CI instrui na
 mensagem de erro. Corrigido em `b627390`.
+
+## SPEC-023 — Stack detectada via SBOM + confronto doc×real — `em andamento` (issue #8)
+
+Fatia 17. Exibe a **stack real** de um projeto (linguagens/ecossistemas) a
+partir do SBOM do Dependency Graph e **confronta com a stack declarada na
+documentação** — sem ler uma linha de código-fonte (ADR-003 adendo). O confronto
+segue o ADR-018: **coroa nenhuma fonte**.
+
+### Decisões tomadas com o PI antes de codificar
+
+A spec tinha duas frases em conflito e uma ambiguidade de escopo:
+
+1. **Contrato da API** — o §Contratos pedia `GET /projects/:id/stack`, mas a
+   linha seguinte mandava *"consumir via composição já persistida (padrão do
+   Board)"*, que é o `tabs/:tab`. **PI decidiu: payload dentro da aba.** Zero
+   rota nova para o bloco, zero segundo fetch. Só a **lista detalhada** ganhou
+   endpoint próprio (`tabs/stack/packages`), porque é sob demanda.
+2. **Abas** — a spec cita Arquitetura *e* Deploy, mas o 1º corte trata o repo
+   como stack única, sem ligar manifest a componente (isso está em *Fora de
+   escopo*). Na Deploy, o bloco repetiria a mesma informação sem se ligar aos 3
+   eixos da SPEC-017. **PI decidiu: só Arquitetura agora.**
+
+### Passos
+
+- [x] **Domínio puro** (`ingestion/domain/stack-detect.ts`): `normalizeSbom`
+      (SPDX → ecossistemas + pacotes), `declaredEcosystems` (termos da doc →
+      ecossistema) e `compareStack` (o veredito). Zero I/O, zero IA — o SBOM é
+      fonte determinística do GitHub (ADR-012).
+- [x] **Client** — `getSbom` em `github-git.client.ts`, via
+      `fetchGithubOptional`: DG desabilitado/negado/404 → `null`, degrada em vez
+      de estourar. Leitura ⇒ **user token** (ADR-015).
+- [x] **Schema + migration** (`20260725120000_fatia_17_stack_sbom`): cinco
+      colunas `stack_*` em `projects`, no molde de `deploy_*`/`ci_*`.
+      `stack_enabled` **nullable** — três estados, ver ARCHITECTURE → Resiliência.
+- [x] **Sync** — `updateStack` em `sync.service.ts`, chamado nos **dois** ramos
+      (`success` e `noop`) ao lado de `updateCiStatus`. Tolerante a falha: SBOM
+      fora do ar não derruba o sync de docs.
+- [x] **Aba** — `stackBlock` em `tabs.service.ts` lê só o cache e computa o
+      confronto em memória. Anexado à Arquitetura **inclusive no nível 4** (doc
+      ausente), que é onde ele mais informa: repo sem `ARCHITECTURE.md` ainda
+      tem manifests.
+- [x] **Web** — `StackPanel.tsx` + `extras` no `TabFrame` (deixa o bloco
+      aparecer sob o empty state sem fingir que a aba tem documento).
+
+### O confronto roda no render, não no sync
+
+Único ponto em que fugi do padrão dos sinais vizinhos, de propósito: o lado
+**detectado** é cache do sync, mas o lado **declarado** depende da resolução de
+documento — que muda quando o dono remapeia `.proplan/config.yml` **sem que o
+SBOM mude**. Veredito persistido ficaria velho nesse caso. Como o confronto é
+comparação de dois arrays curtos em memória, computar no render não viola o
+ADR-002 (a proibição é **chamada externa** no caminho da request, não CPU).
+
+### O bug que só o dado real mostrou
+
+Os 20 primeiros testes passavam e o domínio estava errado. Rodei contra o SBOM
+real de `vercel/swr` (743 purls) e o veredito saiu **`discorda`** para um projeto
+npm puro com doc dizendo TypeScript — falso positivo no caso mais comum.
+
+**Causa**: o SPDX inclui dois purls que não são dependência da aplicação —
+`pkg:github/vercel/swr@main` (o **próprio repositório**, nó raiz do grafo) e
+`pkg:githubactions/actions/checkout` (passos de CI). O detectado virava
+`['npm','actions','github']`, que nunca casa com o que um humano escreve na doc.
+
+**Correção**: `NON_STACK_ECOSYSTEMS` filtra os dois **antes** do alias de
+ecossistema. Revalidado contra o mesmo SBOM real: `['npm']`, 589 pacotes, e os
+três vereditos corretos (`concorda` / `nao_declarado` / `discorda`).
+
+**Lição registrada**: fixture escrita por mim confirma o que eu já imaginava. O
+que pegou o erro foi a resposta real da API — e esta fatia existe justamente
+para desconfiar de fonte que ninguém conferiu.
+
+Um segundo erro meu, na mesma linha, veio de um teste: a fronteira do casamento
+de termos barrava `.` à direita (para proteger `.net`), e com isso *"Backend em
+Python."* não casava — todo termo em fim de frase sumia. As bordas ficaram
+assimétricas, com o porquê no código.
+
+### Verificação
+
+- **26 testes** de domínio (`stack-detect.spec.ts`), 4 deles regressões do dado
+  real · **6** do passo de sync (`stack-sbom-integration.spec.ts`) · **8** do
+  bloco na aba (`tabs.service.spec.ts`) · **10** de UI (`StackPanel.test.tsx`),
+  incluindo um que falha se qualquer lado do confronto receber rótulo de
+  "correto"/"errado"
+- Suíte **API 670/670** e **web 67/67** verdes · `tsc --noEmit` limpo nos dois ·
+  `vite build` ok · migration aplicada com `prisma migrate deploy`
+- **Dogfooding contra a API real do GitHub**: `vercel/swr` (público, DG ativo) →
+  `enabled: true`, `['npm']`; **este repo** (`rrb-proplan`, privado) → **404**,
+  que é exatamente o caminho de fallback — DG vem desabilitado por padrão em
+  repo privado, como o ADR-003 adendo previu
+
+### Entrega
+
+_(pendente: PR com `refs #8`)_
