@@ -1069,10 +1069,15 @@ da costura (entidade `Connection`, IdP fake, CTA no catálogo) vem depois.
       preservado, `login` `RodReis` intacto — e **8 projetos / 1 tenant / 1
       membership** onde estavam. É a prova de que o caso 2 rodou (migrou) em vez
       do caso 3 (conta nova).
+- [x] **Produção** (`proplan.rrbtrading.com.br`) — migration no release do
+      `ffa4273`, `UPDATE` do email pelo PI antes do 1º login, migração casada
+      (1 row com `github_id` **e** `google_id`), 8 projetos no catálogo. Dois
+      erros de config no caminho → FIX **#123** (mergeado, #124) e cadastro do
+      redirect URI no Console. Detalhes em *Verificação*.
 - [ ] **Preencher `email` de quem já existe** — ver *Por que o email precisa ser
-      verificado*. Hoje depende de `UPDATE` manual; a solução geral (buscar
-      `GET /user/emails` no login GitHub, ou casar por outro critério na
-      `Connection`) é decisão do PI.
+      verificado*. Hoje depende de `UPDATE` manual (feito no local e em
+      produção); a solução geral é a issue **#122** — buscar `GET /user/emails`
+      no login GitHub, decidido pelo PI.
 
 ### Por que o email precisa ser verificado
 
@@ -1110,6 +1115,36 @@ reais. `/auth/google` → 302 com `client_id` preenchido, `redirect_uri` casando
 o cadastro do Console, escopos `openid email profile` e state anti-CSRF em
 cookie `HttpOnly` espelhado na URL. Consentimento no browser → Catálogo
 autenticado, e o banco provando a migração na mesma linha (acima).
+
+**Produção verificada (2026-07-25)** — `https://proplan.rrbtrading.com.br`.
+Migration aplicada no release do commit `ffa4273` (deploy `fd09d201`, SUCCESS).
+O PI rodou o `UPDATE` do email **antes** do primeiro login, e a migração casou:
+
+```
+id                                    login   github_id  google_id            email
+14070176-c0d2-4762-8df1-25b55042485f  RodReis 80895      102835572885821409668 rodreisb@gmail.com
+1 row
+```
+
+**1 row** com `github_id` **e** `google_id` na mesma linha — nenhuma conta nova.
+Os 8 projetos aparecem no catálogo. Note que o `id` difere do banco local:
+bancos distintos, mesma prova.
+
+**Dois erros de configuração no caminho, ambos só visíveis em produção** — e o
+primeiro virou o FIX #123:
+
+1. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` **não existiam** no serviço
+   `@proplan/api` do Railway (eu documentei no `DEPLOY.md` e não cadastrei).
+   Com `?? ''`, a API mandava o usuário ao Google com `client_id` vazio →
+   `Erro 400: invalid_request`, tela do Google que parece problema da conta.
+   Corrigido no #124: config ausente falha na API, nomeando a variável.
+2. O redirect de produção (`https://api.proplan.rrbtrading.com.br/auth/google/callback`)
+   não estava nos *Authorized redirect URIs* do OAuth client →
+   `Erro 400: redirect_uri_mismatch`. Cadastro no Console, ação do PI.
+
+O `DEPLOY.md` lista as duas variáveis; o `README.md`, o redirect. Ambos os
+passos existiam na doc e ainda assim escaparam — **documentar não é
+configurar**.
 
 **O que o dogfooding expôs e a suíte não pegava**: o usuário pré-existente tinha
 `email` NULL, então o casamento por email — o caminho que os testes cobrem —
