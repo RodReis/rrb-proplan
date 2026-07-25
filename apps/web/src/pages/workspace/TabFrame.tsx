@@ -19,6 +19,13 @@ interface Props {
    * documentado" — os children trazem o conteúdo inferido + badge + promover.
    */
   inferred?: boolean;
+  /**
+   * Há conteúdo lateral a mostrar mesmo sem documento (SPEC-023: o bloco de
+   * stack detectada). Diferente de `inferred`: o empty state CONTINUA — a aba
+   * segue "não documentada" — e os children aparecem abaixo dele. Sem isto o
+   * bloco sumiria justamente no repo sem ARCHITECTURE.md, onde ele mais informa.
+   */
+  extras?: boolean;
   /** Abre a tela de mapeamento focada nesta entidade. */
   onCorrect: () => void;
   children: ReactNode;
@@ -33,6 +40,7 @@ export function TabFrame({
   tabId,
   spans,
   inferred,
+  extras,
   onCorrect,
   children,
 }: Props) {
@@ -57,6 +65,7 @@ export function TabFrame({
             Mapear fonte
           </button>
         </div>
+        {extras && <div className="mt-6">{children}</div>}
       </div>
     );
   }

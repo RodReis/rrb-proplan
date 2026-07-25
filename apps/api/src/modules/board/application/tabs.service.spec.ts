@@ -1,10 +1,25 @@
 import { TabsService } from './tabs.service';
 
+/**
+ * Projeto sem coleta de SBOM (SPEC-023): `stackEnabled` NULL é o estado de quem
+ * nunca sincronizou depois da Fatia 17 — a aba não anexa o bloco de stack. É o
+ * default destes testes justamente para isolar o que cada um mede.
+ */
+const noStack = () =>
+  jest.fn().mockResolvedValue({
+    stackEnabled: null,
+    stackEcosystems: null,
+    stackPackages: null,
+    stackSourceSha: null,
+    stackObservedAt: null,
+  });
+
 describe('TabsService.getTab — architecture', () => {
   it('resolvida → markdown do doc', async () => {
     const resolution = { entity: 'architecture', level: 1, source: 'convention', path: 'docs/ARCHITECTURE.md', paths: [], confidence: 1 };
     const prisma = {
       document: { findUnique: jest.fn().mockResolvedValue({ content: '# Arquitetura' }) },
+      project: { findUnique: noStack() },
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn(), latestFallbackInternal: jest.fn() } as any;
@@ -17,7 +32,7 @@ describe('TabsService.getTab — architecture', () => {
 
   it('ausente → payload null', async () => {
     const resolution = { entity: 'architecture', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
-    const prisma = { document: { findUnique: jest.fn() } } as any;
+    const prisma = { document: { findUnique: jest.fn() }, project: { findUnique: noStack() } } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn(), latestFallbackInternal: jest.fn().mockResolvedValue(null) } as any;
     const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any);
@@ -30,6 +45,7 @@ describe('TabsService.getTab — architecture', () => {
     const resolution = { entity: 'architecture', level: 3, source: 'inference', path: 'docs/tech.md', paths: [], confidence: 0.7 };
     const prisma = {
       document: { findUnique: jest.fn().mockResolvedValue({ content: '# Tech' }) },
+      project: { findUnique: noStack() },
     } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = { latestClassifySpans: jest.fn().mockResolvedValue(['trecho A']) } as any;
@@ -39,6 +55,112 @@ describe('TabsService.getTab — architecture', () => {
     expect(out.source.source).toBe('inference');
     expect(out.payload).toEqual({ markdown: '# Tech', inferred: true, spans: ['trecho A'] });
     expect(insight.latestClassifySpans).toHaveBeenCalledWith('p1', 'architecture');
+  });
+});
+
+describe('TabsService.getTab — bloco de stack (SPEC-023)', () => {
+  const detected = (over: Record<string, unknown> = {}) =>
+    jest.fn().mockResolvedValue({
+      stackEnabled: true,
+      stackEcosystems: ['npm'],
+      stackPackages: [{ ecosystem: 'npm', name: 'react', version: '18' }],
+      stackSourceSha: 'abc123',
+      stackObservedAt: new Date('2026-07-25'),
+      ...over,
+    });
+
+  function makeSvc(projectFindUnique: jest.Mock, content: string, level = 1) {
+    const resolution = {
+      entity: 'architecture',
+      level,
+      source: level === 1 ? 'convention' : 'absent',
+      path: level === 1 ? 'docs/ARCHITECTURE.md' : null,
+      paths: [],
+      confidence: level === 1 ? 1 : 0,
+    };
+    const prisma = {
+      document: { findUnique: jest.fn().mockResolvedValue({ content }) },
+      project: { findUnique: projectFindUnique },
+    } as any;
+    const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
+    const insight = {
+      latestClassifySpans: jest.fn(),
+      latestFallbackInternal: jest.fn().mockResolvedValue(null),
+    } as any;
+    return new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any);
+  }
+
+  it('doc declara a mesma stack detectada → concorda', async () => {
+    const svc = makeSvc(detected(), '# Arquitetura\n\nAPI em TypeScript com NestJS.');
+    const out = (await svc.getTab('p1', 'architecture')).payload as any;
+    expect(out.stack.verdict).toBe('concorda');
+    expect(out.stack.source).toBe('sbom');
+    expect(out.stack.ecosystems).toEqual(['npm']);
+    expect(out.stack.declared).toEqual(['npm']);
+    expect(out.stack.sourceSha).toBe('abc123');
+  });
+
+  it('doc declara stack diferente da detectada → discorda, sem coroar fonte', async () => {
+    const svc = makeSvc(detected(), '# Arquitetura\n\nBackend em Python.');
+    const out = (await svc.getTab('p1', 'architecture')).payload as any;
+    expect(out.stack.verdict).toBe('discorda');
+    // Os DOIS lados vão no payload — a UI mostra lado a lado (ADR-018).
+    expect(out.stack.declared).toEqual(['pip']);
+    expect(out.stack.ecosystems).toEqual(['npm']);
+  });
+
+  it('doc não declara stack → nao_declarado (informação, não erro)', async () => {
+    const svc = makeSvc(detected(), '# Arquitetura\n\nUm sistema de gestão.');
+    const out = (await svc.getTab('p1', 'architecture')).payload as any;
+    expect(out.stack.verdict).toBe('nao_declarado');
+  });
+
+  it('Dependency Graph desabilitado → nao_detectado com enabled:false', async () => {
+    const svc = makeSvc(
+      detected({ stackEnabled: false, stackEcosystems: [], stackPackages: [] }),
+      '# Arquitetura\n\nAPI em TypeScript.',
+    );
+    const out = (await svc.getTab('p1', 'architecture')).payload as any;
+    expect(out.stack.enabled).toBe(false);
+    expect(out.stack.verdict).toBe('nao_detectado');
+  });
+
+  // Critério de aceite: a lista detalhada NÃO viaja no payload da aba.
+  it('payload da aba traz só a contagem, nunca a lista de pacotes', async () => {
+    const svc = makeSvc(detected(), '# Arquitetura');
+    const out = (await svc.getTab('p1', 'architecture')).payload as any;
+    expect(out.stack.packageCount).toBe(1);
+    expect(out.stack).not.toHaveProperty('packages');
+  });
+
+  // O caso que mais informa: repo sem ARCHITECTURE.md ainda tem manifests.
+  it('doc ausente (nível 4) ainda anexa o bloco de stack', async () => {
+    const svc = makeSvc(detected(), '', 4);
+    const out = (await svc.getTab('p1', 'architecture')).payload as any;
+    expect(out.stack.verdict).toBe('nao_declarado');
+    expect(out.stack.ecosystems).toEqual(['npm']);
+  });
+
+  it('projeto sem coleta (NULL) não anexa bloco — ≠ "não habilitado"', async () => {
+    const svc = makeSvc(
+      jest.fn().mockResolvedValue({ stackEnabled: null }),
+      '# Arquitetura',
+    );
+    const out = (await svc.getTab('p1', 'architecture')).payload as any;
+    expect(out).not.toHaveProperty('stack');
+  });
+
+  it('design não recebe bloco de stack (é da Arquitetura)', async () => {
+    const resolution = { entity: 'design', level: 1, source: 'convention', path: 'docs/DESIGN.md', paths: [], confidence: 1 };
+    const prisma = {
+      document: { findUnique: jest.fn().mockResolvedValue({ content: '# Design' }) },
+      project: { findUnique: detected() },
+    } as any;
+    const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
+    const insight = { latestClassifySpans: jest.fn(), latestFallbackInternal: jest.fn() } as any;
+    const svc = new TabsService(prisma, ingestion, insight, {} as any, {} as any, {} as any, {} as any);
+    const out = (await svc.getTab('p1', 'design')).payload as any;
+    expect(out).not.toHaveProperty('stack');
   });
 });
 

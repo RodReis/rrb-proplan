@@ -3,6 +3,7 @@ import {
   PayloadTooLargeException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { SbomResponse } from '../domain/stack-detect';
 
 /** Cap de tamanho por documento de texto (SPEC-002 notas técnicas). */
 export const MAX_BLOB_BYTES = 512 * 1024;
@@ -271,6 +272,26 @@ export class GithubGitClient {
       updatedAt: run?.updated_at ?? null,
       denied: false,
     };
+  }
+
+  /**
+   * SBOM do Dependency Graph (SPEC-023 / ADR-003 adendo). SPDX derivado dos
+   * manifests pelo próprio GitHub — metadado sobre o código, nunca conteúdo.
+   * Degrada em silêncio (`null`) quando o DG está desabilitado (o padrão em
+   * repo privado), sem a permissão, ou o repo não tem manifests. O call site
+   * traduz `null` no MESMO estado de fallback informativo — nunca erro mudo.
+   */
+  async getSbom(
+    token: string,
+    owner: string,
+    repo: string,
+  ): Promise<SbomResponse | null> {
+    const res = await this.fetchGithubOptional(
+      token,
+      `https://api.github.com/repos/${owner}/${repo}/dependency-graph/sbom`,
+    );
+    if (!res) return null;
+    return (await res.json()) as SbomResponse;
   }
 
   /**

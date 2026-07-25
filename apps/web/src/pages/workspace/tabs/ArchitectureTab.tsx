@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, InferencePayload, TabSource } from '../../../lib/api';
+import { api, InferencePayload, StackBlock, TabSource } from '../../../lib/api';
 import { MarkdownView } from '../MarkdownView';
 import { PromoteDialog } from '../PromoteDialog';
+import { StackPanel } from '../StackPanel';
 import { TabFrame } from '../TabFrame';
 
-type Payload = { markdown: string } & Partial<InferencePayload>;
+/** `stack` é opcional: só existe depois de um sync que coletou o SBOM (SPEC-023). */
+type Payload = { markdown: string; stack?: StackBlock } & Partial<InferencePayload>;
 interface Props {
   projectId: string;
   syncNonce: number;
@@ -39,7 +41,7 @@ export function ArchitectureTab({ projectId, syncNonce, onCorrect, onReload }: P
   }, [projectId, syncNonce]);
 
   return (
-    <TabFrame loading={loading} error={error} source={source} label="Arquitetura" tabId="architecture" spans={payload?.spans} inferred={payload?.inferred === true} onCorrect={onCorrect}>
+    <TabFrame loading={loading} error={error} source={source} label="Arquitetura" tabId="architecture" spans={payload?.spans} inferred={payload?.inferred === true} extras={payload?.stack !== undefined} onCorrect={onCorrect}>
       {payload?.inferred === true && (
         <div
           className="mb-4 flex items-center justify-between rounded-md border p-3 text-xs"
@@ -57,6 +59,8 @@ export function ArchitectureTab({ projectId, syncNonce, onCorrect, onReload }: P
           </button>
         </div>
       )}
+      {/* SPEC-023: antes do documento — é o confronto que dá contexto à leitura. */}
+      {payload?.stack && <StackPanel projectId={projectId} stack={payload.stack} />}
       <MarkdownView markdown={payload?.markdown ?? ''} />
       {promoteOpen && (
         <PromoteDialog

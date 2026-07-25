@@ -4,7 +4,12 @@ import { TabsService } from './tabs.service';
 describe('TabsService.getTab — fallback inferido (architecture/design)', () => {
   it('architecture ausente + fallback existe → payload markdown com inferred:true', async () => {
     const resolution = { entity: 'architecture', level: 4, source: 'absent', path: null, paths: [], confidence: 0 };
-    const prisma = { document: { findMany: jest.fn() } } as any;
+    // `stackEnabled: null` = projeto sem coleta de SBOM (SPEC-023): sem bloco de
+    // stack no payload, que é o que este teste mede (o fallback inferido).
+    const prisma = {
+      document: { findMany: jest.fn() },
+      project: { findUnique: jest.fn().mockResolvedValue({ stackEnabled: null }) },
+    } as any;
     const ingestion = { resolutionOf: jest.fn().mockResolvedValue(resolution) } as any;
     const insight = {
       latestClassifySpans: jest.fn(),
