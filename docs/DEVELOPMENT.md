@@ -1653,3 +1653,47 @@ Vale como candidato a `[INFRA]` futuro: fazer o CI rodar também em base
 não-`main`. Não abri card porque não é comportamento documentado sendo violado —
 é limitação conhecida do workflow, e mudar o gatilho de CI é decisão que merece
 o PI.
+
+### PR-4 — UI: página Clientes e Kanban do funil
+
+- [x] **Rota `/t/:tenant/clients`** (+ `/clients/funil`) com shell próprio, irmão
+      do workspace de repo. `ClientsRoute` resolve o tenant (aceita slug ou
+      UUID, como as rotas de workspace), fixa `setActiveTenant` **antes** de
+      renderizar e solta ao sair — deixá-lo fixo faria uma chamada global
+      seguinte sair escopada por engano.
+- [x] **Kanban com dnd-kit**, atualização otimista e **rollback** no 422.
+- [x] **RBAC na UI**: `viewer` não vê os controles de escrita e não arrasta card.
+      A API recusa de qualquer jeito (403) — esconder o botão é conveniência, a
+      barreira é o servidor (defesa em profundidade, critério da spec).
+- [x] Visual conforme a referência do PI: avatar de iniciais, contagem por
+      coluna, badge de estado, densidade da lista. Só tokens do Carbono/Claro
+      (`DESIGN.md` §4) — nenhuma cor absoluta.
+
+#### A lógica do board é função pura, testada fora do componente
+
+`moveCard`, `columnOf` e `applyConfirmedState` vivem em `boardView.ts`, sem
+React. Motivo: **rollback é o critério de aceite mais fácil de regredir**, e um
+teste de markup não o provaria. Os 9 casos cobrem o que dói:
+
+- mover **não muta** o board original — é ele que o rollback restaura;
+- mover para a mesma coluna devolve o board **por identidade** (`toBe`), e o
+  componente usa isso para não disparar request ao soltar o card onde ele já
+  estava;
+- `applyConfirmedState` corrige o rótulo com o **estado interno** que o servidor
+  devolveu. A UI move por *coluna*, o servidor responde *estado*; sem isso o
+  card ficaria na coluna certa exibindo o rótulo antigo até o próximo refetch —
+  bug silencioso, porque a posição estaria correta.
+
+#### Colisão de nome no front: `BoardColumn` já existia
+
+`BoardColumn` no `api.ts` é das colunas do board de **repos** (`backlog`,
+`todo`, `doing`…). Os tipos da frente viraram **`FunnelBoardColumn`** e
+**`FunnelCard`** — mesma disciplina que fez `ClientProject` não reusar
+`Project` (ADR-023: domínios disjuntos, nomes disjuntos). O `tsc` pegou na
+hora; se os nomes tivessem coincidido só em runtime, seria bug de tipo
+silencioso.
+
+#### `activationConstraint` no PointerSensor
+
+Sem `{ distance: 6 }`, um clique simples no card conta como drag de 0px e a UI
+dispara transição sem o usuário ter arrastado nada.

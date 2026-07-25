@@ -67,12 +67,16 @@ export interface ResolvedRoute {
 }
 
 /**
- * Prefixa `/projects/...` com o tenant ativo (`/t/:tenant/projects/...`), SPEC-022.
- * Rotas globais passam intactas. Se não há tenant ativo, deixa como está — o
- * backend responde 401/403 e o app redireciona ao catálogo.
+ * Rotas ESCOPADAS por tenant — recebem o prefixo `/t/:tenant` (SPEC-022). As
+ * globais (`/catalog`, `/auth`, `/usage`, `/portfolio`, `/resolve`) e a pública
+ * (`/b/:token`) passam intactas: a pública não tem tenant por design (o dela vem
+ * do hash do token, ADR-020). Sem tenant ativo o path fica como está — o backend
+ * responde 401/403 e o app redireciona ao catálogo.
  */
+const TENANT_SCOPED_PREFIXES = ['/projects/', '/clients', '/client-projects'];
+
 function withTenantPrefix(path: string): string {
-  if (activeTenant && path.startsWith('/projects/')) {
+  if (activeTenant && TENANT_SCOPED_PREFIXES.some((p) => path.startsWith(p))) {
     return `/t/${activeTenant}${path}`;
   }
   return path;
@@ -712,4 +716,179 @@ export interface PortfolioRow {
   deploy: PortfolioSignal | null;
   ci: PortfolioSignal | null;
   redCount: number;
+}
+
+// ===========================================================================
+// Frente Clientes (SPEC-029, Fatia 19)
+// ===========================================================================
+
+/** Os 10 estados internos do funil — mais finos que as 4 colunas da UI. */
+export type ClientProjectState =
+  | 'DRAFT'
+  | 'LINK_SENT'
+  | 'BRIEFING_STARTED'
+  | 'BRIEFING_SUBMITTED'
+  | 'ARTIFACTS_READY'
+  | 'CONTRACT_PENDING'
+  | 'CONTRACT_APPROVED'
+  | 'IN_PRODUCTION'
+  | 'DELIVERED'
+  | 'ARCHIVED';
+
+/** As 4 colunas do Kanban (SPEC-029 §Escopo). */
+export type FunnelColumn = 'novo' | 'briefing' | 'prompt_contrato' | 'producao_entrega';
+
+export interface Client {
+  id: string;
+  name: string;
+  cpf: string | null;
+  company: string | null;
+  cnpj: string | null;
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  zipCode: string | null;
+  street: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface ClientProject {
+  id: string;
+  clientId: string;
+  title: string;
+  description: string | null;
+  state: ClientProjectState;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClientDetail extends Client {
+  projects: ClientProject[];
+}
+
+/** Card do funil: o projeto com o cliente embutido (o board é cross-cliente). */
+export interface FunnelCard extends ClientProject {
+  client: { id: string; name: string; company: string | null };
+}
+
+/**
+ * Uma coluna do funil de clientes. Nome com prefixo `Funnel` porque
+ * `BoardColumn` já é das colunas do board de REPOS — mesma disciplina que fez
+ * `ClientProject` não reusar `Project` (ADR-023: domínios disjuntos).
+ */
+export interface FunnelBoardColumn {
+  column: FunnelColumn;
+  cards: FunnelCard[];
+}
+
+export interface ClientStatusTransition {
+  id: string;
+  fromState: ClientProjectState;
+  toState: ClientProjectState;
+  actorUserId: string | null;
+  at: string;
+}
+
+/** Resposta da criação do link — `token` só existe AQUI, uma única vez. */
+export interface CreatedBriefingLink {
+  id: string;
+  token: string;
+  expiresAt: string | null;
+}
+
+export type BriefingLinkInfo =
+  | { active: false }
+  | {
+      active: true;
+      id: string;
+      expiresAt: string | null;
+      createdAt: string;
+      status: 'valid' | 'expired' | 'revoked' | 'invalid';
+    };
+
+export function listClients(q?: string): Promise<Client[]> {
+  const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+  return request<Client[]>(`/clients${qs}`);
+}
+
+export function getClient(id: string): Promise<ClientDetail> {
+  return request<ClientDetail>(`/clients/${id}`);
+}
+
+export function createClient(input: Partial<Client>): Promise<Client> {
+  return request<Client>('/clients', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateClient(id: string, input: Partial<Client>): Promise<Client> {
+  return request<Client>(`/clients/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteClient(id: string): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/clients/${id}`, { method: 'DELETE' });
+}
+
+export function createClientProject(
+  clientId: string,
+  input: { title: string; description?: string | null },
+): Promise<ClientProject> {
+  return request<ClientProject>(`/clients/${clientId}/projects`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getClientBoard(q?: string): Promise<{ columns: FunnelBoardColumn[] }> {
+  const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+  return request<{ columns: FunnelBoardColumn[] }>(`/client-projects${qs}`);
+}
+
+/**
+ * Move o card. A UI já atualizou otimisticamente; se isto rejeitar (422 de
+ * transição inválida), o caller desfaz — é o rollback que a spec pede.
+ */
+export function transitionClientProject(
+  id: string,
+  target: { to?: ClientProjectState; column?: FunnelColumn },
+): Promise<ClientProject> {
+  return request<ClientProject>(`/client-projects/${id}/transition`, {
+    method: 'POST',
+    body: JSON.stringify(target),
+  });
+}
+
+export function getClientProjectHistory(
+  id: string,
+): Promise<ClientStatusTransition[]> {
+  return request<ClientStatusTransition[]>(`/client-projects/${id}/history`);
+}
+
+export function getBriefingLink(projectId: string): Promise<BriefingLinkInfo> {
+  return request<BriefingLinkInfo>(`/client-projects/${projectId}/briefing-link`);
+}
+
+export function createBriefingLink(
+  projectId: string,
+  expiresAt?: string | null,
+): Promise<CreatedBriefingLink> {
+  return request<CreatedBriefingLink>(
+    `/client-projects/${projectId}/briefing-link`,
+    { method: 'POST', body: JSON.stringify({ expiresAt: expiresAt ?? null }) },
+  );
+}
+
+export function revokeBriefingLink(projectId: string): Promise<{ revoked: number }> {
+  return request<{ revoked: number }>(
+    `/client-projects/${projectId}/briefing-link`,
+    { method: 'DELETE' },
+  );
 }
