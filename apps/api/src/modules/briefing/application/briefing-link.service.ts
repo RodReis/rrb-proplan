@@ -117,10 +117,15 @@ export class BriefingLinkService {
    * hash — e apenas para gravar a auditoria.
    */
   async resolvePublic(token: string): Promise<{ status: LinkStatus }> {
-    // Sem contexto de tenant, o RLS de `briefing_links` é fail-closed. Por isso
-    // o lookup usa `$queryRaw` com a role de app: precisamos descobrir o tenant
-    // ANTES de poder abrir o contexto — o mesmo problema que a rota `/resolve`
-    // tem, resolvido do mesmo jeito (lookup global explícito, ADR-020).
+    // Sem sessão não há contexto de tenant, e o RLS destas tabelas é
+    // fail-closed — um SELECT direto aqui volta VAZIO e todo token válido
+    // responderia `invalid` (bug achado no dogfooding de 2026-07-25).
+    //
+    // `resolve_briefing_link` é uma função SECURITY DEFINER de superfície
+    // mínima: recebe só o hash, devolve só este link, não lista nem pagina. O
+    // RLS continua ativo em todas as tabelas para todo o resto — é o mesmo
+    // espírito do lookup global da rota `/resolve` (ADR-020), com o privilégio
+    // confinado a uma função em vez de a uma role.
     const tokenHash = hashToken(token);
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -130,16 +135,7 @@ export class BriefingLinkService {
         tenant_id: string;
         client_project_id: string;
       }>
-    >`
-      SELECT bl.id, bl.expires_at, bl.revoked_at, c.tenant_id, bl.client_project_id
-      FROM briefing_links bl
-      JOIN client_projects cp ON cp.id = bl.client_project_id
-      JOIN clients c ON c.id = cp.client_id
-      WHERE bl.token_hash = ${tokenHash}
-        AND cp.deleted_at IS NULL
-        AND c.deleted_at IS NULL
-      LIMIT 1
-    `;
+    >`SELECT * FROM resolve_briefing_link(${tokenHash})`;
 
     const row = rows[0];
     const status = linkStatus(

@@ -1697,3 +1697,58 @@ silencioso.
 
 Sem `{ distance: 6 }`, um clique simples no card conta como drag de 0px e a UI
 dispara transição sem o usuário ter arrastado nada.
+
+#### Dogfooding achou o bug que a suíte não podia achar
+
+Com a API e a web de pé, `GET /b/:token` respondia **`invalid` para todo token
+válido** — o link público nunca teria funcionado.
+
+**Causa**: a rota não tem sessão, então roda **sem** `app.tenant_ids`. O RLS de
+`briefing_links`/`clients` é fail-closed (é o que o PR-1 provou e celebrou), e o
+`SELECT` direto do lookup voltava zero linhas. A mesma propriedade que garante o
+isolamento fechava a única rota que precisa atravessá-lo.
+
+**Por que os 14 testes do service não pegaram**: eles mockam o `$queryRaw`.
+Provam a **lógica** (não-diferencial, revogado vence expirado, token não vaza) —
+não o **acesso**. É a mesma classe de lacuna da issue #122: teste correto sobre
+um dado que não existe. O mock não tem RLS.
+
+**Correção** (decisão do PI): função `resolve_briefing_link(hash)` com
+`SECURITY DEFINER` e superfície mínima — recebe só o hash, devolve só aquele
+link, não lista nem pagina, `search_path` fixo, `REVOKE` de `PUBLIC` + `GRANT`
+só para `proplan_app`. O RLS continua **ativo em todas as tabelas**; o
+privilégio fica confinado a uma função auditável em vez de a uma role.
+
+Descartadas: policy `USING (true)` (abriria a tabela inteira para qualquer query
+sem contexto) e role com `BYPASSRLS` (o ADR-022 proíbe — o bootstrap **falha** se
+a role tiver `rolbypassrls`).
+
+**O teste que faltava** agora existe: `briefing-link-lookup.int-spec.ts`, contra
+Postgres real, com a role `proplan_app` e **sem** contexto — exatamente como a
+rota em produção. Seis casos, e o último é o que impede a "correção" preguiçosa:
+`SELECT` direto sem contexto **continua** devolvendo zero linhas. Se ele virar
+verde com linhas, alguém afrouxou a policy e o isolamento caiu junto.
+
+**Verificado ao vivo** depois do fix: token válido → `{"status":"valid"}` ·
+token errado → `invalid` · revogado → `revoked` · `AuditEvent` de acesso gravado
+com o tenant vindo do hash · rate limit cortando na 21ª request com **429**.
+
+### Menu global (referência visual do PI, 2026-07-25)
+
+O PI apontou que o menu esquerdo não aparecia: as páginas existiam sem porta de
+entrada — só se chegava digitando a URL. Omissão minha; a spec não define
+navegação e eu não perguntei.
+
+Levado ao PI com três opções. A escolha foi o **menu global de primeiro nível**
+da imagem (`Dashboard · ProPlan · Kanban · Clientes · Configuração`), **acima**
+do workspace de repo — não dentro dele. O motivo é o mesmo da decisão de rota:
+exigir um repo aberto para chegar em Clientes tornaria a frente inalcançável com
+o GitHub desconectado, que é justamente o estado em que ela deve funcionar
+(ADR-024).
+
+**Escopo do menu nesta fatia** (decisão do PI): só `Clientes` e `Funil` são
+telas novas. `ProPlan`, `Kanban` e `Configuração` apontam para rotas que já
+existiam. **`Dashboard` fica desabilitado**, com o motivo no `title`: é a Fatia
+24 (SPEC-034) e depende de estimativa (F22) e contratos (F23) — renderizá-lo
+agora exigiria números inventados, que o MVP3 §9 proíbe. Desabilitado e
+explicado é melhor que ausente: some ≠ mentir sobre o que existe.

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
 import { useTheme } from '../../theme';
+import { GlobalNav } from './GlobalNav';
 
 interface Props {
   tenant: string;
@@ -10,130 +10,49 @@ interface Props {
   children: ReactNode;
 }
 
-const NAV = [
-  { to: 'clientes', label: 'Clientes' },
-  { to: 'funil', label: 'Funil' },
-];
-
 /**
- * Shell da Frente Clientes (SPEC-029) — rota `/t/:tenant/clients`.
+ * Shell da Frente Clientes (SPEC-029) — menu global à esquerda + conteúdo.
  *
- * Shell PRÓPRIO, irmão do workspace de repo, não uma aba dele: o workspace
- * existente é `/t/:tenant/p/:project/:tab` e exige um repositório no path, que
- * um cliente não tem. Decisão do PI em 2026-07-25.
+ * O menu (`GlobalNav`) é de primeiro nível, acima do workspace de repo: um
+ * cliente não tem repositório, e exigir um repo aberto para chegar em Clientes
+ * a tornaria inalcançável com o GitHub desconectado — que é justamente o estado
+ * em que ela deve funcionar (ADR-024).
  *
- * Segue os tokens do Carbono/Claro (DESIGN.md §4) — nenhuma cor absoluta aqui.
+ * Só tokens do Carbono/Claro (DESIGN.md §4); nenhuma cor absoluta.
  */
 export function ClientsShell({ tenant, title, subtitle, actions, children }: Props) {
   const { theme, toggle } = useTheme();
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
-      <aside
-        style={{
-          width: 216,
-          flexShrink: 0,
-          borderRight: '1px solid var(--border)',
-          background: 'var(--panel)',
-          padding: '20px 12px',
-        }}
-      >
-        <div style={{ padding: '0 8px 20px', color: 'var(--text)', fontWeight: 600 }}>
-          ProPlan
-          <div
-            style={{
-              fontSize: 11,
-              letterSpacing: '0.08em',
-              color: 'var(--dim)',
-              fontWeight: 500,
-            }}
-          >
-            CLIENTES
-          </div>
-        </div>
+    <div className="flex h-screen bg-bg">
+      <GlobalNav tenant={tenant} />
 
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={`/t/${tenant}/${item.to === 'clientes' ? 'clients' : 'clients/funil'}`}
-              end={item.to === 'clientes'}
-              style={({ isActive }) => ({
-                padding: '8px 10px',
-                borderRadius: 6,
-                fontSize: 14,
-                textDecoration: 'none',
-                color: isActive ? 'var(--text)' : 'var(--body)',
-                background: isActive ? 'var(--surface2)' : 'transparent',
-              })}
-            >
-              {item.label}
-            </NavLink>
-          ))}
-          <NavLink
-            to="/"
-            style={{
-              padding: '8px 10px',
-              borderRadius: 6,
-              fontSize: 14,
-              textDecoration: 'none',
-              color: 'var(--body)',
-            }}
-          >
-            Catálogo
-          </NavLink>
-        </nav>
-      </aside>
-
-      <main style={{ flex: 1, minWidth: 0 }}>
-        <header
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '14px 28px',
-            borderBottom: '1px solid var(--border)',
-          }}
-        >
-          <span style={{ fontSize: 12, color: 'var(--dim)', letterSpacing: '0.06em' }}>
-            PROPLAN / <span style={{ color: 'var(--text2)' }}>{title}</span>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between border-b border-border px-7 py-3.5">
+          <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-dim">
+            ProPlan <span className="px-1 text-dimmer">/</span>
+            <span className="text-text2">{title}</span>
           </span>
           <button
             onClick={toggle}
             aria-label="Alternar tema"
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--border2)',
-              borderRadius: 6,
-              color: 'var(--body)',
-              cursor: 'pointer',
-              padding: '4px 10px',
-              fontSize: 12,
-            }}
+            className="rounded-[7px] border border-border2 px-2.5 py-1 text-[11px] text-body transition-colors hover:bg-card hover:text-text"
           >
             {theme === 'carbono' ? 'Claro' : 'Carbono'}
           </button>
         </header>
 
-        <div style={{ padding: '32px 28px', maxWidth: 1100 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: 16,
-              marginBottom: 24,
-            }}
-          >
-            <div>
-              <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text)' }}>{title}</h1>
-              <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--body)' }}>
-                {subtitle}
-              </p>
+        <div className="min-h-0 flex-1 overflow-y-auto px-7 py-8">
+          <div className="mx-auto max-w-[980px]">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <h1 className="m-0 text-[23px] font-semibold text-text">{title}</h1>
+                <p className="mt-1.5 text-[13.5px] text-body">{subtitle}</p>
+              </div>
+              {actions}
             </div>
-            {actions}
+            {children}
           </div>
-          {children}
         </div>
       </main>
     </div>

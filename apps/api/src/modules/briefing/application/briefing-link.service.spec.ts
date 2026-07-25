@@ -140,16 +140,19 @@ describe('BriefingLinkService (SPEC-029)', () => {
       expect(Object.keys(expired)).toEqual(['status']);
     });
 
-    it('o lookup filtra cliente/projeto excluído logicamente', async () => {
+    it('resolve pela função SECURITY DEFINER, não por SELECT direto', async () => {
       const prisma = prismaFake();
       const svc = new BriefingLinkService(prisma);
       await svc.resolvePublic('tok');
 
-      // Excluir o cliente tem de matar o link público junto — senão a exclusão
-      // lógica deixaria uma porta aberta.
+      // Sem sessão não há contexto de tenant e o RLS é fail-closed: um SELECT
+      // direto volta vazio e todo token válido responde `invalid` (o bug do
+      // dogfooding). O filtro de exclusão lógica mora DENTRO da função — quem
+      // prova que ele funciona é o int-spec contra Postgres real, não este
+      // mock.
       const sql = prisma.$queryRaw.mock.calls[0][0].join('?');
-      expect(sql).toContain('cp.deleted_at IS NULL');
-      expect(sql).toContain('c.deleted_at IS NULL');
+      expect(sql).toContain('resolve_briefing_link');
+      expect(sql).not.toContain('FROM briefing_links');
     });
 
     it('busca pelo HASH do token, nunca pelo token em claro', async () => {
