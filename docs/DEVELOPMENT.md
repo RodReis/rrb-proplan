@@ -1629,3 +1629,27 @@ Registro do método, porque é a regra do `CLAUDE.md` operando: escopo é do PI.
 Encolher a spec para caber na imagem, ou inflar a fatia para cobrir a imagem
 inteira, seriam os dois lados do mesmo erro — eu decidindo escopo. Levei o
 conflito e as quatro adições ao PI **antes** de escrever a UI, não depois.
+
+#### Lição de método: PR empilhado com base ≠ `main` não roda CI
+
+Abri o PR-2 com base no **branch do PR-1** (é o que "empilhado" sugere) e o
+GitHub aceitou — mas o CI **nunca disparou**: o `.github/workflows/ci.yml` tem
+`on: pull_request: branches: [main]`, então PR cuja base não é `main` fica sem
+nenhum check. A UI não avisa; ela só mostra "no checks reported", que é fácil
+confundir com "ainda rodando".
+
+Isso é perigoso porque a guarda do ADR-019 (relatório de teste que bate com
+execução limpa) é justamente o que impede entrega sem evidência — e ela some em
+silêncio no exato tipo de PR onde é mais fácil errar número (relatório gerado no
+branch errado, que foi o erro que cometi no PR-1).
+
+**A Fatia 18 não teve o problema** porque apontou os 4 PRs empilhados para
+`main` desde o começo — o empilhamento vivia só na ordem de merge, não na base
+do PR. Adotado o mesmo aqui: **base `main` em todos os PRs da fatia**, mergeando
+na ordem. O branch de cada PR continua saindo do anterior (é o que mantém o diff
+pequeno); só a *base declarada no GitHub* é `main`.
+
+Vale como candidato a `[INFRA]` futuro: fazer o CI rodar também em base
+não-`main`. Não abri card porque não é comportamento documentado sendo violado —
+é limitação conhecida do workflow, e mudar o gatilho de CI é decisão que merece
+o PI.
