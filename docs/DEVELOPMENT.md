@@ -1235,6 +1235,40 @@ assimétricas, com o porquê no código.
 
 ### Entrega
 
-**PR #117** aberto em 2026-07-25 com `refs #8` — aguardando merge. Depois do
-merge: `proplan:done` no card; **só o PI** fecha e aplica `proplan:finalizado`
-(ADR-011).
+**PR #117** mergeado em 2026-07-25 (`refs #8`, squash `731a011`). Issue **#8
+fechada pelo PI** com `proplan:finalizado` no mesmo dia — fatia **aceita**.
+
+---
+
+## Fatia 12 — `descartado` (#4, decisão do PI em 2026-07-25)
+
+Card fechado sem código, por não ter escopo implementável. Registro aqui porque
+descarte também é entrega de fluxo: o board mentia — a issue estava em **A Fazer**
+com prio média e assignee, para um trabalho que não existia.
+
+O que havia no card, item por item:
+
+| item | onde foi parar |
+|---|---|
+| Migração Issues↔`STATUS.md` (o **título** do card) | **entregue na Fatia 5** — a SPEC-005 foi reescrita sobre Issues (decisão do PI, 2026-07-12) |
+| Sub-issues | **entregue na Fatia 18** (SPEC-024, #97, finalizada em 2026-07-21) — e antes disso estavam *rejeitadas* pelo ADR-011 |
+| GitHub Projects v2 | **condição, não tarefa**: `MVP2.md` item 5 — *"só se a ordenação determinística do board incomodar na prática"*. Sem spec |
+| Issue types | **condição, não tarefa**: *"sem caso de uso hoje"*. Sem spec |
+
+### Por que não codifiquei nada antes de descartar
+
+As duas sobras vivas não têm spec `aprovada-pi`, e o ADR-011 + `DECISIONS.md`
+tratam o **board plano** (`card = fatia`) como o desenho **correto** — não como
+defeito. Então:
+
+- **Não é fatia** que eu possa pegar: sem spec, escolher entre Projects v2 e
+  issue types seria eu decidindo escopo de produto.
+- **Não é `[FIX]`**: não há comportamento correto documentado sendo violado —
+  o documentado é o comportamento atual.
+
+Restava reescopar ou descartar, e **as duas são decisão do PI**. Levei as duas
+opções; o PI escolheu descartar.
+
+**O que fica vivo sem card:** as condições no `MVP2.md`. Se alguma se satisfizer
+na prática (a ordenação do board incomodar de fato), nasce **card novo com spec
+própria** — o #4 não se reabre.

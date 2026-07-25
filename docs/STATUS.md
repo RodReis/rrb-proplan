@@ -37,7 +37,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 9 | SPEC-014 | `SPEC-014-modelo-canonico.md` | Modelo canônico + proveniência + confiança |
 | 10 | SPEC-015 | `SPEC-015-contexto-assercao.md` | `docs/CONTEXT.md` + captura de asserção humana |
 | 11 | SPEC-016 | `SPEC-016-mcp-server.md` | MCP Server: contrato de evidência + 6 tools |
-| 12 | — | (sem spec) | GitHub Projects v2, sub-issues, issue types — backlog |
+| 12 | — | (sem spec) | ~~GitHub Projects v2, sub-issues, issue types~~ — **card descartado** (#4, 2026-07-25): título entregue na Fatia 5, sub-issues na Fatia 18 (SPEC-024); o resto segue como condição no `MVP2.md`, sem card |
 | 13 | SPEC-013 | `SPEC-013-drift-deploy.md` | Drift de deploy: confronto de fontes |
 | 13.5 | SPEC-018 | `SPEC-018-handoff-exportavel.md` | Handoff exportável |
 | 13.6 | SPEC-013.6 | `SPEC-013-6-probe-http.md` | Probe HTTP de URL declarada |
@@ -57,7 +57,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 - ~~Fatia 9~~ → **movida para A Fazer** (spec `aprovada-pi` em 2026-07-14: `docs/specs/SPEC-014-modelo-canonico.md`)
 - ~~Fatia 10~~ → **movida para A Fazer** (spec `aprovada-pi` em 2026-07-14: `docs/specs/SPEC-015-contexto-assercao.md`)
 - ~~Fatia 11~~ → **entregue; ver seção Em Andamento** (spec `aprovada-pi` em 2026-07-14: `docs/specs/SPEC-016-mcp-server.md`). Contrato de evidência obrigatório + 6 tools, **sem pass-through do GitHub** (ADR-017). **Fecha o núcleo do MVP2 (9→10→11).**
-- Fatia 12 — ~~Migração do Kanban para Issues~~ **antecipada para a Fatia 5**. Sobra no MVP2: GitHub Projects v2 (campo Status nativo, ordenação manual), sub-issues e issue types (prio: baixa; sem spec)
+- ~~Fatia 12~~ → **card descartado pelo PI em 2026-07-25** (#4 `closed` + `proplan:descartado`). Nada dele sobrou acionável: o título (~~Migração do Kanban para Issues~~) foi **antecipado para a Fatia 5** (SPEC-005) e **sub-issues foram entregues na Fatia 18** (SPEC-024, #97). As duas sobras restantes — **GitHub Projects v2** (campo Status nativo, ordenação manual) e **issue types** — continuam registradas **só como condição** no `docs/specs/MVP2.md` §Ordem sugerida item 5: Projects v2 *"só se a ordenação determinística do board incomodar na prática"*; issue types *"sem caso de uso hoje"*. **Sem card e sem spec** — se a condição se satisfizer, nasce card novo, não se reabre o #4
 - **Fatia 13** → spec escrita em 2026-07-14 (`docs/specs/SPEC-013-drift-deploy.md`), **`aprovada-pi` e depois DEVOLVIDA a `rascunho` em 2026-07-14**: o **Passo 0 bloqueante falhou** e a premissa da fatia foi **refutada por verificação direta**. O "handoff exportável" saiu do título e virou a **Fatia 13.5**. Dossiê original preservado abaixo — **leia primeiro a verificação**:
 
   > **✅ VERIFICADO 2026-07-14 (GitHub App instalado nesta conta `RodReis` + probe HTTP público) — separa o que o dossiê acertou do que fabricou, e por que a spec original caiu:**
