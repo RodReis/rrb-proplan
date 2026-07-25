@@ -1062,8 +1062,17 @@ da costura (entidade `Connection`, IdP fake, CTA no catálogo) vem depois.
       junto com a troca de IdP dobraria o raio de risco sobre o
       `github-auth.service`, que é o caminho de **toda leitura** (ADR-015).
 - [ ] **IdP fake no dev** e **CTA "conectar GitHub" no catálogo** (#93).
-- [ ] **Dogfooding com as chaves reais do PI** (`GOOGLE_CLIENT_ID` /
-      `GOOGLE_CLIENT_SECRET` no `apps/api/.env`).
+- [x] **Dogfooding com as chaves reais do PI** — **feito em 2026-07-25, local.**
+      O PI entrou com Google e caiu no Catálogo autenticado. A migração foi
+      verificada **no banco, não na tela**: `users` continua com **1 linha**, o
+      **mesmo `id`** (`ca08cd44…`), `google_id` carimbado, `github_id` 80895
+      preservado, `login` `RodReis` intacto — e **8 projetos / 1 tenant / 1
+      membership** onde estavam. É a prova de que o caso 2 rodou (migrou) em vez
+      do caso 3 (conta nova).
+- [ ] **Preencher `email` de quem já existe** — ver *Por que o email precisa ser
+      verificado*. Hoje depende de `UPDATE` manual; a solução geral (buscar
+      `GET /user/emails` no login GitHub, ou casar por outro critério na
+      `Connection`) é decisão do PI.
 
 ### Por que o email precisa ser verificado
 
@@ -1073,17 +1082,41 @@ Google com o email de outro e herdaria o acesso — a chave de casamento viraria
 porta de invasão. Por isso a recusa mora no `fetchUser`, antes de qualquer
 consulta ao banco: o perfil não confiável nunca chega a ser comparado.
 
-O usuário antigo tem email gravado? Só quando a conta GitHub o expõe. Quando não
-tem, o caso 2 não dispara e ele cai no caso 3 — vira conta nova e reconecta o
-GitHub. Não é perda silenciosa: os projetos continuam na linha antiga, e o PR da
-`Connection` é quem fecha essa costura. Daqui em diante todo login grava `email`,
-então a chave existe para todos.
+O usuário antigo tem email gravado? **Em geral não** — e o dogfooding provou que
+esse é o caso comum, não a exceção. A coluna `email` nasceu nesta migration e o
+login GitHub nunca a preencheu; pior, `GET /user` devolve `email: null` para
+quem mantém o email privado no perfil (o caso do próprio PI: as contas Google e
+GitHub são o **mesmo** endereço, e ainda assim o GitHub não o expõe).
+
+Consequência prática: sem `email` na linha, o caso 2 não dispara e o usuário
+pré-existente cai no caso 3 — conta nova, projetos e tenants órfãos na linha
+antiga. **Não é perda de dados** (nada é apagado), mas é perda de acesso até o PR
+da `Connection`.
+
+No banco local isso foi resolvido com um `UPDATE users SET email = …` antes do
+primeiro login. **Não serve como solução geral** — está anotado nos passos como
+pendência: ou o `handleCallback` do GitHub passa a buscar `GET /user/emails`
+(exige o escopo de email na instalação do App e devolve o primário mesmo quando
+privado), ou a costura da `Connection` casa por outro critério. Decisão do PI.
 
 ### Verificação
 
 `tsc --noEmit` limpo na API e na web · **API 675 testes** (100 suítes, +8 meus) ·
 **web 67** · `vite build` verde · `reports/TESTS.md` regenerado (ADR-019):
 Regras 656 · Banco 19 · Tela 69, **zero falhas**.
+
+**Dogfooding local (2026-07-25)**: login Google ponta a ponta com as chaves
+reais. `/auth/google` → 302 com `client_id` preenchido, `redirect_uri` casando
+o cadastro do Console, escopos `openid email profile` e state anti-CSRF em
+cookie `HttpOnly` espelhado na URL. Consentimento no browser → Catálogo
+autenticado, e o banco provando a migração na mesma linha (acima).
+
+**O que o dogfooding expôs e a suíte não pegava**: o usuário pré-existente tinha
+`email` NULL, então o casamento por email — o caminho que os testes cobrem —
+estava **morto na prática**. Só apareceu ao olhar a tabela antes de logar. O
+teste não errou: ele prova a função dado um email; o que faltava era o dado.
+Vale como método — testar a lógica não substitui inspecionar o estado real
+**antes** de rodar uma migração de uma via.
 
 ## SPEC-028 — URLs legíveis: slug em vez de UUID — `em andamento` (issue #107)
 
