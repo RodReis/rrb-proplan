@@ -28,15 +28,41 @@ model User {
   login                  String
   name                   String?
   avatarUrl              String?   @map("avatar_url")
-  encryptedUserToken     String?   @map("encrypted_user_token")
-  encryptedRefreshToken  String?   @map("encrypted_refresh_token")
-  tokenExpiresAt         DateTime? @map("token_expires_at")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
   projects               Project[]
   memberships            Membership[]
+  connections            Connection[]
 
   @@map("users")
+}
+
+// Conexão com um provedor externo (SPEC-025/026, ADR-021). É o que o usuário
+// **conectou** — distinto de quem ele **é** (`User`, vindo do IdP). É essa
+// separação que faz *desconectar ≠ deslogar*: revogar a conexão apaga os tokens
+// daqui e o `User` (com projetos e tenants) fica de pé.
+//
+// `provider` é texto livre e hoje só vale `"github"`. GitLab/Jira/Notion entram
+// sem migration — a costura está pronta e dormente, como a SPEC-026 decidiu.
+//
+// `1:N no schema, 1 na UI`: o `@@unique([userId, provider])` garante **uma**
+// conexão por provedor, mas o mesmo usuário pode ter várias linhas de provedores
+// diferentes. Desconectar **deleta a linha** em vez de marcar inativa: token
+// revogado não tem valor guardado, e uma linha ausente é um estado mais simples
+// de ler do que uma linha inativa com campos mortos.
+model Connection {
+  id                    String    @id @default(uuid())
+  userId                String    @map("user_id")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider              String
+  encryptedUserToken    String?   @map("encrypted_user_token")
+  encryptedRefreshToken String?   @map("encrypted_refresh_token")
+  tokenExpiresAt        DateTime? @map("token_expires_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@unique([userId, provider])
+  @@map("connections")
 }
 
 // Tenant = dono de projetos, membros e teto de IA (SPEC-022, Fatia 8).

@@ -36,20 +36,31 @@ export class GithubAuth {
     private readonly installationTokens: InstallationTokenService,
   ) {}
 
-  /** Token user-to-server, renovado transparentemente se perto de expirar. */
+  /**
+   * Token user-to-server, renovado transparentemente se perto de expirar.
+   *
+   * O token vive na `Connection` (SPEC-025), não no `User`: uma conta pode
+   * existir sem nenhuma conexão (nasceu do Google) ou ter acabado de
+   * desconectar. Nos dois casos não há linha aqui — e a ausência é resposta
+   * legítima, não corrupção: o catálogo lê isso como "conecte o GitHub".
+   */
   async userToken(userId: string): Promise<string> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException();
+    const connection = await this.prisma.connection.findUnique({
+      where: { userId_provider: { userId, provider: 'github' } },
+    });
+    if (!connection) {
+      throw new UnauthorizedException('GitHub não conectado — conecte para ler');
+    }
 
     if (
-      user.encryptedUserToken &&
-      !needsRefresh(user.tokenExpiresAt, new Date())
+      connection.encryptedUserToken &&
+      !needsRefresh(connection.tokenExpiresAt, new Date())
     ) {
-      return this.crypto.decrypt(user.encryptedUserToken);
+      return this.crypto.decrypt(connection.encryptedUserToken);
     }
 
     // Sem refresh token gravado (ex.: migração do OAuth App): refaz o login.
-    if (!user.encryptedRefreshToken) {
+    if (!connection.encryptedRefreshToken) {
       throw new UnauthorizedException('Sessão expirada — refaça o login');
     }
 
@@ -57,13 +68,13 @@ export class GithubAuth {
     let refreshed;
     try {
       refreshed = await this.oauth.refresh(
-        this.crypto.decrypt(user.encryptedRefreshToken),
+        this.crypto.decrypt(connection.encryptedRefreshToken),
       );
     } catch {
       throw new UnauthorizedException('Sessão expirada — refaça o login');
     }
-    await this.prisma.user.update({
-      where: { id: userId },
+    await this.prisma.connection.update({
+      where: { id: connection.id },
       data: {
         encryptedUserToken: this.crypto.encrypt(refreshed.accessToken),
         encryptedRefreshToken: this.crypto.encrypt(refreshed.refreshToken),

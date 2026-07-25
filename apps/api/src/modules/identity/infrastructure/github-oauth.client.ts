@@ -72,6 +72,44 @@ export class GithubOauthClient {
     };
   }
 
+  /**
+   * Revoga a autorização do usuário no GitHub (SPEC-025).
+   *
+   * `DELETE /applications/{client_id}/grant` derruba **a concessão inteira** —
+   * access e refresh token juntos. O irmão `/token` invalidaria só o access,
+   * deixando o refresh vivo: quem "desconectou" continuaria renovável. Como a
+   * spec exige revogação real ("seus dados continuam seus"), é o grant que cai.
+   *
+   * Autentica com Basic `client_id:client_secret` (é o App falando de si, não o
+   * usuário) e devolve 204 sem corpo.
+   */
+  async revoke(accessToken: string): Promise<void> {
+    const clientId = process.env.GITHUB_APP_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_APP_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new UnauthorizedException('GitHub App sem client_id/client_secret');
+    }
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const res = await fetch(
+      `https://api.github.com/applications/${clientId}/grant`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Basic ${basic}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ access_token: accessToken }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      },
+    );
+    // 404 = concessão já não existe (token expirado, App desinstalado): o fim
+    // desejado já vale, não é erro.
+    if (!res.ok && res.status !== 404) {
+      throw new UnauthorizedException('GitHub recusou revogar a autorização');
+    }
+  }
+
   async fetchUser(token: string): Promise<GithubUser> {
     const res = await fetch('https://api.github.com/user', {
       headers: { Authorization: `Bearer ${token}` },
