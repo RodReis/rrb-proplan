@@ -1534,3 +1534,75 @@ opções; o PI escolheu descartar.
 **O que fica vivo sem card:** as condições no `MVP2.md`. Se alguma se satisfizer
 na prática (a ordenação do board incomodar de fato), nasce **card novo com spec
 própria** — o #4 não se reabre.
+
+---
+
+## Fatia 19 (SPEC-029) — Clientes, funil Kanban e ciclo de vida do link público — `em andamento` (issue #127)
+
+Primeira fatia do **MVP3 / Frente Clientes** (`docs/specs/MVP3.md`). Fatia grande:
+entregue em **4 PRs empilhados** (1 branch por PR, base do N+1 = branch do N).
+
+| PR | escopo | estado |
+|---|---|---|
+| **PR-1** | Modelo de dados: 5 tabelas, enum do funil, RLS em profundidade, 2 ADRs | `feito` |
+| **PR-2** | Módulo `clients`: máquina de estados, CRUD + busca, transições auditadas, RBAC | a fazer |
+| **PR-3** | Módulo `briefing`: link hash-only, `GET /b/:token` não-diferencial, rate limit | a fazer |
+| **PR-4** | UI: página Clientes + Kanban dnd-kit com rollback | a fazer |
+
+### PR-1 — modelo de dados e isolamento
+
+- [x] **5 tabelas novas**: `clients` (raiz de tenancy), `client_projects`,
+      `client_status_transitions`, `briefing_links`, `audit_events` (append-only).
+- [x] **Enum `ClientProjectState`** com os 10 estados internos do funil
+      (`DRAFT` → … → `ARCHIVED`), mais finos que as 4 colunas da UI.
+- [x] **RLS em profundidade** (mesmo desenho da SPEC-022): raízes filtram por
+      `tenant_id = ANY(app.tenant_ids)`; filha (`client_projects`) e netas
+      (`client_status_transitions`, `briefing_links`) herdam por JOIN até
+      `clients`. `ENABLE` + `FORCE` nas cinco.
+- [x] **ADR-023** — funil de clientes é estado do app; ADR-011 segue mandando no
+      board de repos. Domínios disjuntos, nenhum fato nos dois lugares.
+- [x] **ADR-024** — `Tenant` existe sem instalação do GitHub.
+- [x] **Teste de isolamento** (`clients-rls.int-spec.ts`, 6 casos contra Postgres
+      real): raiz, filha, netas, `audit_events`, array de membership e fail-closed.
+
+#### `installationId` nullable não gerou DDL
+
+A spec pede *"migration: `Tenant.installationId` aceita NULL"*. Ao ir escrever a
+migration, a coluna **já era nullable desde a Fatia 8** — nasceu
+`"installation_id" INTEGER` (sem `NOT NULL`) na
+`20260717214642_fatia_8_multi_tenant`, porque o tenant pessoal já podia existir
+antes da instalação de org.
+
+Então o critério de aceite estava satisfeito **antes** da fatia começar, e um
+`ALTER COLUMN ... DROP NOT NULL` teria sido DDL no-op. O que faltava de verdade
+era o **ADR-024**: tornar deliberada uma propriedade que até aqui era acidente
+de implementação — e da qual a Frente Clientes passa a depender. Registrado
+como constatação no próprio ADR.
+
+#### Grants ficaram fora da migration
+
+`proplan_app` é não-owner e não herda privilégio nas tabelas novas. A tentação
+era um `GRANT ... TO proplan_app` no fim da migration — desnecessário: o
+`scripts/bootstrap-app-role.mjs` já roda `ALTER DEFAULT PRIVILEGES ... GRANT ...
+ON TABLES`, que cobre o que as migrations criarem depois. Repetir o grant
+divergiria do bootstrap na próxima mudança de privilégio.
+
+#### Netas são o ponto que um teste ingênuo deixa passar
+
+`client_status_transitions` e `briefing_links` não têm `tenant_id` próprio — a
+policy delas depende do JOIN até `clients` estar correto. Um join quebrado não
+devolveria zero linhas (que apareceria na hora): devolveria **tudo**. Por isso o
+int-spec povoa **dois** tenants com transição e link em cada, e afirma que o
+tenant A vê só `tr-a`/`bl-a`. Com um tenant só, o teste passaria mesmo com a
+policy furada.
+
+### Decisão de navegação: `/t/:tenant/clients` (PI, 2026-07-25)
+
+A spec define os contratos de API mas **nenhuma rota de UI**, e toda rota web
+existente é `/t/:tenant/p/:project/:tab` — presa a um **repo GitHub**. Cliente
+não tem repo, então não havia `:project` para pôr no path.
+
+Levado ao PI, que escolheu **`/t/:tenant/clients`** (+ `/t/:tenant/clients/funil`):
+nível de tenant, irmão do workspace de repo, espelhando a API da spec. As
+alternativas — aba dentro do workspace (exigiria projeto sentinela) e `/clients`
+na raiz (perderia o tenant no path, contra o ADR-020) — foram descartadas.

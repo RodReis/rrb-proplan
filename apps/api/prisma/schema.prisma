@@ -88,6 +88,9 @@ model Tenant {
   memberships    Membership[]
   projects       Project[]
   settings       Settings[]
+  // Frente Clientes (SPEC-029): raízes de tenancy do MVP3.
+  clients        Client[]
+  auditEvents    AuditEvent[]
 
   @@map("tenants")
 }
@@ -617,4 +620,135 @@ model SuppressedLink {
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   @@unique([projectId, sourcePath, targetPath])
   @@map("suppressed_links")
+}
+
+// ===========================================================================
+// MVP3 / Frente Clientes (SPEC-029, Fatia 19)
+//
+// Domínio DISJUNTO do board de repos: o ADR-011 continua valendo para as
+// GitHub Issues (estado do board de repos vive lá, nunca aqui); o funil de
+// clientes é entidade do app com transição auditada (ADR-023). Nenhum fato
+// mora nos dois lugares.
+//
+// Colisão de nome resolvida: `Project` já é o repo GitHub. A entidade desta
+// frente é `ClientProject` — nunca reusar a tabela existente (MVP3 §4).
+// ===========================================================================
+
+// Cliente do prestador. RAIZ de tenancy: carrega `tenant_id` e tem policy RLS
+// própria; as filhas herdam por join a esta tabela (mesmo desenho da SPEC-022).
+model Client {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  cpf       String?
+  company   String?
+  cnpj      String?
+  email     String?
+  phone     String?
+  whatsapp  String?
+  // Endereço: campos manuais nesta fatia — sem integração ViaCEP (SPEC-029
+  // "Notas técnicas"; avaliar na SPEC-030 junto das APIs do briefing).
+  zipCode   String?  @map("zip_code")
+  street    String?
+  district  String?
+  city      String?
+  state     String?
+  // Notas internas do prestador — nunca expostas na rota pública do briefing.
+  notes     String?
+  // Exclusão LÓGICA (SPEC-029): some das listas, a linha permanece e o
+  // histórico do funil não é apagado.
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projects  ClientProject[]
+
+  // Busca por nome/empresa/CNPJ é sempre dentro do tenant.
+  @@index([tenantId, deletedAt])
+  @@map("clients")
+}
+
+// Estados internos do funil (mais finos que as 4 colunas da UI — MVP3 §5).
+// A máquina de estados que valida as transições vive no `domain/` do módulo
+// `clients` e roda NO SERVIDOR; a UI é otimista e faz rollback no 422.
+enum ClientProjectState {
+  DRAFT
+  LINK_SENT
+  BRIEFING_STARTED
+  BRIEFING_SUBMITTED
+  ARTIFACTS_READY
+  CONTRACT_PENDING
+  CONTRACT_APPROVED
+  IN_PRODUCTION
+  DELIVERED
+  ARCHIVED
+}
+
+// Projeto de cliente — N por cliente. Filha por join a `clients` na RLS.
+model ClientProject {
+  id          String             @id @default(uuid())
+  clientId    String             @map("client_id")
+  title       String
+  description String?
+  state       ClientProjectState @default(DRAFT)
+  deletedAt   DateTime?          @map("deleted_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  client      Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  transitions ClientStatusTransition[]
+  briefingLinks BriefingLink[]
+
+  @@index([clientId, deletedAt])
+  @@index([state])
+  @@map("client_projects")
+}
+
+// Trilha do funil: cada mudança de estado grava de/para/ator/quando. É o que
+// substitui, neste domínio, o histórico que o board de repos tem nas Issues.
+model ClientStatusTransition {
+  id              String             @id @default(uuid())
+  clientProjectId String             @map("client_project_id")
+  fromState       ClientProjectState @map("from_state")
+  toState         ClientProjectState @map("to_state")
+  // Nullable: transição futura disparada pelo próprio sistema (ex.: submit do
+  // briefing move o card, SPEC-030) não tem usuário por trás.
+  actorUserId     String?            @map("actor_user_id")
+  at              DateTime           @default(now())
+  clientProject   ClientProject      @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+
+  @@index([clientProjectId, at])
+  @@map("client_status_transitions")
+}
+
+// Link público de briefing. O token de 256 bits é exibido UMA ÚNICA VEZ na
+// criação; aqui persiste APENAS o hash SHA-256 (critério de aceite: nenhuma
+// coluna contém o token em claro). O tenant da rota pública `GET /b/:token` é
+// derivado deste hash — nunca de `workspaceId` no request (ADR-020).
+model BriefingLink {
+  id              String        @id @default(uuid())
+  clientProjectId String        @map("client_project_id")
+  tokenHash       String        @unique @map("token_hash")
+  expiresAt       DateTime?     @map("expires_at")
+  revokedAt       DateTime?     @map("revoked_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+
+  @@index([clientProjectId])
+  @@map("briefing_links")
+}
+
+// Trilha append-only da frente (MVP3 §3: infra compartilhada, nasce aqui).
+// Nunca sofre UPDATE nem DELETE — só INSERT e leitura.
+model AuditEvent {
+  id       String   @id @default(uuid())
+  tenantId String   @map("tenant_id")
+  kind     String
+  subject  String
+  payload  Json?
+  at       DateTime @default(now())
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, at])
+  @@index([subject])
+  @@map("audit_events")
 }
