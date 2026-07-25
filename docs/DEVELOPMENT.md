@@ -1226,8 +1226,11 @@ que é a razão de existir desta fatia. Por decisão do PI (2026-07-25), a
       no `github-auth.service.spec.ts`), cobrindo revogação real, sessão que
       sobrevive, falha do GitHub, reconectar sem duplicar linha.
 - [x] **`reports/TESTS.md` regenerado** (ADR-019) — a contagem mudou e o CI
-      barra divergência.
-- [ ] **Dogfooding no navegador** — pendente.
+      barra divergência. **O relatório acompanha o PR que muda a contagem**: os
+      11 testes da API entram no PR-1, então é lá que o número confere; commitar
+      só no PR-2 fez o CI do PR-1 falhar (a guarda roda por PR, isolado).
+- [x] **Desconexão verificada em runtime** — ver *Verificação*.
+- [ ] **Dogfooding no navegador** — pendente (as telas nunca foram abertas).
 
 ### Verificação
 
@@ -1244,6 +1247,21 @@ projetos): antes, `users` com token; depois, `connections` com **1 linha**
 (`provider=github`, access e refresh migrados, `token_expires_at` preservado) e
 os **8 projetos intactos**. Rotas novas respondem **401 sem cookie** e
 `{"connected":true}` com sessão real.
+
+**Desconexão exercitada de ponta a ponta (2026-07-25, API local + sessão real do
+PI)** — o critério central da spec, provado fora do teste unitário:
+
+| passo | resultado |
+|---|---|
+| `GET /auth/connections/github` antes | `{"connected":true}` |
+| `POST …/disconnect` | `{"connected":false}` |
+| `GET /auth/me` **depois** | a sessão responde íntegra — **desconectar ≠ deslogar** |
+| `GET /catalog/projects` | **8 projetos** — a memória que vira os cards read-only |
+| `GET /catalog/installations` | **401** — nenhuma leitura no GitHub em nome dele |
+| banco | `connections` **0** · `projects` **8** · `users` **1** |
+
+A linha da conexão foi deletada e nada mais se moveu. Falta apenas exercitar o
+mesmo caminho **pela tela**, com o botão — daí a pendência do dogfooding.
 
 ## SPEC-028 — URLs legíveis: slug em vez de UUID — `em andamento` (issue #107)
 
