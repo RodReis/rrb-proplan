@@ -234,6 +234,12 @@ export interface Assertion {
   body: string;
 }
 
+/** Estado da conexão GitHub (SPEC-025). Ausência de conexão é informação, não
+ *  erro: o catálogo a lê para mostrar o CTA de conectar. */
+export interface GithubConnection {
+  connected: boolean;
+}
+
 export const api = {
   /** Entrada da sessão do app (SPEC-026) — a identidade é o IdP, não o GitHub. */
   googleLoginUrl: `${API_URL}/auth/google`,
@@ -242,6 +248,14 @@ export const api = {
   loginUrl: `${API_URL}/auth/github`,
   me: () => request<SessionUser>('/auth/me'),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  /** Estado da conexão GitHub (SPEC-025) — decide entre catálogo vivo e read-only. */
+  githubConnection: () =>
+    request<GithubConnection>('/auth/connections/github'),
+  /** Revoga a conexão GitHub. **Não** encerra a sessão — desconectar ≠ deslogar. */
+  disconnectGithub: () =>
+    request<GithubConnection>('/auth/connections/github/disconnect', {
+      method: 'POST',
+    }),
   installations: () =>
     request<CatalogInstallations>('/catalog/installations'),
   installUrl: () => request<{ url: string }>('/catalog/install-url'),

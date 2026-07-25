@@ -1057,11 +1057,16 @@ da costura (entidade `Connection`, IdP fake, CTA no catálogo) vem depois.
       critério caro da spec. O e2e da tela passou a ancorar no CTA do Google.
 - [x] **Docs**: `ARCHITECTURE.md` → Identity reescrito para conta ⊥ conexão
       (era *"GitHub App = Identity"*), este arquivo e o `STATUS.md`.
-- [ ] **Entidade `Connection`** — mover `userToken`/`installationId`/
+- [x] **Entidade `Connection`** — mover `userToken`/`installationId`/
       installation-token do `User` para lá. **PR seguinte, de propósito**: fazer
       junto com a troca de IdP dobraria o raio de risco sobre o
       `github-auth.service`, que é o caminho de **toda leitura** (ADR-015).
-- [ ] **IdP fake no dev** e **CTA "conectar GitHub" no catálogo** (#93).
+      **Feito na SPEC-025** (issue #93), que precisava dela como fundação —
+      ver a seção abaixo. `installationId` **ficou onde estava**: ele mora no
+      `Project`, não no `User`, e movê-lo não era pré-requisito de nada aqui.
+- [x] **CTA "conectar GitHub" no catálogo** — entregue na SPEC-025 (card de
+      conexão). O **IdP fake no dev** segue pendente: não bloqueia ninguém
+      enquanto as chaves reais do Google funcionam no local.
 - [x] **Dogfooding com as chaves reais do PI** — **feito em 2026-07-25, local.**
       O PI entrou com Google e caiu no Catálogo autenticado. A migração foi
       verificada **no banco, não na tela**: `users` continua com **1 linha**, o
@@ -1152,6 +1157,93 @@ estava **morto na prática**. Só apareceu ao olhar a tabela antes de logar. O
 teste não errou: ele prova a função dado um email; o que faltava era o dado.
 Vale como método — testar a lógica não substitui inspecionar o estado real
 **antes** de rodar uma migração de uma via.
+
+## SPEC-025 — Desconectar / reconectar o GitHub — `em andamento` (issue #93)
+
+Spec `aprovada-pi` (2026-07-20). 2ª da Frente Identidade, pós-MVP1, sem número
+de fatia. Rege o **ADR-021**.
+
+**A spec dizia "sem modelo novo — a conexão já é entidade separada na
+SPEC-026". Não era.** A SPEC-026 entregou a troca de IdP (PR-1) e deixou a
+entidade `Connection` explicitamente para o PR seguinte; os tokens continuavam
+no `User`. Sem essa separação, *desconectar* não teria como não ser *deslogar* —
+que é a razão de existir desta fatia. Por decisão do PI (2026-07-25), a
+`Connection` foi **absorvida aqui** em vez de virar um PR à parte da #94.
+
+### Passos
+
+- [x] **Entidade `Connection`** (`schema.prisma`): `userId` + `provider` +
+      os três campos de token, com `@@unique([userId, provider])` — *1:N no
+      schema, 1 na UI* (SPEC-026). `provider` é texto livre e hoje só vale
+      `"github"`: GitLab/Jira/Notion entram sem migration, costura dormente.
+      Desconectar **deleta a linha** em vez de marcar inativa — token revogado
+      não tem valor guardado, e ausência é estado mais simples que uma linha
+      morta com campos nulos.
+- [x] **Migration `20260725190000_spec_025_connection`** — cria a tabela,
+      **copia os tokens de quem já existe** e só então derruba as três colunas
+      do `users`. O `INSERT` do meio é o ponto crítico: sem ele, todo usuário
+      perderia o token no deploy e teria de reconectar (o PI tem 8 projetos).
+- [x] **`github-auth.service` lê da `Connection`** — o caminho de **toda
+      leitura** (ADR-015). Ausência de conexão virou `UnauthorizedException`
+      tratada, não `TypeError` ao ler campo de `null`: depois de desconectar (ou
+      numa conta nascida do Google) a linha simplesmente não existe, e isso é
+      resposta legítima.
+- [x] **`handleCallback` ganhou dois papéis**: com `userId` (sessão viva) →
+      **conecta** o GitHub à identidade logada; sem `userId` → **login legado**
+      pelo GitHub, como antes da SPEC-026. Conectar carimba só o `githubId`; o
+      `login`/`name` da sessão não são sobrescritos — quem manda no rótulo é o
+      IdP, não a conexão.
+- [x] **`GithubOauthClient.revoke`** — `DELETE /applications/{client_id}/grant`,
+      que derruba **a concessão inteira** (access + refresh). O irmão `/token`
+      invalidaria só o access e deixaria o refresh vivo: quem "desconectou"
+      seguiria renovável. Revogação real é o que honra *"seus dados continuam
+      seus"* da spec. 404 (concessão já inexistente) não é erro — o fim
+      desejado já vale.
+- [x] **`POST /auth/connections/github/disconnect`** e
+      **`GET /auth/connections/github`**. O disconnect **não** limpa o cookie de
+      sessão, de propósito: é a linha que separa desconectar de deslogar.
+      Revogação é *best-effort* — se o GitHub recusar, a conexão cai localmente
+      mesmo assim, senão o usuário ficaria preso a algo que mandou remover.
+- [x] **Web — card de conexão no Catálogo** (posição e layout do mockup do PI,
+      2026-07-25, adaptados aos tokens do `DESIGN.md`): selo Ativo/Desconectado,
+      botão **Desconectar** vermelho, e o CTA **Conectar GitHub** quando não há
+      conexão — a única porta de volta.
+- [x] **Web — rota `/settings`** (`SettingsPage.tsx`), com **Tema · Conta ·
+      Conexões**. Página, não modal: o `Settings.tsx` existente é um modal aberto
+      pela Sidebar do *workspace*, e desconectado não há workspace de onde
+      abri-lo — que é exatamente quando se precisa dela. Traz a distinção que a
+      spec §6 pede: **Desconectar GitHub** (vermelho) × **Sair da conta**
+      (neutro), e o link externo para desinstalar o App no github.com.
+- [x] **Web — cards read-only com selo "GitHub desconectado"**. A fonte é o
+      **índice local** (`/catalog/projects`, só banco), não
+      `/catalog/installations` — este é leitura no GitHub e devolveria 401 sem
+      conexão, que a UI leria como falha. É a "memória preservada" da spec §4.
+- [x] **`catalogView` como função pura + 5 testes**: o repo testa lógica pura,
+      não mocka a `api`. O erro que ela barra é tratar *desconectado* como
+      *vazio* — os dois chegam com `groups: []` e pedem telas opostas
+      (reconectar × instalar o App).
+- [x] **14 testes na API** (`github-connection.spec.ts` + o caso "sem conexão"
+      no `github-auth.service.spec.ts`), cobrindo revogação real, sessão que
+      sobrevive, falha do GitHub, reconectar sem duplicar linha.
+- [x] **`reports/TESTS.md` regenerado** (ADR-019) — a contagem mudou e o CI
+      barra divergência.
+- [ ] **Dogfooding no navegador** — pendente.
+
+### Verificação
+
+`tsc --noEmit` limpo na API e na web · **API 689 testes** (102 suítes, +14
+meus) · **web 72** (+5) · `vite build` verde · e2e (2) passando.
+
+`reports/TESTS.md` regenerado: **Regras 670 · Banco 19 · Tela 74**, zero
+falhas. As categorias do relatório agregam diferente do total bruto do runner —
+Banco é subconjunto das suítes da API (670 + 19 = 689) e Tela soma os 72 do
+vitest com os 2 do Playwright.
+
+**Migration validada no banco local** (o mesmo do dogfooding do PI, com 8
+projetos): antes, `users` com token; depois, `connections` com **1 linha**
+(`provider=github`, access e refresh migrados, `token_expires_at` preservado) e
+os **8 projetos intactos**. Rotas novas respondem **401 sem cookie** e
+`{"connected":true}` com sessão real.
 
 ## SPEC-028 — URLs legíveis: slug em vez de UUID — `em andamento` (issue #107)
 

@@ -5,6 +5,7 @@ import { api, SessionUser, UnauthorizedError } from './lib/api';
 import { useTheme } from './theme';
 import { Login } from './pages/Login';
 import { Catalog } from './pages/Catalog';
+import { SettingsPage } from './pages/SettingsPage';
 import { ResolveRoute } from './pages/workspace/ResolveRoute';
 import { WorkspaceRoute } from './pages/workspace/WorkspaceRoute';
 
@@ -49,6 +50,12 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Catalog user={auth.user} onLogout={logout} />} />
+        {/* Configurações fora do shell de workspace (SPEC-025 §1): sem GitHub
+            conectado não há workspace, e é justamente aí que se precisa dela. */}
+        <Route
+          path="/settings"
+          element={<SettingsPage user={auth.user} onLogout={logout} />}
+        />
         {/* Rotas de projeto sob /t/:tenant (SPEC-022), com slug legível no lugar
             do UUID (SPEC-028). O ResolveRoute traduz os tokens da URL — slug ou
             uuid — nos ids canônicos e fixa o tenant ativo (api.setActiveTenant)

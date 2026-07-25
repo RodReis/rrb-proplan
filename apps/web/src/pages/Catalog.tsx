@@ -5,6 +5,7 @@ import {
   api,
   CatalogInstallations,
   InstallationGroup,
+  Project,
   Repo,
   SessionUser,
 } from '../lib/api';
@@ -23,6 +24,27 @@ type CatalogState =
   | { status: 'error'; message: string }
   | { status: 'ready'; data: CatalogInstallations };
 
+/** Catálogo de quem não tem GitHub conectado (SPEC-025) — não é falha. */
+const VAZIO: CatalogInstallations = { groups: [], empty: true };
+
+/**
+ * O que o Catálogo mostra abaixo do card de conexão (SPEC-025).
+ *
+ * Função pura porque a distinção é sutil e fácil de regredir: **desconectado
+ * não é vazio**. `empty` significa "conectado, mas o App não está instalado em
+ * nenhum repo" → CTA de instalar. Sem conexão o índice local vira cards
+ * read-only, e oferecer "instalar" ali mandaria o usuário para o github.com
+ * quando o que falta é reconectar.
+ */
+export function catalogView(
+  connected: boolean | null,
+  data: CatalogInstallations,
+): 'offline' | 'install' | 'groups' | 'unknown' {
+  if (connected === null) return 'unknown';
+  if (!connected) return 'offline';
+  return data.empty ? 'install' : 'groups';
+}
+
 /**
  * Catálogo (SPEC-021 §2) — página cheia em `/`, fora do shell de workspace.
  *
@@ -35,16 +57,54 @@ export function Catalog({ user, onLogout }: Props) {
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' });
   const [busyRepoId, setBusyRepoId] = useState<number | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Repo | null>(null);
+  // `null` = ainda não sabemos (evita piscar o CTA de conectar antes da resposta).
+  const [connected, setConnected] = useState<boolean | null>(null);
+  // Projetos do índice local, exibidos read-only enquanto não há conexão.
+  const [offline, setOffline] = useState<Project[]>([]);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const load = useCallback(() => {
     setCatalog({ status: 'loading' });
     api
-      .installations()
-      .then((data) => setCatalog({ status: 'ready', data }))
+      .githubConnection()
+      .then(({ connected }) => {
+        setConnected(connected);
+        // Desconectado, `/catalog/installations` é leitura no GitHub e devolveria
+        // 401 — a UI leria como falha o que é um estado válido. O índice local
+        // (`/catalog/projects`, só banco) é a memória que a spec manda preservar.
+        if (!connected) {
+          return api
+            .projects()
+            .then((projects) => setOffline(projects))
+            .then(() => setCatalog({ status: 'ready', data: VAZIO }));
+        }
+        return api
+          .installations()
+          .then((data) => setCatalog({ status: 'ready', data }));
+      })
       .catch((err) => setCatalog({ status: 'error', message: String(err) }));
   }, []);
 
   useEffect(() => load(), [load]);
+
+  /** Desconectar (SPEC-025): revoga a conexão e mantém a sessão do app. */
+  async function disconnect() {
+    setDisconnecting(true);
+    try {
+      await api.disconnectGithub();
+      setConfirmDisconnect(false);
+      setConnected(false);
+      // O índice sobrevive à desconexão — é o que vira os cards read-only.
+      setOffline(await api.projects());
+      setCatalog({ status: 'ready', data: VAZIO });
+      toast.success('GitHub desconectado. Sua conta continua ativa.');
+    } catch (err) {
+      toast.error(`Não foi possível desconectar: ${String(err)}`);
+    } finally {
+      setDisconnecting(false);
+    }
+  }
 
   async function manage(repo: Repo) {
     setBusyRepoId(repo.githubRepoId);
@@ -116,6 +176,28 @@ export function Catalog({ user, onLogout }: Props) {
           <ThemeIcon dark={dark} />
         </button>
 
+        <button
+          onClick={() => navigate('/settings')}
+          title="Configurações"
+          aria-label="Configurações"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-border2 text-muted transition-colors duration-150 hover:border-hoverb hover:text-text"
+        >
+          <svg
+            aria-hidden
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
         <div className="flex items-center gap-2.5 border-l border-border pl-3.5">
           {user.avatarUrl ? (
             <img
@@ -155,7 +237,7 @@ export function Catalog({ user, onLogout }: Props) {
                   serão gerenciados.
                 </p>
               </div>
-              {catalog.status === 'ready' && !catalog.data.empty && (
+              {catalog.status === 'ready' && !catalog.data.empty && connected && (
                 <button
                   onClick={() => void openInstall()}
                   className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-[9px] border px-4 text-[12.5px] font-medium backdrop-blur-md transition-[filter] duration-150 hover:brightness-110"
@@ -183,15 +265,28 @@ export function Catalog({ user, onLogout }: Props) {
             </div>
           </section>
 
+          {connected !== null && (
+            <ConnectionCard
+              connected={connected}
+              login={user.login}
+              onDisconnect={() => setConfirmDisconnect(true)}
+            />
+          )}
+
           {catalog.status === 'loading' && <SkeletonList />}
           {catalog.status === 'error' && (
             <div className="rounded-[14px] border border-error/30 bg-error/5 p-4 text-sm text-error">
               Falha ao listar instalações: {catalog.message}
             </div>
           )}
-          {catalog.status === 'ready' && catalog.data.empty && (
-            <EmptyInstall onInstall={() => void openInstall()} />
-          )}
+          {catalog.status === 'ready' &&
+            catalogView(connected, catalog.data) === 'install' && (
+              <EmptyInstall onInstall={() => void openInstall()} />
+            )}
+          {catalog.status === 'ready' &&
+            catalogView(connected, catalog.data) === 'offline' && (
+              <OfflineProjects projects={offline} />
+            )}
           {catalog.status === 'ready' &&
             catalog.data.groups.map((group) => (
               <AccountGroup
@@ -228,7 +323,173 @@ export function Catalog({ user, onLogout }: Props) {
           onCancel={() => setConfirmRemove(null)}
         />
       )}
+
+      {confirmDisconnect && (
+        <ConfirmDialog
+          title="Desconectar do GitHub?"
+          message="O ProPlan deixa de acessar seus repositórios: nenhuma leitura ou escrita acontece em seu nome, e os projetos ficam somente leitura. Sua conta continua ativa — isto não é sair. Nada é apagado no GitHub, e reconectar traz tudo de volta sem reinstalar o App."
+          confirmLabel={disconnecting ? 'Desconectando…' : 'Desconectar GitHub'}
+          danger
+          onConfirm={() => void disconnect()}
+          onCancel={() => setConfirmDisconnect(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Card de conexão (SPEC-025) — o estado do GitHub, acima da lista.
+ *
+ * Distingue as três ações que a spec diz serem confundíveis: desconectar mora
+ * aqui (revoga a autorização), desgerenciar fica em cada repo (índice local) e
+ * desinstalar o App é link externo para o github.com. Sem conexão, o card vira
+ * o CTA de conectar — é a única porta para o catálogo voltar a viver.
+ */
+function ConnectionCard({
+  connected,
+  login,
+  onDisconnect,
+}: {
+  connected: boolean;
+  login: string;
+  onDisconnect: () => void;
+}) {
+  return (
+    <section
+      className={
+        'flex items-center gap-4 rounded-[14px] border px-5 py-4 ' +
+        (connected ? 'border-border bg-panel' : 'border-accent-border bg-pop/30')
+      }
+    >
+      <span
+        aria-hidden
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border2 bg-card text-body2"
+      >
+        <GithubMark />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+            Conexão
+          </span>
+          <span
+            className={
+              'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ' +
+              (connected ? 'bg-success/10 text-success' : 'bg-card text-muted')
+            }
+          >
+            <span
+              aria-hidden
+              className={
+                'h-1.5 w-1.5 rounded-full ' +
+                (connected ? 'bg-success' : 'bg-muted')
+              }
+            />
+            {connected ? 'Ativo' : 'Desconectado'}
+          </span>
+        </div>
+        <h2 className="mt-0.5 text-[15px] font-semibold">
+          {connected ? 'GitHub conectado' : 'GitHub desconectado'}
+        </h2>
+        <p className="mt-0.5 truncate font-mono text-[11px] text-muted">
+          {connected
+            ? `@${login} · GitHub App instalado · leitura de documentação`
+            : 'Seus projetos estão somente leitura. Reconecte para voltar a sincronizar.'}
+        </p>
+      </div>
+
+      {connected ? (
+        <button
+          onClick={onDisconnect}
+          className="h-9 shrink-0 rounded-[9px] border border-error/40 px-4 text-[12.5px] font-medium text-error transition-colors duration-150 hover:border-error hover:bg-error/10"
+        >
+          Desconectar
+        </button>
+      ) : (
+        <a
+          href={api.loginUrl}
+          className="flex h-9 shrink-0 items-center gap-2 rounded-[9px] border px-4 text-[12.5px] font-medium transition-[filter] duration-150 hover:brightness-110"
+          style={{
+            borderColor: 'var(--accentBorder)',
+            background: 'color-mix(in srgb, var(--pop) 60%, transparent)',
+          }}
+        >
+          <GithubMark size={13} />
+          Conectar GitHub
+        </a>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Projetos do índice local enquanto o GitHub está desconectado (SPEC-025 §4).
+ *
+ * São **read-only de verdade**: sem `Abrir workspace`, sem desgerenciar. As
+ * abas leem do GitHub, e abrir um workspace sem conexão daria erro no lugar de
+ * conteúdo. O selo diz por que o card está inerte; o CTA de reconectar vive no
+ * card de conexão acima, que é o único caminho de volta.
+ */
+function OfflineProjects({ projects }: { projects: Project[] }) {
+  if (projects.length === 0) {
+    return (
+      <div className="rounded-[14px] border border-border2 bg-surface p-5 text-center text-sm text-muted">
+        Nenhum projeto no índice local. Conecte o GitHub para escolher
+        repositórios.
+      </div>
+    );
+  }
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center gap-2.5">
+        <span className="text-[15px] font-semibold">Projetos</span>
+        <span className="flex-1" />
+        <span className="text-xs text-faint">
+          {projects.length} no índice · somente leitura
+        </span>
+      </div>
+      <ul className="flex flex-col gap-2.5">
+        {projects.map((p) => (
+          <li
+            key={p.id}
+            className="flex items-center gap-4 rounded-[14px] border border-border2 bg-surface px-[18px] py-[15px] opacity-70"
+          >
+            <span
+              aria-hidden
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ background: 'var(--dimmer)' }}
+            />
+            <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="whitespace-nowrap text-[13.5px] text-muted">
+                  {p.owner}/
+                </span>
+                <span className="-ml-2 truncate text-[13.5px] font-semibold text-text">
+                  {p.name}
+                </span>
+              </span>
+              <span className="truncate text-xs text-faint">
+                {p.description ?? 'Sem descrição'}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-full border border-border2 px-[9px] py-[3px] font-mono text-[8.5px] uppercase tracking-[0.08em] text-faint">
+              GitHub desconectado
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function GithubMark({ size = 20 }: { size?: number }) {
+  return (
+    <svg aria-hidden width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
   );
 }
 
