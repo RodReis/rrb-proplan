@@ -10,6 +10,7 @@ import {
   type Client,
 } from '../../lib/api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ClientDetailPanel } from './ClientDetailPanel';
 import { ClientsShell } from './ClientsShell';
 import { initials } from './boardView';
 
@@ -187,6 +188,8 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
   const [query, setQuery] = useState('');
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Client | null>(null);
+  /** Cliente aberto no detalhe — a porta de entrada dos projetos (FIX #134). */
+  const [openClient, setOpenClient] = useState<Client | null>(null);
 
   const load = useCallback(async (q: string) => {
     try {
@@ -304,7 +307,17 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
             {clients.map((client) => (
               <li
                 key={client.id}
-                className="grid min-h-[72px] grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-4 border-b border-border/70 px-4 py-3 transition-colors duration-150 last:border-b-0 hover:bg-card/45 max-[720px]:grid-cols-[40px_minmax(0,1fr)] max-[720px]:gap-y-3"
+                // Clicar na linha abre o detalhe (projetos do cliente). Vale
+                // para viewer também: ler não é escrever, e sem esta porta o
+                // funil não tem como receber card (FIX #134).
+                onClick={() => setOpenClient(client)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setOpenClient(client);
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`Abrir projetos de ${client.name}`}
+                className="grid min-h-[72px] cursor-pointer grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-4 border-b border-border/70 px-4 py-3 transition-colors duration-150 last:border-b-0 hover:bg-card/45 max-[720px]:grid-cols-[40px_minmax(0,1fr)] max-[720px]:gap-y-3"
               >
                 <span
                   aria-hidden
@@ -332,15 +345,24 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
                 </div>
 
                 {canWrite && (
+                  // `stopPropagation`: a linha inteira abre o detalhe, então sem
+                  // isto clicar em Editar/Remover abriria a gaveta por baixo do
+                  // diálogo (mesmo padrão do link `#N` no KanbanCard).
                   <div className="flex justify-end gap-2 max-[720px]:col-span-2 max-[720px]:justify-start">
                     <button
-                      onClick={() => setEditingClient(client)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingClient(client);
+                      }}
                       style={ghostButton}
                     >
                       Editar
                     </button>
                     <button
-                      onClick={() => setConfirmDelete(client)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDelete(client);
+                      }}
                       style={dangerGhostButton}
                     >
                       Remover
@@ -352,6 +374,16 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
           </ul>
         )}
       </section>
+
+      {openClient && (
+        <ClientDetailPanel
+          client={openClient}
+          canWrite={canWrite}
+          onClose={() => setOpenClient(null)}
+          // Projeto criado/link mexido ⇒ a lista atrás pode ter mudado.
+          onChanged={() => void load(query)}
+        />
+      )}
 
       {editingClient !== null && (
         <ClientDialog

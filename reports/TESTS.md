@@ -14,7 +14,7 @@ Totais da última execução (regenerado, não acumulado):
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
 | — | — | — | Regras de Negócio | 758 | 758 | 0 | 74.8 | — | — |
 | — | — | — | Banco | 31 | 31 | 0 | 92.6 | — | — |
-| — | — | — | Tela | 127 | 127 | 0 | 27.8 | — | — |
+| — | — | — | Tela | 149 | 149 | 0 | 30.5 | — | — |
 
 ## Histórico por entrega
 
@@ -91,3 +91,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | 2026-07-26 | #128 | SPEC-030 | Regras de Negócio | 758 | 758 | 0 | 74.8 | #133 | [#133](https://github.com/RodReis/rrb-proplan/pull/133) |
 | 2026-07-26 | #128 | SPEC-030 | Banco | 31 | 31 | 0 | 92.6 | #133 | [#133](https://github.com/RodReis/rrb-proplan/pull/133) |
 | 2026-07-26 | #128 | SPEC-030 | Tela | 127 | 127 | 0 | 27.8 | #133 | [#133](https://github.com/RodReis/rrb-proplan/pull/133) |
+| 2026-07-26 | #134 | SPEC-029 | Regras de Negócio | 758 | 758 | 0 | 74.8 | #135 | [#135](https://github.com/RodReis/rrb-proplan/pull/135) |
+| 2026-07-26 | #134 | SPEC-029 | Banco | 31 | 31 | 0 | 92.6 | #135 | [#135](https://github.com/RodReis/rrb-proplan/pull/135) |
+| 2026-07-26 | #134 | SPEC-029 | Tela | 149 | 149 | 0 | 30.5 | #135 | [#135](https://github.com/RodReis/rrb-proplan/pull/135) |
