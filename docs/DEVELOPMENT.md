@@ -1907,3 +1907,105 @@ banco · 127 tela), `tsc` limpo nos dois apps e `vite build` OK — mas abrir um
 card contra o GitHub real, ver o corpo renderizado e conferir a trilha contra a
 aba do GitHub é o passo que falta. O modo degradado também não foi exercitado
 com rate limit de verdade.
+
+## FIX #134 (SPEC-029) — não havia como criar projeto: o funil nascia inoperável — `feito`
+
+Achado no **dogfooding do PI em 2026-07-26**, logo depois de a Fatia 19 (#127) ir
+para `proplan:done`: dois clientes criados, funil mostrando **0 CARDS** nas quatro
+colunas.
+
+O funil estava **certo**. Ele lista `client_projects`, e havia zero — porque
+**nenhum componente chamava `createClientProject`**, embora a função existisse em
+`apps/web/src/lib/api.ts` desde o PR-4. Cliente não é card; projeto é.
+
+| camada | antes do FIX |
+|---|---|
+| Tabela `client_projects` + RLS | ✅ PR-1 |
+| `POST /clients/:id/projects` | ✅ PR-2 |
+| Ciclo de vida do link (`briefing-link`) | ✅ PR-3 |
+| `createClientProject` / `createBriefingLink` no client web | ✅ escritos |
+| **Componente que chamava qualquer um** | ❌ **nenhum** |
+| **Detalhe do cliente** (que a spec diz listar os projetos) | ❌ não existia |
+
+O backend inteiro estava pronto e sem consumidor. Era só UI.
+
+### Por que a suíte não pegou — e o que mudou
+
+O PR-4 testou `boardView.ts` (mover, rollback, reconciliação) com fixtures em
+memória: provou a lógica **dado que existem cards**. Nada afirmava que a UI
+consegue **criar** um.
+
+É a mesma classe de lacuna da #122 (`users.email` NULL): a suíte estava correta,
+faltava o **dado**. O teste que fecha isso agora existe e é explícito —
+`ClientDetailPanel.test.tsx` → *"cria projeto pela UI e avisa o pai para recarregar
+o funil"*. Sem ele, o próximo refactor reabre o mesmo buraco.
+
+**A lição real:** teste de lógica com fixture nunca prova que existe caminho até a
+lógica. Numa fatia que entrega tela, pelo menos um teste tem de percorrer a ação
+do usuário de ponta a ponta — ou o dogfooding vira o primeiro teste, como foi aqui.
+
+### O que entrou
+
+**Detalhe do cliente** (`ClientDetailPanel`) — clicar na linha da lista abre a
+gaveta com os projetos do cliente, o estado de cada um e o botão *Novo projeto*.
+É o que o critério de aceite da SPEC-029 descreve literalmente (*"os dois projetos
+listam no detalhe do cliente"*). Reusa a classe `.card-drawer` criada na SPEC-030.
+
+**Clicar na linha vale para `viewer` também.** Ler não é escrever, e sem essa
+porta o funil não recebe card. Os botões *Editar*/*Remover* dentro da linha fazem
+`stopPropagation` — mesmo padrão do link `#N` no `KanbanCard`, senão clicar em
+Editar abriria a gaveta por baixo do diálogo.
+
+**Link de briefing na criação** (§2 da spec, decisão do PI): ao criar o projeto o
+painel do link abre em seguida. O token aparece **uma única vez** — só o hash
+SHA-256 persiste, então o aviso na tela diz que a única saída, se perdido, é
+regenerar. Copiar / expiração (`<input type="date">` nativo, sem lib) / revogar /
+regenerar, com `ConfirmDialog` no regenerar porque ele **invalida o link que o
+cliente já recebeu**.
+
+### `clientDetailView.ts` — o que erra em silêncio
+
+Fora do React pelo mesmo motivo do `boardView.ts`. Dois casos que um teste de
+markup não pegaria:
+
+- **`status: 'invalid'` colapsa em "nenhum"**: para quem olha a tela, "não existe"
+  e "existe mas não vale nada" pedem a mesma ação — gerar. Distinguir produziria
+  um rótulo que ninguém sabe interpretar.
+- **o rótulo do botão muda com o estado**: `Gerar link` sem link, `Regenerar link`
+  com qualquer um. Quem lê "Gerar" não espera invalidar o que já mandou.
+
+### Escopo desta correção
+
+Card `[FIX]` criado **pelo Code** (acordo de 2026-07-22 do `CLAUDE.md`): o
+comportamento correto já estava escrito na SPEC-029 antes da issue existir, então
+não havia decisão de produto — só código que faltou. A issue cita o critério.
+
+A **#127 não reabre** — segue `proplan:done` aguardando aceite. Se o PI preferir
+recusá-la, este FIX vira parte da re-entrega.
+
+### O que não foi verificado
+
+O fluxo foi exercitado por **teste**, não no navegador contra o banco real:
+criar projeto, ver o card aparecer no funil, arrastá-lo e conferir o rollback é o
+dogfooding que segue pendente — junto com o da #127 e da #128.
+
+### Emenda ao FIX #134 — o link apontava para a web, e caía no login
+
+Achado no mesmo dogfooding, minutos depois: abrir o link gerado mostrava a tela
+**"Entrar no painel"**. O token estava certo — `curl` na API devolvia
+`200 {"status":"valid"}`. Errada era a URL que eu montava.
+
+`briefingUrl` usava `window.location.origin` (a web, `:5180`), mas **`/b/:token` é
+rota do NestJS** (`:3311`), declarada fora de todo guard. O React Router não tem
+`/b` nenhum, então o catch-all mandava o visitante para o login — e o visitante
+aqui é *o cliente do prestador*, que não tem conta.
+
+Corrigido exportando `API_URL` do `lib/api.ts` e usando-o para montar o link. O
+teste que barra a regressão afirma o que importa: a URL contém `:3311` e **não**
+contém `:5180`.
+
+**Nota de escopo, que o aviso na UI agora diz:** hoje esse link responde **JSON**,
+não uma página. O *formulário* público é a Fatia 20 (SPEC-031) — a SPEC-029 o lista
+em *Fora de escopo* e entrega só o ciclo de vida do link. O link já é o definitivo:
+quando o formulário existir, atende no mesmo caminho. Sem o aviso, quem abrisse
+para conferir concluiria que está quebrado — foi o que aconteceu.
