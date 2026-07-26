@@ -7,20 +7,26 @@
 import type { BriefingLinkInfo, ClientProject } from '../../lib/api';
 
 /**
- * URL pública do briefing — `GET /b/:token` do `BriefingPublicController`.
+ * URL pública do briefing, entregue **ao cliente do prestador**.
  *
- * **Aponta para a API, não para a web.** A rota é do NestJS (`/b/:token`, fora de
- * todo guard); o React Router não tem `/b` nenhum e mandaria o visitante para o
- * login. A primeira versão usava `window.location.origin` e produzia exatamente
- * isso: link que abre a tela de "Entrar no painel" para o cliente do prestador.
+ * Aponta para a **web** (`proplan.rrbtrading.com.br/b/<token>`), que tem a rota
+ * pública `/b/:token` desde o FIX #136 — ela consulta a API e mostra o estado do
+ * link numa página legível.
  *
- * Nota de escopo: hoje esta URL responde **JSON** (`{"status":"valid"}`), não uma
- * página — o *formulário* público é a Fatia 20 (SPEC-031), explicitamente *Fora de
- * escopo* na SPEC-029, que entrega só o ciclo de vida do link. O link já é o
- * definitivo: quando o formulário existir, ele passa a atender no mesmo caminho.
+ * Este endereço já teve duas versões erradas, e a razão de ambas é a mesma —
+ * havia rota no backend e não no frontend:
+ *
+ * 1. `window.location.origin` **sem** a rota no React → o catch-all mandava o
+ *    visitante para a tela de login;
+ * 2. `API_URL` → respondia, mas devolvia `{"status":"valid"}` cru num host
+ *    chamado `api.`, que para o destinatário parece link quebrado.
+ *
+ * Trocar a base era remendo; a correção foi criar a rota que faltava. Agora o
+ * endereço é **definitivo**: quando o formulário da Fatia 20 (SPEC-031) chegar,
+ * ele substitui o conteúdo da mesma rota e nenhum link enviado quebra.
  */
-export function briefingUrl(token: string, apiUrl: string): string {
-  return `${apiUrl.replace(/\/$/, '')}/b/${token}`;
+export function briefingUrl(token: string, webOrigin: string): string {
+  return `${webOrigin.replace(/\/$/, '')}/b/${token}`;
 }
 
 export type LinkState = 'nenhum' | 'valido' | 'expirado' | 'revogado';

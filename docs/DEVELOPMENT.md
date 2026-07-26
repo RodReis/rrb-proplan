@@ -2009,3 +2009,91 @@ não uma página. O *formulário* público é a Fatia 20 (SPEC-031) — a SPEC-0
 em *Fora de escopo* e entrega só o ciclo de vida do link. O link já é o definitivo:
 quando o formulário existir, atende no mesmo caminho. Sem o aviso, quem abrisse
 para conferir concluiria que está quebrado — foi o que aconteceu.
+
+## FIX #136 (SPEC-029) — o link público devolvia JSON ao cliente do prestador — `feito`
+
+Achado **em produção** pelo PI em 2026-07-26, com a pergunta certa:
+*"ela está apontando para api, está certo isso?"*
+
+```
+https://api.proplan.rrbtrading.com.br/b/jH6zk9ro4oXpuk…
+→ {"status":"valid"}
+```
+
+Tecnicamente a rota respondia. Como produto estava errado, por dois motivos:
+
+1. **O destinatário é o cliente do prestador** — alguém sem conta e sem contexto.
+   JSON cru num host chamado `api.` parece link quebrado ou endereço interno
+   vazado, não um convite de briefing.
+2. **Amarrava o link ao subdomínio errado de forma permanente.** O formulário da
+   Fatia 20 (SPEC-031) será uma página React em `proplan.rrbtrading.com.br`; todo
+   link já enviado apontando para `api.` continuaria devolvendo JSON, e consertar
+   exigiria **regenerar** — que revoga o link que o cliente já tem. O custo crescia
+   a cada link enviado.
+
+### Duas versões erradas, uma causa só
+
+| tentativa | resultado |
+|---|---|
+| `window.location.origin` (a web) | sem rota `/b` no React, o catch-all mandava para a **tela de login** |
+| `API_URL` (`api.`) | respondia, mas **JSON** para uma pessoa ler |
+
+A causa das duas é a mesma: **havia rota no backend e não no frontend**. Trocar a
+base era remendo — cada versão movia o sintoma. A correção é a rota que faltava.
+
+### O obstáculo real estava no `App.tsx`
+
+O gate de sessão ficava **antes** do router:
+
+```tsx
+if (auth.status === 'anonymous') return <Login />;   // ← antes do <BrowserRouter>
+return <BrowserRouter>…</BrowserRouter>
+```
+
+Com isso **nenhuma rota pública era possível** — não havia router para casar
+`/b/:token`. Invertido: o `BrowserRouter` passou a envolver os três estados de
+sessão, `/b/:token` é declarada fora do gate, e o resto virou `path="*"` que cai
+em skeleton (carregando) ou `<Login />` (anônimo).
+
+Isso explica por que a 1ª tentativa parecia "bug de URL": a URL estava certa, o
+router é que não existia naquele ponto do ciclo.
+
+### `BriefingLinkPage` não usa o `request()` do `lib/api`
+
+`fetch` cru, de propósito. O `request()` trata **401 como "precisa logar"** e lança
+`UnauthorizedError` — comportamento correto para o painel, errado aqui: quem abre
+não tem conta e nunca vai ter. Também não manda `credentials`: cookie de sessão
+nesta rota não serviria para nada e só ampliaria a superfície.
+
+**429 e 5xx não viram "link inválido".** Rate limit ou servidor fora não são
+veredito sobre o token; acusar o visitante de ter um link ruim que talvez seja bom
+é pior que dizer "não foi possível verificar agora" com botão de nova tentativa.
+Só 404 e a resposta explícita da API decidem o estado do link.
+
+**A não-diferenciação sobrevive na tela**: token inexistente e token de outro
+tenant renderizam o mesmo texto, sem mencionar tenant, cliente ou projeto. O
+backend esconde por design (SPEC-029); vazar na UI anularia isso. Há teste
+comparando o texto dos dois casos.
+
+### Verificado no navegador, sem sessão
+
+```
+GET http://localhost:5180/b/GIB1JZnQ… → "Link confirmado / Este link de
+  briefing é válido. O formulário … estará disponível aqui em breve"
+GET http://localhost:5180/b/token-que-nao-existe → "Link inválido"
+```
+
+E o acesso **continua auditado** — 2 novos `briefing_link.accessed` em
+`audit_events` (23:28), gravados pela página consumindo a mesma rota.
+
+### Produção não precisa de mudança de infra
+
+Conferido antes de assumir: `apps/web/nginx.conf` já tem
+`try_files $uri $uri/ /index.html`, então `/b/<token>` cai no fallback SPA e o
+React assume. Nenhum ajuste no Railway, no Dockerfile ou no DNS.
+
+### O que fica pendente
+
+O **rollback do funil** (arrastar pulando etapa) segue sendo o único critério de
+aceite da SPEC-029 nunca exercitado na tela — atravessou a Fatia 19, o FIX #134 e
+este. Tem teste (`boardView.test.ts`); nunca teve dogfooding.
