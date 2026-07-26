@@ -28,6 +28,8 @@ interface CellProps {
   /** Toggle do colapso da coluna (global) — clicar no trilho fino expande. */
   onToggleCollapse?: () => void;
   onEdit?: (card: BoardCard) => void;
+  /** `false` ⇒ cards abrem mas não arrastam (viewer — SPEC-030). */
+  draggable?: boolean;
 }
 
 /** Uma célula da grade (faixa × coluna): área de drop + cards sortáveis daquela faixa. */
@@ -40,6 +42,7 @@ const SwimlaneCell = memo(function SwimlaneCell({
   collapsed,
   onToggleCollapse,
   onEdit,
+  draggable,
 }: CellProps) {
   const { setNodeRef, isOver } = useDroppable({ id: cellDropId(epicKey, column) });
   const sortableItems = useMemo(() => cards.map((c) => c.number), [cards]);
@@ -82,6 +85,7 @@ const SwimlaneCell = memo(function SwimlaneCell({
             card={card}
             pending={pendingNumbers.has(card.number)}
             onEdit={onEdit}
+            draggable={draggable}
           />
         ))}
       </SortableContext>
@@ -105,6 +109,8 @@ interface Props {
   /** Alterna o colapso de uma coluna (global ao board). */
   onToggleColumn: (column: BoardColumn) => void;
   onEdit?: (card: BoardCard) => void;
+  /** `false` ⇒ cards abrem mas não arrastam (viewer — SPEC-030). */
+  draggable?: boolean;
 }
 
 /**
@@ -120,6 +126,7 @@ export const KanbanSwimlane = memo(function KanbanSwimlane({
   collapsedColumns,
   onToggleColumn,
   onEdit,
+  draggable,
 }: Props) {
   const [laneCollapsed, setLaneCollapsed] = useState(false);
   const title = epic ? epic.title : 'Sem épico';
@@ -169,6 +176,7 @@ export const KanbanSwimlane = memo(function KanbanSwimlane({
               collapsed={collapsedColumns.has(column)}
               onToggleCollapse={() => onToggleColumn(column)}
               onEdit={onEdit}
+              draggable={draggable}
             />
           ))}
         </div>

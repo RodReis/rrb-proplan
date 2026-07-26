@@ -15,6 +15,7 @@ import { COLUMN_LABEL, COLUMN_ORDER } from './columns';
 import { KanbanCardPreview } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
 import { columnFromDropId, KanbanSwimlane, NO_EPIC_KEY } from './KanbanSwimlane';
+import { CardDetailPanel } from './CardDetailPanel';
 import { EditCardPopover } from './EditCardPopover';
 import { BootstrapDialog } from './BootstrapDialog';
 import { ImportBanner } from './ImportBanner';
@@ -35,7 +36,14 @@ type State =
 export function KanbanTab({ projectId, syncNonce, role }: Props) {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
+  // Duas gavetas, dois estados (SPEC-030): `opened` é a leitura (ação primária
+  // do clique), `editing` é o formulário atrás do botão Editar. Separados
+  // porque o popover abre POR CIMA da gaveta — se fossem um só, editar fecharia
+  // a leitura e voltar dela obrigaria a clicar no card outra vez.
+  const [opened, setOpened] = useState<BoardCard | null>(null);
   const [editing, setEditing] = useState<BoardCard | null>(null);
+  /** Incrementado ao salvar: força a gaveta a reler o card editado (sem F5). */
+  const [detailNonce, setDetailNonce] = useState(0);
   // Finalizado e Descartado nascem colapsados (histórico, não polui o board).
   // Finalizado nasce ABERTO (decisão do PI): entregas aceitas ficam à vista.
   // Só Descartado nasce colapsado — é o que raramente se olha.
@@ -205,7 +213,8 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
                     ? toggleCollapse
                     : undefined
                 }
-                onEdit={readOnly ? undefined : setEditing}
+                onEdit={setOpened}
+                draggable={!readOnly}
                 onCreate={
                   !readOnly &&
                   (column === 'backlog' || column === 'todo' || column === 'doing')
@@ -269,7 +278,8 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
                 pendingNumbers={pending}
                 collapsedColumns={collapsed}
                 onToggleColumn={toggleCollapse}
-                onEdit={readOnly ? undefined : setEditing}
+                onEdit={setOpened}
+                draggable={!readOnly}
               />
             ))}
           </div>
@@ -284,12 +294,44 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
         </DragOverlay>
       </DndContext>
 
+      {/* Gaveta de leitura (SPEC-030) — ação primária do clique no card.
+          Escondida enquanto o popover de edição está aberto: ela escuta Esc no
+          document e o popover não, então as duas montadas fariam o Esc fechar a
+          gaveta POR BAIXO do formulário. Escondida, não desmontada: `hidden`
+          preserva o estado da leitura, então voltar da edição não refaz as duas
+          chamadas ao GitHub. */}
+      {opened && (
+        <div className={editing ? 'hidden' : undefined}>
+          <CardDetailPanel
+            card={opened}
+            projectId={projectId}
+            refreshNonce={detailNonce}
+            canEdit={!readOnly}
+            onClose={() => setOpened(null)}
+            onEdit={() => setEditing(opened)}
+          />
+        </div>
+      )}
+
       {editing && (
         <EditCardPopover
           card={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
+            // Fecha só o formulário — a gaveta continua aberta por baixo, e o
+            // `refreshNonce` a faz reler para o título/prioridade novos
+            // aparecerem sem F5 (critério de aceite). Fechar a gaveta aqui
+            // devolveria o dono ao board depois de salvar, que é o oposto do
+            // que "editar é modo secundário" promete.
             setEditing(null);
+            setDetailNonce((n) => n + 1);
+            load();
+          }}
+          onDiscarded={() => {
+            // Descartado: fecha as duas. Manter a gaveta aberta exibiria a ficha
+            // de um card que acabou de sair do board.
+            setEditing(null);
+            setOpened(null);
             load();
           }}
           projectId={projectId}

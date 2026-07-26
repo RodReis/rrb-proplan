@@ -1537,17 +1537,36 @@ própria** — o #4 não se reabre.
 
 ---
 
-## Fatia 19 (SPEC-029) — Clientes, funil Kanban e ciclo de vida do link público — `em andamento` (issue #127)
+## Fatia 19 (SPEC-029) — Clientes, funil Kanban e ciclo de vida do link público — `feito` (issue #127, `proplan:done`; aguardando aceite do PI)
 
 Primeira fatia do **MVP3 / Frente Clientes** (`docs/specs/MVP3.md`). Fatia grande:
-entregue em **4 PRs empilhados** (1 branch por PR, base do N+1 = branch do N).
+escrita em **4 PRs empilhados** (1 branch por PR, todos com base `main`).
 
 | PR | escopo | estado |
 |---|---|---|
 | **PR-1** | Modelo de dados: 5 tabelas, enum do funil, RLS em profundidade, 2 ADRs | `feito` |
-| **PR-2** | Módulo `clients`: máquina de estados, CRUD + busca, transições auditadas, RBAC | a fazer |
-| **PR-3** | Módulo `briefing`: link hash-only, `GET /b/:token` não-diferencial, rate limit | a fazer |
-| **PR-4** | UI: página Clientes + Kanban dnd-kit com rollback | a fazer |
+| **PR-2** | Módulo `clients`: máquina de estados, CRUD + busca, transições auditadas, RBAC | `feito` |
+| **PR-3** | Módulo `briefing`: link hash-only, `GET /b/:token` não-diferencial, rate limit | `feito` |
+| **PR-4** | UI: página Clientes + Kanban dnd-kit com rollback | `feito` |
+
+### Os 4 PRs entraram num squash só — e por que isso importa
+
+O **PR #132 (PR-4) veio cumulativo**: como os 4 branches apontavam para `main` (ver
+*Correção de rota nos PRs empilhados*, no PR-3), o diff do #132 contra `main` trazia
+os quatro juntos. Ele foi mergeado como squash **`a985ebd`** (55 arquivos,
++7668/−417) em 2026-07-26, e os PRs **#129/#130/#131 foram fechados sem merge** — o
+conteúdo deles já estava na `main`, e mergear qualquer um reaplicaria o mesmo diff.
+
+**A lição fica registrada porque o ganho dos PRs empilhados se perdeu:** apontar
+todos para `main` resolveu o CI que não disparava, mas fez cada PR conter os
+anteriores. A revisão isolada, que era a razão de empilhar, só existiu enquanto
+ninguém mergeou. Para a próxima fatia grande: ou base encadeada (e resolver o
+gatilho do CI, que é decisão do PI — ver o candidato `[INFRA]` abaixo), ou aceitar
+de saída que o último PR é o que entra e revisar os anteriores antes dele.
+
+**Pendente para o aceite:** dogfooding não foi feito — nenhuma tela aberta no
+navegador. Criar cliente, arrastar card e conferir o rollback segue não exercitado
+contra o ambiente real.
 
 ### PR-1 — modelo de dados e isolamento
 
@@ -1780,3 +1799,111 @@ Decisão aplicada:
 O `AppShell` extraiu a topbar que antes vivia só no Catálogo; o Catálogo perdeu
 o header próprio. Isso deixa a tela inicial visualmente fiel à imagem: menu
 lateral fixo, breadcrumb `ProPlan / ProPlan`, conteúdo do catálogo à direita.
+
+## SPEC-030 — Painel de detalhe do card: corpo, metadados e trilha — `feito` (issue #128)
+
+Refinamento da SPEC-005: clicar num card passa a abrir **leitura**, e o
+formulário de edição vai para trás de um botão. Nenhuma tabela nova, nenhuma
+coluna nova — o `grep body` no schema do board continua sem resultado.
+
+| passo | estado |
+|---|---|
+| `GET .../board/cards/:number` (issue + timeline, user-to-server) | `feito` |
+| Domínio `card-detail.ts`: tradução e filtro da trilha | `feito` |
+| Gaveta `CardDetailPanel` + `cardDetailView.ts` | `feito` |
+| Religar o clique do card (abrir ≠ editar ≠ arrastar) | `feito` |
+
+### Nada é persistido, e é o ponto da fatia
+
+Corpo e trilha são lidos a cada abertura e descartados ao fechar. O ADR-017 já
+autoriza a UI a ler cache, mas cache é foto — e sem webhooks (ADR-009) **nada nos
+avisa** quando o corpo de uma issue muda. Guardá-lo criaria a segunda fonte
+defasada de um fato que o GitHub serve ao vivo, que é exatamente o
+*"dado velho com aparência de autoridade"* que o ADR nomeia. Custo aceito pelo
+PI: duas chamadas e latência no open. Há teste afirmando que o service não grava
+(`prisma.issue.update/upsert/createMany` nunca chamados).
+
+As duas leituras vão em `Promise.all`: são independentes, e em série a latência
+apareceria somada no abrir da gaveta.
+
+### `read<T>` nasceu por causa do 404
+
+O client tinha `write<T>` mas nenhum leitor de recurso único, e cada leitura
+repetia o bloco fetch/401/!ok. O helper novo acrescenta uma linha que importa:
+**404 → `NotFoundException`**. Issue removida entre o sync e o clique é caso
+normal deste endpoint; sem o mapeamento, cairia no `!res.ok` e devolveria **500**
+— o dono leria "falha do ProPlan" onde a verdade é "esse card não existe mais".
+
+### Três atritos que a spec não previu (decididos ao implementar)
+
+**1. O `aria-label` mentia.** Era `Editar card #N`; o clique agora abre leitura,
+então virou `Abrir card #N`. Três testes dependiam do texto antigo — atualizados
+junto. Rótulo que promete edição engana quem navega por leitor de tela, e engana
+mais o `viewer`, que passou a abrir o card sem poder editá-lo.
+
+**2. `canEdit = !!onEdit` fundia três coisas.** A mesma flag decidia *clicar*,
+*arrastar* e *ver o handle*. Efeito colateral: o `viewer` não conseguia nem
+**abrir** um card para ler — e a spec não proíbe leitura, ela a oferece. Separado
+em `canOpen` (clique, sempre que há callback) e `canDrag` (`canOpen && draggable`).
+A prop `draggable` desce por `KanbanColumn` e `KanbanSwimlane`; a API recusa
+escrita de viewer com 403 de qualquer forma, esconder o handle é conveniência.
+
+**3. Esc com o popover aberto fechava a gaveta por baixo.** A gaveta escuta Esc
+no `document`; o `EditCardPopover` não escuta nada. Com as duas montadas, Esc
+fecharia a leitura e deixaria o formulário órfão. Resolvido no pai: enquanto
+`editing` existe, a gaveta é **escondida com `hidden`, não desmontada** — o
+estado da leitura sobrevive, então voltar da edição não refaz as duas chamadas ao
+GitHub.
+
+### `onDiscarded`: descartar não é "salvou"
+
+`EditCardPopover` chamava o mesmo `onSaved` nos dois caminhos. Salvar deve manter
+a gaveta aberta (o critério pede que o título novo apareça sem F5); descartar
+tem de fechá-la, senão sobra a ficha de um card que saiu do board. Callback novo
+e **opcional** — sem ele, descarte cai no `onSaved`, o comportamento de antes.
+Para o reflexo sem F5, um `refreshNonce` faz a gaveta reler após salvar.
+
+### O que foi testado fora do React, e por quê
+
+`cardDetailView.ts` (corte da trilha, frase do evento, contraste da label) e
+`domain/card-detail.ts` (filtro dos 8 tipos, ordenação, normalização do corpo)
+são funções puras. Um teste de markup provaria que "algo apareceu"; estes provam
+**o quê** — e trilha em ordem errada ou rótulo trocado é defeito que passa numa
+revisão visual.
+
+Dois casos que valem citar: o corte pega os **mais recentes** (não os primeiros —
+a trilha é invertida antes de cortar), e `labelTextColor` existe porque o GitHub
+manda só a cor de fundo: `fbca04` com texto branco fica ilegível.
+
+**Labels `proplan:*` aparecem crus na trilha**, como o GitHub as registra — três
+eventos, não um sintético "moveu de todo para doing". A spec é explícita, e há
+teste fixando isso.
+
+### Contaminação no jsdom que quase virou "bug" (registro para não repetir)
+
+Um teste novo do `KanbanCard` falhava com **0 chamadas** no clique. Rastreando os
+eventos: `pointerdown`, `mousedown`, `pointerup` e `mouseup` chegavam ao card, mas
+o `click` **nunca era emitido** — e o clique nativo (`element.click()`) funcionava.
+Causa medida isolando as combinações: **só falha quando o teste anterior clica no
+handle de arrasto**. O `PointerSensor` do dnd-kit instala listeners de pointer que
+o jsdom não desfaz entre renders, e o clique seguinte deixa de virar `click`.
+
+Corrigido **reordenando** o caso para antes do teste do handle, com o motivo
+escrito no arquivo. Nenhuma linha de produção mudou por isso — o componente
+sempre respondeu. Fica anotado porque a próxima pessoa a ver "0 calls" vai
+suspeitar do componente, como eu suspeitei.
+
+### Descartado
+
+Extrair `Objetivo`/`Escopo`/`Critérios de aceite` de `docs/specs/SPEC-nnn-*.md`
+pelo token do título: imporia a convenção deste trio ao produto (ADR-014). Ficaria
+perfeito neste repo e vazio em todos os outros. O corpo da issue é universal — e
+neste repo já contém a mesma informação, escrita pelo humano.
+
+### O que não foi verificado
+
+**Nenhuma tela foi aberta no navegador.** 916 testes verdes (758 regras · 31
+banco · 127 tela), `tsc` limpo nos dois apps e `vite build` OK — mas abrir um
+card contra o GitHub real, ver o corpo renderizado e conferir a trilha contra a
+aba do GitHub é o passo que falta. O modo degradado também não foi exercitado
+com rate limit de verdade.

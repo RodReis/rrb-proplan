@@ -59,11 +59,11 @@ const card: BoardCard = {
   parentNumber: null,
 };
 
-function renderCard(onEdit = vi.fn()) {
+function renderCard(onEdit = vi.fn(), draggable?: boolean) {
   render(
     <ThemeProvider>
       <DndContext>
-        <KanbanCard card={card} onEdit={onEdit} />
+        <KanbanCard card={card} onEdit={onEdit} draggable={draggable} />
       </DndContext>
     </ThemeProvider>,
   );
@@ -71,15 +71,17 @@ function renderCard(onEdit = vi.fn()) {
 }
 
 describe('KanbanCard', () => {
-  it('abre edição ao clicar no card', async () => {
+  // Desde a SPEC-030 o clique abre a gaveta de LEITURA, não o formulário — o
+  // rótulo acompanha ("Abrir card"), senão mentiria para leitor de tela.
+  it('abre o card ao clicar', async () => {
     const onEdit = renderCard();
 
-    await userEvent.click(screen.getByRole('button', { name: /editar card #128/i }));
+    await userEvent.click(screen.getByRole('button', { name: /abrir card #128/i }));
 
     expect(onEdit).toHaveBeenCalledWith(card);
   });
 
-  it('mantém o link da issue separado da edição', async () => {
+  it('mantém o link da issue separado da abertura', async () => {
     const onEdit = renderCard();
 
     await userEvent.click(screen.getByRole('link', { name: '#128' }));
@@ -87,11 +89,46 @@ describe('KanbanCard', () => {
     expect(onEdit).not.toHaveBeenCalled();
   });
 
-  it('expõe handle dedicado de arrasto sem abrir edição no clique', async () => {
+  // Abrir ≠ arrastar (SPEC-030): antes eram a mesma flag (`!!onEdit`), e o
+  // efeito colateral era o viewer sem poder nem abrir o card para ler.
+  //
+  // Declarado ANTES do caso do handle de arrasto, e a ordem é obrigatória: um
+  // `userEvent.click` no handle instala listeners de pointer do dnd-kit que o
+  // jsdom não desfaz entre renders, e o clique seguinte deixa de virar evento
+  // `click` (down/up chegam ao card, `click` nunca é emitido). Medido isolando
+  // as combinações: com qualquer outro teste antes, este passa; só o do handle o
+  // quebra. Contaminação do ambiente, não defeito do componente.
+  it('draggable=false ainda abre o card, mas esconde o handle de arrasto', async () => {
+    const onEdit = renderCard(vi.fn(), false);
+
+    expect(
+      screen.queryByRole('button', { name: /arrastar card #128/i }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /abrir card #128/i }));
+    expect(onEdit).toHaveBeenCalledWith(card);
+  });
+
+  it('expõe handle dedicado de arrasto sem abrir o card no clique', async () => {
     const onEdit = renderCard();
 
     await userEvent.click(screen.getByRole('button', { name: /arrastar card #128/i }));
 
     expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('sem onEdit o card não é clicável nem arrastável', () => {
+    render(
+      <ThemeProvider>
+        <DndContext>
+          <KanbanCard card={card} />
+        </DndContext>
+      </ThemeProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: /abrir card/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /arrastar card/i }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import {
   isEpic,
   priorityOf,
 } from '../domain/column-mapping';
+import { type CardDetail, toCardDetail } from '../domain/card-detail';
 import { isGeneratedProjection } from '../domain/status-parser';
 import { GithubIssuesClient } from '../infrastructure/github-issues.client';
 
@@ -220,6 +221,35 @@ export class BoardService {
       columns: COLUMNS.map((column) => ({ column, cards: byColumn.get(column) ?? [] })),
       epics,
     };
+  }
+
+  /**
+   * Detalhe de um card: corpo, metadados e trilha, **lidos ao vivo no GitHub**
+   * (SPEC-030). Duas chamadas, nada persistido — o ADR-017 proíbe virar a
+   * segunda fonte defasada de um fato que o GitHub serve agora.
+   *
+   * Duas notas sobre de quem é o token:
+   * - a leitura usa o token do **dono do projeto** (`project.userId`), igual ao
+   *   `syncIssues` e ao `getBoard`. Um membro do tenant não tem,
+   *   necessariamente, acesso próprio ao repo;
+   * - é **user-to-server** (ADR-015). Installation token aqui seria leitura com
+   *   identidade do bot — proibido, e barrado pelo teste de arquitetura.
+   */
+  async cardDetail(
+    userId: string,
+    projectId: string,
+    number: number,
+  ): Promise<CardDetail> {
+    const project = await this.assertOwner(userId, projectId);
+    const token = await this.auth.userToken(project.userId);
+
+    // Em paralelo: são independentes, e a latência aparece no open da gaveta.
+    const [issue, timeline] = await Promise.all([
+      this.issues.issueDetail(token, project.owner, project.name, number),
+      this.issues.issueTimeline(token, project.owner, project.name, number),
+    ]);
+
+    return toCardDetail(issue, timeline, new Date());
   }
 
   private async assertOwner(userId: string, projectId: string) {

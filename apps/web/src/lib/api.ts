@@ -397,6 +397,9 @@ export const api = {
   // Board (Kanban sobre Issues — SPEC-005)
   board: (projectId: string) =>
     request<BoardView>(`/projects/${projectId}/board`),
+  /** Detalhe do card — leitura ao vivo no GitHub, nada cacheado (SPEC-030). */
+  cardDetail: (projectId: string, number: number) =>
+    request<CardDetail>(`/projects/${projectId}/board/cards/${number}`),
   mutateBoard: (projectId: string, input: MutationInput) =>
     request<{ mutationId: string }>(`/projects/${projectId}/board/mutations`, {
       method: 'POST',
@@ -455,6 +458,52 @@ export interface BoardCard {
   closedOutside: boolean;
   /** Número do épico-pai (null = raiz). A swimlane agrupa por este campo (SPEC-024). */
   parentNumber: number | null;
+}
+
+/* Detalhe do card (SPEC-030) — espelho do contrato da API. Lido sob demanda e
+   descartado ao fechar a gaveta: nada disto existe no cache do board. */
+
+export type CardEventType =
+  | 'opened'
+  | 'assigned'
+  | 'unassigned'
+  | 'labeled'
+  | 'unlabeled'
+  | 'closed'
+  | 'reopened'
+  | 'renamed';
+
+export interface CardActor {
+  login: string;
+  avatarUrl: string;
+}
+
+export interface CardEvent {
+  type: CardEventType;
+  actor: CardActor | null;
+  createdAt: string;
+  label?: { name: string; color: string };
+  assignee?: { login: string };
+  rename?: { from: string; to: string };
+}
+
+export interface CardDetail {
+  number: number;
+  title: string;
+  state: 'open' | 'closed';
+  htmlUrl: string;
+  /** Markdown cru da issue. `null` = sem descrição (vazio já vem normalizado). */
+  body: string | null;
+  author: CardActor | null;
+  assignees: CardActor[];
+  /** `color` é o hex do GitHub, sem `#` e sem tradução para token nosso. */
+  labels: { name: string; color: string }[];
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  timeline: CardEvent[];
+  /** Carimbo da leitura — a gaveta o exibe para o humano saber que é ao vivo. */
+  fetchedAt: string;
 }
 
 /** Épico = faixa da swimlane (issue com sub-issues), não card (SPEC-024). */
