@@ -1,0 +1,122 @@
+{
+  "description": "Office3D Codex hooks.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs SessionStart",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs PreToolUse",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs PostToolUse",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs UserPromptSubmit",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs Stop",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs SessionEnd",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs SubagentStart",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs SubagentStop",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/office3d.cjs Notification",
+            "timeout": 5,
+            "statusMessage": "Office3D HUD"
+          }
+        ]
+      }
+    ]
+  }
+}

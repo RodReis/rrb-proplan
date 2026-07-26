@@ -103,8 +103,24 @@ function slim(payload) {
   return out
 }
 
+function inferProvider(payload) {
+  if (payload?.provider === 'codex' || payload?.provider === 'claude') return payload.provider
+
+  // O Codex do VS Code pode acionar o hook compatível sem `provider`.
+  // O Claude Code moderno envia `transcript_path`; sem ele, tratamos como Codex.
+  return payload?.transcript_path ? 'claude' : 'codex'
+}
+
+function preparePayload(payload, cwd = process.cwd()) {
+  if (!payload || typeof payload !== 'object') return payload
+  const out = { ...payload }
+  if (!out.cwd) out.cwd = cwd
+  out.provider = inferProvider(out)
+  return slim(out)
+}
+
 // Permite `require()` nos testes sem disparar a leitura de stdin.
-module.exports = { slim, slimValue, slimTodos, slimResponse }
+module.exports = { slim, slimValue, slimTodos, slimResponse, inferProvider, preparePayload }
 
 function main() {
 const chunks = []
@@ -118,8 +134,7 @@ process.stdin.on('end', () => {
   let payload = raw
   try {
     const obj = JSON.parse(raw)
-    if (!obj.cwd) obj.cwd = process.cwd()
-    payload = JSON.stringify(slim(obj)) // §10.1: corta na origem
+    payload = JSON.stringify(preparePayload(obj)) // §10.1: corta na origem
   } catch (_) {
     // payload não-JSON: encaminha cru (nunca bloqueia o Claude Code)
   }

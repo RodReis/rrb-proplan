@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { DndContext } from '@dnd-kit/core';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { vi } from 'vitest';
 
-import { formatStamp } from './KanbanCard';
+import { BoardCard } from '../../../lib/api';
+import { ThemeProvider } from '../../../theme';
+import { formatStamp, KanbanCard } from './KanbanCard';
 
 /**
  * O formato do carimbo é `dd/MM/aaaa 'às' hh:mm` (decisão do PI, 2026-07-16).
@@ -37,5 +43,55 @@ describe('formatStamp', () => {
 
   it('ISO inválido → null, nunca "Invalid Date" na tela', () => {
     expect(formatStamp('nao-e-data')).toBeNull();
+  });
+});
+
+const card: BoardCard = {
+  number: 128,
+  title: '[SPEC-030] Painel de detalhe do card: corpo da issue, metadados e trilha',
+  column: 'backlog',
+  priority: null,
+  assignee: null,
+  htmlUrl: 'https://github.com/rodreis/rrb-proplan/issues/128',
+  createdAt: '2026-07-25T20:19:00Z',
+  closedAt: null,
+  closedOutside: false,
+  parentNumber: null,
+};
+
+function renderCard(onEdit = vi.fn()) {
+  render(
+    <ThemeProvider>
+      <DndContext>
+        <KanbanCard card={card} onEdit={onEdit} />
+      </DndContext>
+    </ThemeProvider>,
+  );
+  return onEdit;
+}
+
+describe('KanbanCard', () => {
+  it('abre edição ao clicar no card', async () => {
+    const onEdit = renderCard();
+
+    await userEvent.click(screen.getByRole('button', { name: /editar card #128/i }));
+
+    expect(onEdit).toHaveBeenCalledWith(card);
+  });
+
+  it('mantém o link da issue separado da edição', async () => {
+    const onEdit = renderCard();
+
+    await userEvent.click(screen.getByRole('link', { name: '#128' }));
+
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('expõe handle dedicado de arrasto sem abrir edição no clique', async () => {
+    const onEdit = renderCard();
+
+    await userEvent.click(screen.getByRole('button', { name: /arrastar card #128/i }));
+
+    expect(onEdit).not.toHaveBeenCalled();
   });
 });

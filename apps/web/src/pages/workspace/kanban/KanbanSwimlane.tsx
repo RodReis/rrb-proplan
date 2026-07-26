@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { BoardCard, BoardColumn, BoardEpic } from '../../../lib/api';
 import { COLUMN_LABEL, COLUMN_ORDER } from './columns';
 import { KanbanCard } from './KanbanCard';
@@ -31,7 +31,7 @@ interface CellProps {
 }
 
 /** Uma célula da grade (faixa × coluna): área de drop + cards sortáveis daquela faixa. */
-function SwimlaneCell({
+const SwimlaneCell = memo(function SwimlaneCell({
   epicKey,
   column,
   columnLabel,
@@ -42,6 +42,7 @@ function SwimlaneCell({
   onEdit,
 }: CellProps) {
   const { setNodeRef, isOver } = useDroppable({ id: cellDropId(epicKey, column) });
+  const sortableItems = useMemo(() => cards.map((c) => c.number), [cards]);
 
   // Coluna colapsada (Finalizado/Descartado): trilho fino, clicável para
   // expandir a coluna inteira (o colapso é global — o controle principal vive no
@@ -67,12 +68,12 @@ function SwimlaneCell({
     <div
       ref={setNodeRef}
       className={
-        'flex w-72 shrink-0 flex-col gap-2 rounded-[14px] border p-2 transition-colors duration-150 ' +
+        'flex w-72 shrink-0 flex-col gap-2 rounded-[14px] border p-2 transition-colors duration-150 [contain:layout_paint] ' +
         (isOver ? 'border-accent-border bg-card' : 'border-border bg-colbg')
       }
     >
       <SortableContext
-        items={cards.map((c) => c.number)}
+        items={sortableItems}
         strategy={verticalListSortingStrategy}
       >
         {cards.map((card) => (
@@ -91,7 +92,7 @@ function SwimlaneCell({
       )}
     </div>
   );
-}
+});
 
 interface Props {
   /** Épico da faixa, ou null para a faixa "sem épico". */
@@ -112,7 +113,7 @@ interface Props {
  * é arrastável; só as fatias-filhas andam (drag inalterado). Colapso da faixa é
  * local; o das colunas vem de cima (compartilhado entre faixas).
  */
-export function KanbanSwimlane({
+export const KanbanSwimlane = memo(function KanbanSwimlane({
   epic,
   cardsByColumn,
   pendingNumbers,
@@ -174,4 +175,4 @@ export function KanbanSwimlane({
       )}
     </div>
   );
-}
+});

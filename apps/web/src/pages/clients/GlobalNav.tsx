@@ -63,8 +63,8 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
       : 'text-body2 hover:bg-card hover:text-text');
 
   return (
-    <aside className="flex h-full w-[216px] shrink-0 flex-col border-r border-border bg-panel">
-      <div className="flex items-center gap-2.5 px-4 py-4">
+    <aside className="flex h-full w-[216px] shrink-0 flex-col border-r border-border bg-panel max-[720px]:h-auto max-[720px]:w-full max-[720px]:border-b max-[720px]:border-r-0">
+      <div className="flex items-center gap-2.5 px-4 py-4 max-[720px]:py-3">
         <span className="grid h-7 w-7 place-items-center rounded-[7px] bg-btnbg text-[13px] font-bold text-btnfg">
           P
         </span>
@@ -76,8 +76,8 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
         </span>
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        <ul className="flex flex-col gap-0.5">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 max-[720px]:overflow-x-auto max-[720px]:pb-3">
+        <ul className="flex flex-col gap-0.5 max-[720px]:w-max max-[720px]:flex-row">
           <li>
             {/* Fatia 24 (SPEC-034): sem estimativa nem contratos, os cards do
                 Dashboard não teriam fonte de dado real. */}

@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { BoardCard, BoardColumn } from '../../../lib/api';
 import { stageColor, stageOf } from '../../../stageTint';
 import { useTheme } from '../../../theme';
@@ -12,21 +12,21 @@ interface Props {
   cards: BoardCard[];
   pendingNumbers: Set<number>;
   collapsed?: boolean;
-  onToggleCollapse?: () => void;
+  onToggleColumn?: (column: BoardColumn) => void;
   onEdit?: (card: BoardCard) => void;
-  onCreate?: (title: string) => void;
+  onCreate?: (column: BoardColumn, title: string) => void;
 }
 
 /**
  * Uma coluna do board: área de drop (dnd-kit) + cards ordenados. Backlog/A Fazer/
  * Em Andamento permitem criar inline; Descartado é colapsável (DESIGN.md).
  */
-export function KanbanColumn({
+export const KanbanColumn = memo(function KanbanColumn({
   column,
   cards,
   pendingNumbers,
   collapsed,
-  onToggleCollapse,
+  onToggleColumn,
   onEdit,
   onCreate,
 }: Props) {
@@ -34,16 +34,18 @@ export function KanbanColumn({
   const { setNodeRef, isOver } = useDroppable({ id: column });
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
+  const sortableItems = useMemo(() => cards.map((c) => c.number), [cards]);
 
   const stage = stageOf(column);
   // Descartado é decisão, não etapa (§6) — sem cor própria, neutro.
   const dotColor = stage ? stageColor(theme, stage) : 'var(--dim)';
 
   const canCreate = !!onCreate && (column === 'backlog' || column === 'todo' || column === 'doing');
+  const canCollapse = !!onToggleColumn;
 
   function submitCreate() {
     const t = title.trim();
-    if (t && onCreate) onCreate(t);
+    if (t && onCreate) onCreate(column, t);
     setTitle('');
     setCreating(false);
   }
@@ -53,7 +55,7 @@ export function KanbanColumn({
   if (collapsed) {
     return (
       <button
-        onClick={onToggleCollapse}
+        onClick={() => onToggleColumn?.(column)}
         title={`Expandir ${COLUMN_LABEL[column]}`}
         className="flex h-full w-[34px] shrink-0 flex-col items-center gap-2 rounded-[14px] border border-border bg-colbg py-3 text-faint transition-colors duration-150 hover:border-hoverb hover:text-text"
       >
@@ -88,8 +90,8 @@ export function KanbanColumn({
           cor da etapa vive no ponto, no contador e na tinta do card. */}
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
         <button
-          onClick={onToggleCollapse}
-          disabled={!onToggleCollapse}
+          onClick={() => onToggleColumn?.(column)}
+          disabled={!canCollapse}
           className="flex min-w-0 items-center gap-2 disabled:cursor-default"
         >
           <span
@@ -126,7 +128,7 @@ export function KanbanColumn({
         <div
           ref={setNodeRef}
           className={
-            'flex min-h-[80px] flex-1 flex-col gap-2 overflow-y-auto rounded-[14px] border p-2 transition-colors duration-150 ' +
+            'flex min-h-[80px] flex-1 flex-col gap-2 overflow-y-auto overscroll-contain rounded-[14px] border p-2 transition-colors duration-150 [scrollbar-gutter:stable] ' +
             // Coluna neutra --colbg (§6); drop target ganha borda de acento.
             (isOver ? 'border-accent-border bg-card' : 'border-border bg-colbg')
           }
@@ -156,7 +158,7 @@ export function KanbanColumn({
           )}
 
           <SortableContext
-            items={cards.map((c) => c.number)}
+            items={sortableItems}
             strategy={verticalListSortingStrategy}
           >
             {cards.map((card) => (
@@ -180,4 +182,4 @@ export function KanbanColumn({
       )}
     </div>
   );
-}
+});

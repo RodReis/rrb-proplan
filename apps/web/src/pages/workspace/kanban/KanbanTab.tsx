@@ -1,4 +1,5 @@
 import {
+  closestCorners,
   DndContext,
   DragEndEvent,
   DragOverlay,
@@ -7,11 +8,11 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api, BoardCard, BoardColumn, BoardView } from '../../../lib/api';
 import { COLUMN_LABEL, COLUMN_ORDER } from './columns';
-import { KanbanCard } from './KanbanCard';
+import { KanbanCardPreview } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
 import { columnFromDropId, KanbanSwimlane, NO_EPIC_KEY } from './KanbanSwimlane';
 import { EditCardPopover } from './EditCardPopover';
@@ -72,16 +73,19 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
 
   const { pending, mutate } = useBoardMutation(projectId, load);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
-  function cardsByColumn(board: BoardView, column: BoardColumn): BoardCard[] {
-    return board.columns.find((c) => c.column === column)?.cards ?? [];
-  }
+  const readyBoard = state.status === 'ready' ? state.board : null;
 
-  function findCard(board: BoardView, number: number): BoardCard | undefined {
-    return board.columns.flatMap((c) => c.cards).find((c) => c.number === number);
-  }
+  const flatCardsByColumn = useMemo(() => {
+    if (!readyBoard) return new Map<BoardColumn, BoardCard[]>();
+    return new Map(readyBoard.columns.map((c) => [c.column, c.cards]));
+  }, [readyBoard]);
+
+  const swimlanes = useMemo(() => {
+    return readyBoard ? orderedSwimlanes(readyBoard) : [];
+  }, [readyBoard]);
 
   function onDragStart(e: DragStartEvent) {
     if (state.status !== 'ready') return;
@@ -117,14 +121,17 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
     }
   }
 
-  async function createCard(column: BoardColumn, title: string) {
-    const ok = await mutate({ type: 'create_card', title, column }, null);
-    if (!ok) toast.error('Não foi possível criar o card.');
-    else {
-      toast.success('Card criado.');
-      flashSaving();
-    }
-  }
+  const createCard = useCallback(
+    async (column: BoardColumn, title: string) => {
+      const ok = await mutate({ type: 'create_card', title, column }, null);
+      if (!ok) toast.error('Não foi possível criar o card.');
+      else {
+        toast.success('Card criado.');
+        flashSaving();
+      }
+    },
+    [flashSaving, mutate],
+  );
 
   if (state.status === 'loading') return <BoardSkeleton />;
   if (state.status === 'error') {
@@ -177,6 +184,7 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
       )}
 
       <DndContext
+        collisionDetection={closestCorners}
         sensors={readOnly ? [] : sensors}
         onDragStart={readOnly ? undefined : onDragStart}
         onDragEnd={readOnly ? undefined : onDragEnd}
@@ -189,19 +197,19 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
               <KanbanColumn
                 key={column}
                 column={column}
-                cards={cardsByColumn(board, column)}
+                cards={cardsByColumn(flatCardsByColumn, column)}
                 pendingNumbers={pending}
                 collapsed={collapsed.has(column)}
-                onToggleCollapse={
+                onToggleColumn={
                   column === 'finalized' || column === 'discarded'
-                    ? () => toggleCollapse(column)
+                    ? toggleCollapse
                     : undefined
                 }
                 onEdit={readOnly ? undefined : setEditing}
                 onCreate={
                   !readOnly &&
                   (column === 'backlog' || column === 'todo' || column === 'doing')
-                    ? (title) => void createCard(column, title)
+                    ? createCard
                     : undefined
                 }
               />
@@ -253,7 +261,7 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
                 );
               })}
             </div>
-            {orderedSwimlanes(board).map(({ epic, cardsByColumn: grid }) => (
+            {swimlanes.map(({ epic, cardsByColumn: grid }) => (
               <KanbanSwimlane
                 key={epic ? epic.number : NO_EPIC_KEY}
                 epic={epic}
@@ -270,7 +278,7 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
         <DragOverlay>
           {activeCard && (
             <div className="rotate-2">
-              <KanbanCard card={activeCard} onEdit={() => {}} />
+              <KanbanCardPreview card={activeCard} />
             </div>
           )}
         </DragOverlay>
@@ -338,24 +346,54 @@ export function orderedSwimlanes(board: BoardView): {
   return lanes;
 }
 
+function cardsByColumn(
+  columns: Map<BoardColumn, BoardCard[]>,
+  column: BoardColumn,
+): BoardCard[] {
+  return columns.get(column) ?? [];
+}
+
+function findCard(board: BoardView, number: number): BoardCard | undefined {
+  for (const col of board.columns) {
+    const card = col.cards.find((c) => c.number === number);
+    if (card) return card;
+  }
+  return undefined;
+}
+
 /** Move um card de coluna no estado local (otimista). */
 function moveCardLocal(
   board: BoardView,
   number: number,
   toColumn: BoardColumn,
 ): BoardView {
-  const card = board.columns.flatMap((c) => c.cards).find((c) => c.number === number);
-  if (!card) return board;
+  let card: BoardCard | undefined;
+  let fromColumn: BoardColumn | null = null;
+
+  for (const col of board.columns) {
+    card = col.cards.find((c) => c.number === number);
+    if (card) {
+      fromColumn = col.column;
+      break;
+    }
+  }
+
+  if (!card || !fromColumn) return board;
   const moved = { ...card, column: toColumn };
   return {
     ...board,
-    columns: board.columns.map((col) => ({
-      ...col,
-      cards:
-        col.column === toColumn
-          ? [moved, ...col.cards.filter((c) => c.number !== number)]
-          : col.cards.filter((c) => c.number !== number),
-    })),
+    columns: board.columns.map((col) => {
+      if (col.column === toColumn) {
+        return {
+          ...col,
+          cards: [moved, ...col.cards.filter((c) => c.number !== number)],
+        };
+      }
+      if (col.column === fromColumn) {
+        return { ...col, cards: col.cards.filter((c) => c.number !== number) };
+      }
+      return col;
+    }),
   };
 }
 

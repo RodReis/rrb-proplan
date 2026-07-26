@@ -27,11 +27,11 @@ export function AppShell({ user, tenant, section, onLogout, children }: Props) {
   const dark = theme === 'carbono';
 
   return (
-    <div className="flex h-screen bg-bg text-text">
+    <div className="flex h-screen bg-bg text-text max-[720px]:flex-col">
       <GlobalNav tenant={tenant ?? user.tenants[0]?.accountLogin ?? ''} section={section} />
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[56px] shrink-0 items-center gap-3.5 border-b border-border bg-panel px-6">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex h-[56px] shrink-0 items-center gap-3.5 border-b border-border bg-panel px-6 max-[720px]:px-3">
           <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-dim">
             ProPlan <span className="px-1 text-dimmer">/</span>
             <span className="text-text2">{section}</span>
@@ -57,7 +57,7 @@ export function AppShell({ user, tenant, section, onLogout, children }: Props) {
             <GearIcon />
           </button>
 
-          <div className="flex items-center gap-2.5 border-l border-border pl-3.5">
+          <div className="flex items-center gap-2.5 border-l border-border pl-3.5 max-[720px]:gap-2 max-[720px]:pl-2">
             {user.avatarUrl ? (
               <img
                 src={user.avatarUrl}
@@ -69,7 +69,7 @@ export function AppShell({ user, tenant, section, onLogout, children }: Props) {
                 {(user.name ?? user.login).charAt(0).toUpperCase()}
               </span>
             )}
-            <span className="text-[13px] font-medium">{user.name ?? user.login}</span>
+            <span className="text-[13px] font-medium max-[720px]:hidden">{user.name ?? user.login}</span>
             <button
               onClick={onLogout}
               className="text-xs text-muted transition-colors duration-150 hover:text-text"

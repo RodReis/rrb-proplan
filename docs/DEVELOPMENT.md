@@ -1665,6 +1665,11 @@ o PI.
 - [x] **RBAC na UI**: `viewer` não vê os controles de escrita e não arrasta card.
       A API recusa de qualquer jeito (403) — esconder o botão é conveniência, a
       barreira é o servidor (defesa em profundidade, critério da spec).
+- [x] **Cadastro/edição de cliente completo**: o modal único cria e edita nome,
+      CPF, empresa, CNPJ, e-mail, telefone, WhatsApp, endereço completo e notas
+      internas — mesmos campos do `Client` definido na SPEC-029. CPF/CNPJ,
+      telefone, WhatsApp e CEP têm máscara de leitura, mas a API segue recebendo
+      só dígitos.
 - [x] Visual conforme a referência do PI: avatar de iniciais, contagem por
       coluna, badge de estado, densidade da lista. Só tokens do Carbono/Claro
       (`DESIGN.md` §4) — nenhuma cor absoluta.
