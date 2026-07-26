@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  API_URL,
   createBriefingLink,
   createClientProject,
   getBriefingLink,
@@ -420,17 +419,17 @@ function BriefingLinkDialog({
                 aviso, quem abrir para conferir acha que está quebrado. */}
             <p className="mt-1 text-[11px] text-dim">
               O formulário de briefing é a próxima fatia — por enquanto o link
-              apenas valida e registra o acesso.
+              abre uma página confirmando que ele é válido.
             </p>
             <input
               readOnly
-              value={briefingUrl(created.token, API_URL)}
+              value={briefingUrl(created.token, window.location.origin)}
               onFocus={(e) => e.currentTarget.select()}
               className="mt-2 w-full rounded-md border border-border2 bg-panel px-3 py-2 font-mono text-[11px] text-text"
             />
             <button
               type="button"
-              onClick={() => void copy(briefingUrl(created.token, API_URL))}
+              onClick={() => void copy(briefingUrl(created.token, window.location.origin))}
               className="mt-2 rounded-md bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg"
             >
               Copiar link

@@ -11,6 +11,7 @@ import { WorkspaceRoute } from './pages/workspace/WorkspaceRoute';
 import { ClientsRoute } from './pages/clients/ClientsRoute';
 import { ClientsPage } from './pages/clients/ClientsPage';
 import { FunnelPage } from './pages/clients/FunnelPage';
+import { BriefingLinkPage } from './pages/briefing/BriefingLinkPage';
 
 type AuthState =
   | { status: 'loading' }
@@ -35,23 +36,39 @@ export default function App() {
       });
   }, []);
 
-  if (auth.status === 'loading') {
-    return (
-      <div className="flex h-screen items-center justify-center bg-bg">
-        <div className="h-8 w-40 animate-pulse rounded-[10px] bg-card" />
-      </div>
-    );
-  }
-
-  if (auth.status === 'anonymous') return <Login />;
-
   const logout = () => {
     void api.logout().then(() => setAuth({ status: 'anonymous' }));
   };
 
+  // O Router envolve TUDO, inclusive os estados de sessão (FIX #136). Antes, o
+  // `anonymous` devolvia <Login /> ANTES do <BrowserRouter> — e com isso nenhuma
+  // rota pública era possível: o link de briefing caía na tela de login, porque
+  // não havia router para casar `/b/:token`. Quem abre esse link é o cliente do
+  // prestador, que não tem conta e nunca vai ter.
   return (
     <BrowserRouter>
       <Routes>
+        {/* Rota pública — fora do gate de sessão, de propósito. Declarada antes
+            das demais para deixar explícito que não depende de `auth`. */}
+        <Route path="/b/:token" element={<BriefingLinkPage />} />
+        {auth.status !== 'authenticated' ? (
+          // Carregando ou anônimo: qualquer caminho que não seja público cai na
+          // porta de entrada. Skeleton enquanto a sessão resolve, para não
+          // piscar o login para quem já está logado.
+          <Route
+            path="*"
+            element={
+              auth.status === 'loading' ? (
+                <div className="flex h-screen items-center justify-center bg-bg">
+                  <div className="h-8 w-40 animate-pulse rounded-[10px] bg-card" />
+                </div>
+              ) : (
+                <Login />
+              )
+            }
+          />
+        ) : (
+          <>
         <Route path="/" element={<Catalog user={auth.user} onLogout={logout} />} />
         {/* Configurações fora do shell de workspace (SPEC-025 §1): sem GitHub
             conectado não há workspace, e é justamente aí que se precisa dela. */}
@@ -97,6 +114,8 @@ export default function App() {
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
+          </>
+        )}
       </Routes>
       {/* Toast segue o tema ativo, canto inferior direito (DESIGN.md §6) — o par
           theme="light"/top-right era da paleta antiga. */}

@@ -1,7 +1,8 @@
 /**
- * Base da API. Exportada porque o link público de briefing (`/b/:token`) é rota
- * do NestJS, não da web — quem monta esse link precisa desta origem, e usar a da
- * web mandaria o cliente do prestador para a tela de login.
+ * Base da API. Exportada para a **página pública** `/b/:token` (FIX #136), que
+ * chama a API com `fetch` cru: ela não pode passar pelo `request()` daqui, porque
+ * esse trata 401 como "precisa logar" — e quem abre o link de briefing é o cliente
+ * do prestador, que não tem conta.
  */
 export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3311';
 
