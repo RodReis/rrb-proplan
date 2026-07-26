@@ -1988,3 +1988,24 @@ recusá-la, este FIX vira parte da re-entrega.
 O fluxo foi exercitado por **teste**, não no navegador contra o banco real:
 criar projeto, ver o card aparecer no funil, arrastá-lo e conferir o rollback é o
 dogfooding que segue pendente — junto com o da #127 e da #128.
+
+### Emenda ao FIX #134 — o link apontava para a web, e caía no login
+
+Achado no mesmo dogfooding, minutos depois: abrir o link gerado mostrava a tela
+**"Entrar no painel"**. O token estava certo — `curl` na API devolvia
+`200 {"status":"valid"}`. Errada era a URL que eu montava.
+
+`briefingUrl` usava `window.location.origin` (a web, `:5180`), mas **`/b/:token` é
+rota do NestJS** (`:3311`), declarada fora de todo guard. O React Router não tem
+`/b` nenhum, então o catch-all mandava o visitante para o login — e o visitante
+aqui é *o cliente do prestador*, que não tem conta.
+
+Corrigido exportando `API_URL` do `lib/api.ts` e usando-o para montar o link. O
+teste que barra a regressão afirma o que importa: a URL contém `:3311` e **não**
+contém `:5180`.
+
+**Nota de escopo, que o aviso na UI agora diz:** hoje esse link responde **JSON**,
+não uma página. O *formulário* público é a Fatia 20 (SPEC-031) — a SPEC-029 o lista
+em *Fora de escopo* e entrega só o ciclo de vida do link. O link já é o definitivo:
+quando o formulário existir, atende no mesmo caminho. Sem o aviso, quem abrisse
+para conferir concluiria que está quebrado — foi o que aconteceu.

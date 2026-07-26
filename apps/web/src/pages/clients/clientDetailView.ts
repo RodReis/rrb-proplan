@@ -6,9 +6,21 @@
  */
 import type { BriefingLinkInfo, ClientProject } from '../../lib/api';
 
-/** URL pública do briefing. O caminho é o do `BriefingPublicController` (`/b/:token`). */
-export function briefingUrl(token: string, origin: string): string {
-  return `${origin.replace(/\/$/, '')}/b/${token}`;
+/**
+ * URL pública do briefing — `GET /b/:token` do `BriefingPublicController`.
+ *
+ * **Aponta para a API, não para a web.** A rota é do NestJS (`/b/:token`, fora de
+ * todo guard); o React Router não tem `/b` nenhum e mandaria o visitante para o
+ * login. A primeira versão usava `window.location.origin` e produzia exatamente
+ * isso: link que abre a tela de "Entrar no painel" para o cliente do prestador.
+ *
+ * Nota de escopo: hoje esta URL responde **JSON** (`{"status":"valid"}`), não uma
+ * página — o *formulário* público é a Fatia 20 (SPEC-031), explicitamente *Fora de
+ * escopo* na SPEC-029, que entrega só o ciclo de vida do link. O link já é o
+ * definitivo: quando o formulário existir, ele passa a atender no mesmo caminho.
+ */
+export function briefingUrl(token: string, apiUrl: string): string {
+  return `${apiUrl.replace(/\/$/, '')}/b/${token}`;
 }
 
 export type LinkState = 'nenhum' | 'valido' | 'expirado' | 'revogado';

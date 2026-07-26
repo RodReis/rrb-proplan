@@ -72,16 +72,25 @@ describe('canRevoke', () => {
 });
 
 describe('briefingUrl', () => {
-  it('monta a URL pública no caminho do BriefingPublicController', () => {
-    expect(briefingUrl('tok123', 'https://proplan.rrbtrading.com.br')).toBe(
-      'https://proplan.rrbtrading.com.br/b/tok123',
+  it('monta a URL no caminho do BriefingPublicController', () => {
+    expect(briefingUrl('tok123', 'https://api.proplan.rrbtrading.com.br')).toBe(
+      'https://api.proplan.rrbtrading.com.br/b/tok123',
     );
   });
 
-  it('não duplica a barra quando a origin já termina com uma', () => {
-    expect(briefingUrl('tok', 'http://localhost:5180/')).toBe(
-      'http://localhost:5180/b/tok',
+  it('não duplica a barra quando a base já termina com uma', () => {
+    expect(briefingUrl('tok', 'http://localhost:3311/')).toBe(
+      'http://localhost:3311/b/tok',
     );
+  });
+
+  // O bug que isto barra: a 1ª versão usava `window.location.origin` (a web) e
+  // gerava um link que caía na tela de login — `/b/:token` é rota do NestJS, e o
+  // React Router não tem `/b` nenhum. Achado no dogfooding do PI.
+  it('aponta para a API, nunca para a origem da web', () => {
+    const url = briefingUrl('tok', 'http://localhost:3311');
+    expect(url).toContain(':3311');
+    expect(url).not.toContain(':5180');
   });
 });
 
