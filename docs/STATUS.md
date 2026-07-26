@@ -2,7 +2,7 @@
 
 ---
 proplan: v1
-updated: 2026-07-15
+updated: 2026-07-25
 ---
 # Status
 
@@ -50,8 +50,20 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | URLs legíveis | SPEC-028 | `SPEC-028-urls-legiveis.md` | URLs legíveis: slug de tenant/projeto em vez de UUID (refina SPEC-022 §4) — pós-MVP, sem número de fatia; issue #107 (spec `aprovada-pi` 2026-07-22) |
 | Identidade | SPEC-026 | `SPEC-026-costura-identidade-conexao.md` | Costura identidade ⊥ conexão: Google como 1º IdP, GitHub vira conexão — pós-MVP1, sem número de fatia; issue #94 (spec `aprovada-pi` 2026-07-20) |
 | Identidade | SPEC-025 | `SPEC-025-desconectar-reconectar-github-app.md` | Configurações: desconectar / reconectar o GitHub — pós-MVP1, sem número de fatia; issue #93 (spec `aprovada-pi` 2026-07-20). 2ª da Frente Identidade, depois da SPEC-026 |
+| 19 | SPEC-029 | `SPEC-029-clientes-funil-link.md` | Clientes + funil Kanban + ciclo de vida do link público — 1ª fatia do MVP3 (`docs/specs/MVP3.md`; spec `aprovada-pi` 2026-07-25) |
+| Board (UX) | SPEC-030 | `SPEC-030-painel-detalhe-card.md` | Painel de detalhe do card: corpo da issue, metadados e trilha de eventos — refina a SPEC-005; pós-MVP1, sem número de fatia; issue #128 (spec `aprovada-pi` 2026-07-25) |
 
 ## Backlog
+
+### MVP3 — Frente Clientes: briefing → artefatos (escopo: `docs/specs/MVP3.md`, `aprovada-pi` 2026-07-25)
+
+> Transformação **segura e versionada** de briefings de clientes em artefatos comerciais e técnicos — não é CRM nem formulário com Kanban. As 8 decisões fundadoras do PI (stack NestJS/Vite, módulo no monolito, `Tenant` evoluído com `installationId` nullable, funil no banco delimitando o ADR-011, só Anthropic no 1º corte, etc.) estão no `MVP3.md` §2.
+- **Fatia 19 (SPEC-029)** → spec `aprovada-pi` 2026-07-25; issue **#127** — **saiu do Backlog, ver Em Andamento**.
+- Fatias 20–24 (SPEC-031…035: briefing público, pipeline IA, estimativa, contratos, dashboard) → specs nascem quando cada fatia chegar; ordem no `MVP3.md` §7. **Deslocadas de 030…034 em 2026-07-25**: `SPEC-NNN` é ID em **ordem de criação** (regra do índice acima), e a SPEC-030 (painel de detalhe do card) nasceu antes. Reserva de número não vale contra a ordem de criação.
+
+### Board — UX
+
+- **SPEC-030 — Painel de detalhe do card** → spec `aprovada-pi` 2026-07-25; **issue #128 criada no Backlog**. Refina a SPEC-005: clicar no card passa a abrir leitura (corpo da issue renderizado + metadados + trilha de eventos) e a edição atual vai para trás de um botão. Leitura ao vivo sob demanda, **nada persistido** (ADR-017). As 3 perguntas abertas foram resolvidas nas recomendações do Cowork: comentários fora da trilha, 10 eventos + "ver todos", gaveta lateral `min(92vw, 720px)`. Descartada a alternativa de extrair seções de `docs/specs/` — imporia a convenção do trio ao produto (ADR-014).
 
 ### MVP2 — doc humana como artefato de primeira classe (escopo: `docs/specs/MVP2.md`, rascunho)
 
@@ -127,6 +139,7 @@ _(vazio)_
 - **`$transaction` em lote quebrava o sync (#113)** — **entregue** (PR próprio). Bug de **produto**: sob `runInTenantContext`, um `$transaction([deleteMany, createMany])` saía em **duas conexões**, com o INSERT commitando antes do DELETE — colisão de unique e `Sincronização falhou` visível no painel de Atividade em produção. Provado por `log_statement='all'` (DELETE na conexão 41969, INSERT na 41968). Corrigido nos **seis** call sites de replace-all com `$transaction` interativo; o Proxy passou a injetar o `set_config` também nessa forma. Achado pela guarda do ADR-019 no CI do PR #112 — que barrou o merge **corretamente**, por defeito alheio ao PR.
 
 ## Em Andamento
+- **Fatia 19 (SPEC-029) — Clientes, funil Kanban e ciclo de vida do link público** — issue **#127** (`proplan:doing`). 1ª fatia do **MVP3 / Frente Clientes**. **4 PRs empilhados, todos abertos**: **#129** (modelo de dados) · **#130** (módulo `clients` + máquina de estados) · **#131** (link público hash-only) · **#132** (UI Clientes + Kanban). Suíte final **839 testes verdes** (731 regras · 25 banco · 83 tela), build OK. **Aguardando merge na ordem + dogfooding.** **PR-1** (modelo de dados): 5 tabelas (`clients` raiz + `client_projects`, `client_status_transitions`, `briefing_links`, `audit_events` append-only), enum `ClientProjectState` com os 10 estados do funil, e **RLS em profundidade** — raízes por `tenant_id`, filha e netas por JOIN até `clients`, `ENABLE`+`FORCE` nas cinco. **ADR-023** (funil de clientes é estado do app; ADR-011 segue mandando no board de repos — domínios disjuntos) e **ADR-024** (`Tenant` existe sem instalação do GitHub). Suíte **695/695 verde**, incluindo 6 casos novos de isolamento contra Postgres real (`clients-rls.int-spec.ts`) que provam raiz, filha, netas, array de membership e **fail-closed**. **Dois desvios do previsto, ambos registrados**: (1) a migration de `installationId` nullable **não existiu** — a coluna já nascera nullable na Fatia 8, então o critério de aceite já estava satisfeito e o que faltava era só o ADR; (2) os grants de `proplan_app` ficaram **fora** da migration, porque o `bootstrap-app-role.mjs` já os cobre via `ALTER DEFAULT PRIVILEGES`. **Decisão do PI nesta fatia**: a spec não definia rota de UI e toda rota web existente exige um repo GitHub no path — ficou **`/t/:tenant/clients`**, nível de tenant, irmão do workspace de repo. Passos em `docs/DEVELOPMENT.md`.
 - **URLs legíveis — slug em vez de UUID (SPEC-028)** — issue **#107** (`proplan:doing`). `/t/rodreis/p/rrb-proplan/kanban` no lugar do par de UUIDs. **Zero migration**: o slug é conveniência de leitura (`Tenant.accountLogin` / `Project.name`), a identidade continua nos ids estáveis — por isso o bookmark por UUID nunca deixa de resolver. `GET /resolve` é **rota global** (ADR-020) e abre o próprio `withTenant`, como o resto do catálogo; responde **404** não-diferencial para alheio e inexistente. Código completo e verde (API 628 testes, web 50, build OK); passos em `docs/DEVELOPMENT.md`. **Dogfooding feito em 2026-07-22, local e produção** — e ele **encontrou uma regressão da própria SPEC-028**: a troca de projeto pelo combo estava quebrada (issue #115, PR #116, squash `3fcc5ee`). Com a correção, `proplan.rrbtrading.com.br` navega entre projetos por slug com URL, sidebar e breadcrumb coerentes. Vale o registro: o valor do dogfooding apareceu exatamente onde a suíte não olhava — corrida entre efeitos, invisível para teste unitário de função pura.
 
 ## Feito

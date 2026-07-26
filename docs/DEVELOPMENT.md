@@ -1534,3 +1534,249 @@ opções; o PI escolheu descartar.
 **O que fica vivo sem card:** as condições no `MVP2.md`. Se alguma se satisfizer
 na prática (a ordenação do board incomodar de fato), nasce **card novo com spec
 própria** — o #4 não se reabre.
+
+---
+
+## Fatia 19 (SPEC-029) — Clientes, funil Kanban e ciclo de vida do link público — `em andamento` (issue #127)
+
+Primeira fatia do **MVP3 / Frente Clientes** (`docs/specs/MVP3.md`). Fatia grande:
+entregue em **4 PRs empilhados** (1 branch por PR, base do N+1 = branch do N).
+
+| PR | escopo | estado |
+|---|---|---|
+| **PR-1** | Modelo de dados: 5 tabelas, enum do funil, RLS em profundidade, 2 ADRs | `feito` |
+| **PR-2** | Módulo `clients`: máquina de estados, CRUD + busca, transições auditadas, RBAC | a fazer |
+| **PR-3** | Módulo `briefing`: link hash-only, `GET /b/:token` não-diferencial, rate limit | a fazer |
+| **PR-4** | UI: página Clientes + Kanban dnd-kit com rollback | a fazer |
+
+### PR-1 — modelo de dados e isolamento
+
+- [x] **5 tabelas novas**: `clients` (raiz de tenancy), `client_projects`,
+      `client_status_transitions`, `briefing_links`, `audit_events` (append-only).
+- [x] **Enum `ClientProjectState`** com os 10 estados internos do funil
+      (`DRAFT` → … → `ARCHIVED`), mais finos que as 4 colunas da UI.
+- [x] **RLS em profundidade** (mesmo desenho da SPEC-022): raízes filtram por
+      `tenant_id = ANY(app.tenant_ids)`; filha (`client_projects`) e netas
+      (`client_status_transitions`, `briefing_links`) herdam por JOIN até
+      `clients`. `ENABLE` + `FORCE` nas cinco.
+- [x] **ADR-023** — funil de clientes é estado do app; ADR-011 segue mandando no
+      board de repos. Domínios disjuntos, nenhum fato nos dois lugares.
+- [x] **ADR-024** — `Tenant` existe sem instalação do GitHub.
+- [x] **Teste de isolamento** (`clients-rls.int-spec.ts`, 6 casos contra Postgres
+      real): raiz, filha, netas, `audit_events`, array de membership e fail-closed.
+
+#### `installationId` nullable não gerou DDL
+
+A spec pede *"migration: `Tenant.installationId` aceita NULL"*. Ao ir escrever a
+migration, a coluna **já era nullable desde a Fatia 8** — nasceu
+`"installation_id" INTEGER` (sem `NOT NULL`) na
+`20260717214642_fatia_8_multi_tenant`, porque o tenant pessoal já podia existir
+antes da instalação de org.
+
+Então o critério de aceite estava satisfeito **antes** da fatia começar, e um
+`ALTER COLUMN ... DROP NOT NULL` teria sido DDL no-op. O que faltava de verdade
+era o **ADR-024**: tornar deliberada uma propriedade que até aqui era acidente
+de implementação — e da qual a Frente Clientes passa a depender. Registrado
+como constatação no próprio ADR.
+
+#### Grants ficaram fora da migration
+
+`proplan_app` é não-owner e não herda privilégio nas tabelas novas. A tentação
+era um `GRANT ... TO proplan_app` no fim da migration — desnecessário: o
+`scripts/bootstrap-app-role.mjs` já roda `ALTER DEFAULT PRIVILEGES ... GRANT ...
+ON TABLES`, que cobre o que as migrations criarem depois. Repetir o grant
+divergiria do bootstrap na próxima mudança de privilégio.
+
+#### Netas são o ponto que um teste ingênuo deixa passar
+
+`client_status_transitions` e `briefing_links` não têm `tenant_id` próprio — a
+policy delas depende do JOIN até `clients` estar correto. Um join quebrado não
+devolveria zero linhas (que apareceria na hora): devolveria **tudo**. Por isso o
+int-spec povoa **dois** tenants com transição e link em cada, e afirma que o
+tenant A vê só `tr-a`/`bl-a`. Com um tenant só, o teste passaria mesmo com a
+policy furada.
+
+### Decisão de navegação: `/t/:tenant/clients` (PI, 2026-07-25)
+
+A spec define os contratos de API mas **nenhuma rota de UI**, e toda rota web
+existente é `/t/:tenant/p/:project/:tab` — presa a um **repo GitHub**. Cliente
+não tem repo, então não havia `:project` para pôr no path.
+
+Levado ao PI, que escolheu **`/t/:tenant/clients`** (+ `/t/:tenant/clients/funil`):
+nível de tenant, irmão do workspace de repo, espelhando a API da spec. As
+alternativas — aba dentro do workspace (exigiria projeto sentinela) e `/clients`
+na raiz (perderia o tenant no path, contra o ADR-020) — foram descartadas.
+
+### Referência visual do PI (2026-07-25): imagens de Dashboard, Kanban e Clientes
+
+O PI enviou três telas de inspiração no meio da fatia. Elas mostram **mais** do
+que a SPEC-029 define, e um dos pontos era **conflito direto**, não detalhe:
+
+| ponto | imagem | SPEC-029 | decisão do PI |
+|---|---|---|---|
+| **Colunas do Kanban** | 5: *Lead · Briefing · Proposta · Contrato · Entregue* | 4: *Novo/Link enviado · Briefing · Prompt e contrato · Produção e entrega* | **valem as 4 da spec** |
+| Valor em R$ no card | mostra | não define | **fora** — estimativa é a Fatia 22 (SPEC-032) |
+| Dashboard | tela inteira | não pede | **fora** — é a Fatia 24 (SPEC-034) |
+| Badge de origem (`INDICAÇÃO`/`SITE`/`RECORRENTE`) | mostra | não define | **fora** — sem spec do enum nem de quem preenche |
+| Vínculo cliente ↔ repo (`rrb-escola`) | mostra | não define | **fora** — cruzaria a Frente Clientes com o board de repos (ADR-023) |
+
+**As imagens valem como referência VISUAL**: avatar de iniciais, densidade da
+lista, contagem por coluna no cabeçalho, badges de estado, botão "Novo cliente".
+Não valem como escopo — o que elas mostram a mais pertence a fatias que ainda
+não têm spec `aprovada-pi`.
+
+Registro do método, porque é a regra do `CLAUDE.md` operando: escopo é do PI.
+Encolher a spec para caber na imagem, ou inflar a fatia para cobrir a imagem
+inteira, seriam os dois lados do mesmo erro — eu decidindo escopo. Levei o
+conflito e as quatro adições ao PI **antes** de escrever a UI, não depois.
+
+#### Lição de método: PR empilhado com base ≠ `main` não roda CI
+
+Abri o PR-2 com base no **branch do PR-1** (é o que "empilhado" sugere) e o
+GitHub aceitou — mas o CI **nunca disparou**: o `.github/workflows/ci.yml` tem
+`on: pull_request: branches: [main]`, então PR cuja base não é `main` fica sem
+nenhum check. A UI não avisa; ela só mostra "no checks reported", que é fácil
+confundir com "ainda rodando".
+
+Isso é perigoso porque a guarda do ADR-019 (relatório de teste que bate com
+execução limpa) é justamente o que impede entrega sem evidência — e ela some em
+silêncio no exato tipo de PR onde é mais fácil errar número (relatório gerado no
+branch errado, que foi o erro que cometi no PR-1).
+
+**A Fatia 18 não teve o problema** porque apontou os 4 PRs empilhados para
+`main` desde o começo — o empilhamento vivia só na ordem de merge, não na base
+do PR. Adotado o mesmo aqui: **base `main` em todos os PRs da fatia**, mergeando
+na ordem. O branch de cada PR continua saindo do anterior (é o que mantém o diff
+pequeno); só a *base declarada no GitHub* é `main`.
+
+Vale como candidato a `[INFRA]` futuro: fazer o CI rodar também em base
+não-`main`. Não abri card porque não é comportamento documentado sendo violado —
+é limitação conhecida do workflow, e mudar o gatilho de CI é decisão que merece
+o PI.
+
+### PR-4 — UI: página Clientes e Kanban do funil
+
+- [x] **Rota `/t/:tenant/clients`** (+ `/clients/funil`) com shell próprio, irmão
+      do workspace de repo. `ClientsRoute` resolve o tenant (aceita slug ou
+      UUID, como as rotas de workspace), fixa `setActiveTenant` **antes** de
+      renderizar e solta ao sair — deixá-lo fixo faria uma chamada global
+      seguinte sair escopada por engano.
+- [x] **Kanban com dnd-kit**, atualização otimista e **rollback** no 422.
+- [x] **RBAC na UI**: `viewer` não vê os controles de escrita e não arrasta card.
+      A API recusa de qualquer jeito (403) — esconder o botão é conveniência, a
+      barreira é o servidor (defesa em profundidade, critério da spec).
+- [x] **Cadastro/edição de cliente completo**: o modal único cria e edita nome,
+      CPF, empresa, CNPJ, e-mail, telefone, WhatsApp, endereço completo e notas
+      internas — mesmos campos do `Client` definido na SPEC-029. CPF/CNPJ,
+      telefone, WhatsApp e CEP têm máscara de leitura, mas a API segue recebendo
+      só dígitos.
+- [x] Visual conforme a referência do PI: avatar de iniciais, contagem por
+      coluna, badge de estado, densidade da lista. Só tokens do Carbono/Claro
+      (`DESIGN.md` §4) — nenhuma cor absoluta.
+
+#### A lógica do board é função pura, testada fora do componente
+
+`moveCard`, `columnOf` e `applyConfirmedState` vivem em `boardView.ts`, sem
+React. Motivo: **rollback é o critério de aceite mais fácil de regredir**, e um
+teste de markup não o provaria. Os 9 casos cobrem o que dói:
+
+- mover **não muta** o board original — é ele que o rollback restaura;
+- mover para a mesma coluna devolve o board **por identidade** (`toBe`), e o
+  componente usa isso para não disparar request ao soltar o card onde ele já
+  estava;
+- `applyConfirmedState` corrige o rótulo com o **estado interno** que o servidor
+  devolveu. A UI move por *coluna*, o servidor responde *estado*; sem isso o
+  card ficaria na coluna certa exibindo o rótulo antigo até o próximo refetch —
+  bug silencioso, porque a posição estaria correta.
+
+#### Colisão de nome no front: `BoardColumn` já existia
+
+`BoardColumn` no `api.ts` é das colunas do board de **repos** (`backlog`,
+`todo`, `doing`…). Os tipos da frente viraram **`FunnelBoardColumn`** e
+**`FunnelCard`** — mesma disciplina que fez `ClientProject` não reusar
+`Project` (ADR-023: domínios disjuntos, nomes disjuntos). O `tsc` pegou na
+hora; se os nomes tivessem coincidido só em runtime, seria bug de tipo
+silencioso.
+
+#### `activationConstraint` no PointerSensor
+
+Sem `{ distance: 6 }`, um clique simples no card conta como drag de 0px e a UI
+dispara transição sem o usuário ter arrastado nada.
+
+#### Dogfooding achou o bug que a suíte não podia achar
+
+Com a API e a web de pé, `GET /b/:token` respondia **`invalid` para todo token
+válido** — o link público nunca teria funcionado.
+
+**Causa**: a rota não tem sessão, então roda **sem** `app.tenant_ids`. O RLS de
+`briefing_links`/`clients` é fail-closed (é o que o PR-1 provou e celebrou), e o
+`SELECT` direto do lookup voltava zero linhas. A mesma propriedade que garante o
+isolamento fechava a única rota que precisa atravessá-lo.
+
+**Por que os 14 testes do service não pegaram**: eles mockam o `$queryRaw`.
+Provam a **lógica** (não-diferencial, revogado vence expirado, token não vaza) —
+não o **acesso**. É a mesma classe de lacuna da issue #122: teste correto sobre
+um dado que não existe. O mock não tem RLS.
+
+**Correção** (decisão do PI): função `resolve_briefing_link(hash)` com
+`SECURITY DEFINER` e superfície mínima — recebe só o hash, devolve só aquele
+link, não lista nem pagina, `search_path` fixo, `REVOKE` de `PUBLIC` + `GRANT`
+só para `proplan_app`. O RLS continua **ativo em todas as tabelas**; o
+privilégio fica confinado a uma função auditável em vez de a uma role.
+
+Descartadas: policy `USING (true)` (abriria a tabela inteira para qualquer query
+sem contexto) e role com `BYPASSRLS` (o ADR-022 proíbe — o bootstrap **falha** se
+a role tiver `rolbypassrls`).
+
+**O teste que faltava** agora existe: `briefing-link-lookup.int-spec.ts`, contra
+Postgres real, com a role `proplan_app` e **sem** contexto — exatamente como a
+rota em produção. Seis casos, e o último é o que impede a "correção" preguiçosa:
+`SELECT` direto sem contexto **continua** devolvendo zero linhas. Se ele virar
+verde com linhas, alguém afrouxou a policy e o isolamento caiu junto.
+
+**Verificado ao vivo** depois do fix: token válido → `{"status":"valid"}` ·
+token errado → `invalid` · revogado → `revoked` · `AuditEvent` de acesso gravado
+com o tenant vindo do hash · rate limit cortando na 21ª request com **429**.
+
+### Menu global (referência visual do PI, 2026-07-25)
+
+O PI apontou que o menu esquerdo não aparecia: as páginas existiam sem porta de
+entrada — só se chegava digitando a URL. Omissão minha; a spec não define
+navegação e eu não perguntei.
+
+Levado ao PI com três opções. A escolha foi o **menu global de primeiro nível**
+da imagem (`Dashboard · ProPlan · Kanban · Clientes · Configuração`), **acima**
+do workspace de repo — não dentro dele. O motivo é o mesmo da decisão de rota:
+exigir um repo aberto para chegar em Clientes tornaria a frente inalcançável com
+o GitHub desconectado, que é justamente o estado em que ela deve funcionar
+(ADR-024).
+
+**Escopo do menu nesta fatia** (decisão do PI): só `Clientes` e `Funil` são
+telas novas. `ProPlan`, `Kanban` e `Configuração` apontam para rotas que já
+existiam. **`Dashboard` fica desabilitado**, com o motivo no `title`: é a Fatia
+24 (SPEC-034) e depende de estimativa (F22) e contratos (F23) — renderizá-lo
+agora exigiria números inventados, que o MVP3 §9 proíbe. Desabilitado e
+explicado é melhor que ausente: some ≠ mentir sobre o que existe.
+
+#### Ajuste de escopo assumido pelo PI: shell global fiel à imagem
+
+O PI esclareceu que a imagem não era só inspiração das páginas novas: ela define
+o **shell global** do app (`Dashboard · ProPlan · Kanban · Clientes ·
+Configuração`). Isso é escopo novo sem spec `aprovada-pi` e redesenha a
+navegação do app inteiro. O PI decidiu explicitamente assumir agora, dentro da
+Fatia 19.
+
+Decisão aplicada:
+
+- **ProPlan = Catálogo** (mensagem do PI: "proplan = catalogo"). A tela `/`
+  agora renderiza dentro do `AppShell`, com o menu global à esquerda.
+- `Clientes` e `Kanban` do menu levam para as telas da Frente Clientes desta
+  fatia (`/t/:tenant/clients` e `/t/:tenant/clients/funil`).
+- `Configuração` segue levando para `/settings`.
+- `Dashboard` continua **desabilitado**, porque é a Fatia 24 (SPEC-034) e
+  dependeria de estimativa/contratos ainda inexistentes. Botão desabilitado com
+  `title` explicando é melhor que esconder ou inventar número.
+
+O `AppShell` extraiu a topbar que antes vivia só no Catálogo; o Catálogo perdeu
+o header próprio. Isso deixa a tela inicial visualmente fiel à imagem: menu
+lateral fixo, breadcrumb `ProPlan / ProPlan`, conteúdo do catálogo à direita.

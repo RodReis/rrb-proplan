@@ -464,3 +464,46 @@ O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013)
 **ADR-003 intacto**: deployar o próprio ProPlan não é o ProPlan inspecionando infra alheia. Ele continua lendo apenas `docs/` dos repos-alvo.
 
 **Gatilho de revisão**: multi-tenant comercial com carga real (hoje o Postgres é single-instance sem réplica), necessidade de staging, ou custo do Railway saindo do crédito do Pro.
+
+---
+
+## ADR-023 — O funil de clientes é estado do app; o ADR-011 vale para o board de repos
+
+**Status**: **aprovado pelo PI em 2026-07-25** (decisão fundadora 4 do `docs/specs/MVP3.md`). Implementado na SPEC-029 (issue #127). **Não revoga nem enfraquece o ADR-011** — delimita o domínio de cada um.
+
+**Contexto**: o ADR-011 estabelece que *"estado do trabalho vive nas GitHub Issues"* — o board de repos não tem coluna no banco, porque a garantia que ele vende é justamente **não poder forjar aceite**: a issue só fecha por ato deliberado do dono. Essa garantia depende de o estado morar num lugar que a aplicação não controla sozinha.
+
+O MVP3 traz um segundo Kanban — o **funil de clientes** (`Novo/Link enviado · Briefing · Prompt e contrato · Produção e entrega`). Ele parece o mesmo problema, mas não é: um cliente do prestador **não tem repositório**, não tem issue e não tem GitHub. Não há onde colocar esse estado fora do banco.
+
+**Decisão**: os dois Kanbans existem, com fontes de verdade **diferentes e disjuntas**:
+
+| board | fonte de verdade | por quê |
+|---|---|---|
+| **Board de repos** (fatias/issues do projeto) | **GitHub Issues** (ADR-011) | O aceite é do dono e não pode ser forjado por automação |
+| **Funil de clientes** (MVP3) | **Banco do app** (`client_projects.state`) | Não há entidade externa: o cliente não é um repo |
+
+- Transições do funil são validadas **no servidor** por máquina de estados no `domain/` do módulo `clients` — a UI é otimista e faz rollback quando o servidor recusa (422).
+- Toda mudança grava `ClientStatusTransition` (de, para, ator, quando). É o que substitui, neste domínio, o histórico que as Issues dão de graça no outro.
+- **Nenhum fato mora nos dois lugares.** O funil de clientes nunca cria, move ou fecha issue; o board de repos nunca lê `client_projects`.
+
+**O que esta decisão NÃO autoriza**: mover o board de repos para o banco. A tentação vai aparecer ("já temos máquina de estados, por que não usar nos dois?") — e a resposta é a mesma do ADR-011: no board de repos, estado no banco significa que a aplicação pode declarar "feito" sozinha, que é o *fechamento frágil* que este produto existe para detectar.
+
+**Gatilho de revisão**: se um cliente do prestador passar a ter repo próprio no ProPlan (a frente comercial encontrando a frente de repos), reavaliar se os dois boards continuam disjuntos.
+
+---
+
+## ADR-024 — `Tenant` existe sem instalação do GitHub (`installationId` nullable)
+
+**Status**: **aprovado pelo PI em 2026-07-25** (decisão fundadora 3 do `docs/specs/MVP3.md`). Registrado na SPEC-029 (issue #127). Coerente com o ADR-021 e as SPEC-025/026.
+
+**Contexto**: o `Tenant` nasceu (SPEC-022, Fatia 8) como *dono de projetos de repositório*, atrelado a uma instalação do GitHub App. O MVP3 traz uma frente onde **não há repositório nenhum**: o prestador cadastra clientes e projetos de cliente, e nada disso toca o GitHub. Exigir instalação para existir um tenant travaria a frente inteira numa dependência que ela não usa.
+
+**Decisão**: `Tenant.installationId` é **nullable** — um tenant existe sem instalação do GitHub. "Workspace" segue sendo o nome de UI do `Tenant`: **uma tenancy, um RLS (ADR-020), uma `Membership`**, independente de haver GitHub por trás.
+
+**Constatação de implementação**: a coluna **já era nullable desde a migration da Fatia 8** (`installation_id INTEGER`, sem `NOT NULL`) — ela nasceu assim porque o tenant pessoal já podia existir antes da instalação de org. Este ADR **não gerou DDL**; ele torna explícita e deliberada uma propriedade que até aqui era acidente de implementação, e que a frente de clientes passa a depender.
+
+**Consequência**: ausência de instalação é **informação, não falha** — mesma semântica da `Connection` ausente na SPEC-025. Catálogo e sync já tratam o caso (o tenant sem instalação simplesmente não lista repos); nenhuma rota da frente de clientes consulta `installationId`.
+
+**O que continua valendo**: a leitura de repositório segue exigindo o par de tokens do ADR-015 (user-to-server para ler, installation para escrever). Um tenant sem instalação não lê repo nenhum — ele só não deixa de existir por isso.
+
+**Gatilho de revisão**: criação de workspace pela UI sem GitHub (fora do escopo da SPEC-029) — quando entrar, revisar se `accountLogin`/`accountType`, hoje `NOT NULL` e preenchidos pela instalação, continuam fazendo sentido obrigatórios.

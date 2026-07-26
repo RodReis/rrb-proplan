@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -10,6 +10,7 @@ import {
   SessionUser,
 } from '../lib/api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { AppShell } from '../components/AppShell';
 import { useTheme } from '../theme';
 import bannerCarbono from '../assets/catalogo-banner.png';
 import bannerClaro from '../assets/catalogo-banner-claro.jpg';
@@ -23,6 +24,18 @@ type CatalogState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; data: CatalogInstallations };
+
+type CatalogFilter = 'all' | 'managed' | 'unmanaged' | 'private';
+type CatalogSort = 'status' | 'updated' | 'name';
+
+type CatalogRepoRow = {
+  repo: Repo;
+  account: string;
+  accountType: InstallationGroup['accountType'];
+  tenantId: InstallationGroup['tenantId'];
+};
+
+const DEFAULT_PAGE_SIZE = 8;
 
 /** Catálogo de quem não tem GitHub conectado (SPEC-025) — não é falha. */
 const VAZIO: CatalogInstallations = { groups: [], empty: true };
@@ -45,6 +58,34 @@ export function catalogView(
   return data.empty ? 'install' : 'groups';
 }
 
+export function catalogPageSizeForViewport(width: number, height: number): number {
+  if (width <= 720) return 5;
+  if (height >= 980) return 11;
+  if (height >= 860) return 9;
+  if (height >= 760) return 8;
+  return 6;
+}
+
+function useCatalogPageSize(): number {
+  const [pageSize, setPageSize] = useState(() =>
+    typeof window === 'undefined'
+      ? DEFAULT_PAGE_SIZE
+      : catalogPageSizeForViewport(window.innerWidth, window.innerHeight),
+  );
+
+  useEffect(() => {
+    function updatePageSize() {
+      setPageSize(catalogPageSizeForViewport(window.innerWidth, window.innerHeight));
+    }
+
+    updatePageSize();
+    window.addEventListener('resize', updatePageSize);
+    return () => window.removeEventListener('resize', updatePageSize);
+  }, []);
+
+  return pageSize;
+}
+
 /**
  * Catálogo (SPEC-021 §2) — página cheia em `/`, fora do shell de workspace.
  *
@@ -53,7 +94,7 @@ export function catalogView(
  */
 export function Catalog({ user, onLogout }: Props) {
   const navigate = useNavigate();
-  const { theme, toggle } = useTheme();
+  const { theme } = useTheme();
   const [catalog, setCatalog] = useState<CatalogState>({ status: 'loading' });
   const [busyRepoId, setBusyRepoId] = useState<number | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Repo | null>(null);
@@ -63,6 +104,11 @@ export function Catalog({ user, onLogout }: Props) {
   const [offline, setOffline] = useState<Project[]>([]);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<CatalogFilter>('all');
+  const [sort, setSort] = useState<CatalogSort>('status');
+  const [page, setPage] = useState(0);
+  const pageSize = useCatalogPageSize();
 
   const load = useCallback(() => {
     setCatalog({ status: 'loading' });
@@ -145,94 +191,47 @@ export function Catalog({ user, onLogout }: Props) {
     catalog.status === 'ready'
       ? countRepos(catalog.data)
       : { repos: 0, managed: 0 };
+  const rows = useMemo(
+    () => (catalog.status === 'ready' ? catalogRows(catalog.data) : []),
+    [catalog],
+  );
+  const filteredRows = useMemo(
+    () => filterCatalogRows(rows, query, filter, sort),
+    [rows, query, filter, sort],
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const pageRows = filteredRows.slice(page * pageSize, page * pageSize + pageSize);
+  const view = catalog.status === 'ready' ? catalogView(connected, catalog.data) : null;
+
+  useEffect(() => setPage(0), [query, filter, sort, rows.length]);
+  useEffect(() => setPage((current) => Math.min(current, pageCount - 1)), [pageCount]);
+
+  function openRepoWorkspace(row: CatalogRepoRow) {
+    if (!row.repo.managedProjectId) return;
+    if (!row.tenantId) {
+      toast.error(
+        'Este repositório ainda não foi vinculado a um tenant. Sincronize o catálogo e tente de novo.',
+      );
+      return;
+    }
+    navigate(`/t/${row.account.toLowerCase()}/p/${row.repo.name.toLowerCase()}/overview`);
+  }
 
   return (
-    <div className="flex min-h-screen flex-col bg-bg text-text">
-      <header className="flex h-[60px] shrink-0 items-center gap-3.5 border-b border-border bg-panel px-7">
-        <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="flex h-8 w-8 items-center justify-center rounded-[9px] text-[15px] font-bold"
-            style={{ background: 'var(--brand-gradient)', color: 'var(--brand-fg)' }}
-          >
-            P
-          </span>
-          <span className="flex flex-col">
-            <span className="text-sm font-semibold">ProPlan</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
-              Catálogo
-            </span>
-          </span>
-        </div>
-
-        <div className="flex-1" />
-
-        <button
-          onClick={toggle}
-          title={dark ? 'Mudar para o tema Claro' : 'Mudar para o tema Carbono'}
-          aria-label={dark ? 'Mudar para o tema Claro' : 'Mudar para o tema Carbono'}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-border2 text-muted transition-colors duration-150 hover:border-hoverb hover:text-text"
-        >
-          <ThemeIcon dark={dark} />
-        </button>
-
-        <button
-          onClick={() => navigate('/settings')}
-          title="Configurações"
-          aria-label="Configurações"
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-border2 text-muted transition-colors duration-150 hover:border-hoverb hover:text-text"
-        >
-          <svg
-            aria-hidden
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
-
-        <div className="flex items-center gap-2.5 border-l border-border pl-3.5">
-          {user.avatarUrl ? (
-            <img
-              src={user.avatarUrl}
-              alt=""
-              className="h-[30px] w-[30px] rounded-full border border-border2"
-            />
-          ) : (
-            <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-card text-xs font-semibold text-body2">
-              {(user.name ?? user.login).charAt(0).toUpperCase()}
-            </span>
-          )}
-          <span className="text-[13px] font-medium">{user.name ?? user.login}</span>
-          <button
-            onClick={onLogout}
-            className="text-xs text-muted transition-colors duration-150 hover:text-text"
-          >
-            Sair
-          </button>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[920px] flex-col gap-[22px] px-8 pb-16 pt-9">
-          <section className="relative flex min-h-[160px] items-end overflow-hidden rounded-[18px] border border-border">
+    <AppShell user={user} tenant={user.tenants[0]?.accountLogin ?? null} section="ProPlan" onLogout={onLogout}>
+      <div className="min-h-0 flex-1 overflow-hidden max-[1100px]:overflow-y-auto">
+        <div className="mx-auto grid h-full w-full max-w-[1480px] grid-rows-[auto_minmax(0,1fr)] gap-4 px-6 py-5 max-[1100px]:h-auto max-[1100px]:min-h-full max-[720px]:px-3 max-[720px]:py-3">
+          <section className="relative flex min-h-[94px] items-center overflow-hidden rounded-[14px] border border-border">
             <div
               aria-hidden
               className="anim-heroZoom absolute inset-0 bg-cover"
               style={{ backgroundImage: `url(${banner})`, backgroundPosition: 'center 42%' }}
             />
             <div aria-hidden className="absolute inset-0" style={{ background: bannerOverlay }} />
-            <div className="relative flex flex-1 items-end justify-between gap-4 px-6 pb-[22px] pt-7">
-              <div>
-                <h1 className="m-0 text-2xl font-semibold tracking-[-0.01em]">Catálogo</h1>
-                <p className="mt-[7px] max-w-[460px] text-[13.5px] text-body">
+            <div className="relative flex flex-1 items-center justify-between gap-4 px-5 py-4 max-[720px]:flex-col max-[720px]:items-start">
+              <div className="min-w-0">
+                <h1 className="m-0 text-2xl font-semibold tracking-[-0.01em]">Repositórios GitHub</h1>
+                <p className="mt-1 max-w-[620px] text-[13.5px] text-body">
                   Repositórios onde o ProPlan (GitHub App) está instalado. Escolha quais
                   serão gerenciados.
                 </p>
@@ -240,7 +239,7 @@ export function Catalog({ user, onLogout }: Props) {
               {catalog.status === 'ready' && !catalog.data.empty && connected && (
                 <button
                   onClick={() => void openInstall()}
-                  className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-[9px] border px-4 text-[12.5px] font-medium backdrop-blur-md transition-[filter] duration-150 hover:brightness-110"
+                  className="flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[9px] border px-4 text-[12.5px] font-medium backdrop-blur-md transition-[filter] duration-150 hover:brightness-110 max-[720px]:w-full max-[720px]:whitespace-normal"
                   style={{
                     borderColor: 'var(--accentBorder)',
                     background: 'color-mix(in srgb, var(--pop) 60%, transparent)',
@@ -265,52 +264,70 @@ export function Catalog({ user, onLogout }: Props) {
             </div>
           </section>
 
-          {connected !== null && (
-            <ConnectionCard
-              connected={connected}
-              login={user.login}
-              onDisconnect={() => setConfirmDisconnect(true)}
-            />
-          )}
+          <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-4 max-[1100px]:grid-cols-1">
+            <section className="flex min-h-0 flex-col self-start overflow-hidden rounded-[14px] border border-border bg-panel">
+              {view === 'groups' && (
+                <CatalogToolbar
+                  query={query}
+                  filter={filter}
+                  sort={sort}
+                  rows={rows}
+                  filteredCount={filteredRows.length}
+                  onQuery={setQuery}
+                  onFilter={setFilter}
+                  onSort={setSort}
+                />
+              )}
 
-          {catalog.status === 'loading' && <SkeletonList />}
-          {catalog.status === 'error' && (
-            <div className="rounded-[14px] border border-error/30 bg-error/5 p-4 text-sm text-error">
-              Falha ao listar instalações: {catalog.message}
-            </div>
-          )}
-          {catalog.status === 'ready' &&
-            catalogView(connected, catalog.data) === 'install' && (
-              <EmptyInstall onInstall={() => void openInstall()} />
-            )}
-          {catalog.status === 'ready' &&
-            catalogView(connected, catalog.data) === 'offline' && (
-              <OfflineProjects projects={offline} />
-            )}
-          {catalog.status === 'ready' &&
-            catalog.data.groups.map((group) => (
-              <AccountGroup
-                key={group.installationId}
-                group={group}
-                busyRepoId={busyRepoId}
-                onManage={(r) => void manage(r)}
-                onAskUnmanage={setConfirmRemove}
-                // URL por slug legível (SPEC-028). Vem do que o catálogo já tem
-                // em mãos — conta e nome do repo —, sem chamada extra.
-                onOpen={(tenantSlug, projectSlug) =>
-                  navigate(`/t/${tenantSlug}/p/${projectSlug}/overview`)
-                }
+              {catalog.status === 'loading' && <SkeletonList pageSize={pageSize} />}
+              {catalog.status === 'error' && (
+                <div className="m-4 rounded-[12px] border border-error/30 bg-error/5 p-4 text-sm text-error">
+                  Falha ao listar instalações: {catalog.message}
+                </div>
+              )}
+              {catalog.status === 'ready' && view === 'install' && (
+                <EmptyInstall onInstall={() => void openInstall()} />
+              )}
+              {catalog.status === 'ready' && view === 'offline' && (
+                <OfflineProjects projects={offline} pageSize={pageSize} />
+              )}
+              {catalog.status === 'ready' && view === 'groups' && (
+                <CatalogTable
+                  rows={pageRows}
+                  busyRepoId={busyRepoId}
+                  onManage={(r) => void manage(r)}
+                  onAskUnmanage={setConfirmRemove}
+                  onOpen={openRepoWorkspace}
+                />
+              )}
+
+              {catalog.status === 'ready' && view === 'groups' && (
+                <CatalogPagination
+                  page={page}
+                  pageCount={pageCount}
+                  total={filteredRows.length}
+                  onPrev={() => setPage((p) => Math.max(0, p - 1))}
+                  onNext={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                />
+              )}
+            </section>
+
+            <aside className="flex min-h-0 flex-col gap-3 max-[1100px]:hidden">
+              {connected !== null && (
+                <ConnectionCard
+                  connected={connected}
+                  login={user.login}
+                  onDisconnect={() => setConfirmDisconnect(true)}
+                />
+              )}
+              <CatalogSummary
+                totals={totals}
+                groups={catalog.status === 'ready' ? catalog.data.groups.length : 0}
+                connected={connected}
                 onInstall={() => void openInstall()}
               />
-            ))}
-
-          {catalog.status === 'ready' && !catalog.data.empty && (
-            <p className="mt-1 text-center text-xs text-faint">
-              {totals.repos} repositórios · {totals.managed} gerenciados · Somente leitura
-              de documentação — o ProPlan nunca clona seu código. Gerenciar um repositório
-              cria o workspace dele.
-            </p>
-          )}
+            </aside>
+          </div>
         </div>
       </div>
 
@@ -334,7 +351,7 @@ export function Catalog({ user, onLogout }: Props) {
           onCancel={() => setConfirmDisconnect(false)}
         />
       )}
-    </div>
+    </AppShell>
   );
 }
 
@@ -393,11 +410,21 @@ function ConnectionCard({
         <h2 className="mt-0.5 text-[15px] font-semibold">
           {connected ? 'GitHub conectado' : 'GitHub desconectado'}
         </h2>
-        <p className="mt-0.5 truncate font-mono text-[11px] text-muted">
-          {connected
-            ? `@${login} · GitHub App instalado · leitura de documentação`
-            : 'Seus projetos estão somente leitura. Reconecte para voltar a sincronizar.'}
-        </p>
+        {connected ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-[10.5px] text-muted">@{login}</span>
+            <span className="rounded-full border border-border2 px-1.5 py-0.5 font-mono text-[8.5px] uppercase tracking-[0.08em] text-faint">
+              App instalado
+            </span>
+            <span className="rounded-full border border-border2 px-1.5 py-0.5 font-mono text-[8.5px] uppercase tracking-[0.08em] text-faint">
+              docs
+            </span>
+          </div>
+        ) : (
+          <p className="mt-0.5 text-[12px] leading-snug text-muted">
+            Seus projetos estão somente leitura. Reconecte para voltar a sincronizar.
+          </p>
+        )}
       </div>
 
       {connected ? (
@@ -432,10 +459,10 @@ function ConnectionCard({
  * conteúdo. O selo diz por que o card está inerte; o CTA de reconectar vive no
  * card de conexão acima, que é o único caminho de volta.
  */
-function OfflineProjects({ projects }: { projects: Project[] }) {
+function OfflineProjects({ projects, pageSize }: { projects: Project[]; pageSize: number }) {
   if (projects.length === 0) {
     return (
-      <div className="rounded-[14px] border border-border2 bg-surface p-5 text-center text-sm text-muted">
+      <div className="m-4 rounded-[12px] border border-border2 bg-surface p-5 text-center text-sm text-muted">
         Nenhum projeto no índice local. Conecte o GitHub para escolher
         repositórios.
       </div>
@@ -443,19 +470,19 @@ function OfflineProjects({ projects }: { projects: Project[] }) {
   }
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2.5">
+    <section className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex h-10 items-center gap-2.5 border-b border-border px-4">
         <span className="text-[15px] font-semibold">Projetos</span>
         <span className="flex-1" />
         <span className="text-xs text-faint">
           {projects.length} no índice · somente leitura
         </span>
       </div>
-      <ul className="flex flex-col gap-2.5">
-        {projects.map((p) => (
+      <ul className="grid">
+        {projects.slice(0, pageSize).map((p) => (
           <li
             key={p.id}
-            className="flex items-center gap-4 rounded-[14px] border border-border2 bg-surface px-[18px] py-[15px] opacity-70"
+            className="flex min-h-[58px] items-center gap-4 border-b border-border/70 px-4 opacity-70"
           >
             <span
               aria-hidden
@@ -493,189 +520,375 @@ function GithubMark({ size = 20 }: { size?: number }) {
   );
 }
 
-function AccountGroup({
-  group,
+function CatalogToolbar({
+  query,
+  filter,
+  sort,
+  rows,
+  filteredCount,
+  onQuery,
+  onFilter,
+  onSort,
+}: {
+  query: string;
+  filter: CatalogFilter;
+  sort: CatalogSort;
+  rows: CatalogRepoRow[];
+  filteredCount: number;
+  onQuery: (value: string) => void;
+  onFilter: (value: CatalogFilter) => void;
+  onSort: (value: CatalogSort) => void;
+}) {
+  const counts = countCatalogRows(rows);
+  const filters: Array<{ id: CatalogFilter; label: string; count: number }> = [
+    { id: 'all', label: 'Todos', count: rows.length },
+    { id: 'managed', label: 'Gerenciados', count: counts.managed },
+    { id: 'unmanaged', label: 'Pendentes', count: counts.unmanaged },
+    { id: 'private', label: 'Privados', count: counts.private },
+  ];
+
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+      <label className="flex h-9 min-w-[260px] flex-1 items-center gap-2 rounded-[9px] border border-border2 bg-surface px-3 text-[13px] text-muted transition-colors focus-within:border-hoverb">
+        <SearchIcon />
+        <input
+          value={query}
+          onChange={(event) => onQuery(event.target.value)}
+          placeholder="Buscar repositório, conta ou descrição"
+          className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-muted"
+        />
+      </label>
+
+      <div className="flex items-center gap-1 rounded-[10px] border border-border2 bg-surface p-1">
+        {filters.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onFilter(item.id)}
+            className={
+              'h-7 rounded-[7px] px-2.5 text-[11.5px] font-medium transition-colors ' +
+              (filter === item.id
+                ? 'bg-card text-text'
+                : 'text-muted hover:bg-card/70 hover:text-text')
+            }
+          >
+            {item.label} <span className="text-faint">{item.count}</span>
+          </button>
+        ))}
+      </div>
+
+      <label className="flex h-9 items-center gap-2 rounded-[9px] border border-border2 bg-surface px-3 text-[12px] text-muted">
+        Ordenar
+        <select
+          value={sort}
+          onChange={(event) => onSort(event.target.value as CatalogSort)}
+          className="bg-transparent text-text outline-none"
+        >
+          <option value="status">estado</option>
+          <option value="updated">ultimo push</option>
+          <option value="name">nome</option>
+        </select>
+      </label>
+
+      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
+        {filteredCount} visíveis
+      </span>
+    </div>
+  );
+}
+
+function CatalogTable({
+  rows,
   busyRepoId,
   onManage,
   onAskUnmanage,
   onOpen,
-  onInstall,
 }: {
-  group: InstallationGroup;
+  rows: CatalogRepoRow[];
   busyRepoId: number | null;
   onManage: (repo: Repo) => void;
   onAskUnmanage: (repo: Repo) => void;
-  onOpen: (tenantSlug: string, projectSlug: string) => void;
-  onInstall: () => void;
+  onOpen: (row: CatalogRepoRow) => void;
 }) {
-  const managed = group.repos.filter((r) => r.managedProjectId).length;
+  if (rows.length === 0) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center">
+        <div className="max-w-sm">
+          <h2 className="text-sm font-semibold">Nenhum repositório neste recorte</h2>
+          <p className="mt-1 text-sm text-muted">
+            Ajuste a busca ou troque o filtro para voltar a ver o catálogo.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <section>
-      <div className="mb-2.5 mt-1.5 flex items-center gap-2.5">
-        <span className="text-[15px] font-semibold">{group.account}</span>
-        <span className="rounded-full border border-border2 px-2 py-[3px] font-mono text-[8.5px] uppercase tracking-[0.1em] text-faint">
-          {group.accountType === 'Organization' ? 'organização' : 'pessoal'}
-        </span>
-        <span className="flex-1" />
-        <span className="text-xs text-faint">
-          {group.repos.length} repositórios · {managed} gerenciados
-        </span>
-      </div>
-
-      {group.repos.length === 0 ? (
-        <div className="rounded-[14px] border border-border2 bg-surface p-4 text-sm text-muted">
-          Nenhum repositório acessível nesta conta —{' '}
-          <button
-            onClick={onInstall}
-            className="font-semibold text-accent underline-offset-2 hover:underline"
-          >
-            revisar seleção no GitHub
-          </button>
-          .
+    <div className="min-h-0 overflow-x-auto overflow-y-hidden">
+      <div className="min-w-[890px] max-[720px]:min-w-0">
+        <div className="grid h-9 grid-cols-[minmax(260px,1.35fr)_minmax(180px,.7fr)_120px_120px_210px] items-center gap-3 border-b border-border px-4 font-mono text-[9px] uppercase tracking-[0.12em] text-faint max-[720px]:hidden">
+          <span>Repositório</span>
+          <span>Conta</span>
+          <span>Estado</span>
+          <span>Último push</span>
+          <span className="text-right">Ações</span>
         </div>
-      ) : (
-        <ul className="flex flex-col gap-2.5">
-          {group.repos.map((repo) => (
-            <RepoRow
-              key={repo.githubRepoId}
-              repo={repo}
-              busy={busyRepoId === repo.githubRepoId}
-              onManage={() => onManage(repo)}
-              onAskUnmanage={() => onAskUnmanage(repo)}
-              onOpen={() => {
-                if (!repo.managedProjectId) return;
-                // tenantId null = instalação ainda não reconciliada a um tenant
-                // (PR-5). Sinaliza em vez de engolir o clique em silêncio.
-                if (!group.tenantId) {
-                  toast.error(
-                    'Este repositório ainda não foi vinculado a um tenant. Sincronize o catálogo e tente de novo.',
-                  );
-                  return;
-                }
-                // Slugs canônicos (lowercase), a mesma forma que o /resolve
-                // devolve — assim a URL já nasce canônica e não é reescrita.
-                onOpen(group.account.toLowerCase(), repo.name.toLowerCase());
-              }}
+        <ul className="grid max-[720px]:grid-rows-none">
+          {rows.map((row) => (
+            <DenseRepoRow
+              key={row.repo.githubRepoId}
+              row={row}
+              busy={busyRepoId === row.repo.githubRepoId}
+              onManage={() => onManage(row.repo)}
+              onAskUnmanage={() => onAskUnmanage(row.repo)}
+              onOpen={() => onOpen(row)}
             />
           ))}
         </ul>
-      )}
-    </section>
+      </div>
+    </div>
   );
 }
 
-/** Linha densa de repositório (fonte: protótipo; decisão do PI em 2026-07-16). */
-function RepoRow({
-  repo,
+function DenseRepoRow({
+  row,
   busy,
   onManage,
   onAskUnmanage,
   onOpen,
 }: {
-  repo: Repo;
+  row: CatalogRepoRow;
   busy: boolean;
   onManage: () => void;
   onAskUnmanage: () => void;
   onOpen: () => void;
 }) {
+  const { repo } = row;
   const managed = repo.managedProjectId !== null;
 
   return (
-    <li
-      className="flex items-center gap-4 rounded-[14px] border bg-surface px-[18px] py-[15px] transition-colors duration-150 hover:border-hoverb"
-      style={{ borderColor: managed ? 'var(--accentBorder)' : 'var(--border2)' }}
-    >
-      <span
-        aria-hidden
-        className="h-2 w-2 shrink-0 rounded-full"
-        style={{ background: managed ? 'var(--success)' : 'var(--dimmer)' }}
-      />
-
-      <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="whitespace-nowrap text-[13.5px] text-muted">{repo.owner}/</span>
-          <span className="-ml-2 truncate text-[13.5px] font-semibold text-text">
-            {repo.name}
-          </span>
-          {repo.isPrivate && (
-            <span className="shrink-0 rounded-full border border-border2 px-[7px] py-[2px] font-mono text-[8.5px] uppercase tracking-[0.08em] text-faint">
-              privado
+    <li className="grid min-h-[58px] grid-cols-[minmax(260px,1.35fr)_minmax(180px,.7fr)_120px_120px_210px] items-center gap-3 border-b border-border/70 px-4 transition-colors duration-150 hover:bg-card/45 max-[720px]:min-h-[86px] max-[720px]:grid-cols-[minmax(0,1fr)_116px] max-[720px]:items-center max-[720px]:gap-x-3 max-[720px]:gap-y-1 max-[720px]:py-3">
+      <span className="flex min-w-0 items-center gap-3">
+        <span
+          aria-hidden
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ background: managed ? 'var(--success)' : 'var(--dimmer)' }}
+        />
+        <span className="min-w-0">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[13px] font-semibold text-text">
+              {repo.owner}/{repo.name}
             </span>
-          )}
-        </span>
-        <span className="truncate text-xs text-faint">
-          {repo.description ?? 'Sem descrição'}
-          {repo.pushedAt &&
-            ` · último push ${new Date(repo.pushedAt).toLocaleDateString('pt-BR')}`}
+            {repo.isPrivate && (
+              <span className="shrink-0 rounded-full border border-border2 px-[7px] py-[2px] font-mono text-[8.5px] uppercase tracking-[0.08em] text-faint">
+                privado
+              </span>
+            )}
+          </span>
+          <span className="block truncate text-[11.5px] text-faint">
+            {repo.description ?? 'Sem descrição'}
+          </span>
         </span>
       </span>
 
-      {managed && (
-        <button
-          onClick={onOpen}
-          className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted transition-colors duration-150 hover:text-text"
-        >
-          Abrir workspace
-          <svg
-            aria-hidden
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </button>
-      )}
+      <span className="min-w-0 max-[720px]:hidden">
+        <span className="block truncate text-[12px] text-body">{row.account}</span>
+        <span className="block truncate font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+          {row.accountType === 'Organization' ? 'organização' : 'pessoal'}
+        </span>
+      </span>
 
-      <button
-        onClick={managed ? onAskUnmanage : onManage}
-        disabled={busy}
-        title={managed ? 'Deixar de gerenciar (pede confirmação)' : undefined}
-        className="flex h-8 w-[122px] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border text-xs font-semibold transition-colors duration-150 disabled:opacity-60"
-        style={
-          managed
-            ? {
-                borderColor: 'var(--accentBorder)',
-                background: 'var(--accentSoft)',
-                color: 'var(--text)',
-              }
-            : { borderColor: 'var(--border2)', color: 'var(--body2)' }
+      <span
+        className={
+          'inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium max-[720px]:col-start-1 max-[720px]:row-start-2 ' +
+          (managed ? 'bg-success/10 text-success' : 'bg-card text-muted')
         }
       >
-        {busy ? (
-          <span
-            aria-label="Salvando"
-            className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent"
-            style={{ animation: 'spin .7s linear infinite' }}
-          />
-        ) : managed ? (
-          <>
-            <svg
-              aria-hidden
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-            Gerenciado
-          </>
-        ) : (
-          'Gerenciar'
+        <span
+          aria-hidden
+          className={'h-1.5 w-1.5 rounded-full ' + (managed ? 'bg-success' : 'bg-muted')}
+        />
+        {managed ? 'Gerenciado' : 'Pendente'}
+      </span>
+
+      <span className="truncate text-[12px] text-muted max-[720px]:hidden">
+        {repo.pushedAt ? new Date(repo.pushedAt).toLocaleDateString('pt-BR') : 'sem data'}
+      </span>
+
+      <span className="flex items-center justify-end gap-2 max-[720px]:row-span-2 max-[720px]:flex-col max-[720px]:items-stretch max-[720px]:gap-1">
+        {managed && (
+          <button
+            onClick={onOpen}
+            className="flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-border2 px-3 text-xs font-medium text-body transition-colors duration-150 hover:border-hoverb hover:text-text"
+          >
+            Abrir
+            <ArrowRightIcon />
+          </button>
         )}
-      </button>
+        <button
+          onClick={managed ? onAskUnmanage : onManage}
+          disabled={busy}
+          title={managed ? 'Deixar de gerenciar (pede confirmação)' : undefined}
+          className="flex h-8 w-[116px] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border text-xs font-semibold transition-colors duration-150 disabled:opacity-60"
+          style={
+            managed
+              ? {
+                  borderColor: 'var(--accentBorder)',
+                  background: 'var(--accentSoft)',
+                  color: 'var(--text)',
+                }
+              : { borderColor: 'var(--border2)', color: 'var(--body2)' }
+          }
+        >
+          {busy ? (
+            <span
+              aria-label="Salvando"
+              className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent"
+              style={{ animation: 'spin .7s linear infinite' }}
+            />
+          ) : managed ? (
+            <>
+              <CheckIcon />
+              Desgerenciar
+            </>
+          ) : (
+            'Gerenciar'
+          )}
+        </button>
+      </span>
     </li>
+  );
+}
+
+function CatalogPagination({
+  page,
+  pageCount,
+  total,
+  onPrev,
+  onNext,
+}: {
+  page: number;
+  pageCount: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="flex h-12 shrink-0 items-center justify-between border-t border-border px-4">
+      <span className="text-xs text-faint">
+        {total === 0 ? 'Nenhum repo' : `${total} repo${total === 1 ? '' : 's'} no recorte`}
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onPrev}
+          disabled={page === 0}
+          className="h-8 rounded-[9px] border border-border2 px-3 text-xs text-body transition-colors duration-150 hover:border-hoverb hover:text-text disabled:opacity-40"
+        >
+          Anterior
+        </button>
+        <span className="min-w-[58px] text-center font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
+          {page + 1}/{pageCount}
+        </span>
+        <button
+          onClick={onNext}
+          disabled={page >= pageCount - 1}
+          className="h-8 rounded-[9px] border border-border2 px-3 text-xs text-body transition-colors duration-150 hover:border-hoverb hover:text-text disabled:opacity-40"
+        >
+          Próxima
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CatalogSummary({
+  totals,
+  groups,
+  connected,
+  onInstall,
+}: {
+  totals: { repos: number; managed: number };
+  groups: number;
+  connected: boolean | null;
+  onInstall: () => void;
+}) {
+  const pending = Math.max(0, totals.repos - totals.managed);
+
+  return (
+    <section className="rounded-[14px] border border-border bg-panel p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[15px] font-semibold">Resumo</h2>
+        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
+          catálogo
+        </span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <SummaryStat label="Repos" value={totals.repos} />
+        <SummaryStat label="Gerenciados" value={totals.managed} />
+        <SummaryStat label="Pendentes" value={pending} />
+        <SummaryStat label="Contas" value={groups} />
+      </div>
+      <p className="mt-4 text-xs leading-relaxed text-muted">
+        Somente leitura de documentação. Gerenciar um repositório cria o workspace
+        local; o ProPlan nunca clona seu código.
+      </p>
+      {connected && (
+        <button
+          onClick={onInstall}
+          className="mt-4 flex h-9 w-full items-center justify-center gap-2 rounded-[9px] border px-3 text-[12.5px] font-medium transition-[filter] duration-150 hover:brightness-110"
+          style={{
+            borderColor: 'var(--accentBorder)',
+            background: 'color-mix(in srgb, var(--pop) 60%, transparent)',
+          }}
+        >
+          <PlusIcon />
+          Instalar em mais repositórios
+        </button>
+      )}
+    </section>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-[10px] border border-border2 bg-surface p-3">
+      <span className="block font-mono text-[9px] uppercase tracking-[0.12em] text-faint">
+        {label}
+      </span>
+      <strong className="mt-1 block text-lg font-semibold">{value}</strong>
+    </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg aria-hidden width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14M12 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg aria-hidden width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg aria-hidden width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }
 
@@ -702,13 +915,13 @@ function EmptyInstall({ onInstall }: { onInstall: () => void }) {
   );
 }
 
-function SkeletonList() {
+function SkeletonList({ pageSize }: { pageSize: number }) {
   return (
-    <ul className="flex flex-col gap-2.5">
-      {Array.from({ length: 6 }).map((_, i) => (
+    <ul className="grid">
+      {Array.from({ length: pageSize }).map((_, i) => (
         <li
           key={i}
-          className="h-[62px] animate-pulse rounded-[14px] border border-border2 bg-surface"
+          className="min-h-[58px] animate-pulse border-b border-border/70 bg-surface"
         />
       ))}
     </ul>
@@ -719,31 +932,76 @@ function countRepos(data: CatalogInstallations): { repos: number; managed: numbe
   const repos = data.groups.flatMap((g) => g.repos);
   return {
     repos: repos.length,
-    managed: repos.filter((r) => r.managedProjectId).length,
+    managed: repos.filter((r) => r.managedProjectId !== null).length,
   };
 }
 
-function ThemeIcon({ dark }: { dark: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {dark ? (
-        <>
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-        </>
-      ) : (
-        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8" />
-      )}
-    </svg>
+export function catalogRows(data: CatalogInstallations): CatalogRepoRow[] {
+  return data.groups.flatMap((group) =>
+    group.repos.map((repo) => ({
+      repo,
+      account: group.account,
+      accountType: group.accountType,
+      tenantId: group.tenantId,
+    })),
   );
 }
+
+export function filterCatalogRows(
+  rows: CatalogRepoRow[],
+  query: string,
+  filter: CatalogFilter,
+  sort: CatalogSort,
+): CatalogRepoRow[] {
+  const normalized = query.trim().toLowerCase();
+  const filtered = rows.filter((row) => {
+    const managed = row.repo.managedProjectId !== null;
+    if (filter === 'managed' && !managed) return false;
+    if (filter === 'unmanaged' && managed) return false;
+    if (filter === 'private' && !row.repo.isPrivate) return false;
+    if (!normalized) return true;
+
+    return [
+      row.account,
+      row.repo.owner,
+      row.repo.name,
+      row.repo.description ?? '',
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(normalized);
+  });
+
+  return [...filtered].sort((a, b) => {
+    if (sort === 'name') {
+      const byName = a.repo.name.localeCompare(b.repo.name, 'pt-BR');
+      if (byName !== 0) return byName;
+      return a.repo.owner.localeCompare(b.repo.owner, 'pt-BR');
+    }
+    if (sort === 'updated') {
+      return pushedAtTime(b.repo) - pushedAtTime(a.repo);
+    }
+
+    const aManaged = a.repo.managedProjectId !== null ? 0 : 1;
+    const bManaged = b.repo.managedProjectId !== null ? 0 : 1;
+    if (aManaged !== bManaged) return aManaged - bManaged;
+    return pushedAtTime(b.repo) - pushedAtTime(a.repo);
+  });
+}
+
+function countCatalogRows(rows: CatalogRepoRow[]) {
+  return rows.reduce(
+    (acc, row) => {
+      if (row.repo.managedProjectId !== null) acc.managed += 1;
+      else acc.unmanaged += 1;
+      if (row.repo.isPrivate) acc.private += 1;
+      return acc;
+    },
+    { managed: 0, unmanaged: 0, private: 0 },
+  );
+}
+
+function pushedAtTime(repo: Repo): number {
+  return repo.pushedAt ? new Date(repo.pushedAt).getTime() : 0;
+}
+

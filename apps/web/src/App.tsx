@@ -8,6 +8,9 @@ import { Catalog } from './pages/Catalog';
 import { SettingsPage } from './pages/SettingsPage';
 import { ResolveRoute } from './pages/workspace/ResolveRoute';
 import { WorkspaceRoute } from './pages/workspace/WorkspaceRoute';
+import { ClientsRoute } from './pages/clients/ClientsRoute';
+import { ClientsPage } from './pages/clients/ClientsPage';
+import { FunnelPage } from './pages/clients/FunnelPage';
 
 type AuthState =
   | { status: 'loading' }
@@ -73,6 +76,26 @@ export default function App() {
         />
         {/* Sem aba na URL → aba padrão, preservando tenant e projeto. */}
         <Route path="/t/:tenant/p/:project" element={<RedirectToDefaultTab />} />
+        {/* Frente Clientes (SPEC-029): shell PRÓPRIO no nível do tenant, irmão
+            do workspace de repo — não uma aba dele. Um cliente não tem
+            repositório, então não haveria `:project` para pôr no path (decisão
+            do PI, 2026-07-25). */}
+        <Route
+          path="/t/:tenant/clients"
+          element={
+            <ClientsRoute user={auth.user}>
+              {(canWrite) => <ClientsPage canWrite={canWrite} />}
+            </ClientsRoute>
+          }
+        />
+        <Route
+          path="/t/:tenant/clients/funil"
+          element={
+            <ClientsRoute user={auth.user}>
+              {(canWrite) => <FunnelPage canWrite={canWrite} />}
+            </ClientsRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {/* Toast segue o tema ativo, canto inferior direito (DESIGN.md §6) — o par

@@ -12,9 +12,9 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 670 | 670 | 0 | 74.0 | — | — |
-| — | — | — | Banco | 19 | 19 | 0 | 92.6 | — | — |
-| — | — | — | Tela | 74 | 74 | 0 | 16.5 | — | — |
+| — | — | — | Regras de Negócio | 731 | 731 | 0 | 74.6 | — | — |
+| — | — | — | Banco | 31 | 31 | 0 | 92.6 | — | — |
+| — | — | — | Tela | 94 | 94 | 0 | 24.5 | — | — |
 
 ## Histórico por entrega
 
@@ -64,3 +64,27 @@ Append-only — linhas de entregas passadas são imutáveis.
 | 2026-07-25 | #93 | SPEC-025 | Regras de Negócio | 670 | 670 | 0 | 74.0 | #126 | [#126](https://github.com/RodReis/rrb-proplan/pull/126) |
 | 2026-07-25 | #93 | SPEC-025 | Banco | 19 | 19 | 0 | 92.6 | #126 | [#126](https://github.com/RodReis/rrb-proplan/pull/126) |
 | 2026-07-25 | #93 | SPEC-025 | Tela | 74 | 74 | 0 | 16.5 | #126 | [#126](https://github.com/RodReis/rrb-proplan/pull/126) |
+| — | #127 | SPEC-029 | Regras de Negócio | 699 | 699 | 0 | 74.1 | #130 | [#130](https://github.com/RodReis/rrb-proplan/pull/130) |
+| — | #127 | SPEC-029 | Banco | 25 | 25 | 0 | 92.6 | #130 | [#130](https://github.com/RodReis/rrb-proplan/pull/130) |
+| — | #127 | SPEC-029 | Tela | 74 | 74 | 0 | 16.5 | #130 | [#130](https://github.com/RodReis/rrb-proplan/pull/130) |
+| — | #127 | SPEC-029 | Regras de Negócio | 731 | 731 | 0 | 74.6 | #131 | [#131](https://github.com/RodReis/rrb-proplan/pull/131) |
+| — | #127 | SPEC-029 | Banco | 25 | 25 | 0 | 92.6 | #131 | [#131](https://github.com/RodReis/rrb-proplan/pull/131) |
+| — | #127 | SPEC-029 | Tela | 74 | 74 | 0 | 16.5 | #131 | [#131](https://github.com/RodReis/rrb-proplan/pull/131) |
+| — | #127 | SPEC-029 | Regras de Negócio | 731 | 731 | 0 | 74.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Banco | 25 | 25 | 0 | 92.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Tela | 83 | 83 | 0 | 17.0 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Regras de Negócio | 731 | 731 | 0 | 74.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Banco | 31 | 31 | 0 | 92.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Tela | 83 | 83 | 0 | 16.9 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Regras de Negócio | 731 | 731 | 0 | 74.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Banco | 31 | 31 | 0 | 92.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Tela | 86 | 86 | 0 | 22.2 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Regras de Negócio | 731 | 731 | 0 | 74.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Banco | 31 | 31 | 0 | 92.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Tela | 86 | 86 | 0 | 22.8 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Regras de Negócio | 731 | 731 | 0 | 74.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Banco | 31 | 31 | 0 | 92.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| — | #127 | SPEC-029 | Tela | 87 | 87 | 0 | 22.9 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| 2026-07-26 | #127 | SPEC-029 | Regras de Negócio | 731 | 731 | 0 | 74.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| 2026-07-26 | #127 | SPEC-029 | Banco | 31 | 31 | 0 | 92.6 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
+| 2026-07-26 | #127 | SPEC-029 | Tela | 94 | 94 | 0 | 24.5 | #132 | [#132](https://github.com/RodReis/rrb-proplan/pull/132) |
