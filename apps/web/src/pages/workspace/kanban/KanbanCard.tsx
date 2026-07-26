@@ -11,7 +11,14 @@ interface Props {
   card: BoardCard;
   /** Mutação em voo → borda pulsante até a API confirmar (applied). */
   pending?: boolean;
+  /**
+   * Clique/Enter no card. Desde a SPEC-030 abre a **gaveta de leitura**, não o
+   * formulário — o nome ficou por compatibilidade com os 3 níveis que repassam
+   * a prop (coluna, swimlane, célula). `undefined` ⇒ card não é clicável.
+   */
   onEdit?: (card: BoardCard) => void;
+  /** `false` ⇒ card abre mas não arrasta (viewer, board não-active). */
+  draggable?: boolean;
 }
 
 /**
@@ -168,9 +175,18 @@ const KanbanCardBody = memo(function KanbanCardBody({ card }: { card: BoardCard 
  * prioridade semântica à esquerda + chip de prioridade + número da issue + link.
  * Arrastável (dnd-kit). Sem cor decorativa — só sinal semântico (ADR do DESIGN).
  */
-export const KanbanCard = memo(function KanbanCard({ card, pending, onEdit }: Props) {
+export const KanbanCard = memo(function KanbanCard({
+  card,
+  pending,
+  onEdit,
+  draggable = true,
+}: Props) {
   const baseStyle = useKanbanCardBaseStyle(card);
-  const canEdit = !!onEdit;
+  // Abrir ≠ arrastar (SPEC-030). Antes eram a mesma flag (`!!onEdit`), e o
+  // efeito colateral era viewer sem poder nem *abrir* o card — leitura é o que
+  // a gaveta oferece, e ninguém a proibiu. Arrastar segue sendo escrita.
+  const canOpen = !!onEdit;
+  const canDrag = canOpen && draggable;
   const {
     attributes,
     listeners,
@@ -179,7 +195,7 @@ export const KanbanCard = memo(function KanbanCard({ card, pending, onEdit }: Pr
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: card.number, data: { card }, disabled: !canEdit });
+  } = useSortable({ id: card.number, data: { card }, disabled: !canDrag });
 
   const discarded = card.column === 'discarded';
 
@@ -195,7 +211,7 @@ export const KanbanCard = memo(function KanbanCard({ card, pending, onEdit }: Pr
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (!canEdit || e.defaultPrevented || e.key !== 'Enter') return;
+    if (!canOpen || e.defaultPrevented || e.key !== 'Enter') return;
     onEdit?.(card);
   }
 
@@ -207,14 +223,18 @@ export const KanbanCard = memo(function KanbanCard({ card, pending, onEdit }: Pr
     <div
       ref={setNodeRef}
       style={style}
-      onClick={canEdit ? handleClick : undefined}
+      onClick={canOpen ? handleClick : undefined}
       onKeyDown={handleKeyDown}
-      tabIndex={canEdit ? 0 : undefined}
-      role={canEdit ? 'button' : undefined}
-      aria-label={canEdit ? `Editar card #${card.number}: ${card.title}` : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      role={canOpen ? 'button' : undefined}
+      // "Abrir", não "Editar": o clique passou a abrir a gaveta de leitura
+      // (SPEC-030); editar virou botão dentro dela. Rótulo que promete edição
+      // mentiria para quem navega por leitor de tela — e para o viewer, que
+      // agora abre o card mas não o edita.
+      aria-label={canOpen ? `Abrir card #${card.number}: ${card.title}` : undefined}
       className={
         'group relative select-none rounded-[10px] border p-2 touch-none [contain:layout_paint] ' +
-        (canEdit ? 'cursor-pointer ' : 'cursor-default ') +
+        (canOpen ? 'cursor-pointer ' : 'cursor-default ') +
         'transition-[transform,border-color] duration-150 hover:-translate-y-px hover:border-hoverb ' +
         (isDragging ? 'will-change-transform ' : '') +
         (pending ? 'animate-pulse border-accent-border ' : 'border-border2 ') +
@@ -222,7 +242,7 @@ export const KanbanCard = memo(function KanbanCard({ card, pending, onEdit }: Pr
       }
     >
       <KanbanCardBody card={card} />
-      {canEdit && (
+      {canDrag && (
         <button
           ref={setActivatorNodeRef}
           type="button"

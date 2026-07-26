@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 
 const TIMEOUT_MS = 10_000;
 const MAX_PAGES = 20; // 2000 issues — acima disso, filtrar por since
@@ -19,6 +19,45 @@ export interface GithubIssue {
   parentNumber?: number | null;
   /** Tem sub-issues ⇒ é épico estrutural, excluído das colunas (SPEC-024). */
   hasSubIssues?: boolean;
+}
+
+/** Um usuário como o GitHub o devolve. `null` = ator removido ou ação do sistema. */
+export interface GithubActor {
+  login: string;
+  avatar_url: string;
+}
+
+/**
+ * Issue única com corpo e labels coloridas (SPEC-030). Superset do `GithubIssue`
+ * do sync: `body`, `user` e a cor da label só chegam nesta leitura pontual.
+ */
+export interface GithubIssueDetail {
+  number: number;
+  title: string;
+  state: 'open' | 'closed';
+  html_url: string;
+  body: string | null;
+  user: GithubActor | null;
+  assignees: GithubActor[];
+  labels: { name: string; color: string }[];
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+/**
+ * Evento da timeline. O GitHub devolve **dezenas** de tipos (`commented`,
+ * `cross-referenced`, `mentioned`, `subscribed`…); só os 8 do contrato da
+ * SPEC-030 são mapeados, o resto é descartado no domínio. `commented` fica fora
+ * por decisão do PI: a trilha é ficha do card, não thread.
+ */
+export interface GithubTimelineEvent {
+  event: string;
+  actor?: GithubActor | null;
+  created_at?: string;
+  label?: { name: string; color: string };
+  assignee?: { login: string };
+  rename?: { from: string; to: string };
 }
 
 @Injectable()
@@ -121,6 +160,45 @@ export class GithubIssuesClient {
     return all;
   }
 
+  /**
+   * Uma issue com **corpo** (SPEC-030). O `listIssues` não traz `body` — e não
+   * deve: multiplicar corpo por 2000 issues no sync encheria o cache com o texto
+   * que o ADR-017 proíbe persistir. Aqui é leitura pontual, sob demanda.
+   * Token do usuário — leitura (ADR-015).
+   */
+  async issueDetail(
+    userToken: string,
+    owner: string,
+    repo: string,
+    number: number,
+  ): Promise<GithubIssueDetail> {
+    return this.read<GithubIssueDetail>(
+      userToken,
+      `https://api.github.com/repos/${owner}/${repo}/issues/${number}`,
+    );
+  }
+
+  /**
+   * Timeline da issue (SPEC-030): quem abriu, atribuiu, rotulou, fechou.
+   * As labels `proplan:*` que aparecem aqui **são** o histórico de movimentação
+   * entre colunas — não sintetizar evento "moveu de X para Y" a partir delas.
+   *
+   * Uma página de 100 basta: a trilha é exibida com os 10 mais recentes + "ver
+   * todos" sobre o que veio. Issue com mais de 100 eventos perde os mais
+   * antigos — aceito, o link para o GitHub cobre o caso raro.
+   */
+  async issueTimeline(
+    userToken: string,
+    owner: string,
+    repo: string,
+    number: number,
+  ): Promise<GithubTimelineEvent[]> {
+    return this.read<GithubTimelineEvent[]>(
+      userToken,
+      `https://api.github.com/repos/${owner}/${repo}/issues/${number}/timeline?per_page=100`,
+    );
+  }
+
   /** `has_issues` do repo — false ⇒ modo degradado (SPEC-005). */
   async issuesEnabled(
     userToken: string,
@@ -209,6 +287,24 @@ export class GithubIssuesClient {
     );
     if (res.ok || res.status === 422) return; // 422 = já existe → sucesso
     throw new Error(`GitHub create label ${res.status}`);
+  }
+
+  /**
+   * GET autenticado de recurso único. Simétrico ao `write`, com uma diferença
+   * que importa: **404 vira `NotFoundException`**, não `Error` genérico. Issue
+   * inexistente (ou removida entre o sync e o clique) é caso normal de leitura
+   * pontual — deixá-la cair no `!res.ok` devolveria 500 ao cliente, que leria
+   * como falha nossa em vez de "esse card não existe mais".
+   */
+  private async read<T>(token: string, url: string): Promise<T> {
+    const res = await fetch(url, {
+      headers: authHeaders(token),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (res.status === 401) throw new UnauthorizedException('Token GitHub inválido');
+    if (res.status === 404) throw new NotFoundException('Issue não encontrada no GitHub');
+    if (!res.ok) throw new Error(`GitHub GET ${res.status}`);
+    return (await res.json()) as T;
   }
 
   private async write<T>(

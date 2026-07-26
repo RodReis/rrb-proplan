@@ -51,17 +51,19 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | Identidade | SPEC-026 | `SPEC-026-costura-identidade-conexao.md` | Costura identidade ⊥ conexão: Google como 1º IdP, GitHub vira conexão — pós-MVP1, sem número de fatia; issue #94 (spec `aprovada-pi` 2026-07-20) |
 | Identidade | SPEC-025 | `SPEC-025-desconectar-reconectar-github-app.md` | Configurações: desconectar / reconectar o GitHub — pós-MVP1, sem número de fatia; issue #93 (spec `aprovada-pi` 2026-07-20). 2ª da Frente Identidade, depois da SPEC-026 |
 | 19 | SPEC-029 | `SPEC-029-clientes-funil-link.md` | Clientes + funil Kanban + ciclo de vida do link público — 1ª fatia do MVP3 (`docs/specs/MVP3.md`; spec `aprovada-pi` 2026-07-25) |
-| Board (UX) | SPEC-030 | `SPEC-030-painel-detalhe-card.md` | Painel de detalhe do card: corpo da issue, metadados e trilha de eventos — refina a SPEC-005; pós-MVP1, sem número de fatia; issue #128 (spec `aprovada-pi` 2026-07-25) |
+| Board (UX) | SPEC-030 | `SPEC-030-painel-detalhe-card.md` | Painel de detalhe do card: corpo da issue, metadados e trilha de eventos — refina a SPEC-005; pós-MVP1, sem número de fatia; issue #128 (spec `aprovada-pi` 2026-07-25). **Entregue 2026-07-26, aguardando aceite** |
 
 ## Backlog
 
 ### MVP3 — Frente Clientes: briefing → artefatos (escopo: `docs/specs/MVP3.md`, `aprovada-pi` 2026-07-25)
 
 > Transformação **segura e versionada** de briefings de clientes em artefatos comerciais e técnicos — não é CRM nem formulário com Kanban. As 8 decisões fundadoras do PI (stack NestJS/Vite, módulo no monolito, `Tenant` evoluído com `installationId` nullable, funil no banco delimitando o ADR-011, só Anthropic no 1º corte, etc.) estão no `MVP3.md` §2.
-- **Fatia 19 (SPEC-029)** → spec `aprovada-pi` 2026-07-25; issue **#127** — **saiu do Backlog, ver Em Andamento**.
+- **Fatia 19 (SPEC-029)** → spec `aprovada-pi` 2026-07-25; issue **#127** — **entregue 2026-07-26 (`proplan:done`), aguardando aceite do PI**. Os 4 PRs empilhados entraram num squash só (`a985ebd`): como todos apontavam para `main`, o diff do PR-4 (#132) trazia os quatro, e **#129/#130/#131 foram fechados sem merge** (conteúdo já na `main`). **Pendente: dogfooding** — nenhuma tela aberta no navegador.
 - Fatias 20–24 (SPEC-031…035: briefing público, pipeline IA, estimativa, contratos, dashboard) → specs nascem quando cada fatia chegar; ordem no `MVP3.md` §7. **Deslocadas de 030…034 em 2026-07-25**: `SPEC-NNN` é ID em **ordem de criação** (regra do índice acima), e a SPEC-030 (painel de detalhe do card) nasceu antes. Reserva de número não vale contra a ordem de criação.
 
 ### Board — UX
+
+- ~~**SPEC-030 — Painel de detalhe do card**~~ → **entregue 2026-07-26; `proplan:done` na #128, aguardando aceite do PI.** Gaveta de leitura (corpo renderizado + metadados + trilha de 10 eventos com "ver todos"), `GET .../board/cards/:number` lido ao vivo, **nada persistido** (ADR-017 — corpo e trilha mudam sem webhook que nos avise). Editar virou botão dentro da gaveta, contrato do `EditCardPopover` intacto. **Três atritos decididos ao implementar** (detalhes no `docs/DEVELOPMENT.md`): o `aria-label` virou "Abrir card #N" (prometia edição); `canEdit` foi separado em `canOpen`/`canDrag` — antes o `viewer` não conseguia nem abrir um card para ler; e a gaveta é escondida (não desmontada) enquanto o popover está aberto, senão o Esc a fecharia por baixo do formulário. **916 testes verdes** (758 regras · 31 banco · 127 tela). **Pendente: dogfooding no navegador** — nenhuma tela foi aberta. Dossiê original abaixo:
 
 - **SPEC-030 — Painel de detalhe do card** → spec `aprovada-pi` 2026-07-25; **issue #128 criada no Backlog**. Refina a SPEC-005: clicar no card passa a abrir leitura (corpo da issue renderizado + metadados + trilha de eventos) e a edição atual vai para trás de um botão. Leitura ao vivo sob demanda, **nada persistido** (ADR-017). As 3 perguntas abertas foram resolvidas nas recomendações do Cowork: comentários fora da trilha, 10 eventos + "ver todos", gaveta lateral `min(92vw, 720px)`. Descartada a alternativa de extrair seções de `docs/specs/` — imporia a convenção do trio ao produto (ADR-014).
 

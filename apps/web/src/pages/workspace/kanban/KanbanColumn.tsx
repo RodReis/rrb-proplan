@@ -14,6 +14,8 @@ interface Props {
   collapsed?: boolean;
   onToggleColumn?: (column: BoardColumn) => void;
   onEdit?: (card: BoardCard) => void;
+  /** `false` ⇒ cards abrem mas não arrastam (viewer — SPEC-030). */
+  draggable?: boolean;
   onCreate?: (column: BoardColumn, title: string) => void;
 }
 
@@ -28,6 +30,7 @@ export const KanbanColumn = memo(function KanbanColumn({
   collapsed,
   onToggleColumn,
   onEdit,
+  draggable,
   onCreate,
 }: Props) {
   const { theme } = useTheme();
@@ -167,6 +170,7 @@ export const KanbanColumn = memo(function KanbanColumn({
                 card={card}
                 pending={pendingNumbers.has(card.number)}
                 onEdit={onEdit}
+                draggable={draggable}
               />
             ))}
           </SortableContext>

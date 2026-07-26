@@ -256,6 +256,36 @@ button:active {
   animation: drawerOut 0.24s cubic-bezier(0.4, 0, 0.9, 0.4) both;
 }
 
+/* Gaveta de detalhe do card (SPEC-030). Mesma forma da `.act-panel` — a
+   animação vive na classe do painel, não num utilitário (ver §9 e a nota do
+   `drawerIn` acima) — com duas diferenças deliberadas:
+
+   - `width: min(92vw, 720px)`: o corpo da issue tem tabela e bloco de código.
+     720px é o mesmo teto que um modal centrado teria, então nada fica mais
+     espremido do que ficaria na alternativa; 92vw evita a gaveta colar nas
+     bordas no celular.
+   - `top: 0`: esta gaveta é overlay de tela cheia (tem backdrop próprio, ao
+     contrário da de Atividade), então cobre a topbar de propósito — o Esc e o
+     backdrop são a saída, não os botões atrás. */
+.card-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  width: min(92vw, 720px);
+  background: var(--pop);
+  border-left: 1px solid var(--border2);
+  box-shadow: -28px 0 70px var(--shadow);
+  animation: drawerIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.card-drawer--leaving {
+  animation: drawerOut 0.24s cubic-bezier(0.4, 0, 0.9, 0.4) both;
+}
+
 @keyframes drawerOut {
   from { transform: none; }
   to { transform: translateX(102%); }

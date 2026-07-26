@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseIntPipe,
   Post,
   Req,
   UseGuards,
@@ -43,6 +44,21 @@ export class BoardController {
   @Get()
   getBoard(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.board.getBoard(req.userId, id);
+  }
+
+  /**
+   * Detalhe do card — leitura ao vivo no GitHub (SPEC-030). Sem @RequireRole:
+   * viewer lê, igual ao GET do board. `ParseIntPipe` porque `:number` chega
+   * string do path e o client do GitHub monta URL com ele — número não
+   * numérico tem que morrer aqui, na borda, não virar `/issues/NaN`.
+   */
+  @Get('cards/:number')
+  cardDetail(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('number', ParseIntPipe) number: number,
+  ) {
+    return this.board.cardDetail(req.userId, id, number);
   }
 
   @Post('mutations')

@@ -9,12 +9,25 @@ interface Props {
   mutate: (input: MutationInput, cardNumber: number | null) => Promise<boolean>;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * Card descartado. Opcional — sem ele, descarte cai no `onSaved` (o
+   * comportamento de antes da SPEC-030). Quem abre este popover de dentro da
+   * gaveta de leitura passa os dois, porque descartar tem de fechar a gaveta e
+   * salvar não.
+   */
+  onDiscarded?: () => void;
 }
 
 const PRIORITIES: (IssuePriority | null)[] = ['alta', 'media', 'baixa', null];
 
 /** Editar título/prioridade de um card ou descartá-lo (SPEC-005). */
-export function EditCardPopover({ card, mutate, onClose, onSaved }: Props) {
+export function EditCardPopover({
+  card,
+  mutate,
+  onClose,
+  onSaved,
+  onDiscarded,
+}: Props) {
   const [title, setTitle] = useState(card.title);
   const [priority, setPriority] = useState<IssuePriority | null>(card.priority);
   const [saving, setSaving] = useState(false);
@@ -38,7 +51,10 @@ export function EditCardPopover({ card, mutate, onClose, onSaved }: Props) {
   async function discard() {
     setConfirmDiscard(false);
     const ok = await mutate({ type: 'discard_card', number: card.number }, card.number);
-    if (ok) onSaved();
+    // Descartar não é "salvou": quem abriu a gaveta de leitura por trás precisa
+    // saber que o card saiu, para não continuar exibindo a ficha dele. Sem o
+    // callback próprio, cai no `onSaved` (compatível com quem não o passa).
+    if (ok) (onDiscarded ?? onSaved)();
   }
 
   return (
