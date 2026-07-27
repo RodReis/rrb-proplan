@@ -5,6 +5,7 @@ import { BriefingAttachmentService } from './application/briefing-attachment.ser
 import { BriefingDraftService } from './application/briefing-draft.service';
 import { BriefingLinkService } from './application/briefing-link.service';
 import { BriefingReferenceService } from './application/briefing-reference.service';
+import { BriefingSubmitService } from './application/briefing-submit.service';
 import { BriefingAttachmentController } from './presentation/briefing-attachment.controller';
 import { BriefingLinkController } from './presentation/briefing-link.controller';
 import { BriefingPublicController } from './presentation/briefing-public.controller';
@@ -36,7 +37,13 @@ import { FileAssetController } from './presentation/file-asset.controller';
     BriefingDraftService,
     BriefingReferenceService,
     BriefingAttachmentService,
+    BriefingSubmitService,
   ],
-  exports: [BriefingLinkService, BriefingDraftService, BriefingAttachmentService],
+  exports: [
+    BriefingLinkService,
+    BriefingDraftService,
+    BriefingAttachmentService,
+    BriefingSubmitService,
+  ],
 })
 export class BriefingModule {}

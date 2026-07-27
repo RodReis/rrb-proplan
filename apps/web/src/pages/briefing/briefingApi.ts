@@ -163,6 +163,29 @@ export async function saveDraft(
   return parse<SaveResult>(res);
 }
 
+export interface SubmitResult {
+  versionId: string;
+  version: number;
+  /** `true` quando o reenvio caiu na versão que já existia (idempotência). */
+  alreadySubmitted: boolean;
+}
+
+/**
+ * Envia o briefing (SPEC-031 §5). Idempotente no servidor: clicar duas vezes
+ * devolve a mesma versão em vez de criar a segunda.
+ */
+export async function submitBriefing(token: string): Promise<SubmitResult> {
+  const res = await fetch(url(token, '/submit'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm: true }),
+  }).catch(() => {
+    throw new UnreachableError('rede indisponível');
+  });
+
+  return parse<SubmitResult>(res);
+}
+
 /** Anexo já enviado — metadado, nunca os bytes (SPEC-031 §4). */
 export interface Attachment {
   id: string;

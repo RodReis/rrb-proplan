@@ -6,12 +6,14 @@ import {
   HttpStatus,
   Param,
   Patch,
+  Post,
   Req,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { BriefingDraftService } from '../application/briefing-draft.service';
 import { BriefingReferenceService } from '../application/briefing-reference.service';
+import { BriefingSubmitService } from '../application/briefing-submit.service';
 import { SlidingWindowRateLimiter } from '../domain/rate-limiter';
 
 /** 20 requisições por minuto, por par IP+token. */
@@ -29,6 +31,10 @@ const PRUNE_INTERVAL_MS = 5 * 60_000;
 interface SaveDraftBody {
   step?: unknown;
   answers?: unknown;
+}
+
+interface SubmitBody {
+  confirm?: unknown;
 }
 
 /**
@@ -60,6 +66,7 @@ export class BriefingPublicController {
   constructor(
     private readonly drafts: BriefingDraftService,
     private readonly reference: BriefingReferenceService,
+    private readonly submitService: BriefingSubmitService,
   ) {
     this.pruneTimer = setInterval(() => {
       this.limiter.prune();
@@ -126,6 +133,23 @@ export class BriefingPublicController {
     }
 
     return this.drafts.saveDraft(token, step, answers as Record<string, unknown>);
+  }
+
+  /**
+   * Envia o briefing (SPEC-031 §5). Idempotente: reenviar o mesmo conteúdo
+   * devolve a mesma versão em vez de criar a segunda.
+   *
+   * Usa o limitador de ESCRITA (10/min), não um próprio: o submit é raro por
+   * natureza — acontece uma vez — e a idempotência já neutraliza o reenvio.
+   */
+  @Post(':token/submit')
+  async submit(
+    @Param('token') token: string,
+    @Body() body: SubmitBody,
+    @Req() req: Request,
+  ) {
+    this.enforce(this.writeLimiter, token, req);
+    return this.submitService.submit(token, body?.confirm === true);
   }
 
   /**

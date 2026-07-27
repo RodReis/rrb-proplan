@@ -2109,8 +2109,8 @@ por PR, todos com base `main` (senão o PR fica sem check nenhum).
 - [x] **PR-1 — schema, migração, RLS e seed** *(este)*
 - [x] **PR-2 — rascunho no servidor** (`PATCH /b/:token/draft`) + `GET /b/:token` estendido
 - [x] **PR-3 — formulário React das 9 etapas** + rotas públicas de referência da Etapa 1
-- [x] **PR-4 — anexos (`FileAsset`, ADR-025)** *(este)*
-- [ ] PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`
+- [x] **PR-4 — anexos (`FileAsset`, ADR-025)**
+- [x] **PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`** *(este)*
 - [ ] PR-6 — leitura no painel do prestador
 - [ ] Dogfooding no navegador (parte da entrega, não apêndice — a SPEC-029
       atravessou dois FIX por falta dele)
@@ -2409,3 +2409,68 @@ upload real respondeu **500**, `function briefing_draft_quota(text) does not
 exist`. As 891 asserções verdes não pegariam: elas mockam o Prisma ou rodam no
 banco de teste. Só `prisma migrate deploy` no dev resolveu — e é por isso que a
 spec trata o navegador como parte da entrega, não apêndice.
+
+### PR-5 — o que entrou
+
+O envio (SPEC-031 §5). Fecha o buraco que o **PI encontrou usando o produto**:
+preencheu as 9 etapas e o botão da última estava desabilitado, **sem nenhuma
+mensagem**. Era intencional (o submit era este PR), mas a tela não dizia isso de
+um jeito visível — o aviso existia *abaixo* do painel de revisão, que numa
+etapa 9 preenchida fica longe da dobra. Botão morto e silencioso é a pior
+combinação: quem responde conclui que o produto quebrou.
+
+| arquivo | papel |
+|---|---|
+| `content-hash.ts` | serialização canônica + SHA-256 — a chave da idempotência |
+| `briefing-submit.service.ts` | versão imutável, anexos, rascunho consumido, evento |
+| `briefing-public.controller.ts` | `POST /b/:token/submit` |
+| `BriefingForm.tsx` | botão que envia, com erro visível na tela |
+
+**O hash precisou ser canônico.** A ordem das chaves de um objeto JS segue a
+ordem de INSERÇÃO, e as respostas chegam etapa por etapa — preencher a 2 antes
+da 1, ou voltar e corrigir um campo, produz o mesmo conteúdo com ordem
+diferente. Um `JSON.stringify` ingênuo daria hashes diferentes para briefings
+idênticos e a **idempotência morreria em silêncio**: o duplo clique voltaria a
+criar duas versões e ninguém descobriria até aparecerem dois cards iguais no
+funil. Arrays **não** são ordenados — a ordem em que o cliente listou
+funcionalidades é informação dele, não ruído nosso.
+
+**Idempotência em duas camadas.** A primeira é a checagem "já enviado?", que
+devolve a versão existente em vez de erro — quem clica duas vezes fez a coisa
+certa uma vez só, e ver "erro" depois de um envio bem-sucedido assusta sem
+motivo. A segunda é o `catch` do `P2002`: dois submits simultâneos com o mesmo
+conteúdo colidem no unique `(briefing_link_id, content_hash)`, e o perdedor da
+corrida devolve a versão do vencedor. A primeira cobre o caso comum, a segunda
+cobre a corrida que a primeira não vê.
+
+**Uma transação para três escritas.** Versão + anexos apontando para ela +
+rascunho consumido. Precisam ser atômicos: uma versão sem os anexos seria um
+briefing que perdeu os arquivos, e um rascunho não-consumido com versão gravada
+reabriria o formulário de um briefing já enviado. Os anexos **ganham** o
+`briefingVersionId` sem perder o `briefingDraftId` — não é mover, é acrescentar,
+preservando a trilha (ADR-025).
+
+**O que não desfaz um envio já gravado:** mover o card e gravar o audit falham
+em silêncio, pelo mesmo motivo do `startBriefing` no rascunho. O briefing é o
+dado do cliente; a posição do card é consequência dele.
+
+**A tela de "briefing recebido" é a mesma dos dois caminhos** — quem acabou de
+enviar e quem reabre o link depois. Inventar uma segunda página de sucesso diria
+a mesma coisa com outras palavras, e as duas precisariam ser mantidas juntas.
+
+#### Dogfooding no navegador
+
+Fluxo completo, link real, etapas 1→9 e envio pela tela.
+
+| caso | resultado |
+|---|---|
+| submit com briefing vazio | 422 listando **os 8 campos** que faltam, com a etapa de cada um |
+| submit sem a confirmação da etapa 9 | 422, nada gravado |
+| submit válido | 201 `{versionId, version: 1}` |
+| **reenviar o mesmo** | **mesmo `versionId`, `alreadySubmitted: true`** — uma linha só no banco |
+| reabrir o link | `{"status":"submitted"}`, **sem** devolver as respostas |
+| pela tela | "Briefing recebido", card em `BRIEFING_SUBMITTED`, rascunho consumido |
+
+O teste de tela também pegou uma duplicação: eu havia posto "depois do envio
+nada muda" abaixo do botão, e o hint do checkbox de confirmação já dizia isso.
+Dois avisos idênticos na mesma tela fazem o segundo virar ruído — ficou um.

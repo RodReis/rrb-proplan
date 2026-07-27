@@ -30,15 +30,17 @@ const CATALOG: Catalog = {
 
 function setup(initial: Partial<PublicState> = {}) {
   const onLinkGone = vi.fn();
+  const onSubmitted = vi.fn();
   render(
     <BriefingForm
       token="tok"
       initial={{ status: 'valid', step: 1, answers: {}, ...initial }}
       catalog={CATALOG}
       onLinkGone={onLinkGone}
+      onSubmitted={onSubmitted}
     />,
   );
-  return { onLinkGone, user: userEvent.setup() };
+  return { onLinkGone, onSubmitted, user: userEvent.setup() };
 }
 
 /** Rotas do rascunho: PATCH devolve progresso, cidades devolvem lista. */
@@ -286,14 +288,15 @@ describe('BriefingForm (SPEC-031)', () => {
           initial={{ status: 'valid', step: 9, answers: {} }}
           catalog={CATALOG}
           onLinkGone={vi.fn()}
+          onSubmitted={vi.fn()}
         />,
       );
 
       await user.click(screen.getByRole('radio', { name: /Alta/ }));
       await user.click(screen.getByLabelText(/confirmo que revisei/i));
 
-      // O botão da etapa 9 ainda não envia (o submit é o PR-5); quem grava é o
-      // autosave. O que ele grava é o que o critério de aceite manda conferir.
+      // Confere o AUTOSAVE, não o envio: o que vai no `jsonb` é o que o
+      // critério de aceite manda verificar (nível sem nome de modelo).
       await vi.advanceTimersByTimeAsync(30_000);
       await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
@@ -381,6 +384,115 @@ describe('BriefingForm (SPEC-031)', () => {
         (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
       );
       expect(patches).toHaveLength(1);
+    });
+  });
+
+  /**
+   * O envio (SPEC-031 §5) — o que o PR-5 acrescenta à etapa 9.
+   *
+   * Antes disto o botão da última etapa ficava desabilitado de propósito (o
+   * submit não existia), e quem preenchia tudo via um botão morto sem
+   * explicação. Estes testes existem para que esse estado não volte.
+   */
+  describe('envio', () => {
+    /** Mock com o POST de submit respondendo `res`. */
+    function mockSubmit(res: () => Response = () => json({ versionId: 'bv-1', version: 1 })) {
+      return vi.spyOn(global, 'fetch').mockImplementation((input, init) => {
+        const url = String(input);
+        if (init?.method === 'POST' && url.includes('/submit')) {
+          return Promise.resolve(res());
+        }
+        if (init?.method === 'PATCH') return Promise.resolve(json({ step: 9 }));
+        return Promise.resolve(json({}));
+      });
+    }
+
+    /** Etapa 9 com o obrigatório preenchido — pronta para enviar. */
+    const PRONTO = {
+      step: 9,
+      answers: { '9': { complexity: 'media', confirmed: true } },
+    };
+
+    it('o botão da última etapa envia — não fica desabilitado', async () => {
+      mockSubmit();
+      const { user } = setup(PRONTO);
+
+      const botao = screen.getByRole('button', { name: 'Enviar briefing' });
+      expect(botao).toBeEnabled();
+
+      await user.click(botao);
+      await waitFor(() => expect(screen.queryByText('Enviando…')).not.toBeInTheDocument());
+    });
+
+    it('envia com `confirm: true` e avisa quem hospeda a tela', async () => {
+      const fetchMock = mockSubmit();
+      const { onSubmitted, user } = setup(PRONTO);
+
+      await user.click(screen.getByRole('button', { name: 'Enviar briefing' }));
+
+      await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
+      const post = fetchMock.mock.calls.find(
+        (c) => (c[1] as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(JSON.parse(String((post![1] as RequestInit).body))).toEqual({
+        confirm: true,
+      });
+      expect(onSubmitted).toHaveBeenCalledWith({ versionId: 'bv-1', version: 1 });
+    });
+
+    it('sem confirmar o checkbox, nem chega a chamar a API', async () => {
+      const fetchMock = mockSubmit();
+      const { user } = setup({ step: 9, answers: {} });
+
+      await user.click(screen.getByRole('button', { name: 'Enviar briefing' }));
+
+      expect(await screen.findByText('confirmação obrigatória')).toBeInTheDocument();
+      expect(
+        fetchMock.mock.calls.some(
+          (c) => (c[1] as RequestInit | undefined)?.method === 'POST',
+        ),
+      ).toBe(false);
+    });
+
+    it('briefing incompleto: mostra a etapa que falta, com a msg do servidor', async () => {
+      // O caso que o usuário sentiu: botão sem resposta. Agora o servidor diz
+      // o que falta, e a tela diz ONDE.
+      mockSubmit(() =>
+        json({ message: { errors: [{ step: 2, field: 'problem', message: 'obrigatório' }] } }, 422),
+      );
+      const { user } = setup(PRONTO);
+
+      await user.click(screen.getByRole('button', { name: 'Enviar briefing' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('etapa 2');
+    });
+
+    it('rede fora não vira "link inválido" — manda tentar de novo', async () => {
+      mockSubmit(() => json({}, 500));
+      const { onLinkGone, user } = setup(PRONTO);
+
+      await user.click(screen.getByRole('button', { name: 'Enviar briefing' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Tente de novo');
+      expect(onLinkGone).not.toHaveBeenCalled();
+    });
+
+    it('link revogado durante o envio avisa quem responde', async () => {
+      mockSubmit(() => json({}, 410));
+      const { onLinkGone, user } = setup(PRONTO);
+
+      await user.click(screen.getByRole('button', { name: 'Enviar briefing' }));
+
+      await waitFor(() => expect(onLinkGone).toHaveBeenCalled());
+    });
+
+    it('a etapa 9 avisa UMA vez que o envio é definitivo', async () => {
+      // Uma só: o hint do checkbox de confirmação já carrega o aviso, e
+      // repeti-lo abaixo do botão faria o segundo virar ruído.
+      mockSubmit();
+      setup(PRONTO);
+
+      expect(screen.getAllByText(/não podem mais ser alteradas/i)).toHaveLength(1);
     });
   });
 });
