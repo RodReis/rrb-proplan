@@ -4,7 +4,7 @@
  * "ativo" para um link expirado, ou oferecer "gerar" quando já existe um válido,
  * são defeitos que passam numa revisão visual.
  */
-import type { BriefingLinkInfo, ClientProject } from '../../lib/api';
+import type { BriefingLinkInfo, BriefingStatus, ClientProject } from '../../lib/api';
 
 /**
  * URL pública do briefing, entregue **ao cliente do prestador**.
@@ -81,4 +81,31 @@ export function sortProjects(projects: ClientProject[]): ClientProject[] {
  */
 export function isValidTitle(title: string): boolean {
   return title.trim().length > 0;
+}
+
+/**
+ * O estado do briefing como a gaveta fala dele (SPEC-031 §6): *não iniciado ·
+ * em preenchimento com % de etapas · recebido em data*.
+ *
+ * Fora do React pelo mesmo motivo do rótulo do link: dizer "recebido" para um
+ * briefing que ninguém enviou é o tipo de defeito que passa numa revisão visual.
+ *
+ * `receivedAt` chega em ISO com `Z` e a data sai no fuso de quem lê — recortar a
+ * string mostraria o dia seguinte para um envio das 22h no Brasil.
+ */
+export function briefingStateLabel(status: BriefingStatus | null): string {
+  if (!status) return 'briefing não iniciado';
+
+  if (status.state === 'received') {
+    const date = status.receivedAt ? new Date(status.receivedAt) : null;
+    return date && !Number.isNaN(date.getTime())
+      ? `briefing recebido em ${date.toLocaleDateString('pt-BR')}`
+      : 'briefing recebido';
+  }
+
+  if (status.state === 'in_progress') {
+    return `briefing em preenchimento · ${status.completedSteps ?? 0} de ${status.totalSteps}`;
+  }
+
+  return 'briefing não iniciado';
 }

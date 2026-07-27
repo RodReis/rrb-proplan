@@ -79,7 +79,13 @@ export interface ResolvedRoute {
  * do hash do token, ADR-020). Sem tenant ativo o path fica como está — o backend
  * responde 401/403 e o app redireciona ao catálogo.
  */
-const TENANT_SCOPED_PREFIXES = ['/projects/', '/clients', '/client-projects'];
+const TENANT_SCOPED_PREFIXES = [
+  '/projects/',
+  '/clients',
+  '/client-projects',
+  '/briefing-versions',
+  '/files/',
+];
 
 function withTenantPrefix(path: string): string {
   if (activeTenant && TENANT_SCOPED_PREFIXES.some((p) => path.startsWith(p))) {
@@ -946,4 +952,61 @@ export function revokeBriefingLink(projectId: string): Promise<{ revoked: number
     `/client-projects/${projectId}/briefing-link`,
     { method: 'DELETE' },
   );
+}
+
+/** Leitura do briefing no painel (SPEC-031 §6). Não existe par de escrita. */
+
+export type BriefingState = 'not_started' | 'in_progress' | 'received';
+
+export interface BriefingVersionRef {
+  id: string;
+  version: number;
+  submittedAt: string;
+}
+
+export interface BriefingStatus {
+  state: BriefingState;
+  completedSteps: number | null;
+  totalSteps: number;
+  receivedAt: string | null;
+  /** Mais nova primeiro; vazia enquanto nada foi enviado. */
+  versions: BriefingVersionRef[];
+}
+
+export interface BriefingAttachmentRef {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+export interface BriefingVersionDetail {
+  id: string;
+  version: number;
+  submittedAt: string;
+  clientProjectId: string;
+  answers: Record<string, Record<string, unknown>>;
+  /**
+   * Rótulo por `<etapa>.<campo>` — o servidor resolve `G` → "Comércio e
+   * varejo". A tradução é da leitura: a versão é imutável.
+   */
+  labels: Record<string, string>;
+  attachments: BriefingAttachmentRef[];
+}
+
+export function getBriefingStatus(projectId: string): Promise<BriefingStatus> {
+  return request<BriefingStatus>(`/client-projects/${projectId}/briefing`);
+}
+
+export function getBriefingVersion(id: string): Promise<BriefingVersionDetail> {
+  return request<BriefingVersionDetail>(`/briefing-versions/${id}`);
+}
+
+/**
+ * URL do download do anexo. É um `<a href>` normal, não `fetch`: o browser
+ * precisa receber o `Content-Disposition: attachment` para salvar o arquivo, e
+ * o cookie `proplan_session` (httpOnly) vai junto por ser mesma origem de API.
+ */
+export function briefingAttachmentUrl(fileId: string): string {
+  return `${API_URL}${withTenantPrefix(`/files/${fileId}`)}`;
 }

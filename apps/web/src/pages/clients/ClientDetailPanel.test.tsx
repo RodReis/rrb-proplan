@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Client, ClientDetail } from '../../lib/api';
+import type { BriefingStatus, Client, ClientDetail } from '../../lib/api';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -11,6 +11,8 @@ const apiMock = vi.hoisted(() => ({
   getBriefingLink: vi.fn(),
   createBriefingLink: vi.fn(),
   revokeBriefingLink: vi.fn(),
+  getBriefingStatus: vi.fn(),
+  getBriefingVersion: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -42,6 +44,30 @@ function detail(projects: ClientDetail['projects'] = []): ClientDetail {
   return { ...client, projects };
 }
 
+function project(over: Partial<ClientDetail['projects'][number]> = {}) {
+  return {
+    id: 'p1',
+    clientId: 'c1',
+    title: 'Site institucional',
+    description: 'landing + blog',
+    state: 'DRAFT' as const,
+    createdAt: '2026-07-26T12:00:00Z',
+    updatedAt: '2026-07-26T12:00:00Z',
+    ...over,
+  };
+}
+
+function briefingStatus(over: Partial<BriefingStatus> = {}): BriefingStatus {
+  return {
+    state: 'not_started',
+    completedSteps: null,
+    totalSteps: 9,
+    receivedAt: null,
+    versions: [],
+    ...over,
+  };
+}
+
 function renderPanel(canWrite = true) {
   const onChanged = vi.fn();
   const onClose = vi.fn();
@@ -67,6 +93,7 @@ describe('ClientDetailPanel', () => {
       expiresAt: null,
     });
     apiMock.revokeBriefingLink.mockResolvedValue({ revoked: 1 });
+    apiMock.getBriefingStatus.mockResolvedValue(briefingStatus());
   });
 
   it('lista os projetos do cliente com o estado de cada um', async () => {
@@ -310,5 +337,111 @@ describe('ClientDetailPanel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/db down/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /tentar de novo/i })).toBeInTheDocument();
+  });
+
+  /**
+   * Estado do briefing na gaveta (SPEC-031 §6). O critério de aceite é literal:
+   * *"não iniciado · em preenchimento com progresso · recebido em data"*.
+   */
+  describe('estado do briefing', () => {
+    it('sem envio nem rascunho: não iniciado, e nada para abrir', async () => {
+      apiMock.getClient.mockResolvedValue(detail([project()]));
+      renderPanel();
+
+      expect(await screen.findByText(/briefing não iniciado/i)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /ver briefing/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('em preenchimento mostra o progresso, não só "iniciado"', async () => {
+      apiMock.getClient.mockResolvedValue(detail([project()]));
+      apiMock.getBriefingStatus.mockResolvedValue(
+        briefingStatus({ state: 'in_progress', completedSteps: 4 }),
+      );
+      renderPanel();
+
+      expect(await screen.findByText(/em preenchimento · 4 de 9/i)).toBeInTheDocument();
+    });
+
+    it('recebido mostra a data e libera a leitura', async () => {
+      apiMock.getClient.mockResolvedValue(detail([project()]));
+      apiMock.getBriefingStatus.mockResolvedValue(
+        briefingStatus({
+          state: 'received',
+          receivedAt: '2026-07-26T13:00:00Z',
+          versions: [{ id: 'v1', version: 1, submittedAt: '2026-07-26T13:00:00Z' }],
+        }),
+      );
+      renderPanel();
+
+      expect(await screen.findByText(/recebido em 26\/07\/2026/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /ver briefing/i })).toBeInTheDocument();
+    });
+
+    /**
+     * O critério de aceite da spec §6 é explícito: *"`viewer` consegue ler o
+     * briefing"*. Ligar a leitura em `canWrite` seria o erro fácil aqui — o
+     * botão de link ao lado dele é restrito, e copiar a condição passaria numa
+     * revisão visual.
+     */
+    it('viewer abre o briefing, mesmo sem poder gerar link', async () => {
+      apiMock.getClient.mockResolvedValue(detail([project()]));
+      apiMock.getBriefingStatus.mockResolvedValue(
+        briefingStatus({
+          state: 'received',
+          receivedAt: '2026-07-26T13:00:00Z',
+          versions: [{ id: 'v1', version: 1, submittedAt: '2026-07-26T13:00:00Z' }],
+        }),
+      );
+      renderPanel(false);
+
+      expect(
+        await screen.findByRole('button', { name: /ver briefing/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /link de briefing/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('estado do briefing indisponível não derruba a lista de projetos', async () => {
+      apiMock.getClient.mockResolvedValue(detail([project()]));
+      apiMock.getBriefingStatus.mockRejectedValue(new Error('API 500'));
+      renderPanel();
+
+      // O conteúdo principal é a lista; o estado do briefing é acessório.
+      expect(await screen.findByText('Site institucional')).toBeInTheDocument();
+      expect(screen.getByText(/briefing não iniciado/i)).toBeInTheDocument();
+    });
+
+    it('abre o briefing em leitura ao clicar', async () => {
+      apiMock.getClient.mockResolvedValue(detail([project()]));
+      apiMock.getBriefingStatus.mockResolvedValue(
+        briefingStatus({
+          state: 'received',
+          receivedAt: '2026-07-26T13:00:00Z',
+          versions: [{ id: 'v1', version: 1, submittedAt: '2026-07-26T13:00:00Z' }],
+        }),
+      );
+      apiMock.getBriefingVersion.mockResolvedValue({
+        id: 'v1',
+        version: 1,
+        submittedAt: '2026-07-26T13:00:00Z',
+        clientProjectId: 'p1',
+        answers: { '1': { company: 'EPG Trindade', segment: 'G' } },
+        labels: { '1.segment': 'Comércio e varejo' },
+        attachments: [],
+      });
+      renderPanel();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: /ver briefing/i }),
+      );
+
+      expect(await screen.findByText('EPG Trindade')).toBeInTheDocument();
+      // O rótulo do servidor, nunca o código gravado.
+      expect(screen.getByText('Comércio e varejo')).toBeInTheDocument();
+      expect(screen.queryByText('G')).not.toBeInTheDocument();
+    });
   });
 });

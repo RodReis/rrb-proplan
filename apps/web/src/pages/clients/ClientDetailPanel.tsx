@@ -4,9 +4,11 @@ import {
   createBriefingLink,
   createClientProject,
   getBriefingLink,
+  getBriefingStatus,
   getClient,
   revokeBriefingLink,
   type BriefingLinkInfo,
+  type BriefingStatus,
   type Client,
   type ClientDetail,
   type ClientProject,
@@ -14,7 +16,9 @@ import {
 } from '../../lib/api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { STATE_LABELS } from './boardView';
+import { BriefingVersionPanel } from './BriefingVersionPanel';
 import {
+  briefingStateLabel,
   briefingUrl,
   canRevoke,
   generateLabel,
@@ -61,10 +65,27 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
   const [state, setState] = useState<State>({ status: 'loading' });
   const [creating, setCreating] = useState(false);
   const [linkFor, setLinkFor] = useState<ClientProject | null>(null);
+  const [briefingFor, setBriefingFor] = useState<ClientProject | null>(null);
+  /** Estado do briefing por projeto (SPEC-031 §6). */
+  const [briefings, setBriefings] = useState<Record<string, BriefingStatus>>({});
 
   const load = useCallback(async () => {
     try {
-      setState({ status: 'ready', detail: await getClient(client.id) });
+      const detail = await getClient(client.id);
+      setState({ status: 'ready', detail });
+
+      // Um GET por projeto, em paralelo. Falha de um não derruba a gaveta: a
+      // lista de projetos é o conteúdo principal, o estado do briefing é
+      // acessório — sem ele o rótulo cai em "não iniciado", que é o default
+      // honesto.
+      const results = await Promise.all(
+        detail.projects.map((p) =>
+          getBriefingStatus(p.id)
+            .then((status) => [p.id, status] as const)
+            .catch(() => null),
+        ),
+      );
+      setBriefings(Object.fromEntries(results.filter((r) => r !== null)));
     } catch (err) {
       setState({
         status: 'error',
@@ -239,18 +260,31 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
                         {project.description || 'Sem descrição registrada.'}
                       </p>
                       <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">
-                        Criado em {shortDate(project.createdAt)}
+                        Criado em {shortDate(project.createdAt)} ·{' '}
+                        {briefingStateLabel(briefings[project.id] ?? null)}
                       </p>
                     </div>
-                    {canWrite && (
-                      <button
-                        type="button"
-                        onClick={() => setLinkFor(project)}
-                        className="shrink-0 rounded-[8px] border border-accent-border px-3 py-1.5 text-xs font-semibold text-text2 transition-colors duration-150 hover:bg-accent-soft"
-                      >
-                        Link de briefing
-                      </button>
-                    )}
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      {canWrite && (
+                        <button
+                          type="button"
+                          onClick={() => setLinkFor(project)}
+                          className="rounded-[8px] border border-accent-border px-3 py-1.5 text-xs font-semibold text-text2 transition-colors duration-150 hover:bg-accent-soft"
+                        >
+                          Link de briefing
+                        </button>
+                      )}
+                      {/* Sem `canWrite`: `viewer` lê o briefing (spec §6). */}
+                      {(briefings[project.id]?.versions.length ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setBriefingFor(project)}
+                          className="rounded-[8px] bg-btnbg px-3 py-1.5 text-xs font-semibold text-btnfg transition-[filter] duration-150 hover:brightness-110"
+                        >
+                          Ver briefing
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </li>
               ))}
@@ -275,6 +309,14 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
             void load();
             onChanged();
           }}
+        />
+      )}
+
+      {briefingFor && briefings[briefingFor.id] && (
+        <BriefingVersionPanel
+          versions={briefings[briefingFor.id].versions}
+          projectTitle={briefingFor.title}
+          onClose={() => setBriefingFor(null)}
         />
       )}
     </>
