@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { Attachments } from './Attachments';
 import {
   LinkGoneError,
@@ -23,6 +23,7 @@ import {
   type Answers,
   type StepAnswers,
 } from './steps';
+import './BriefingForm.css';
 
 /**
  * O formulário de 9 etapas (SPEC-031 §1 e §2).
@@ -42,6 +43,18 @@ const AUTOSAVE_MS = 30_000;
 
 /** Etapa 5, "Conteúdo e identidade" — onde a spec §1 põe os anexos. */
 const ATTACHMENTS_STEP = 5;
+
+const STEP_ACCENTS = [
+  'var(--info)',
+  'var(--warning)',
+  'var(--success)',
+  'var(--write)',
+  'var(--accent)',
+  'var(--info)',
+  'var(--warning)',
+  'var(--write)',
+  'var(--success)',
+] as const;
 
 type SaveState =
   | { kind: 'idle' }
@@ -232,101 +245,134 @@ export function BriefingForm({
   };
 
   const isLast = step === STEP_COUNT;
+  const shellStyle = {
+    '--briefing-accent': STEP_ACCENTS[step - 1] ?? 'var(--accent)',
+    '--briefing-progress': `${(step / STEP_COUNT) * 100}%`,
+  } as CSSProperties;
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-8">
-      <header className="mb-6">
-        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-          ProPlan · Briefing
-        </p>
-        <div className="mt-3 flex items-baseline justify-between gap-3">
-          <h1 className="text-xl font-semibold text-text2">{def.title}</h1>
-          <span className="shrink-0 font-mono text-[11px] text-faint">
-            Etapa {step} de {STEP_COUNT}
-          </span>
+    <div className="briefing-shell" style={shellStyle}>
+      <aside className="briefing-rail" aria-label="Progresso do briefing">
+        <div>
+          <p className="briefing-kicker">ProPlan · Briefing</p>
+          <h2 className="briefing-rail-title">Conte a história do projeto sem pressa.</h2>
+          <p className="briefing-rail-copy">
+            Uma etapa por vez. O rascunho salva sozinho quando houver conexão.
+          </p>
         </div>
-        <p className="mt-1.5 text-sm leading-relaxed text-body2">{def.intro}</p>
 
-        <div
-          className="mt-4 h-1 w-full overflow-hidden rounded-full bg-surface2"
-          role="progressbar"
-          aria-valuenow={step}
-          aria-valuemin={1}
-          aria-valuemax={STEP_COUNT}
-          aria-label={`Etapa ${step} de ${STEP_COUNT}`}
-        >
+        <ol className="briefing-steps">
+          {STEPS.map((item) => {
+            const status =
+              item.n < step ? 'done' : item.n === step ? 'current' : 'pending';
+            return (
+              <li key={item.n} className={`briefing-step briefing-step--${status}`}>
+                <span className="briefing-step-index" aria-hidden="true">
+                  {item.n}
+                </span>
+                <span className="briefing-step-text">
+                  <span>
+                    {item.n}. {item.title}
+                  </span>
+                  <small>
+                    {status === 'done'
+                      ? 'Respondido'
+                      : status === 'current'
+                        ? 'Agora'
+                        : 'Próximo'}
+                  </small>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </aside>
+
+      <section className="briefing-main">
+        <header className="briefing-header">
+          <div className="briefing-heading-row">
+            <div>
+              <span className="briefing-step-pill">Passo {step}</span>
+              <h1>{def.title}</h1>
+            </div>
+            <span className="briefing-count">Etapa {step} de {STEP_COUNT}</span>
+          </div>
+          <p className="briefing-intro">{def.intro}</p>
+
           <div
-            className="h-full rounded-full bg-accent transition-[width] duration-300"
-            style={{ width: `${(step / STEP_COUNT) * 100}%` }}
-          />
-        </div>
-      </header>
+            className="briefing-progress"
+            role="progressbar"
+            aria-valuenow={step}
+            aria-valuemin={1}
+            aria-valuemax={STEP_COUNT}
+            aria-label={`Etapa ${step} de ${STEP_COUNT}`}
+          >
+            <span />
+          </div>
+        </header>
 
-      <div className="rounded-[14px] border border-border bg-panel px-5 py-6">
-        {def.notice && (
-          <p className="mb-5 rounded-md border border-border2 bg-surface px-3 py-2.5 text-xs leading-relaxed text-body2">
-            {def.notice}
+        <div key={step} className="briefing-card">
+          {def.notice && <p className="briefing-notice">{def.notice}</p>}
+
+          <div className="briefing-fields">
+            {def.fields.map((field) => (
+              <StepField
+                key={field.name}
+                field={field}
+                value={current[field.name]}
+                onChange={(value) => setField(field.name, value)}
+                error={errors[field.name]}
+                catalog={catalog}
+                cities={cities}
+                segment={segment}
+                isLoadingCities={loadingCities}
+              />
+            ))}
+
+            {/*
+              Anexos ficam FORA do laço de campos: não moram no `jsonb` das
+              respostas como os demais, e sim na própria tabela `file_assets`
+              (ADR-025). Sobem no momento em que são escolhidos, sem esperar o
+              save da etapa — por isso o componente tem rede própria.
+            */}
+            {step === ATTACHMENTS_STEP && (
+              <Attachments token={token} onLinkGone={onLinkGone} />
+            )}
+          </div>
+
+          {isLast && <Review answers={answers} onEdit={goTo} catalog={catalog} />}
+        </div>
+
+        <div className="briefing-actions">
+          <button
+            type="button"
+            onClick={() => goTo(step - 1)}
+            disabled={step === 1}
+            className="briefing-button briefing-button--ghost"
+          >
+            Voltar
+          </button>
+
+          <SaveHint state={save} />
+
+          <button
+            type="button"
+            onClick={() => void advance()}
+            // Trava só enquanto o envio está em voo. O servidor é idempotente,
+            // mas dois requests custam rate limit à toa.
+            disabled={submitting}
+            className="briefing-button briefing-button--primary"
+          >
+            {isLast ? (submitting ? 'Enviando…' : 'Enviar briefing') : 'Continuar'}
+          </button>
+        </div>
+
+        {submitError && (
+          <p role="alert" className="briefing-submit-error">
+            {submitError}
           </p>
         )}
-
-        <div className="space-y-5">
-          {def.fields.map((field) => (
-            <StepField
-              key={field.name}
-              field={field}
-              value={current[field.name]}
-              onChange={(value) => setField(field.name, value)}
-              error={errors[field.name]}
-              catalog={catalog}
-              cities={cities}
-              segment={segment}
-              isLoadingCities={loadingCities}
-            />
-          ))}
-
-          {/*
-            Anexos ficam FORA do laço de campos: não moram no `jsonb` das
-            respostas como os demais, e sim na própria tabela `file_assets`
-            (ADR-025). Sobem no momento em que são escolhidos, sem esperar o
-            save da etapa — por isso o componente tem rede própria.
-          */}
-          {step === ATTACHMENTS_STEP && (
-            <Attachments token={token} onLinkGone={onLinkGone} />
-          )}
-        </div>
-
-        {isLast && <Review answers={answers} onEdit={goTo} catalog={catalog} />}
-      </div>
-
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => goTo(step - 1)}
-          disabled={step === 1}
-          className="rounded-md border border-border2 px-3.5 py-2 text-xs font-semibold text-text2 transition-colors duration-150 hover:bg-surface-hover disabled:opacity-40"
-        >
-          Voltar
-        </button>
-
-        <SaveHint state={save} />
-
-        <button
-          type="button"
-          onClick={() => void advance()}
-          // Trava só enquanto o envio está em voo. O servidor é idempotente,
-          // mas dois requests custam rate limit à toa.
-          disabled={submitting}
-          className="rounded-md bg-btnbg px-4 py-2 text-xs font-semibold text-btnfg transition-opacity duration-150 hover:opacity-90 disabled:opacity-40"
-        >
-          {isLast ? (submitting ? 'Enviando…' : 'Enviar briefing') : 'Continuar'}
-        </button>
-      </div>
-
-      {submitError && (
-        <p role="alert" className="mt-3 text-center text-xs text-error">
-          {submitError}
-        </p>
-      )}
+      </section>
 
       {/*
         Sem repetir "depois do envio nada muda" aqui: o hint do checkbox de
@@ -365,35 +411,38 @@ function Review({
         : undefined;
 
   return (
-    <section className="mt-7 border-t border-border pt-5">
-      <h2 className="text-sm font-semibold text-text2">Suas respostas</h2>
+    <section className="briefing-review">
+      <div className="briefing-review-head">
+        <span className="briefing-step-pill">Revisão</span>
+        <h2>Suas respostas</h2>
+      </div>
 
-      <dl className="mt-3 space-y-4">
+      <dl className="briefing-review-list">
         {STEPS.filter((s) => s.n < STEP_COUNT).map((s) => {
           const given = answers[String(s.n)] ?? {};
           const filled = s.fields.filter((f) => !isBlank(given[f.name]));
 
           return (
-            <div key={s.n}>
-              <div className="flex items-baseline justify-between gap-2">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-faint">
+            <div key={s.n} className="briefing-review-item">
+              <div className="briefing-review-title">
+                <dt>
                   {s.n}. {s.title}
                 </dt>
                 <button
                   type="button"
                   onClick={() => onEdit(s.n)}
-                  className="shrink-0 text-xs font-medium text-body2 underline underline-offset-2 hover:text-text2"
+                  className="briefing-edit"
                 >
                   Editar
                 </button>
               </div>
 
               {filled.length === 0 ? (
-                <dd className="mt-1 text-xs italic text-dim">Não informado</dd>
+                <dd className="briefing-empty">Não informado</dd>
               ) : (
                 filled.map((f) => (
-                  <dd key={f.name} className="mt-1 text-xs leading-relaxed text-body2">
-                    <span className="text-faint">{f.label}: </span>
+                  <dd key={f.name} className="briefing-answer">
+                    <span>{f.label}: </span>
                     {display(given[f.name], f.options ?? optionsOf(s.n, f.name))}
                   </dd>
                 ))
@@ -407,7 +456,7 @@ function Review({
 }
 
 function SaveHint({ state }: { state: SaveState }) {
-  if (state.kind === 'idle') return <span aria-hidden="true" />;
+  if (state.kind === 'idle') return <span className="briefing-save-spacer" aria-hidden="true" />;
 
   const text =
     state.kind === 'saving'
@@ -419,10 +468,7 @@ function SaveHint({ state }: { state: SaveState }) {
   return (
     <span
       role="status"
-      className={
-        'text-center text-[11px] ' +
-        (state.kind === 'offline' ? 'text-warning' : 'text-faint')
-      }
+      className={`briefing-save briefing-save--${state.kind}`}
     >
       {text}
     </span>
