@@ -208,7 +208,12 @@ export class ClientsService {
     tenantId: string,
     id: string,
     input: TransitionInput,
-    actorUserId: string,
+    // Nullable: transição disparada pelo próprio sistema não tem usuário por
+    // trás (o 1º save do rascunho e o submit do briefing movem o card —
+    // SPEC-031 §2). `ClientStatusTransition.actorUserId` já nasceu nullable
+    // para este caso; inventar um usuário-robô seria pior que registrar o fato
+    // como o que ele é.
+    actorUserId: string | null,
   ) {
     const project = await this.getProject(tenantId, id);
     const from = project.state;
