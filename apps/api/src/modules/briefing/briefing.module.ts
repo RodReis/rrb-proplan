@@ -4,11 +4,13 @@ import { IdentityModule } from '../identity/identity.module';
 import { BriefingAttachmentService } from './application/briefing-attachment.service';
 import { BriefingDraftService } from './application/briefing-draft.service';
 import { BriefingLinkService } from './application/briefing-link.service';
+import { BriefingReadService } from './application/briefing-read.service';
 import { BriefingReferenceService } from './application/briefing-reference.service';
 import { BriefingSubmitService } from './application/briefing-submit.service';
 import { BriefingAttachmentController } from './presentation/briefing-attachment.controller';
 import { BriefingLinkController } from './presentation/briefing-link.controller';
 import { BriefingPublicController } from './presentation/briefing-public.controller';
+import { BriefingReadController } from './presentation/briefing-read.controller';
 import { FileAssetController } from './presentation/file-asset.controller';
 
 /**
@@ -31,6 +33,7 @@ import { FileAssetController } from './presentation/file-asset.controller';
     BriefingPublicController,
     BriefingAttachmentController,
     FileAssetController,
+    BriefingReadController,
   ],
   providers: [
     BriefingLinkService,
@@ -38,6 +41,7 @@ import { FileAssetController } from './presentation/file-asset.controller';
     BriefingReferenceService,
     BriefingAttachmentService,
     BriefingSubmitService,
+    BriefingReadService,
   ],
   exports: [
     BriefingLinkService,

@@ -2110,9 +2110,9 @@ por PR, todos com base `main` (senão o PR fica sem check nenhum).
 - [x] **PR-2 — rascunho no servidor** (`PATCH /b/:token/draft`) + `GET /b/:token` estendido
 - [x] **PR-3 — formulário React das 9 etapas** + rotas públicas de referência da Etapa 1
 - [x] **PR-4 — anexos (`FileAsset`, ADR-025)**
-- [x] **PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`** *(este)*
-- [ ] PR-6 — leitura no painel do prestador
-- [ ] Dogfooding no navegador (parte da entrega, não apêndice — a SPEC-029
+- [x] **PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`**
+- [x] **PR-6 — leitura no painel do prestador** *(este)*
+- [x] Dogfooding no navegador (parte da entrega, não apêndice — a SPEC-029
       atravessou dois FIX por falta dele)
 
 ### PR-1 — o que entrou
@@ -2474,3 +2474,105 @@ Fluxo completo, link real, etapas 1→9 e envio pela tela.
 O teste de tela também pegou uma duplicação: eu havia posto "depois do envio
 nada muda" abaixo do botão, e o hint do checkbox de confirmação já dizia isso.
 Dois avisos idênticos na mesma tela fazem o segundo virar ruído — ficou um.
+
+### PR-6 — o que entrou
+
+A leitura no painel (SPEC-031 §6) — o lado do prestador de tudo que os cinco
+PRs anteriores gravaram. Fecha a fatia.
+
+| arquivo | papel |
+|---|---|
+| `briefing-read.service.ts` | estado do briefing, versão em leitura, rótulos |
+| `briefing-read.controller.ts` | as duas rotas — **só `@Get`** |
+| `briefing-version-immutable.spec.ts` | varre as rotas do módulo pelo metadado do Nest |
+| `BriefingVersionPanel.tsx` | o briefing enviado em tela, com seletor de versão |
+| `ClientDetailPanel.tsx` | estado do briefing por projeto na gaveta |
+
+**A tradução dos códigos acontece na leitura, nunca no dado.** A versão grava
+`segment: "G"`, `state: "SP"`, `city: "3550308"`; o painel precisa de "Comércio
+e varejo", "São Paulo", "São Paulo". Reescrever a versão para guardar o rótulo
+violaria a imutabilidade do §5 **e** congelaria um nome que a tabela de
+referência pode corrigir depois. O servidor resolve na hora e devolve um mapa
+`labels` indexado por `<etapa>.<campo>`, ao lado das respostas cruas — a tela
+mostra o rótulo, e quem precisar do código ainda o tem. Decisão do PI
+(2026-07-27) entre esta e servir o catálogo ao painel: o catálogo exigiria duas
+chamadas a mais (segmentos/estados e as 5.571 cidades por estado) para exibir
+três campos.
+
+**"Não existe rota de escrita" virou teste de metadado, não de texto.** O
+critério de aceite da spec pede *"provado por teste que varre as rotas do
+módulo"*. Um grep por `@Patch` no arquivo passaria com um decorator escrito de
+outro jeito e falharia num comentário que menciona a palavra. O teste lê
+`PATH_METADATA`/`METHOD_METADATA` dos cinco controllers — **o que o roteador
+realmente registra**. Ele tem uma âncora deliberada (`routes.length > 5`):
+sem ela, um erro na leitura dos metadados viraria "nenhuma rota, logo nenhuma
+escrita" — verde e sem valor.
+
+**Nenhum `RequireRole` na leitura, de propósito.** A spec §6 é literal:
+*"`viewer` lê; ninguém edita"*. O botão "Ver briefing" fica **fora** do
+`canWrite` que protege o "Link de briefing" ao lado dele — copiar a condição do
+vizinho seria o erro fácil aqui, e passaria numa revisão visual. Há teste que
+renderiza a gaveta com `canWrite: false` e exige o botão de leitura presente e o
+de link ausente.
+
+**Progresso pela mesma regra do formulário.** A gaveta chama o
+`completedStepCount` do domain, o mesmo que a rota pública devolve a quem
+responde. Uma segunda contagem daria "4 de 9" no painel e outra coisa na tela do
+cliente, e ninguém saberia qual acreditar. O rascunho considerado é o do link
+**ativo e não consumido**: a linha de um link revogado continua no banco (§2),
+e contá-la mostraria progresso de um preenchimento que já não pode continuar.
+
+**Rascunho existe mas nenhuma etapa fechou ⇒ "não iniciado".** É o caso de quem
+só anexou arquivo. Mesmo critério do funil, que o PR-4 fixou: quem move o card é
+o 1º save de etapa, não a criação da linha.
+
+**Falha ao ler o estado não derruba a gaveta.** São N chamadas (uma por
+projeto), em paralelo, cada uma com `catch` próprio: a lista de projetos é o
+conteúdo principal e o estado do briefing é acessório. Sem o dado, o rótulo cai
+em "não iniciado", que é o default honesto.
+
+**A listagem de anexo não arrasta os bytes.** O `select` do Prisma pede
+`id/name/mime/size` — são até 25 MB por briefing, e a tela só mostra nome e
+tamanho. Os bytes continuam saindo pelo download do PR-4, que já existia e não
+precisou de nada novo.
+
+#### O dogfooding pegou a 5ª ocorrência da mesma classe
+
+A etapa 9 mostrava **`Nível de complexidade: alta`** em vez de "Alta". Causa: o
+campo `complexity` tem `kind: 'complexity'` (desenha cartões com explicação no
+formulário) e por isso nasceu **sem `options`** — quem desenha os cartões não
+precisa do mapa, quem só precisa do RÓTULO precisa. Nenhum teste pegaria: os
+outros campos de opção fixa (`kind`, `urgency`, `modality`) têm `options` e
+traduzem.
+
+É a mesma classe do bug do PR-3 (`Segmento: G` na revisão), agora do outro lado:
+lá o rótulo vinha da API, aqui não vinha de lugar nenhum. **A correção foi no
+`steps.ts`, não no painel** — pôr o mapa no componente de leitura resolveria a
+tela e deixaria a revisão da etapa 9 com o mesmo defeito latente. Uma linha,
+dois lugares consertados.
+
+#### Dogfooding no navegador
+
+Fluxo inteiro num cenário real: cliente → projeto → link → 9 etapas → anexo →
+envio → **leitura no painel**, mais um segundo envio para exercitar o multi-versão.
+
+| caso | resultado |
+|---|---|
+| gaveta antes de qualquer resposta | "briefing não iniciado", sem botão de leitura |
+| após a 1ª etapa salva | "em preenchimento · 1 de 9" |
+| após 5 etapas | "· 5 de 9" — acompanha o formulário |
+| após o envio | "briefing recebido em 27/07/2026" + botão "Ver briefing" |
+| leitura | as 9 etapas, rótulos traduzidos, anexo com "Baixar · 16 B" |
+| etapa não respondida | "Não informado" — não some da tela |
+| **regenerar o link e enviar de novo** | **v2 no seletor; v1 continua legível com o conteúdo original e o anexo dela** |
+| hora do envio | "às 12:34" no fuso de quem lê, não em UTC |
+| sem sessão | 401 nas duas rotas |
+| `PATCH`/`DELETE` na versão | 404 — a rota não existe |
+| de outro tenant, apontando para o próprio | 404 (não-diferencial) |
+| de outro tenant, apontando para o alheio | 403 do `TenantGuard` |
+| download do anexo de outro tenant | 404 |
+
+O `fullDate` nasceu recortando a string ISO e foi corrigido antes do commit: o
+`submittedAt` chega em `Z`, e recortar mostraria **21/07** para um envio das 22h
+de 20/07 no Brasil — "recebido em" com o dia errado. `toLocaleDateString` é o
+que o resto do painel já usa.

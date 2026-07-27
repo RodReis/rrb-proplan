@@ -262,6 +262,11 @@ export const STEPS: readonly StepDef[] = [
         label: 'Nível de complexidade',
         kind: 'complexity',
         required: true,
+        // O `kind: 'complexity'` desenha os cartões no formulário e ignora
+        // isto; quem lê `options` é quem só precisa do RÓTULO — a revisão da
+        // etapa 9 e a leitura no painel (SPEC-031 §6). Sem a linha, as duas
+        // mostram `alta` em vez de "Alta". Pego no dogfooding do PR-6.
+        options: COMPLEXITY_OPTIONS,
       },
       { name: 'notes', label: 'Algo mais que queira contar', kind: 'textarea' },
       {
