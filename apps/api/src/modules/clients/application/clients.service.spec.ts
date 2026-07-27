@@ -71,6 +71,32 @@ describe('ClientsService (SPEC-029)', () => {
       });
     });
 
+    it('transição de SISTEMA grava ator nulo (SPEC-031: 1º save do rascunho)', async () => {
+      // O submit e o 1º save do briefing movem o card sem usuário por trás. O
+      // schema já criou `actorUserId` nullable exatamente para este caso — a
+      // alternativa seria inventar um usuário-robô, que a spec proíbe.
+      const project = { id: 'cp1', state: 'LINK_SENT', client: { id: 'c1' } };
+      const prisma = prismaFake();
+      prisma.clientProject.findFirst.mockResolvedValue(project);
+      prisma.clientProject.update.mockResolvedValue({
+        ...project,
+        state: 'BRIEFING_STARTED',
+      });
+      prisma.clientStatusTransition.create.mockResolvedValue({});
+
+      const svc = new ClientsService(prisma);
+      await svc.transition(TENANT, 'cp1', { to: 'BRIEFING_STARTED' }, null);
+
+      expect(prisma.clientStatusTransition.create).toHaveBeenCalledWith({
+        data: {
+          clientProjectId: 'cp1',
+          fromState: 'LINK_SENT',
+          toState: 'BRIEFING_STARTED',
+          actorUserId: null,
+        },
+      });
+    });
+
     it('transição inválida → 422 e NADA é gravado (rollback na UI)', async () => {
       const prisma = prismaFake();
       prisma.clientProject.findFirst.mockResolvedValue({
