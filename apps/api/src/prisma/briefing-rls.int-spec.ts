@@ -104,7 +104,13 @@ describe('RLS: briefing público isola por tenant (SPEC-031)', () => {
         ('brf-fa-b', '${TENANT_B}', 'brf-dr-b', 'logo-b.png', 'brf-fa-b.png', 'image/png', 8, decode('89504e470d0a1a0a','hex'), now())
        ON CONFLICT (id) DO NOTHING`,
     );
-  });
+    // Timeout explícito: o default do Jest é 5 s, e este `beforeAll` aplica as
+    // migrations e semeia SEIS tabelas em dois tenants. Passa folgado na
+    // máquina do dev e estourava no runner do CI — que é mais lento e onde o
+    // `applyMigrations()` faz mais trabalho. Falhava como "Exceeded timeout of
+    // 5000 ms for a hook", derrubando os 12 testes de uma vez sem que nenhum
+    // deles tivesse problema.
+  }, 60_000);
 
   afterAll(async () => {
     await owner.$executeRawUnsafe(`DELETE FROM file_assets WHERE id IN ('brf-fa-a','brf-fa-b')`);
@@ -123,7 +129,8 @@ describe('RLS: briefing público isola por tenant (SPEC-031)', () => {
     await owner.$executeRawUnsafe(`DELETE FROM tenants WHERE id IN ('${TENANT_A}','${TENANT_B}')`);
     await owner.$disconnect();
     await app.$disconnect();
-  });
+    // Mesma folga do `beforeAll`: oito DELETEs em cascata + dois disconnect.
+  }, 60_000);
 
   it('raiz: cada tenant vê só o próprio catálogo', async () => {
     const a = await withTenant(app, [TENANT_A], (tx) =>
