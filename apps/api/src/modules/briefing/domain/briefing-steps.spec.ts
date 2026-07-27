@@ -76,6 +76,25 @@ describe('briefing-steps: as 9 etapas', () => {
       );
     });
 
+    /**
+     * A tela e o domain têm de listar o MESMO conjunto: opção que existe só no
+     * `steps.ts` da web é oferecida ao cliente e recusada com 422 no envio —
+     * depois de ele responder as 9 etapas.
+     */
+    it('etapa 4 aceita os seis tipos de solução, inclusive web + app', () => {
+      for (const kind of [
+        'site_institucional',
+        'landing',
+        'ecommerce',
+        'sistema_web',
+        'app',
+        'sistema_web_app',
+      ]) {
+        expect(validateStep(4, { kind }).ok).toBe(true);
+      }
+      expect(validateStep(4, { kind: 'sistema_desktop' }).ok).toBe(false);
+    });
+
     it('etapa 9 NUNCA aceita nome de modelo de IA', () => {
       // Critério de aceite literal da spec: nenhum nome de modelo aparece na
       // tela nem na resposta da API. O nível é baixa/média/alta e nada mais.

@@ -23,6 +23,20 @@ export default function App() {
   const { theme } = useTheme();
 
   useEffect(() => {
+    // A rota pública do briefing não tem sessão **por definição**: quem abre o
+    // link é o cliente do prestador, que não tem conta e nunca vai ter. Perguntar
+    // `/auth/me` ali garantia um 401 no console em toda abertura (visto no
+    // dogfooding de 2026-07-27) — ruído que ensina a ignorar o console, onde um
+    // 401 de verdade vai aparecer um dia.
+    //
+    // Lido do `location` direto, não por `useLocation`: este efeito roda fora do
+    // `BrowserRouter` (ele é montado no return abaixo), e o `/b/:token` é rota de
+    // primeiro nível — não há caminho onde `/b/` signifique outra coisa.
+    if (window.location.pathname.startsWith('/b/')) {
+      setAuth({ status: 'anonymous' });
+      return;
+    }
+
     api
       .me()
       .then((user) => setAuth({ status: 'authenticated', user }))

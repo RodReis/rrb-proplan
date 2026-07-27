@@ -53,6 +53,10 @@ const KIND_OPTIONS = [
   'ecommerce',
   'sistema_web',
   'app',
+  // Sistema web + app é o pedido mais comum de quem já tem operação: o mesmo
+  // backend servindo painel e celular. Sem a opção, quem quer os dois marcava um
+  // e explicava o outro em texto livre — e a estimativa (SPEC-033) leria só um.
+  'sistema_web_app',
 ] as const;
 
 const URGENCY_OPTIONS = ['sem_pressa', 'normal', 'urgente'] as const;

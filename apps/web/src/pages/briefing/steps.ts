@@ -82,6 +82,7 @@ const KIND_OPTIONS = [
   { value: 'ecommerce', label: 'Loja virtual (e-commerce)' },
   { value: 'sistema_web', label: 'Sistema web' },
   { value: 'app', label: 'Aplicativo' },
+  { value: 'sistema_web_app', label: 'Sistema web + Aplicativo' },
 ] as const;
 
 const URGENCY_OPTIONS = [

@@ -65,8 +65,15 @@ export const ENTRY_STATE_OF: Record<FunnelColumn, ClientProjectState> = {
  * move o card) chega na fatia do briefing público.
  */
 const ALLOWED: Record<ClientProjectState, readonly ClientProjectState[]> = {
-  DRAFT: ['LINK_SENT', 'BRIEFING_STARTED', 'ARCHIVED'],
-  LINK_SENT: ['BRIEFING_STARTED', 'DRAFT', 'ARCHIVED'],
+  DRAFT: ['LINK_SENT', 'BRIEFING_STARTED', 'BRIEFING_SUBMITTED', 'ARCHIVED'],
+  // `→ BRIEFING_SUBMITTED` não é pular etapa: é o briefing chegando inteiro.
+  // O card entra em BRIEFING_STARTED no primeiro save do rascunho, mas esse
+  // move é best-effort (falha nele não derruba o save) — quando ele não
+  // acontece, o submit chegava a um card ainda em LINK_SENT, a transição era
+  // recusada com 422 e o `catch` silencioso do `moveCard` engolia: briefing
+  // respondido no banco e card parado na coluna "Novo". Sem esta linha o
+  // sintoma é invisível — nada falha, o card só não anda.
+  LINK_SENT: ['BRIEFING_STARTED', 'BRIEFING_SUBMITTED', 'DRAFT', 'ARCHIVED'],
   BRIEFING_STARTED: ['BRIEFING_SUBMITTED', 'LINK_SENT', 'ARCHIVED'],
   BRIEFING_SUBMITTED: ['ARTIFACTS_READY', 'BRIEFING_STARTED', 'ARCHIVED'],
   ARTIFACTS_READY: ['CONTRACT_PENDING', 'BRIEFING_SUBMITTED', 'ARCHIVED'],
