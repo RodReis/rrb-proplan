@@ -2097,3 +2097,72 @@ React assume. Nenhum ajuste no Railway, no Dockerfile ou no DNS.
 O **rollback do funil** (arrastar pulando etapa) segue sendo o único critério de
 aceite da SPEC-029 nunca exercitado na tela — atravessou a Fatia 19, o FIX #134 e
 este. Tem teste (`boardView.test.ts`); nunca teve dogfooding.
+
+## Fatia 20 (SPEC-031) — Briefing público: 9 etapas, rascunho e versão imutável — `em andamento`
+
+Issue **#138** (`aprovada-pi` 2026-07-26). Entrega o formulário que a página
+`/b/:token` hoje só promete. Fatia grande — vai em **PRs empilhados**, um branch
+por PR, todos com base `main` (senão o PR fica sem check nenhum).
+
+### Passos
+
+- [x] **PR-1 — schema, migração, RLS e seed** *(este)*
+- [ ] PR-2 — rascunho no servidor (`PATCH /b/:token/draft`) + `GET /b/:token` estendido
+- [ ] PR-3 — formulário React das 9 etapas
+- [ ] PR-4 — anexos (`FileAsset`, ADR-025)
+- [ ] PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`
+- [ ] PR-6 — leitura no painel do prestador
+- [ ] Dogfooding no navegador (parte da entrega, não apêndice — a SPEC-029
+      atravessou dois FIX por falta dele)
+
+### PR-1 — o que entrou
+
+Três tabelas com RLS e três de referência sem RLS. A divisão não é detalhe de
+implementação, é a regra do §3 da spec:
+
+| tabela | tenancy | por quê |
+|---|---|---|
+| `briefing_drafts` | bisneta (join até `clients` por 3 níveis) | rascunho é dado do cliente de um tenant |
+| `briefing_versions` | neta (join por `client_projects`) | idem |
+| `service_catalog_items` | **raiz** (`tenant_id` próprio) | catálogo é curado por tenant |
+| `states` · `cities` · `segments` | **nenhuma** | lista do Brasil, igual para todos |
+
+Ligar RLS nas três últimas quebraria a Etapa 1: o formulário público monta o
+seletor de cidades **sem tenant no contexto**. Há teste guardando os dois lados
+— fail-closed nas primeiras, legibilidade nas últimas.
+
+### `BriefingVersion` é imutável no schema, não só na regra
+
+A tabela **não tem** `updated_at`. A ausência é o contrato: não existe coluna
+para registrar uma alteração que não pode acontecer. Os dois uniques carregam
+regra de negócio, não só integridade:
+
+- `(client_project_id, version)` — sequencial por projeto; regenerar o link cria
+  v2 e a v1 permanece;
+- `(briefing_link_id, content_hash)` — **idempotência** do submit: duplo clique e
+  retry de rede colidem no índice em vez de gravar dois briefings.
+
+### IBGE entra por arquivo versionado, nunca por request
+
+`prisma/data/ibge-localidades.json` (296 KB, 27 estados / 5.571 municípios)
+gerado uma vez da API do IBGE e commitado. O seed lê o arquivo. Motivo na spec:
+o formulário público estaria refém de um terceiro no caminho do cliente — IBGE
+fora do ar viraria briefing travado. Atualizar é reseed, tarefa de manutenção.
+
+Idempotência conferida rodando o seed duas vezes: 27/5.571/16 estáveis, e o
+catálogo foi de 27 itens novos para 0.
+
+### O `FORCE` da RLS pegou o próprio seed
+
+O primeiro `prisma:seed` falhou com `42501: new row violates row-level security
+policy`. Não foi bug: `FORCE ROW LEVEL SECURITY` vale **inclusive para o owner**,
+que é exatamente o ponto dele. O seed passou a abrir `app.tenant_ids` antes de
+escrever no catálogo, mesma mecânica do `PrismaService.withTenant`. Confirmação
+de que a policy está ativa — ela barrou quem tinha mais privilégio no banco.
+
+### Anexos ficaram fora deste PR
+
+`FileAsset` não entrou: a spec §4 exige ADR antes do código, e **ADR é do
+Cowork**. O **ADR-025** saiu durante este PR (bytes em `bytea`, RLS, 10 MB por
+arquivo, gatilho de revisão em 2 GB), então o PR-4 está desbloqueado — mas segue
+como PR próprio, não retrofit deste.

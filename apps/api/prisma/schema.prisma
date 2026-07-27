@@ -91,6 +91,8 @@ model Tenant {
   // Frente Clientes (SPEC-029): raízes de tenancy do MVP3.
   clients        Client[]
   auditEvents    AuditEvent[]
+  // Briefing público (SPEC-031): catálogo curado é por tenant.
+  serviceCatalogItems ServiceCatalogItem[]
 
   @@map("tenants")
 }
@@ -697,6 +699,7 @@ model ClientProject {
   client      Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
   transitions ClientStatusTransition[]
   briefingLinks BriefingLink[]
+  briefingVersions BriefingVersion[]
 
   @@index([clientId, deletedAt])
   @@index([state])
@@ -732,6 +735,8 @@ model BriefingLink {
   revokedAt       DateTime?     @map("revoked_at")
   createdAt       DateTime      @default(now()) @map("created_at")
   clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  draft           BriefingDraft?
+  briefingVersions BriefingVersion[]
 
   @@index([clientProjectId])
   @@map("briefing_links")
@@ -751,4 +756,116 @@ model AuditEvent {
   @@index([tenantId, at])
   @@index([subject])
   @@map("audit_events")
+}
+
+// ===========================================================================
+// MVP3 / Briefing público (SPEC-031, Fatia 20)
+//
+// `FileAsset` (anexos) NÃO entra aqui: depende do ADR que decide onde vive
+// binário de cliente — ADR é do Cowork, e a spec §4 o exige antes do código.
+// Chega no PR de anexos, depois do ADR aprovado.
+// ===========================================================================
+
+// Rascunho retomável — UM por link (SPEC-031 §2). Chaveado por `briefingLinkId`
+// para que reabrir o link em outro aparelho retome de onde parou.
+//
+// Rascunho NÃO é versão: nada aqui é entrada do pipeline de IA. Revogar ou
+// expirar o link CONGELA a linha (para de aceitar escrita, não é apagada), e o
+// submit a marca como consumida — mesma regra do link revogado: a linha fica.
+model BriefingDraft {
+  id             String       @id @default(uuid())
+  briefingLinkId String       @unique @map("briefing_link_id")
+  // Etapa corrente (1..9) — devolvida no GET para retomar na tela certa.
+  step           Int          @default(1)
+  // Respostas parciais. Ausência é informação (ADR-014): campo não respondido
+  // não vira valor inventado, fica fora do jsonb.
+  answers        Json         @default("{}")
+  // Marcada no submit. Não-nula ⇒ o formulário não reabre.
+  consumedAt     DateTime?    @map("consumed_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  briefingLink   BriefingLink @relation(fields: [briefingLinkId], references: [id], onDelete: Cascade)
+
+  @@map("briefing_drafts")
+}
+
+// Briefing enviado. IMUTÁVEL (SPEC-031 §5): sem coluna de atualização, sem
+// rota de escrita em nenhum papel — nem prestador, nem IA (MVP3 §1, espírito
+// do ADR-013). Regenerar o link gera v2; a v1 permanece legível.
+model BriefingVersion {
+  id              String        @id @default(uuid())
+  clientProjectId String        @map("client_project_id")
+  briefingLinkId  String        @map("briefing_link_id")
+  // Sequencial POR ClientProject — v1, v2... não é global.
+  version         Int
+  answers         Json
+  // Idempotência: reenviar o mesmo conteúdo devolve a mesma versão em vez de
+  // criar a segunda. Duplo clique e retry de rede não produzem dois briefings.
+  contentHash     String        @map("content_hash")
+  submittedAt     DateTime      @default(now()) @map("submitted_at")
+  clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  briefingLink    BriefingLink  @relation(fields: [briefingLinkId], references: [id], onDelete: Cascade)
+
+  @@unique([clientProjectId, version])
+  @@unique([briefingLinkId, contentHash])
+  @@index([clientProjectId, submittedAt])
+  @@map("briefing_versions")
+}
+
+// Catálogo curado de produtos/serviços da Etapa 1 (SPEC-031 §3). RAIZ de
+// tenancy: `tenant_id` próprio e policy RLS direta.
+//
+// O cliente escolhe da lista E pode digitar item livre — o que ele digita fica
+// só na resposta do briefing, nunca cria linha aqui (não polui o catálogo).
+model ServiceCatalogItem {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  segment   String
+  label     String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, segment, label])
+  @@index([tenantId, segment, active])
+  @@map("service_catalog_items")
+}
+
+// Localidades do IBGE, EMBARCADAS VIA SEED (SPEC-031 §3) — nunca consumidas da
+// API do IBGE em runtime: o formulário público ficaria refém de um terceiro no
+// caminho do cliente, e IBGE fora do ar viraria briefing travado. Atualizar é
+// reseed (manutenção), não request.
+//
+// Dado de referência COMPARTILHADO: não tem `tenant_id` e não leva RLS — é a
+// mesma lista de estados/cidades do Brasil para todo mundo.
+model State {
+  id     String @id @default(uuid())
+  // Sigla (UF): 'SP', 'RJ'...
+  code   String @unique
+  name   String
+  cities City[]
+
+  @@map("states")
+}
+
+model City {
+  id      String @id @default(uuid())
+  stateId String @map("state_id")
+  // Código IBGE do município — chave estável para reseed idempotente.
+  ibgeId  Int    @unique @map("ibge_id")
+  name    String
+  state   State  @relation(fields: [stateId], references: [id], onDelete: Cascade)
+
+  @@index([stateId, name])
+  @@map("cities")
+}
+
+// Segmentos derivados de CNAE, também por seed e também compartilhados.
+model Segment {
+  id    String @id @default(uuid())
+  code  String @unique
+  label String
+
+  @@map("segments")
 }
