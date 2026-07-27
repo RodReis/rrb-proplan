@@ -84,6 +84,8 @@ function renderPanel(canWrite = true) {
 
 describe('ClientDetailPanel', () => {
   beforeEach(() => {
+    // O token lembrado é por aba: sem limpar, um teste enxerga o link do outro.
+    sessionStorage.clear();
     Object.values(apiMock).forEach((fn) => fn.mockReset());
     apiMock.getClient.mockResolvedValue(detail());
     apiMock.getBriefingLink.mockResolvedValue({ active: false });
@@ -187,42 +189,105 @@ describe('ClientDetailPanel', () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /gerar link/i }));
 
-    // O token completo só existe na resposta do POST — a UI o mostra com o aviso.
+    // O token completo só existe na resposta do POST — a UI o mostra para copiar.
     const campo = await screen.findByDisplayValue(/\/b\/tok-secreto-256$/);
     expect(campo).toHaveAttribute('readonly');
-    expect(
-      screen.getByText(/não será exibido novamente/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/guardado só nesta aba/i)).toBeInTheDocument();
   });
 
-  it('não fecha por backdrop quando o token único está visível', async () => {
-    apiMock.createClientProject.mockResolvedValue({
-      id: 'p-novo',
-      clientId: 'c1',
-      title: 'Loja virtual',
-      description: null,
-      state: 'DRAFT',
-      createdAt: '2026-07-26T13:00:00Z',
-      updatedAt: '2026-07-26T13:00:00Z',
+  /**
+   * O defeito relatado: gerar o link, fechar a janela e não ter como copiá-lo de
+   * novo. O servidor guarda só o hash, então quem lembra é a aba.
+   */
+  it('reabrir a gaveta oferece o link vigente para copiar de novo', async () => {
+    apiMock.getClient.mockResolvedValue(detail([project({ state: 'LINK_SENT' })]));
+    apiMock.getBriefingLink.mockResolvedValue({ active: false });
+    renderPanel();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /link de briefing/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^gerar link$/i }),
+    );
+    expect(
+      await screen.findByDisplayValue(/\/b\/tok-secreto-256$/),
+    ).toBeInTheDocument();
+
+    // A partir daqui o servidor reporta o link como ativo, sem devolver o token.
+    apiMock.getBriefingLink.mockResolvedValue({
+      active: true,
+      id: 'l1',
+      expiresAt: null,
+      createdAt: '2026-07-27T12:00:00Z',
+      status: 'valid',
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /^fechar$/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /link de briefing/i }),
+    );
+
+    expect(
+      await screen.findByDisplayValue(/\/b\/tok-secreto-256$/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/link vigente deste projeto/i)).toBeInTheDocument();
+  });
+
+  /**
+   * O token de sessão sobrevive à expiração feita no servidor. Oferecer para
+   * cópia uma URL morta é pior que não oferecer nenhuma: o operador manda para o
+   * cliente e só descobre pela reclamação.
+   */
+  it('link expirado não oferece cópia e o botão diz "Gerar novo link"', async () => {
+    // Token lembrado de uma sessão anterior — sem passar por gerar agora.
+    sessionStorage.setItem(
+      'proplan:briefingTokens',
+      JSON.stringify({ p1: 'tok-secreto-256' }),
+    );
+    apiMock.getClient.mockResolvedValue(detail([project({ state: 'LINK_SENT' })]));
+    apiMock.getBriefingLink.mockResolvedValue({
+      active: true,
+      id: 'l1',
+      expiresAt: '2026-07-20T23:59:59.000Z',
+      createdAt: '2026-07-10T12:00:00Z',
+      status: 'expired',
     });
     renderPanel();
 
     await userEvent.click(
-      await screen.findByRole('button', { name: /novo projeto/i }),
+      await screen.findByRole('button', { name: /link de briefing/i }),
     );
-    await userEvent.type(screen.getByLabelText(/título/i), 'Loja virtual');
-    await userEvent.click(screen.getByRole('button', { name: /criar projeto/i }));
+
+    expect(await screen.findByText(/link expirado em/i)).toBeInTheDocument();
+    expect(
+      screen.queryByDisplayValue(/\/b\/tok-secreto-256$/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /gerar novo link/i }),
+    ).toBeInTheDocument();
+  });
+
+  // Fechar deixou de ser destrutivo — o token fica na sessão.
+  it('fecha por backdrop mesmo com o link visível', async () => {
+    apiMock.getClient.mockResolvedValue(detail([project()]));
+    renderPanel();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /link de briefing/i }),
+    );
     await userEvent.click(
       await screen.findByRole('button', { name: /^gerar link$/i }),
     );
+    expect(
+      await screen.findByDisplayValue(/\/b\/tok-secreto-256$/),
+    ).toBeInTheDocument();
 
-    expect(await screen.findByDisplayValue(/\/b\/tok-secreto-256$/)).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('briefing-link-backdrop'));
 
     expect(
-      screen.getByRole('dialog', { name: /link de briefing/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByDisplayValue(/\/b\/tok-secreto-256$/)).toBeInTheDocument();
+      screen.queryByRole('dialog', { name: /link de briefing/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('link válido oferece Revogar e o botão diz Regenerar, não Gerar', async () => {

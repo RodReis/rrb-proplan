@@ -57,13 +57,30 @@ export const LINK_STATE_LABEL: Record<LinkState, string> = {
  * O rótulo do botão de gerar. Regenerar **revoga o anterior** (SPEC-029), então
  * a palavra tem de mudar: quem vê "Gerar link" não espera invalidar o que já
  * mandou para o cliente.
+ *
+ * Expirado e revogado dizem "Gerar novo link", não "Regenerar": não há acesso
+ * vivo a invalidar, então a palavra que sugere destruição estaria mentindo.
  */
 export function generateLabel(state: LinkState): string {
-  return state === 'nenhum' ? 'Gerar link' : 'Regenerar link';
+  if (state === 'valido') return 'Regenerar link';
+  if (state === 'nenhum') return 'Gerar link';
+  return 'Gerar novo link';
 }
 
 /** Revogar só faz sentido sobre um link que ainda pode ser usado. */
 export function canRevoke(state: LinkState): boolean {
+  return state === 'valido';
+}
+
+/**
+ * Gerar precisa de confirmação? **Só sobre link válido.**
+ *
+ * O diálogo "o link atual deixa de funcionar" existe para proteger um acesso
+ * vivo. Sobre link expirado ou revogado não há nada a proteger — confirmar ali
+ * seria atrito que ensina o operador a clicar "sim" sem ler, que é exatamente
+ * como uma confirmação deixa de proteger a única vez em que importa.
+ */
+export function needsRegenerateConfirm(state: LinkState): boolean {
   return state === 'valido';
 }
 
