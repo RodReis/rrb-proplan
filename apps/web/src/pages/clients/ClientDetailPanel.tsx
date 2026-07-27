@@ -40,7 +40,13 @@ type State =
 const PROJECT_FLOW = ['Rascunho', 'Gerar link', 'Copiar link'];
 
 function shortDate(value: string | null | undefined): string {
-  return value ? value.slice(0, 10) : 'sem expiração';
+  if (!value) return 'sem expiração';
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return value;
+
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
 }
 
 /**
@@ -531,7 +537,7 @@ function BriefingLinkDialog({
         {info?.active && (
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-[10px] border border-border bg-panel px-4 py-3 text-xs">
             <dt className="text-faint">criado em</dt>
-            <dd className="text-body2">{info.createdAt.slice(0, 10)}</dd>
+            <dd className="text-body2">{shortDate(info.createdAt)}</dd>
             <dt className="text-faint">expira em</dt>
             <dd className="text-body2">{shortDate(info.expiresAt)}</dd>
           </dl>

@@ -88,6 +88,7 @@ describe('ClientDetailPanel', () => {
     expect(await screen.findByText('Site institucional')).toBeInTheDocument();
     expect(screen.getByText('landing + blog')).toBeInTheDocument();
     expect(screen.getAllByText('Rascunho').length).toBeGreaterThan(0);
+    expect(screen.getByText(/criado em 26\/07\/2026/i)).toBeInTheDocument();
   });
 
   it('cliente sem projeto explica que criar é o que alimenta o funil', async () => {
@@ -214,7 +215,7 @@ describe('ClientDetailPanel', () => {
     apiMock.getBriefingLink.mockResolvedValue({
       active: true,
       id: 'l1',
-      expiresAt: null,
+      expiresAt: '2026-08-01T23:59:59.000Z',
       createdAt: '2026-07-26T12:00:00Z',
       status: 'valid',
     });
@@ -230,6 +231,8 @@ describe('ClientDetailPanel', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^gerar link$/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /revogar/i })).toBeInTheDocument();
+    expect(screen.getByText('26/07/2026')).toBeInTheDocument();
+    expect(screen.getByText('01/08/2026')).toBeInTheDocument();
   });
 
   it('regenerar pede confirmação — invalida o link que o cliente já recebeu', async () => {
