@@ -18,6 +18,11 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { STATE_LABELS } from './boardView';
 import { BriefingVersionPanel } from './BriefingVersionPanel';
 import {
+  forgetToken,
+  recallToken,
+  rememberToken,
+} from '../../lib/briefingTokenCache';
+import {
   briefingStateLabel,
   briefingUrl,
   canRevoke,
@@ -25,6 +30,7 @@ import {
   isValidTitle,
   linkStateOf,
   LINK_STATE_LABEL,
+  needsRegenerateConfirm,
   sortProjects,
 } from './clientDetailView';
 
@@ -431,6 +437,8 @@ function BriefingLinkDialog({
 }) {
   const [info, setInfo] = useState<BriefingLinkInfo | null>(null);
   const [created, setCreated] = useState<CreatedBriefingLink | null>(null);
+  /** Token lembrado nesta sessão (pode ser de uma abertura anterior da gaveta). */
+  const [cachedToken, setCachedToken] = useState(() => recallToken(project.id));
   const [expiresAt, setExpiresAt] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
@@ -450,6 +458,23 @@ function BriefingLinkDialog({
 
   const state = linkStateOf(info);
 
+  /**
+   * A URL para copiar — a recém-criada, ou a lembrada da sessão.
+   *
+   * Duas fontes, com regras diferentes de propósito:
+   *
+   * - **`created`** vale sozinho. O POST acabou de devolver um link vivo; exigir
+   *   a confirmação do GET esconderia, mesmo que por um instante, justamente o
+   *   token que só existe agora. Se o GET atrasar ou falhar, o usuário ainda
+   *   precisa copiar.
+   * - **`cachedToken`** exige `state === 'valido'`. Ele sobrevive na aba à
+   *   expiração e à revogação feitas no servidor, e oferecer para cópia uma URL
+   *   morta é pior que não oferecer nenhuma — o operador manda para o cliente e
+   *   só descobre pela reclamação.
+   */
+  const token = created?.token ?? (state === 'valido' ? cachedToken : null);
+  const copyUrl = token ? briefingUrl(token, window.location.origin) : null;
+
   async function generate() {
     setConfirmRegenerate(false);
     setBusy(true);
@@ -461,8 +486,10 @@ function BriefingLinkDialog({
         expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : null,
       );
       setCreated(link);
+      setCachedToken(link.token);
+      rememberToken(project.id, link.token);
       setCopied(false);
-      toast.success('Link gerado — copie agora, ele não é exibido de novo');
+      toast.success('Link gerado — copie agora');
       await load();
     } catch {
       toast.error('Não foi possível gerar o link');
@@ -476,6 +503,10 @@ function BriefingLinkDialog({
     try {
       await revokeBriefingLink(project.id);
       setCreated(null);
+      // Esquecer aqui também: o token revogado não serve mais para nada, e
+      // guardá-lo só criaria a chance de copiar uma URL morta.
+      setCachedToken(null);
+      forgetToken(project.id);
       toast.success('Link revogado');
       await load();
     } catch {
@@ -501,14 +532,15 @@ function BriefingLinkDialog({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-text/20 p-4"
       data-testid="briefing-link-backdrop"
-      onClick={() => {
-        if (!created) onClose();
-      }}
+      // Fechar deixou de ser destrutivo: o token fica na sessão e a gaveta o
+      // reabre para copiar. Antes o clique fora era bloqueado porque fechar
+      // perdia o link para sempre.
+      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === 'Escape' && !created) onClose();
+          if (e.key === 'Escape') onClose();
         }}
         className="w-full max-w-xl overflow-hidden rounded-[12px] border border-border2 bg-pop shadow-lg"
         role="dialog"
@@ -529,52 +561,77 @@ function BriefingLinkDialog({
         </header>
 
         <div className="grid gap-4 px-5 py-4">
-          {!created && (
-            <div className="rounded-[10px] border border-border bg-panel px-4 py-3">
+          {/* A URL vigente, pronta para copiar de novo — enquanto esta aba
+              lembrar o token. Ver `briefingTokenCache.ts`. */}
+          {copyUrl && (
+            <div
+              className="rounded-[10px] border border-accent-border bg-surface2 px-4 py-3"
+              data-testid="briefing-link-url"
+            >
               <p className="text-sm font-semibold text-text2">
-                {state === 'nenhum' ? 'Nenhum link ativo para este projeto.' : 'Link já existe para este projeto.'}
+                {created ? 'Link gerado.' : 'Link vigente deste projeto.'}
               </p>
               <p className="mt-1 text-xs text-muted">
-                {state === 'nenhum'
-                  ? 'Gerar cria uma URL pública para o briefing do cliente.'
-                  : 'Regenerar invalida a URL anterior e entrega uma nova.'}
+                Guardado só nesta aba do navegador — o servidor não o devolve.
+                Em outra máquina, ou depois de fechar o navegador, a saída é
+                gerar um novo.
               </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <input
+                  readOnly
+                  value={copyUrl}
+                  aria-label="URL do briefing"
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="h-10 min-w-0 rounded-[9px] border border-border2 bg-panel px-3 font-mono text-[11px] text-text"
+                />
+                <button
+                  type="button"
+                  onClick={() => void copy(copyUrl)}
+                  className="h-10 rounded-[9px] bg-btnbg px-4 text-xs font-semibold text-btnfg transition-[filter] duration-150 hover:brightness-110"
+                >
+                  {copied ? 'Copiado' : 'Copiar link'}
+                </button>
+              </div>
             </div>
           )}
 
-        {created && (
-          <div className="rounded-[10px] border border-warning bg-surface2 px-4 py-3">
-            <p className="text-sm font-semibold text-warning-strong">
-              Copie agora — este link não será exibido novamente.
-            </p>
-            <p className="mt-1 text-xs text-body2">
-              Só o hash é guardado no banco. Se esta janela for fechada sem copiar,
-              a saída é regenerar e invalidar o anterior.
-            </p>
-            {/* O link já é o definitivo, mas hoje responde JSON: o formulário
-                público é a fatia seguinte (SPEC-029 → Fora de escopo). Sem este
-                aviso, quem abrir para conferir acha que está quebrado. */}
-            <p className="mt-1 text-xs text-muted">
-              O formulário de briefing é a próxima fatia — por enquanto o link
-              abre uma página confirmando que ele é válido.
-            </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-              <input
-                readOnly
-                value={briefingUrl(created.token, window.location.origin)}
-                onFocus={(e) => e.currentTarget.select()}
-                className="h-10 min-w-0 rounded-[9px] border border-border2 bg-panel px-3 font-mono text-[11px] text-text"
-              />
-              <button
-                type="button"
-                onClick={() => void copy(briefingUrl(created.token, window.location.origin))}
-                className="h-10 rounded-[9px] bg-btnbg px-4 text-xs font-semibold text-btnfg transition-[filter] duration-150 hover:brightness-110"
+          {/* Sem URL para copiar: dizer o que há e qual é a ação. */}
+          {!copyUrl && (
+            <div
+              className={`rounded-[10px] border px-4 py-3 ${
+                state === 'expirado' || state === 'revogado'
+                  ? 'border-warning bg-surface2'
+                  : 'border-border bg-panel'
+              }`}
+            >
+              <p
+                className={`text-sm font-semibold ${
+                  state === 'expirado' || state === 'revogado'
+                    ? 'text-warning-strong'
+                    : 'text-text2'
+                }`}
               >
-                {copied ? 'Copiado' : 'Copiar link'}
-              </button>
+                {state === 'nenhum' && 'Nenhum link ativo para este projeto.'}
+                {state === 'valido' && 'Existe um link ativo, mas ele não está nesta aba.'}
+                {state === 'expirado' &&
+                  `Link expirado em ${shortDate(info?.active ? info.expiresAt : null)}.`}
+                {state === 'revogado' && 'Link revogado.'}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {state === 'nenhum' &&
+                  'Gerar cria uma URL pública para o briefing do cliente.'}
+                {/* O caso que o hash-only torna inevitável: o link existe e vale,
+                    mas só o cliente tem a URL. Dizer a verdade — não há como
+                    recuperá-la — em vez de deixar o operador procurando. */}
+                {state === 'valido' &&
+                  'A URL não é recuperável: o servidor guarda só o hash dela. Regenerar entrega uma nova e invalida a que o cliente tem.'}
+                {state === 'expirado' &&
+                  'O cliente não consegue mais abrir. Gerar um novo link restabelece o acesso.'}
+                {state === 'revogado' &&
+                  'O acesso foi encerrado. Gerar um novo link reabre o briefing.'}
+              </p>
             </div>
-          </div>
-        )}
+          )}
 
         {info?.active && (
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-[10px] border border-border bg-panel px-4 py-3 text-xs">
@@ -618,7 +675,7 @@ function BriefingLinkDialog({
             type="button"
             disabled={busy}
             onClick={() =>
-              state === 'nenhum' ? void generate() : setConfirmRegenerate(true)
+              needsRegenerateConfirm(state) ? setConfirmRegenerate(true) : void generate()
             }
             className="h-9 rounded-[9px] bg-btnbg px-4 text-xs font-semibold text-btnfg transition-[filter] duration-150 hover:brightness-110 disabled:opacity-50"
           >

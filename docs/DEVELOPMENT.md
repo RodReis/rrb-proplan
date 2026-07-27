@@ -1957,22 +1957,56 @@ porta o funil não recebe card. Os botões *Editar*/*Remover* dentro da linha fa
 Editar abriria a gaveta por baixo do diálogo.
 
 **Link de briefing na criação** (§2 da spec, decisão do PI): ao criar o projeto o
-painel do link abre em seguida. O token aparece **uma única vez** — só o hash
-SHA-256 persiste, então o aviso na tela diz que a única saída, se perdido, é
-regenerar. Copiar / expiração (`<input type="date">` nativo, sem lib) / revogar /
-regenerar, com `ConfirmDialog` no regenerar porque ele **invalida o link que o
-cliente já recebeu**.
+painel do link abre em seguida. Copiar / expiração (`<input type="date">` nativo,
+sem lib) / revogar / regenerar, com `ConfirmDialog` no regenerar porque ele
+**invalida o link que o cliente já recebeu**.
+
+#### O token não é recuperável — e a aba é quem lembra (FIX #151)
+
+O servidor persiste **só o `token_hash`** (SHA-256): o token em claro existe uma
+única vez, na resposta do POST. Nenhum GET pode devolvê-lo — isso é propriedade
+de segurança da SPEC-029, não limitação a consertar.
+
+A primeira versão da tela parava aí, e o dogfooding mostrou o custo: quem fechava
+a janela sem copiar via só *"Link já existe"* + *Regenerar*, sem URL nenhuma — e
+regenerar **invalida o link que o cliente já tem**. Conveniência de sessão sem
+tocar no modelo: `briefingTokenCache.ts` guarda o token por projeto em
+**`sessionStorage`** (não `localStorage` — token é credencial, e persistir em
+disco é o que o hash-only evita; ele morre com a aba).
+
+Três regras que o cache obriga, todas testadas:
+
+- **Token lembrado só aparece se o link está `valid`.** Ele sobrevive na aba à
+  expiração e à revogação feitas no servidor; oferecer para cópia uma URL morta é
+  pior que não oferecer nenhuma — o operador manda para o cliente e só descobre
+  pela reclamação.
+- **Link recém-criado aparece sem esperar o GET.** `created` vale sozinho: o POST
+  acabou de devolver um link vivo, e exigir a confirmação do `getBriefingLink`
+  esconderia — mesmo que por um instante, ou de vez se a rede falhar —
+  justamente o token que só existe agora. Foi o bug que a suíte pegou na primeira
+  tentativa desta correção.
+- **Revogar esquece o token.** Guardá-lo só criaria a chance de copiar URL morta.
+
+Quando o token **não** está na aba (outra máquina, navegador fechado), a tela diz
+a verdade em vez de deixar o operador procurando: a URL não é recuperável, a
+saída é regenerar. Fechar por backdrop/Esc deixou de ser bloqueado — deixou de
+ser destrutivo.
 
 ### `clientDetailView.ts` — o que erra em silêncio
 
-Fora do React pelo mesmo motivo do `boardView.ts`. Dois casos que um teste de
+Fora do React pelo mesmo motivo do `boardView.ts`. Três casos que um teste de
 markup não pegaria:
 
 - **`status: 'invalid'` colapsa em "nenhum"**: para quem olha a tela, "não existe"
   e "existe mas não vale nada" pedem a mesma ação — gerar. Distinguir produziria
   um rótulo que ninguém sabe interpretar.
 - **o rótulo do botão muda com o estado**: `Gerar link` sem link, `Regenerar link`
-  com qualquer um. Quem lê "Gerar" não espera invalidar o que já mandou.
+  sobre link **válido** — quem lê "Gerar" não espera invalidar o que já mandou —
+  e `Gerar novo link` para expirado/revogado, onde não há acesso vivo a destruir.
+- **confirmar só sobre link válido** (`needsRegenerateConfirm`): o diálogo existe
+  para proteger um acesso vivo. Pedi-lo quando não há nada a perder é atrito que
+  ensina a clicar "sim" sem ler — que é como uma confirmação deixa de proteger na
+  única vez em que importa.
 
 ### Escopo desta correção
 

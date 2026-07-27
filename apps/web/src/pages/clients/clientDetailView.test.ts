@@ -7,6 +7,7 @@ import {
   generateLabel,
   isValidTitle,
   linkStateOf,
+  needsRegenerateConfirm,
   sortProjects,
 } from './clientDetailView';
 
@@ -55,11 +56,19 @@ describe('linkStateOf', () => {
 describe('generateLabel', () => {
   // O rótulo tem de mudar: regenerar REVOGA o anterior, e quem lê "Gerar link"
   // não espera invalidar o que já mandou para o cliente.
-  it('sem link diz "Gerar"; com qualquer link diz "Regenerar"', () => {
-    expect(generateLabel('nenhum')).toBe('Gerar link');
+  it('só link válido diz "Regenerar" — é o único que perde algo', () => {
     expect(generateLabel('valido')).toBe('Regenerar link');
-    expect(generateLabel('expirado')).toBe('Regenerar link');
-    expect(generateLabel('revogado')).toBe('Regenerar link');
+  });
+
+  it('sem link diz "Gerar link"', () => {
+    expect(generateLabel('nenhum')).toBe('Gerar link');
+  });
+
+  // Não há acesso vivo a invalidar: "Regenerar" sugeriria destruição que não
+  // acontece.
+  it('expirado e revogado dizem "Gerar novo link"', () => {
+    expect(generateLabel('expirado')).toBe('Gerar novo link');
+    expect(generateLabel('revogado')).toBe('Gerar novo link');
   });
 });
 
@@ -69,6 +78,17 @@ describe('canRevoke', () => {
     expect(canRevoke('nenhum')).toBe(false);
     expect(canRevoke('expirado')).toBe(false);
     expect(canRevoke('revogado')).toBe(false);
+  });
+});
+
+describe('needsRegenerateConfirm', () => {
+  // A confirmação protege um acesso vivo. Pedi-la quando não há nada a perder
+  // ensina a clicar "sim" sem ler — e aí ela não protege na vez que importa.
+  it('confirma só sobre link válido', () => {
+    expect(needsRegenerateConfirm('valido')).toBe(true);
+    expect(needsRegenerateConfirm('nenhum')).toBe(false);
+    expect(needsRegenerateConfirm('expirado')).toBe(false);
+    expect(needsRegenerateConfirm('revogado')).toBe(false);
   });
 });
 
