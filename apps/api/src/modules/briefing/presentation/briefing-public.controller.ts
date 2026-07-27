@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { BriefingDraftService } from '../application/briefing-draft.service';
+import { BriefingReferenceService } from '../application/briefing-reference.service';
 import { SlidingWindowRateLimiter } from '../domain/rate-limiter';
 
 /** 20 requisições por minuto, por par IP+token. */
@@ -56,7 +57,10 @@ export class BriefingPublicController {
   );
   private readonly pruneTimer: NodeJS.Timeout;
 
-  constructor(private readonly drafts: BriefingDraftService) {
+  constructor(
+    private readonly drafts: BriefingDraftService,
+    private readonly reference: BriefingReferenceService,
+  ) {
     this.pruneTimer = setInterval(() => {
       this.limiter.prune();
       this.writeLimiter.prune();
@@ -75,6 +79,29 @@ export class BriefingPublicController {
   async resolve(@Param('token') token: string, @Req() req: Request) {
     this.enforce(this.limiter, token, req);
     return this.drafts.getPublicState(token);
+  }
+
+  /**
+   * Dados de referência da Etapa 1: segmentos, estados e o catálogo curado do
+   * tenant dono do link (SPEC-031 §3). Separado do `GET :token` porque muda
+   * numa cadência diferente — o estado do rascunho muda a cada save, estas
+   * listas não mudam durante o preenchimento.
+   */
+  @Get(':token/catalog')
+  async catalog(@Param('token') token: string, @Req() req: Request) {
+    this.enforce(this.limiter, token, req);
+    return this.reference.getCatalog(token);
+  }
+
+  /** Cidades de um estado — sob demanda, são 5.571 no total. */
+  @Get(':token/cities/:state')
+  async cities(
+    @Param('token') token: string,
+    @Param('state') state: string,
+    @Req() req: Request,
+  ) {
+    this.enforce(this.limiter, token, req);
+    return this.reference.getCities(token, state);
   }
 
   /** Salva uma etapa do rascunho. O 1º save move o card no funil. */
