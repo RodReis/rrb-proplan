@@ -95,9 +95,25 @@ describe('RLS: briefing público isola por tenant (SPEC-031)', () => {
         ('brf-sc-b', '${TENANT_B}', 'J', 'Site institucional', true, now(), now())
        ON CONFLICT (id) DO NOTHING`,
     );
-  });
+    // Anexos (ADR-025): raiz de tenancy própria, com bytes em `bytea`.
+    // `decode(...,'hex')` monta a assinatura de PNG — os CHECK do banco exigem
+    // MIME da allowlist e `size = octet_length(bytes)`.
+    await owner.$executeRawUnsafe(
+      `INSERT INTO file_assets (id, tenant_id, briefing_draft_id, name, safe_name, mime, size, bytes, created_at) VALUES
+        ('brf-fa-a', '${TENANT_A}', 'brf-dr-a', 'logo-a.png', 'brf-fa-a.png', 'image/png', 8, decode('89504e470d0a1a0a','hex'), now()),
+        ('brf-fa-b', '${TENANT_B}', 'brf-dr-b', 'logo-b.png', 'brf-fa-b.png', 'image/png', 8, decode('89504e470d0a1a0a','hex'), now())
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    // Timeout explícito: o default do Jest é 5 s, e este `beforeAll` aplica as
+    // migrations e semeia SEIS tabelas em dois tenants. Passa folgado na
+    // máquina do dev e estourava no runner do CI — que é mais lento e onde o
+    // `applyMigrations()` faz mais trabalho. Falhava como "Exceeded timeout of
+    // 5000 ms for a hook", derrubando os 12 testes de uma vez sem que nenhum
+    // deles tivesse problema.
+  }, 60_000);
 
   afterAll(async () => {
+    await owner.$executeRawUnsafe(`DELETE FROM file_assets WHERE id IN ('brf-fa-a','brf-fa-b')`);
     await owner.$executeRawUnsafe(
       `DELETE FROM service_catalog_items WHERE id IN ('brf-sc-a','brf-sc-b')`,
     );
@@ -113,7 +129,8 @@ describe('RLS: briefing público isola por tenant (SPEC-031)', () => {
     await owner.$executeRawUnsafe(`DELETE FROM tenants WHERE id IN ('${TENANT_A}','${TENANT_B}')`);
     await owner.$disconnect();
     await app.$disconnect();
-  });
+    // Mesma folga do `beforeAll`: oito DELETEs em cascata + dois disconnect.
+  }, 60_000);
 
   it('raiz: cada tenant vê só o próprio catálogo', async () => {
     const a = await withTenant(app, [TENANT_A], (tx) =>
@@ -154,11 +171,126 @@ describe('RLS: briefing público isola por tenant (SPEC-031)', () => {
     expect(ids(b)).toEqual(['brf-dr-b']);
   });
 
-  it('fail-closed: sem contexto, as três tabelas devolvem zero linhas', async () => {
-    for (const table of ['briefing_drafts', 'briefing_versions', 'service_catalog_items']) {
+  it('raiz: anexos isolam por tenant_id próprio (ADR-025)', async () => {
+    // `file_assets` NÃO herda por JOIN como as irmãs: o download autenticado
+    // busca por `id`, e um join de três níveis nesse caminho seria uma policy
+    // que ninguém relê. Este teste é o que prova que a policy direta funciona.
+    const a = await withTenant(app, [TENANT_A], (tx) =>
+      tx.$queryRawUnsafe(
+        `SELECT id FROM file_assets WHERE id IN ('brf-fa-a','brf-fa-b') ORDER BY id`,
+      ),
+    );
+    const b = await withTenant(app, [TENANT_B], (tx) =>
+      tx.$queryRawUnsafe(
+        `SELECT id FROM file_assets WHERE id IN ('brf-fa-a','brf-fa-b') ORDER BY id`,
+      ),
+    );
+    expect(ids(a)).toEqual(['brf-fa-a']);
+    expect(ids(b)).toEqual(['brf-fa-b']);
+  });
+
+  it('os BYTES do anexo alheio também não saem, não só o id', async () => {
+    // Um SELECT de id filtrado passaria mesmo com policy furada em coluna
+    // grande. Aqui pedimos o `bytea` de propósito: é o dado que o ADR-025
+    // colocou no banco, e é ele que não pode atravessar tenant.
+    const rows = (await withTenant(app, [TENANT_A], (tx) =>
+      tx.$queryRawUnsafe(`SELECT id, bytes FROM file_assets WHERE id = 'brf-fa-b'`),
+    )) as unknown[];
+    expect(rows).toHaveLength(0);
+  });
+
+  it('fail-closed: sem contexto, as quatro tabelas devolvem zero linhas', async () => {
+    for (const table of [
+      'briefing_drafts',
+      'briefing_versions',
+      'service_catalog_items',
+      'file_assets',
+    ]) {
       const rows = (await app.$queryRawUnsafe(`SELECT id FROM ${table}`)) as unknown[];
       expect({ table, count: rows.length }).toEqual({ table, count: 0 });
     }
+  });
+
+  describe('CHECK de file_assets: os limites do ADR-025 também vivem no banco', () => {
+    /**
+     * Defesa em profundidade. A barreira real é a verificação de assinatura no
+     * domain, mas um caminho de escrita futuro que a esqueça (import, correção
+     * manual, migração de dados) esbarra aqui. Rodam como OWNER de propósito:
+     * CHECK não é RLS, vale para todo mundo.
+     */
+    afterEach(async () => {
+      await owner.$executeRawUnsafe(`DELETE FROM file_assets WHERE id = 'brf-fa-x'`);
+      await owner.$executeRawUnsafe(`DELETE FROM briefing_drafts WHERE id = 'brf-dr-x'`);
+      await owner.$executeRawUnsafe(`DELETE FROM briefing_links WHERE id = 'brf-bl-x'`);
+    });
+
+    it('recusa MIME fora da allowlist', async () => {
+      await expect(
+        owner.$executeRawUnsafe(
+          `INSERT INTO file_assets (id, tenant_id, briefing_draft_id, name, safe_name, mime, size, bytes, created_at)
+           VALUES ('brf-fa-x', '${TENANT_A}', 'brf-dr-a', 'x.svg', 'brf-fa-x.svg', 'image/svg+xml', 8, decode('89504e470d0a1a0a','hex'), now())`,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('recusa arquivo acima de 10 MB', async () => {
+      await expect(
+        owner.$executeRawUnsafe(
+          `INSERT INTO file_assets (id, tenant_id, briefing_draft_id, name, safe_name, mime, size, bytes, created_at)
+           VALUES ('brf-fa-x', '${TENANT_A}', 'brf-dr-a', 'x.png', 'brf-fa-x.png', 'image/png', 10485761, repeat('a', 10485761)::bytea, now())`,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('recusa `size` que não bate com os bytes gravados', async () => {
+      // Sem este CHECK, a cota de 25 MB seria burlável gravando size=1.
+      await expect(
+        owner.$executeRawUnsafe(
+          `INSERT INTO file_assets (id, tenant_id, briefing_draft_id, name, safe_name, mime, size, bytes, created_at)
+           VALUES ('brf-fa-x', '${TENANT_A}', 'brf-dr-a', 'x.png', 'brf-fa-x.png', 'image/png', 1, decode('89504e470d0a1a0a','hex'), now())`,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('recusa anexo órfão (sem rascunho e sem versão)', async () => {
+      await expect(
+        owner.$executeRawUnsafe(
+          `INSERT INTO file_assets (id, tenant_id, name, safe_name, mime, size, bytes, created_at)
+           VALUES ('brf-fa-x', '${TENANT_A}', 'x.png', 'brf-fa-x.png', 'image/png', 8, decode('89504e470d0a1a0a','hex'), now())`,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('apagar o rascunho NÃO leva junto o anexo da versão enviada', async () => {
+      // ON DELETE SET NULL: a versão é imutável e precisa continuar sabendo
+      // quais bytes recebeu. O CHECK garante que ainda sobra um dono.
+      // Link próprio: `briefing_drafts.briefing_link_id` é unique (1 rascunho
+      // por link), então reusar `brf-bl-a` colidiria com o rascunho do setup.
+      await owner.$executeRawUnsafe(
+        `INSERT INTO briefing_links (id, client_project_id, token_hash, created_at)
+         VALUES ('brf-bl-x', 'brf-cp-a', 'brf-hash-x', now())
+         ON CONFLICT (id) DO NOTHING`,
+      );
+      await owner.$executeRawUnsafe(
+        `INSERT INTO briefing_drafts (id, briefing_link_id, step, answers, created_at, updated_at)
+         VALUES ('brf-dr-x', 'brf-bl-x', 1, '{}', now(), now())
+         ON CONFLICT (id) DO NOTHING`,
+      );
+      await owner.$executeRawUnsafe(
+        `INSERT INTO file_assets (id, tenant_id, briefing_draft_id, briefing_version_id, name, safe_name, mime, size, bytes, created_at)
+         VALUES ('brf-fa-x', '${TENANT_A}', 'brf-dr-x', 'brf-bv-a', 'x.png', 'brf-fa-x.png', 'image/png', 8, decode('89504e470d0a1a0a','hex'), now())`,
+      );
+
+      await owner.$executeRawUnsafe(`DELETE FROM briefing_drafts WHERE id = 'brf-dr-x'`);
+
+      const rows = (await owner.$queryRawUnsafe(
+        `SELECT briefing_draft_id, briefing_version_id FROM file_assets WHERE id = 'brf-fa-x'`,
+      )) as Array<{ briefing_draft_id: string | null; briefing_version_id: string | null }>;
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].briefing_draft_id).toBeNull();
+      expect(rows[0].briefing_version_id).toBe('brf-bv-a');
+    });
   });
 
   it('dado de referência é compartilhado: states/cities/segments legíveis sem contexto', async () => {

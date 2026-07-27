@@ -2108,8 +2108,8 @@ por PR, todos com base `main` (senão o PR fica sem check nenhum).
 
 - [x] **PR-1 — schema, migração, RLS e seed** *(este)*
 - [x] **PR-2 — rascunho no servidor** (`PATCH /b/:token/draft`) + `GET /b/:token` estendido
-- [x] **PR-3 — formulário React das 9 etapas** *(este)* + rotas públicas de referência da Etapa 1
-- [ ] PR-4 — anexos (`FileAsset`, ADR-025)
+- [x] **PR-3 — formulário React das 9 etapas** + rotas públicas de referência da Etapa 1
+- [x] **PR-4 — anexos (`FileAsset`, ADR-025)** *(este)*
 - [ ] PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`
 - [ ] PR-6 — leitura no painel do prestador
 - [ ] Dogfooding no navegador (parte da entrega, não apêndice — a SPEC-029
@@ -2295,3 +2295,117 @@ rascunho consumido          → "Briefing recebido", sem formulário
 O `401` do `/auth/me` aparece no console e **não afeta a página** — é o `App`
 resolvendo a sessão que o visitante não tem. É exatamente o que o FIX #136
 separou: a página do briefing não passa pelo `request()`.
+
+### PR-4 — o que entrou
+
+Anexos do briefing, executando o **ADR-025**: bytes em `bytea`, sob RLS, com
+limite duro. É a **única rota do produto em que um estranho sem conta escreve
+bytes no banco** — o desenho todo sai dessa frase.
+
+| arquivo | papel |
+|---|---|
+| `file-signature.ts` | allowlist, limites e **detecção de tipo por assinatura de bytes** |
+| `briefing-attachment.service.ts` | upload/lista/remoção (público) e download (autenticado) |
+| `briefing-attachment.controller.ts` | `/b/:token/attachments` — Multer + rate limit próprio |
+| `file-asset.controller.ts` | `GET /t/:tenant/files/:id` — download com `Content-Disposition` |
+| `Attachments.tsx` | a Etapa 5 na tela, com rede própria |
+
+**O tipo vem do conteúdo, nunca do que foi declarado.** `Content-Type` e
+extensão são escritos por quem envia — um `.png` que começa com `MZ` é um
+executável com nome de imagem. Quem decide é a assinatura dos primeiros bytes, o
+único campo do upload que o atacante não controla sem trocar o arquivo de
+verdade. SVG ficou **fora** da allowlist de propósito: é XML, executa script, e
+não tem assinatura que o distinga de um documento hostil. WebP precisa de duas
+janelas (o `RIFF` do byte 0 e o `WEBP` do byte 8) porque `.wav` e `.avi` também
+são RIFF — checar só a primeira aceitaria áudio com nome de imagem.
+
+**A cota precisou de uma função `SECURITY DEFINER`.** Somar os anexos já
+enviados com um `SELECT` comum devolveria zero: a rota é pública, roda sem
+`app.tenant_ids`, e o RLS é fail-closed. A cota viraria decoração e o 6º arquivo
+entraria como se fosse o 1º. É a **4ª ocorrência** da mesma classe de problema
+nesta frente (rota pública + RLS fail-closed), agora resolvida na primeira
+tentativa em vez de no dogfooding.
+
+**Os limites do ADR-025 também viraram CHECK no banco.** A barreira real é a
+verificação de assinatura no domain, mas um caminho de escrita futuro que a
+esqueça (import, correção manual, migração de dados) esbarra no banco: MIME na
+allowlist, `size` entre 1 e 10 MB, `size = octet_length(bytes)` e anexo sempre
+com dono. O terceiro é o que impede burlar a cota de 25 MB gravando `size` 1 com
+`bytes` grande. Defesa em profundidade custou quatro linhas de DDL e quatro
+testes contra Postgres real.
+
+**`file_assets` é raiz de tenancy, não neta.** As irmãs deste bloco herdam o
+corte por JOIN até `clients`; esta carrega `tenant_id` na linha. Motivo: o
+download autenticado busca por `id` sem passar pelo rascunho, e um JOIN de três
+níveis no caminho do download seria a diferença entre uma policy simples e uma
+que ninguém relê. O teste de isolamento pede o `bytea` de propósito — um
+`SELECT id` filtrado passaria mesmo com policy furada em coluna grande.
+
+**`ON DELETE SET NULL` no rascunho, `CASCADE` na versão.** Apagar o rascunho não
+pode levar junto o anexo que uma versão enviada referencia: a versão é imutável
+(spec §5) e precisa continuar sabendo quais bytes recebeu. O CHECK de dono
+garante que ainda sobra um lado apontando.
+
+#### Divergência da spec §4: a URL assinada não entrou — decisão do PI pendente
+
+A spec pede *"URL assinada de vida curta"* para o download. **Foi implementada a
+rota autenticada, sem assinatura**, e a diferença está registrada no
+`file-asset.controller.ts`.
+
+Assinatura existe para dar acesso a um cliente **sem credencial** — um bucket,
+uma CDN. Aqui os bytes saem da nossa própria API para um browser que já manda o
+cookie `proplan_session` (httpOnly): a identidade está provada antes do
+controller e o RLS corta por tenant depois dele. Uma assinatura por cima disso
+seria um **segundo mecanismo de autorização, mais fraco que o primeiro** (um
+link assinado vaza inteiro se copiado; um cookie httpOnly, não), com um segredo
+e um relógio novos para manter.
+
+O critério de aceite da spec é satisfeito: sem sessão ou de outro tenant, a
+resposta é a mesma de não encontrado (404, nunca 403 — dizer *"existe, mas não é
+seu"* confirmaria a existência para quem sonda ids). Se o PI quiser a assinatura
+mesmo assim — por exemplo para permitir um link de download compartilhável fora
+da sessão —, ela entra depois: o acesso já é por `id`, então é uma camada na
+frente, não um redesenho. **Decisão pendente do PI.**
+
+#### O upload não move o card no funil
+
+Anexar arquivo sem responder nada não é "começar o briefing". O rascunho vazio é
+criado (o anexo precisa de dono), mas nenhuma etapa é marcada e o card não sai
+de `LINK_SENT` — quem move é o 1º save de etapa, como o PR-2 estabeleceu.
+
+#### O que os testes pegaram
+
+O teste da tela pegou um bug de acessibilidade real: o rótulo dos anexos era um
+`<span>`, então o `input[type=file]` ficava **sem nome acessível** — leitor de
+tela anunciaria só "botão escolher arquivo". Virou `<label htmlFor>` +
+`aria-describedby` para a linha de limites.
+
+O `upsert` (em vez de `create`) do rascunho vazio veio de olhar a corrida: dois
+uploads simultâneos do mesmo link disputariam a criação, e o segundo bateria no
+unique de `briefing_link_id`.
+
+#### Dogfooding no navegador
+
+Feito com link real em `/b/:token`, percorrendo as etapas 1→5 e mexendo nos
+anexos pela tela — não só por `curl`.
+
+| caso | resultado |
+|---|---|
+| PNG legítimo pela tela | 201, aparece na lista, grava com `safe_name` gerado |
+| **executável `MZ` com nome `.png` e `Content-Type: image/png`** | **422 em vermelho na tela, nada gravado** |
+| **SVG com `<script>` declarado como PNG** | **422, nada gravado** |
+| remover pela tela | some da lista e do banco |
+| recarregar no meio | rascunho retomado, anexos continuam listados |
+| download sem sessão | 401 |
+| download com sessão | 200 + `Content-Type` do allowlist, `attachment`, `nosniff`, `private, no-store` |
+| card no funil após só anexar | continua onde estava (upload não move) |
+
+Cada upload e remoção gravou `AuditEvent`, como o ADR-025 pede.
+
+**O dogfooding pegou o que os testes não pegavam** (4ª vez nesta frente, mesma
+lição do FIX #134): a migration estava aplicada em `proplan_test` — porque o
+harness de int-spec aplica sozinho — mas **não** no banco de dev. O primeiro
+upload real respondeu **500**, `function briefing_draft_quota(text) does not
+exist`. As 891 asserções verdes não pegariam: elas mockam o Prisma ou rodam no
+banco de teste. Só `prisma migrate deploy` no dev resolveu — e é por isso que a
+spec trata o navegador como parte da entrega, não apêndice.
