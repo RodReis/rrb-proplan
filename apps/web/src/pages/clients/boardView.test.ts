@@ -6,6 +6,7 @@ import {
   columnOf,
   initials,
   moveCard,
+  STATE_LABELS,
 } from './boardView';
 
 function card(id: string, over: Partial<FunnelCard> = {}): FunnelCard {
@@ -107,5 +108,16 @@ describe('apresentação do card', () => {
     expect(
       cardSubtitle(card('a', { client: { id: 'c', name: 'Só Nome', company: null } })),
     ).toBe('Só Nome');
+  });
+
+  /**
+   * Quem lê o board é o **prestador**. "Link enviado" (nós mandamos) e "Briefing
+   * enviado" (o cliente mandou) usavam a mesma palavra para sujeitos opostos —
+   * lado a lado no funil, viravam a mesma frase. Trocado no dogfooding.
+   */
+  it('não confunde o link que nós enviamos com o briefing que o cliente respondeu', () => {
+    expect(STATE_LABELS.LINK_SENT).toBe('Link enviado');
+    expect(STATE_LABELS.BRIEFING_SUBMITTED).toBe('Briefing respondido');
+    expect(STATE_LABELS.BRIEFING_SUBMITTED).not.toContain('enviado');
   });
 });

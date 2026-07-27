@@ -291,6 +291,32 @@ textarea.briefing-control {
   resize: vertical;
 }
 
+/**
+ * A lista aberta do <select> é desenhada pelo SISTEMA, não por este CSS.
+ *
+ * Sem `color-scheme`, o navegador assume tema claro para o popup: fundo branco
+ * com o nosso `--text2` (quase branco) por cima — as opções sumiam, exatamente o
+ * que o dogfooding pegou nos combos de Segmento, Estado, Tipo de solução,
+ * Urgência e Modalidade. Estilizar `option` uma a uma não resolve: o Windows
+ * ignora a maior parte das propriedades no popup nativo. `color-scheme` é o
+ * mecanismo que existe para isto.
+ *
+ * `dark` fixo, não `light dark`: o briefing público tem tema próprio e escuro
+ * (`--briefing-*`), independente da preferência do sistema de quem abre o link.
+ */
+select.briefing-control {
+  color-scheme: dark;
+  /* A seta nativa herda a cor do texto e some no gradiente sem isto. */
+  cursor: pointer;
+}
+
+/* Fallback para os navegadores que aceitam pintar o popup (Firefox, Chromium
+   no Linux): alinha a lista com a superfície do formulário. */
+select.briefing-control option {
+  background: var(--surface2);
+  color: var(--text2);
+}
+
 .briefing-control::placeholder {
   color: var(--muted);
 }

@@ -15,12 +15,20 @@ export const COLUMN_LABELS: Record<FunnelColumn, string> = {
   producao_entrega: 'Produção e entrega',
 };
 
-/** Rótulo legível de cada estado interno — o card mostra o estado, não a coluna. */
+/**
+ * Rótulo legível de cada estado interno — o card mostra o estado, não a coluna.
+ *
+ * **Quem lê estes rótulos é o prestador**, e por isso `BRIEFING_SUBMITTED` diz
+ * *respondido*, não *enviado*: ao lado de `LINK_SENT` ("Link enviado"), a
+ * palavra "enviado" apareceria duas vezes com sujeitos opostos — nós mandamos o
+ * link, o cliente mandou as respostas. Do lado de quem responde o verbo é
+ * enviar; deste lado é responder. Trocado no dogfooding de 2026-07-27.
+ */
 export const STATE_LABELS: Record<ClientProjectState, string> = {
   DRAFT: 'Rascunho',
   LINK_SENT: 'Link enviado',
   BRIEFING_STARTED: 'Briefing iniciado',
-  BRIEFING_SUBMITTED: 'Briefing enviado',
+  BRIEFING_SUBMITTED: 'Briefing respondido',
   ARTIFACTS_READY: 'Artefatos prontos',
   CONTRACT_PENDING: 'Contrato pendente',
   CONTRACT_APPROVED: 'Contrato aprovado',

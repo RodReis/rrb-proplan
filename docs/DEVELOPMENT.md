@@ -2355,9 +2355,34 @@ revogar durante o preenchimento → "Link cancelado"; rascunho continua no banco
 rascunho consumido          → "Briefing recebido", sem formulário
 ```
 
-O `401` do `/auth/me` aparece no console e **não afeta a página** — é o `App`
-resolvendo a sessão que o visitante não tem. É exatamente o que o FIX #136
-separou: a página do briefing não passa pelo `request()`.
+~~O `401` do `/auth/me` aparece no console e **não afeta a página**~~ — **corrigido
+no FIX #153**: não afetava mesmo, mas o PI reportou no dogfooding, e com razão. A
+rota `/b/` passou a pular a checagem de sessão. Um 401 esperado em toda abertura
+ensina a ignorar o console — é lá que um 401 de verdade vai aparecer um dia.
+
+#### O `<select>` é desenhado pelo sistema (FIX #153)
+
+A lista aberta de um `<select>` **não** é estilizada pelo nosso CSS — é popup
+nativo. Sem `color-scheme: dark` no controle, o navegador assume tema claro:
+fundo branco com o nosso `--text2` (quase branco) por cima, e as opções somem.
+Foi o que o dogfooding pegou nos cinco combos. Estilizar `option` uma a uma não
+resolve — o Windows ignora quase todas as propriedades ali. `dark` fixo e não
+`light dark` porque o briefing público tem tema próprio e escuro, independente da
+preferência do sistema de quem abre o link.
+
+#### `sistema_web_app`: opção nova entra nos DOIS lados (FIX #153)
+
+*Sistema web + Aplicativo* virou o sexto tipo da etapa 4. O `oneOf` do
+`briefing-steps.ts` é **conjunto fechado**: opção acrescentada só no `steps.ts`
+da web seria oferecida ao cliente e recusada com **422 no envio** — depois de ele
+responder as nove etapas. É a armadilha específica de um espelho declarado, e por
+isso o teste percorre os seis tipos no domain, não na tela.
+
+#### Rota pública não pergunta pela sessão (FIX #153)
+
+O `App.tsx` chamava `/auth/me` na montagem de **qualquer** rota, inclusive
+`/b/:token`. Lido de `window.location.pathname` direto, e não por `useLocation`,
+porque o efeito roda **fora** do `BrowserRouter` (montado no return logo abaixo).
 
 ### PR-4 — o que entrou
 
@@ -2537,6 +2562,27 @@ Fluxo completo, link real, etapas 1→9 e envio pela tela.
 O teste de tela também pegou uma duplicação: eu havia posto "depois do envio
 nada muda" abaixo do botão, e o hint do checkbox de confirmação já dizia isso.
 Dois avisos idênticos na mesma tela fazem o segundo virar ruído — ficou um.
+
+#### O card podia ficar para trás em silêncio (FIX #153)
+
+`LINK_SENT → BRIEFING_SUBMITTED` **não existia** em `ALLOWED`. O desenho supunha
+que todo submit chega a um card já em `BRIEFING_STARTED`, movido no primeiro save
+do rascunho — mas esse move é **best-effort de propósito** (falha nele não derruba
+o save, porque o dado do cliente vale mais que a posição do card). Quando ele não
+acontecia, o submit encontrava `LINK_SENT`, `canTransition` recusava com 422, e o
+**`catch` silencioso** do `moveCard` engolia.
+
+Resultado: **briefing respondido no banco, card parado na coluna "Novo"** — sem
+erro em lugar nenhum, sem log, sem nada para investigar. Os dois silêncios são
+individualmente corretos (nenhum deles pode derrubar o envio) e juntos produziam
+um estado inconsistente invisível. A transição foi acrescentada a partir de
+`LINK_SENT` **e** de `DRAFT`: briefing chegando inteiro não é pular etapa, é o
+fluxo acontecendo de uma vez.
+
+**Rótulo do card**: `BRIEFING_SUBMITTED` passou a ler **"Briefing respondido"**.
+Ao lado de `LINK_SENT` ("Link enviado"), *enviado* aparecia duas vezes com
+sujeitos opostos — nós mandamos o link, o cliente mandou as respostas. Do lado de
+quem responde o verbo é enviar; do lado de quem lê o board, é responder.
 
 ### PR-6 — o que entrou
 

@@ -37,6 +37,19 @@ describe('funil de clientes: máquina de estados (SPEC-029)', () => {
       expect(canTransition('BRIEFING_STARTED', 'IN_PRODUCTION')).toBe(false);
     });
 
+    /**
+     * O briefing chegando inteiro não é pular etapa. O card entra em
+     * `BRIEFING_STARTED` no primeiro save do rascunho, mas esse move é
+     * best-effort; quando ele não acontece, o submit encontra o card ainda em
+     * `LINK_SENT`. Sem esta transição, o `moveCard` levava 422, o `catch`
+     * silencioso engolia, e o resultado era briefing respondido no banco com o
+     * card parado na coluna "Novo" — o que o dogfooding de 2026-07-27 viu.
+     */
+    it('aceita o submit chegando de LINK_SENT ou DRAFT', () => {
+      expect(canTransition('LINK_SENT', 'BRIEFING_SUBMITTED')).toBe(true);
+      expect(canTransition('DRAFT', 'BRIEFING_SUBMITTED')).toBe(true);
+    });
+
     it('permite voltar um passo (corrigir engano é rotina)', () => {
       expect(canTransition('LINK_SENT', 'DRAFT')).toBe(true);
       expect(canTransition('BRIEFING_SUBMITTED', 'BRIEFING_STARTED')).toBe(true);
