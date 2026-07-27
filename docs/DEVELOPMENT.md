@@ -2107,7 +2107,7 @@ por PR, todos com base `main` (senão o PR fica sem check nenhum).
 ### Passos
 
 - [x] **PR-1 — schema, migração, RLS e seed** *(este)*
-- [ ] PR-2 — rascunho no servidor (`PATCH /b/:token/draft`) + `GET /b/:token` estendido
+- [x] **PR-2 — rascunho no servidor** (`PATCH /b/:token/draft`) + `GET /b/:token` estendido
 - [ ] PR-3 — formulário React das 9 etapas
 - [ ] PR-4 — anexos (`FileAsset`, ADR-025)
 - [ ] PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`
@@ -2166,3 +2166,57 @@ de que a policy está ativa — ela barrou quem tinha mais privilégio no banco.
 Cowork**. O **ADR-025** saiu durante este PR (bytes em `bytea`, RLS, 10 MB por
 arquivo, gatilho de revisão em 2 GB), então o PR-4 está desbloqueado — mas segue
 como PR próprio, não retrofit deste.
+
+### PR-2 — o que entrou
+
+Rascunho retomável, com a validação das 9 etapas no `domain/`. A regra vive
+longe do controller porque a spec diz que *"validação de tela é conveniência; a
+barreira é a API"* — e isso só é verdade se a regra puder ser testada sem HTTP
+nem banco.
+
+**Campo fora do contrato é recusado, não ignorado.** O payload alimenta o
+`jsonb` que vira entrada do pipeline de IA; aceitar chave arbitrária deixaria
+quem tem o link gravar o que quisesse lá dentro. É o mesmo mecanismo que barra
+`tenantId`/`workspaceId` — o critério de isolamento sai de graça da mesma regra.
+
+**Duas funções `SECURITY DEFINER`, não uma.** A `resolve_briefing_draft` nasceu
+ao lado da `resolve_briefing_link` em vez de substituí-la: trocar o tipo de
+retorno da antiga exigiria DROP+CREATE, e ela continua servindo o caso "só quero
+saber se o link vale" sem carregar o `jsonb` de respostas.
+
+**Rate limit também na escrita** (10/min, teto menor que o do GET). Limitar só o
+`GET` deixaria o `PATCH` como a porta larga — o critério da spec é *todas* as
+rotas públicas de escrita.
+
+### O bug que só o dogfooding pegou
+
+Os 17 testes do service passavam e o card **não saía de `LINK_SENT`**.
+
+Causa: o `ClientsService` assume que o contexto de tenant já está aberto — as
+rotas dele são `/t/:tenant`, com `TenantContextInterceptor`. A rota pública não
+tem interceptor nenhum. Chamar `transition` fora de `runInTenantContext` fazia o
+`findFirst` interno cair no RLS fail-closed, devolver `null` e virar 404 —
+silenciosamente engolido pelo `catch` que protege o save.
+
+Os testes não podiam pegar: eles mockam o `ClientsService`, então provavam que a
+chamada **acontece**, não que ela **funciona**. Mesma classe do FIX #134 e do bug
+que gerou a `resolve_briefing_link` na SPEC-029 — a terceira vez que "teste verde
+sobre acesso que não existe" morde nesta frente.
+
+A correção envolve a chamada em `runInTenantContext`. O teste novo não repete o
+erro de mockar e confiar: ele registra a **ordem** dos eventos e exige que a
+transição aconteça entre o abre e o fecha do contexto.
+
+### Verificado na API real, sem sessão
+
+```
+GET  /b/<token>                    → {"status":"valid","step":1,"answers":{},"completedSteps":0}
+PATCH /b/<token>/draft (etapa 1)   → {"step":1,"totalSteps":9,"completedSteps":1}
+GET  /b/<token>                    → retoma com as respostas da etapa 1
+card                               → LINK_SENT → BRIEFING_STARTED, ator null
+obrigatório vazio / tenantId / nome de modelo na etapa 9 → 422
+etapa opcional vazia               → 200 (ausência é informação)
+13 PATCH seguidos                  → 200×5, depois 429
+link revogado                      → {"status":"revoked"}, sem vazar respostas;
+                                     a linha do rascunho continua no banco
+```
