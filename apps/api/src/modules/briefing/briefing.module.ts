@@ -3,6 +3,7 @@ import { ClientsModule } from '../clients/clients.module';
 import { IdentityModule } from '../identity/identity.module';
 import { BriefingDraftService } from './application/briefing-draft.service';
 import { BriefingLinkService } from './application/briefing-link.service';
+import { BriefingReferenceService } from './application/briefing-reference.service';
 import { BriefingLinkController } from './presentation/briefing-link.controller';
 import { BriefingPublicController } from './presentation/briefing-public.controller';
 
@@ -22,7 +23,7 @@ import { BriefingPublicController } from './presentation/briefing-public.control
 @Module({
   imports: [IdentityModule, ClientsModule],
   controllers: [BriefingLinkController, BriefingPublicController],
-  providers: [BriefingLinkService, BriefingDraftService],
+  providers: [BriefingLinkService, BriefingDraftService, BriefingReferenceService],
   exports: [BriefingLinkService, BriefingDraftService],
 })
 export class BriefingModule {}

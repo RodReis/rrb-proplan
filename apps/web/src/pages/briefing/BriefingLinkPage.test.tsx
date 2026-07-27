@@ -23,15 +23,51 @@ function jsonOnce(body: unknown, status = 200) {
     .mockResolvedValue(new Response(JSON.stringify(body), { status }));
 }
 
+const CATALOG = { segments: [], states: [], services: {} };
+
+/**
+ * Link válido busca DUAS rotas: o estado e o catálogo da etapa 1. Roteia por
+ * URL em vez de por ordem — a página pode reordenar as chamadas sem que o teste
+ * passe a mentir.
+ */
+function routed(state: unknown, catalog: unknown = CATALOG, status = 200) {
+  return vi.spyOn(global, 'fetch').mockImplementation((input) => {
+    const url = String(input);
+    const body = url.includes('/catalog') ? catalog : state;
+    return Promise.resolve(new Response(JSON.stringify(body), { status }));
+  });
+}
+
 describe('BriefingLinkPage', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('token válido: confirma o link e avisa que o formulário vem depois', async () => {
-    jsonOnce({ status: 'valid' });
+  it('token válido: abre o formulário na etapa 1', async () => {
+    routed({ status: 'valid', step: 1, answers: {} });
     renderAt('tok-valido');
 
-    expect(await screen.findByText('Link confirmado')).toBeInTheDocument();
-    expect(screen.getByText(/formulário para você preencher/i)).toBeInTheDocument();
+    expect(await screen.findByText('Contexto do negócio')).toBeInTheDocument();
+    expect(screen.getByText('Etapa 1 de 9')).toBeInTheDocument();
+  });
+
+  it('retoma na etapa em que parou, com o que já foi respondido', async () => {
+    routed({
+      status: 'valid',
+      step: 4,
+      answers: { '4': { kind: 'landing' } },
+    });
+    renderAt('tok');
+
+    expect(await screen.findByText('Solução e funcionalidades')).toBeInTheDocument();
+    expect(screen.getByText('Etapa 4 de 9')).toBeInTheDocument();
+    expect(screen.getByLabelText(/tipo de solução/i)).toHaveValue('landing');
+  });
+
+  it('briefing já enviado não reabre o formulário nem devolve as respostas', async () => {
+    routed({ status: 'submitted' });
+    renderAt('tok');
+
+    expect(await screen.findByText('Briefing recebido')).toBeInTheDocument();
+    expect(screen.queryByText('Etapa 1 de 9')).not.toBeInTheDocument();
   });
 
   it('expirado pede um link novo a quem enviou', async () => {
@@ -99,22 +135,24 @@ describe('BriefingLinkPage', () => {
   });
 
   it('chama a API no caminho público, com o token escapado', async () => {
-    const fetchMock = jsonOnce({ status: 'valid' });
+    const fetchMock = routed({ status: 'valid', step: 1, answers: {} });
     renderAt('tok%2Fcom-barra');
-    await screen.findByText('Link confirmado');
+    await screen.findByText('Contexto do negócio');
 
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain('/b/');
     // O token vem do path e é reescapado: sem isso, um `/` no valor quebraria a URL.
-    expect(url).not.toMatch(/\/b\/[^?]*\/[^?]/);
+    expect(url).not.toMatch(/\/b\/[^?/]*\/(?!catalog|cities|draft)/);
   });
 
   it('não manda credenciais — rota pública, cookie de sessão só ampliaria a superfície', async () => {
-    const fetchMock = jsonOnce({ status: 'valid' });
+    const fetchMock = routed({ status: 'valid', step: 1, answers: {} });
     renderAt('tok');
-    await screen.findByText('Link confirmado');
+    await screen.findByText('Contexto do negócio');
 
-    const init = fetchMock.mock.calls[0][1] as RequestInit | undefined;
-    expect(init?.credentials).toBeUndefined();
+    for (const call of fetchMock.mock.calls) {
+      const init = call[1] as RequestInit | undefined;
+      expect(init?.credentials).toBeUndefined();
+    }
   });
 });

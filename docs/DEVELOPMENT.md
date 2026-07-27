@@ -2108,7 +2108,7 @@ por PR, todos com base `main` (senão o PR fica sem check nenhum).
 
 - [x] **PR-1 — schema, migração, RLS e seed** *(este)*
 - [x] **PR-2 — rascunho no servidor** (`PATCH /b/:token/draft`) + `GET /b/:token` estendido
-- [ ] PR-3 — formulário React das 9 etapas
+- [x] **PR-3 — formulário React das 9 etapas** *(este)* + rotas públicas de referência da Etapa 1
 - [ ] PR-4 — anexos (`FileAsset`, ADR-025)
 - [ ] PR-5 — submit: `BriefingVersion` idempotente + evento `BriefingSubmitted`
 - [ ] PR-6 — leitura no painel do prestador
@@ -2220,3 +2220,78 @@ etapa opcional vazia               → 200 (ausência é informação)
 link revogado                      → {"status":"revoked"}, sem vazar respostas;
                                      a linha do rascunho continua no banco
 ```
+
+### PR-3 — o que entrou
+
+As 9 telas em `/b/:token` **mais** as rotas públicas que a Etapa 1 precisa. O
+plano original dizia só "formulário React", mas os dados de referência estavam
+semeados no banco desde o PR-1 sem nenhuma rota que os servisse — a Etapa 1
+nasceria com seletores vazios e o critério *"selecionar estado filtra as
+cidades"* não teria como passar. Decisão do PI (2026-07-27): entram juntos.
+
+| arquivo | papel |
+|---|---|
+| `briefing-reference.service.ts` | segmentos, estados, cidades e catálogo do tenant |
+| `steps.ts` (web) | as 9 etapas do lado da tela — espelho do domain |
+| `briefingApi.ts` | `fetch` cru da rota pública, sem `request()` (FIX #136) |
+| `StepField.tsx` | um campo por `kind`; componente burro |
+| `BriefingForm.tsx` | navegação, autosave, revisão da etapa 9 |
+
+**Três rotas de leitura, não uma.** `GET /b/:token` (estado do rascunho, muda a
+cada save) ficou separado de `/catalog` (listas que não mudam durante o
+preenchimento) e de `/cities/:state` (5.571 municípios — mandar todos em toda
+abertura seria pagar ~300 KB para usar um). Cadências diferentes, rotas
+diferentes.
+
+**Cidade exige token válido mesmo sendo dado público.** Sem isso a rota viraria
+um proxy aberto do IBGE hospedado na nossa API, com o nosso rate limit. Link
+revogado responde nas três o mesmo 404 do inexistente, e o catálogo do tenant
+não sai — há teste provando que a query nem chega a rodar.
+
+**A validação da tela é conveniência declarada.** `steps.ts` duplica o contrato
+do `briefing-steps.ts` do domain de propósito: evita um round-trip para
+descobrir que um obrigatório está vazio. Quem decide é o servidor — quando o 422
+discorda da checagem local, a mensagem dele vence e a tela fica na etapa do erro.
+
+**Campo vazio não vira `""` no payload.** `pruneBlank` remove antes de enviar:
+ausência é informação (ADR-014), e `""` no `jsonb` seria indistinguível de "não
+informado" para quem lê depois. O teste que prova isso preenche e apaga o campo —
+a primeira versão dele passava mesmo com a poda quebrada, porque campo nunca
+tocado jamais entra em `answers`.
+
+**Autosave não reenvia etapa que não mudou.** O teto de escrita é 10/min
+(PR-2); um autosave ingênuo gastaria a cota indo e voltando entre etapas. O
+`savedRef` guarda a impressão do que já foi persistido.
+
+### O que o dogfooding pegou desta vez
+
+A revisão da etapa 9 mostrava **`Segmento: G`** e **`Estado: SP`** — os códigos
+gravados no `jsonb`, não os rótulos que a pessoa escolheu. Nenhum teste pegaria:
+todos usavam as opções fixas (`kind`, `urgency`), que já traduziam. Só os dois
+selects alimentados pela API caíam no buraco, e eles só existem em runtime.
+
+Revisar o que não se entende não é revisar — e a etapa 9 é onde se confirma o
+envio. Corrigido passando o catálogo para a `Review`, com teste dedicado.
+
+### Verificado no navegador, sem sessão
+
+```
+abrir /b/<token>            → Etapa 1 de 9, 16 segmentos e 27 estados na tela
+Continuar com campo vazio   → 2× "obrigatório", nenhuma requisição sai
+escolher segmento           → chips do catálogo do tenant aparecem
+escolher SP                 → 645 municípios, select destrava;
+                              nenhuma requisição para domínio do IBGE
+Continuar                   → rascunho no banco SEM city/services vazios;
+                              card DRAFT → BRIEFING_STARTED, ator nulo
+recarregar                  → retoma na etapa 4, com as respostas
+etapa 8                     → "preferência, não um compromisso" em tela
+etapa 9                     → 3 níveis explicados; nenhum nome de modelo,
+                              nem a palavra "modelo"/"IA" (regex \b)
+revisão                     → "Comércio e varejo" / "São Paulo" (após o fix)
+revogar durante o preenchimento → "Link cancelado"; rascunho continua no banco
+rascunho consumido          → "Briefing recebido", sem formulário
+```
+
+O `401` do `/auth/me` aparece no console e **não afeta a página** — é o `App`
+resolvendo a sessão que o visitante não tem. É exatamente o que o FIX #136
+separou: a página do briefing não passa pelo `request()`.

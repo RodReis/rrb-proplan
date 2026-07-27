@@ -1,40 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { API_URL } from '../../lib/api';
+import { BriefingForm } from './BriefingForm';
+import {
+  UnreachableError,
+  getCatalog,
+  getState,
+  type Catalog,
+  type PublicState,
+  type PublicStatus,
+} from './briefingApi';
 
 /**
- * Página pública do link de briefing (FIX #136) — `/b/:token`.
+ * Página pública do link de briefing — `/b/:token`.
  *
  * **Quem abre não tem conta**: é o cliente do prestador. Por isso esta rota vive
- * fora de todo guard de sessão, e a chamada não usa o `request()` do `lib/api`
- * (que trata 401 como "precisa logar" e joga um `UnauthorizedError`).
+ * fora de todo guard de sessão, e as chamadas não usam o `request()` do
+ * `lib/api` (que trata 401 como "precisa logar") — ver `briefingApi.ts`.
  *
- * Antes deste FIX, o link apontava para a API e devolvia `{"status":"valid"}` cru
- * num host chamado `api.` — que para o destinatário parece link quebrado. O
- * conteúdo do formulário é a Fatia 20 (SPEC-031); esta página é o endereço
- * definitivo, e quando o formulário chegar ele substitui o corpo daqui. Nenhum
- * link já enviado quebra.
+ * Link válido rende o formulário de 9 etapas (SPEC-031 §1); qualquer outro
+ * estado rende só o texto correspondente, sem vazar o que a API esconde.
  */
 
-type LinkStatus = 'valid' | 'expired' | 'revoked' | 'invalid';
+/** Estados em que não há formulário — só a mensagem. */
+type ClosedStatus = Exclude<PublicStatus, 'valid'>;
 
 type State =
   | { status: 'loading' }
-  | { status: 'ready'; linkStatus: LinkStatus }
+  | { status: 'closed'; linkStatus: ClosedStatus }
+  | { status: 'open'; initial: PublicState; catalog: Catalog }
   /** Rede/servidor fora — distinto de token inválido, que é resposta legítima. */
   | { status: 'unreachable' };
 
 /**
- * O texto de cada estado. Nenhum deles menciona tenant, cliente ou projeto: a
+ * O texto de cada estado fechado. Nenhum menciona tenant, cliente ou projeto: a
  * resposta do backend é **não-diferencial** de propósito (SPEC-029), e vazar na
  * tela o que a API esconde anularia isso. "Inválido" e "não existe" dizem a mesma
  * coisa aqui, exatamente como no servidor.
  */
-const COPY: Record<LinkStatus, { title: string; body: string }> = {
-  valid: {
-    title: 'Link confirmado',
-    body: 'Este link de briefing é válido. O formulário para você preencher estará disponível aqui em breve — guarde este endereço.',
-  },
+const COPY: Record<ClosedStatus, { title: string; body: string }> = {
   expired: {
     title: 'Link expirado',
     body: 'O prazo deste link terminou. Peça um novo a quem o enviou.',
@@ -47,6 +50,10 @@ const COPY: Record<LinkStatus, { title: string; body: string }> = {
     title: 'Link inválido',
     body: 'Não foi possível reconhecer este endereço. Confira se ele foi copiado por inteiro, ou peça um novo a quem o enviou.',
   },
+  submitted: {
+    title: 'Briefing recebido',
+    body: 'Suas respostas já foram enviadas e estão com quem vai analisar o projeto. Não é possível reabrir o formulário.',
+  },
 };
 
 export function BriefingLinkPage() {
@@ -54,29 +61,49 @@ export function BriefingLinkPage() {
   const [state, setState] = useState<State>({ status: 'loading' });
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
 
-    // `fetch` direto, sem credenciais: rota pública. Um cookie de sessão aqui
-    // não serviria para nada e só ampliaria a superfície.
-    fetch(`${API_URL}/b/${encodeURIComponent(token)}`)
-      .then(async (res) => {
-        // 429 (rate limit) e 5xx não são veredito sobre o token — tratar como
-        // inválido acusaria o visitante de ter um link ruim que talvez seja bom.
-        if (!res.ok && res.status !== 404) {
-          return active && setState({ status: 'unreachable' });
+    void (async () => {
+      try {
+        const initial = await getState(token, controller.signal);
+        if (initial.status !== 'valid') {
+          return setState({ status: 'closed', linkStatus: initial.status });
         }
-        const body = (await res.json().catch(() => null)) as {
-          status?: LinkStatus;
-        } | null;
-        const linkStatus = body?.status ?? 'invalid';
-        if (active) setState({ status: 'ready', linkStatus });
-      })
-      .catch(() => active && setState({ status: 'unreachable' }));
 
-    return () => {
-      active = false;
-    };
+        // O catálogo só é buscado para link válido: pedir antes gastaria uma
+        // requisição para descobrir o que o primeiro GET já disse.
+        const catalog = await getCatalog(token, controller.signal);
+        setState({ status: 'open', initial, catalog });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        // 429 e 5xx não são veredito sobre o token — tratar como inválido
+        // acusaria o visitante de ter um link ruim que talvez seja bom.
+        if (err instanceof UnreachableError) return setState({ status: 'unreachable' });
+        setState({ status: 'closed', linkStatus: 'invalid' });
+      }
+    })();
+
+    return () => controller.abort();
   }, [token]);
+
+  /** O link morreu no meio do preenchimento (revogado enquanto respondia). */
+  const handleLinkGone = useCallback(
+    () => setState({ status: 'closed', linkStatus: 'invalid' }),
+    [],
+  );
+
+  if (state.status === 'open') {
+    return (
+      <main className="min-h-screen bg-bg">
+        <BriefingForm
+          token={token}
+          initial={state.initial}
+          catalog={state.catalog}
+          onLinkGone={handleLinkGone}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-bg px-4 py-10">
@@ -112,7 +139,7 @@ export function BriefingLinkPage() {
           </>
         )}
 
-        {state.status === 'ready' && (
+        {state.status === 'closed' && (
           <>
             <h1 className="mt-3 text-lg font-semibold text-text2">
               {COPY[state.linkStatus].title}
