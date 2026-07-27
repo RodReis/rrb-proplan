@@ -92,6 +92,17 @@ export function BriefingLinkPage() {
     [],
   );
 
+  /**
+   * Enviado: cai na MESMA tela de "briefing recebido" que quem reabre o link
+   * depois vê. Uma tela só para os dois caminhos — inventar uma segunda página
+   * de sucesso diria a mesma coisa com outras palavras, e as duas precisariam
+   * ser mantidas juntas.
+   */
+  const handleSubmitted = useCallback(
+    () => setState({ status: 'closed', linkStatus: 'submitted' }),
+    [],
+  );
+
   if (state.status === 'open') {
     return (
       <main className="min-h-screen bg-bg">
@@ -100,6 +111,7 @@ export function BriefingLinkPage() {
           initial={state.initial}
           catalog={state.catalog}
           onLinkGone={handleLinkGone}
+          onSubmitted={handleSubmitted}
         />
       </main>
     );

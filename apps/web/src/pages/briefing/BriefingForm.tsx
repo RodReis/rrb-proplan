@@ -6,9 +6,11 @@ import {
   ValidationError,
   getCities,
   saveDraft,
+  submitBriefing,
   type Catalog,
   type Option,
   type PublicState,
+  type SubmitResult,
 } from './briefingApi';
 import { StepField } from './StepField';
 import {
@@ -54,15 +56,26 @@ interface Props {
   catalog: Catalog;
   /** Link morreu no meio do preenchimento (revogado/expirado/enviado). */
   onLinkGone: () => void;
+  /** Briefing enviado — quem decide o que mostrar depois é a página. */
+  onSubmitted: (result: SubmitResult) => void;
 }
 
-export function BriefingForm({ token, initial, catalog, onLinkGone }: Props) {
+export function BriefingForm({
+  token,
+  initial,
+  catalog,
+  onLinkGone,
+  onSubmitted,
+}: Props) {
   const [step, setStep] = useState(() => clampStep(initial.step ?? 1));
   const [answers, setAnswers] = useState<Answers>(() => normalize(initial.answers));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [save, setSave] = useState<SaveState>({ kind: 'idle' });
   const [cities, setCities] = useState<Option[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  /** Erro do envio — separado de `errors`, que é por campo. */
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const def = stepDef(step)!;
   const current = answers[String(step)] ?? {};
@@ -171,7 +184,51 @@ export function BriefingForm({ token, initial, catalog, onLinkGone }: Props) {
     // Salva ANTES de avançar: se o servidor recusar, a pessoa fica na etapa em
     // que está o erro. Avançar e depois falhar mostraria o problema longe dele.
     if (!(await persist(step, current))) return;
-    if (step < STEP_COUNT) goTo(step + 1);
+
+    // Última etapa: salvar a etapa 9 é só metade — o envio é o que a pessoa
+    // veio fazer (SPEC-031 §5).
+    if (step === STEP_COUNT) {
+      await send();
+      return;
+    }
+
+    goTo(step + 1);
+  };
+
+  /**
+   * Envia o briefing. Idempotente no servidor, mas o botão trava mesmo assim:
+   * dois requests em voo custam rate limit à toa, e a resposta de "já enviado"
+   * chegaria depois de a tela já ter mudado.
+   */
+  const send = async () => {
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const result = await submitBriefing(token);
+      onSubmitted(result);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        // Briefing incompleto: o servidor diz QUAIS campos, e em qual etapa.
+        // Levar a pessoa até a primeira etapa com erro é melhor que só listar.
+        const first = err.errors[0];
+        setErrors(Object.fromEntries(err.errors.map((e) => [e.field, e.message])));
+        setSubmitError(
+          first && first.step !== STEP_COUNT
+            ? `Falta preencher a etapa ${first.step}. Use "Editar" na revisão acima.`
+            : 'Confira os campos obrigatórios antes de enviar.',
+        );
+      } else if (err instanceof LinkGoneError) {
+        onLinkGone();
+      } else if (err instanceof UnreachableError) {
+        // 429 e 5xx não são veredito sobre o briefing — e o envio pode ter
+        // funcionado. Mandar tentar de novo é seguro: o servidor é idempotente.
+        setSubmitError('Não foi possível enviar agora. Tente de novo.');
+      } else {
+        setSubmitError('Não foi possível enviar o briefing.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const isLast = step === STEP_COUNT;
@@ -256,21 +313,26 @@ export function BriefingForm({ token, initial, catalog, onLinkGone }: Props) {
         <button
           type="button"
           onClick={() => void advance()}
-          // A etapa 9 ainda não envia: o submit é o PR-5. Salvar a etapa é o que
-          // esta fatia sabe fazer, e prometer envio agora seria mentira na tela.
-          disabled={isLast}
+          // Trava só enquanto o envio está em voo. O servidor é idempotente,
+          // mas dois requests custam rate limit à toa.
+          disabled={submitting}
           className="rounded-md bg-btnbg px-4 py-2 text-xs font-semibold text-btnfg transition-opacity duration-150 hover:opacity-90 disabled:opacity-40"
         >
-          {isLast ? 'Revisar e enviar' : 'Continuar'}
+          {isLast ? (submitting ? 'Enviando…' : 'Enviar briefing') : 'Continuar'}
         </button>
       </div>
 
-      {isLast && (
-        <p className="mt-3 text-center text-xs text-faint">
-          O envio definitivo chega na próxima entrega. Suas respostas já estão
-          salvas e você pode voltar quando quiser.
+      {submitError && (
+        <p role="alert" className="mt-3 text-center text-xs text-error">
+          {submitError}
         </p>
       )}
+
+      {/*
+        Sem repetir "depois do envio nada muda" aqui: o hint do checkbox de
+        confirmação já diz isso, logo acima. Dois avisos idênticos na mesma tela
+        cansam a leitura e fazem o segundo virar ruído.
+      */}
     </div>
   );
 }
