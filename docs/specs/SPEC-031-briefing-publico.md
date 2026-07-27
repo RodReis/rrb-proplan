@@ -58,7 +58,7 @@ Fecha a pergunta aberta do **MVP3 §10** (decisão do PI, 2026-07-26):
 
 Upload público existe nesta fatia, com restrição dura — é a superfície mais exposta do produto inteiro:
 
-- **Onde**: bytes no Postgres, sob RLS, herdando isolamento e backup do banco (**ADR novo**, §Notas técnicas). Migrar para bucket depois é cópia, não redesenho.
+- **Onde**: bytes no Postgres (`bytea`), sob RLS, herdando isolamento e backup do banco — **ADR-025**. Migrar para bucket depois é cópia, não redesenho.
 - **Limites**: 10 MB por arquivo, 25 MB e 5 arquivos por briefing, aplicados no servidor.
 - **Allowlist de MIME**: `image/png`, `image/jpeg`, `image/webp`, `application/pdf`. Nada mais.
 - **Tipo verificado pelo conteúdo** (assinatura de bytes), nunca pelo `Content-Type` do request nem pela extensão.
@@ -167,7 +167,7 @@ Sem isto a fatia entrega um backend sem consumidor — a lição registrada no F
 
 ## Notas técnicas
 
-- **ADR novo — anexo de cliente vive no Postgres sob RLS.** A `DEPLOY.md` §8 deixa claro que não há object storage ativo (Supabase reservado). Guardar bytes no banco com limite duro compra isolamento por RLS e backup junto do resto; o custo é inchaço do banco, aceito enquanto os limites forem estes. O ADR precisa dizer **qual gatilho** força a revisão (ex.: passar de X GB, ou o primeiro upload acima do limite atual).
+- **ADR-025 — anexo de cliente vive no Postgres sob RLS** (escrito em 2026-07-26). Guardar bytes no banco com limite duro compra isolamento por RLS e backup junto do resto; o custo é inchaço do banco, aceito enquanto os limites forem estes. Os **gatilhos de revisão são numéricos** e estão no ADR (2 GB somados · primeiro arquivo acima de 10 MB · dump acima de 10 min · segundo caso de uso de binário). `bytea`, nunca Large Object — LO escapa da policy de linha.
 - **Rota pública abre o próprio `withTenant`** depois de resolver o link, exatamente como a `/b/:token` da SPEC-029 e a `/resolve` do ADR-020. Nenhuma das rotas públicas entra no `TenantContextInterceptor`.
 - **`BriefingLinkPage` não usa o `request()` do `lib/api`** (FIX #136): `request()` trata 401 como "precisa logar" e quem responde o briefing nunca vai ter conta. Manter `fetch` cru e a regra de que **429 e 5xx não viram "link inválido"**.
 - **Transições de sistema**: `actorUserId` nullable já existe no schema (`ClientStatusTransition`) e foi criado exatamente para este caso — não inventar usuário-robô.

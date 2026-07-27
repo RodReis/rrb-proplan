@@ -93,6 +93,8 @@ model Tenant {
   auditEvents    AuditEvent[]
   // Briefing público (SPEC-031): catálogo curado é por tenant.
   serviceCatalogItems ServiceCatalogItem[]
+  // Anexos (ADR-025): raiz de tenancy própria, não herda por JOIN.
+  fileAssets     FileAsset[]
 
   @@map("tenants")
 }
@@ -760,10 +762,6 @@ model AuditEvent {
 
 // ===========================================================================
 // MVP3 / Briefing público (SPEC-031, Fatia 20)
-//
-// `FileAsset` (anexos) NÃO entra aqui: depende do ADR que decide onde vive
-// binário de cliente — ADR é do Cowork, e a spec §4 o exige antes do código.
-// Chega no PR de anexos, depois do ADR aprovado.
 // ===========================================================================
 
 // Rascunho retomável — UM por link (SPEC-031 §2). Chaveado por `briefingLinkId`
@@ -785,6 +783,7 @@ model BriefingDraft {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
   briefingLink   BriefingLink @relation(fields: [briefingLinkId], references: [id], onDelete: Cascade)
+  files          FileAsset[]
 
   @@map("briefing_drafts")
 }
@@ -805,11 +804,50 @@ model BriefingVersion {
   submittedAt     DateTime      @default(now()) @map("submitted_at")
   clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
   briefingLink    BriefingLink  @relation(fields: [briefingLinkId], references: [id], onDelete: Cascade)
+  files           FileAsset[]
 
   @@unique([clientProjectId, version])
   @@unique([briefingLinkId, contentHash])
   @@index([clientProjectId, submittedAt])
   @@map("briefing_versions")
+}
+
+// Anexo do briefing (SPEC-031 §4, ADR-025). Os BYTES vivem aqui, em `bytea`,
+// sob RLS — nunca em Large Object (LO escapa da policy de linha) e nunca em
+// object storage (não existe um ativo; o Supabase segue reservado, ADR-022).
+//
+// RAIZ de tenancy, diferente das irmãs deste bloco: `briefing_drafts` e
+// `briefing_versions` herdam o corte por JOIN até `clients`, mas o download
+// autenticado busca o anexo direto por `id`, e um JOIN de três níveis no
+// caminho do download seria uma policy que ninguém relê. `tenant_id` na linha.
+//
+// `size` é redundante com `octet_length(bytes)` de propósito: um CHECK no banco
+// amarra os dois, e somar a cota lendo `size` não carrega os bytes.
+model FileAsset {
+  id                String           @id @default(uuid())
+  tenantId          String           @map("tenant_id")
+  // Dono dos DOIS lados, ambos opcionais: nasce preso ao rascunho e ganha a
+  // versão no submit. Guardar os dois preserva a trilha — a versão é imutável
+  // e precisa continuar sabendo quais bytes recebeu.
+  briefingDraftId   String?          @map("briefing_draft_id")
+  briefingVersionId String?          @map("briefing_version_id")
+  // Nome original saneado — metadado EXIBÍVEL. Jamais usado como caminho.
+  name              String
+  // Gerado pelo servidor: `<id>.<ext do mime detectado>`.
+  safeName          String           @map("safe_name")
+  // MIME da ASSINATURA de bytes, nunca o Content-Type do request.
+  mime              String
+  size              Int
+  bytes             Bytes
+  createdAt         DateTime         @default(now()) @map("created_at")
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  briefingDraft     BriefingDraft?   @relation(fields: [briefingDraftId], references: [id], onDelete: SetNull)
+  briefingVersion   BriefingVersion? @relation(fields: [briefingVersionId], references: [id], onDelete: Cascade)
+
+  @@index([briefingDraftId])
+  @@index([briefingVersionId])
+  @@index([tenantId, createdAt])
+  @@map("file_assets")
 }
 
 // Catálogo curado de produtos/serviços da Etapa 1 (SPEC-031 §3). RAIZ de

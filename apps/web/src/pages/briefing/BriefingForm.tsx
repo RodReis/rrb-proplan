@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Attachments } from './Attachments';
 import {
   LinkGoneError,
   UnreachableError,
@@ -36,6 +37,9 @@ import {
  */
 
 const AUTOSAVE_MS = 30_000;
+
+/** Etapa 5, "Conteúdo e identidade" — onde a spec §1 põe os anexos. */
+const ATTACHMENTS_STEP = 5;
 
 type SaveState =
   | { kind: 'idle' }
@@ -222,6 +226,16 @@ export function BriefingForm({ token, initial, catalog, onLinkGone }: Props) {
               isLoadingCities={loadingCities}
             />
           ))}
+
+          {/*
+            Anexos ficam FORA do laço de campos: não moram no `jsonb` das
+            respostas como os demais, e sim na própria tabela `file_assets`
+            (ADR-025). Sobem no momento em que são escolhidos, sem esperar o
+            save da etapa — por isso o componente tem rede própria.
+          */}
+          {step === ATTACHMENTS_STEP && (
+            <Attachments token={token} onLinkGone={onLinkGone} />
+          )}
         </div>
 
         {isLast && <Review answers={answers} onEdit={goTo} catalog={catalog} />}

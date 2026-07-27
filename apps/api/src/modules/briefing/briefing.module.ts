@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule } from '../clients/clients.module';
 import { IdentityModule } from '../identity/identity.module';
+import { BriefingAttachmentService } from './application/briefing-attachment.service';
 import { BriefingDraftService } from './application/briefing-draft.service';
 import { BriefingLinkService } from './application/briefing-link.service';
 import { BriefingReferenceService } from './application/briefing-reference.service';
+import { BriefingAttachmentController } from './presentation/briefing-attachment.controller';
 import { BriefingLinkController } from './presentation/briefing-link.controller';
 import { BriefingPublicController } from './presentation/briefing-public.controller';
+import { FileAssetController } from './presentation/file-asset.controller';
 
 /**
  * Briefing (SPEC-029 + SPEC-031) — ciclo de vida do link e rascunho retomável.
@@ -22,8 +25,18 @@ import { BriefingPublicController } from './presentation/briefing-public.control
  */
 @Module({
   imports: [IdentityModule, ClientsModule],
-  controllers: [BriefingLinkController, BriefingPublicController],
-  providers: [BriefingLinkService, BriefingDraftService, BriefingReferenceService],
-  exports: [BriefingLinkService, BriefingDraftService],
+  controllers: [
+    BriefingLinkController,
+    BriefingPublicController,
+    BriefingAttachmentController,
+    FileAssetController,
+  ],
+  providers: [
+    BriefingLinkService,
+    BriefingDraftService,
+    BriefingReferenceService,
+    BriefingAttachmentService,
+  ],
+  exports: [BriefingLinkService, BriefingDraftService, BriefingAttachmentService],
 })
 export class BriefingModule {}

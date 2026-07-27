@@ -231,6 +231,14 @@ Fica **reservado**. Se um dia entrar (ex.: object storage para exports/artefatos
 exige ADR próprio dizendo **que dado** vai para lá. Até então, o runbook não finge
 integração que não existe.
 
+> **2026-07-26 — a primeira demanda por binário apareceu e NÃO foi para cá.** Os
+> anexos do briefing público (SPEC-031) ficam no **Postgres, em `bytea` sob RLS**,
+> com teto de 10 MB/arquivo e 25 MB por briefing — **ADR-025**. Ativar o Supabase
+> por 25 MB traria um segundo fornecedor ao caminho de dados e o free tier que
+> pausa em 7 dias. O ADR-025 define os gatilhos numéricos que reabrem esta
+> escolha; até um deles disparar, o Supabase segue reservado e o runbook segue
+> sem procedimento de storage.
+
 > **Pendência de doc:** o `ARCHITECTURE.md` ainda desenha o banco como
 > "PostgreSQL / Supabase". A SPEC-027 corrige essa linha para Railway.
 

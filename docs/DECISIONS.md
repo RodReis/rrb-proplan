@@ -507,3 +507,32 @@ O MVP3 traz um segundo Kanban — o **funil de clientes** (`Novo/Link enviado ·
 **O que continua valendo**: a leitura de repositório segue exigindo o par de tokens do ADR-015 (user-to-server para ler, installation para escrever). Um tenant sem instalação não lê repo nenhum — ele só não deixa de existir por isso.
 
 **Gatilho de revisão**: criação de workspace pela UI sem GitHub (fora do escopo da SPEC-029) — quando entrar, revisar se `accountLogin`/`accountType`, hoje `NOT NULL` e preenchidos pela instalação, continuam fazendo sentido obrigatórios.
+
+## ADR-025 — Binário enviado por cliente vive no Postgres, sob RLS, com limite duro e prazo de validade
+
+**Status**: **aprovado pelo PI em 2026-07-26**. Exigido pela SPEC-031 (anexos do briefing público, issue #138). Responde à pergunta que a `docs/DEPLOY.md` §8 deixou explícita: *"se o Supabase entrar como object storage, exige ADR próprio dizendo **que dado** vai para lá"*.
+
+**Contexto**: até aqui o ProPlan nunca guardou binário. Ele lê documentação por API (ADR-003), não clona repositório e não recebe upload — a única escrita de arquivo que existe vai para o repo do usuário, via GitHub. A SPEC-031 quebra isso: o cliente do prestador anexa logo, PDF e referências no briefing público. E o produto **não tem object storage** — o Supabase está provisionado e deliberadamente **reservado** (ADR-022), sem papel ativo.
+
+Três candidatos, e o critério que decide não é custo nem elegância: é **isolamento**. Anexo de briefing é dado de cliente de um tenant específico, e o ADR-020 estabeleceu que isolamento neste produto é garantido por **RLS no banco**, com bypass proibido e teste de fail-closed no CI. Qualquer storage fora do Postgres move essa garantia para dentro do código da aplicação — que é exatamente onde ela é mais fácil de furar por esquecimento.
+
+**Decisão**:
+
+1. **Os bytes ficam em coluna `bytea` na tabela `file_assets`**, raiz com `tenant_id`, `ENABLE`+`FORCE` RLS — mesmo desenho das tabelas da SPEC-022/029. O anexo herda o isolamento, o backup e o ponto-no-tempo do banco sem código novo.
+2. **`bytea`, nunca Large Object (`lo_`).** LO vive fora da tabela, num catálogo próprio: escapa da policy de linha e exige API dedicada. `bytea` é só uma coluna — a policy da linha vale para ele. O TOAST cuida de comprimir e armazenar fora da página.
+3. **Limites duros, aplicados no servidor**: 10 MB por arquivo, 25 MB e 5 arquivos por briefing, allowlist de MIME (`png`, `jpeg`, `webp`, `pdf`), tipo verificado pela **assinatura de bytes** — nunca pelo `Content-Type` do request nem pela extensão. Fora do limite: recusa, e nada é gravado.
+4. **Acesso sempre por identificador, nunca por caminho**: `GET /t/:tenant/files/:id`, autenticado, com URL assinada de vida curta, `Content-Disposition: attachment` e `Content-Type` fixo do allowlist. Nenhuma rota serve o arquivo pela origem da aplicação como conteúdo renderizável.
+5. **Gatilho de revisão** — esta decisão tem prazo, e ele é numérico. Revisar quando **qualquer um** ocorrer:
+   - soma de `file_assets` passar de **2 GB**;
+   - aparecer demanda por arquivo **acima de 10 MB** (vídeo, `.psd`, pacote de assets);
+   - `pg_dump`/restore passar de **10 minutos** ou o custo de storage do Railway virar linha visível na fatura;
+   - surgir um **segundo caso de uso** de binário (exports e artefatos das SPEC-033/035 são os candidatos óbvios).
+
+   Disparado o gatilho, nasce ADR novo escolhendo object storage. **A migração é cópia, não redesenho**: como o acesso já é por `id` atrás de uma rota assinada (item 4), trocar a origem dos bytes não toca a UI nem o modelo — só a implementação do repositório.
+
+**Consequência**: o banco engorda com dado que não é relacional, os dumps ficam mais pesados e cada leitura carrega o arquivo inteiro em memória (aceitável com teto de 10 MB; subir o teto cai no gatilho). Em troca, o anexo nasce com isolamento por RLS provado pelo mesmo teste que protege o resto, entra no backup existente e **não** adiciona fornecedor, credencial nem procedimento operacional novo ao runbook.
+
+**Alternativas rejeitadas**:
+
+- **Volume do Railway** — banco magro, mas o isolamento entre tenants passaria a ser código nosso em vez de policy do banco (contra o espírito do ADR-020), o backup viraria um segundo procedimento no `DEPLOY.md` e o volume prende a API a uma instância, matando escala horizontal por um motivo lateral.
+- **Ativar o Supabase Storage** — tira o Supabase da reserva por um caso de uso de 25 MB, traz um segundo fornecedor para o caminho de dados e herda o free tier que **pausa após 7 dias sem request** (ADR-022) — exatamente o motivo pelo qual ele foi engavetado. Se algum dia o volume justificar object storage, a escolha se faz na hora, com o número na mão, e não agora por antecipação.

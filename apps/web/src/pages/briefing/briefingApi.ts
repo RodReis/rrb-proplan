@@ -162,3 +162,94 @@ export async function saveDraft(
 
   return parse<SaveResult>(res);
 }
+
+/** Anexo já enviado — metadado, nunca os bytes (SPEC-031 §4). */
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
+/**
+ * Upload recusado pelo servidor, com o MOTIVO.
+ *
+ * Separado de `ValidationError` porque a recusa aqui não é de um campo do
+ * formulário: é do arquivo. A tela mostra a mensagem do servidor, que já vem em
+ * pt-BR e é a única fonte da verdade sobre o limite — repetir os números na tela
+ * criaria dois lugares para mudar quando o ADR-025 for revisto.
+ */
+export class UploadRejectedError extends Error {
+  constructor(
+    message: string,
+    readonly reason: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Limites do ADR-025. Só para avisar ANTES de gastar o upload; a barreira é a API. */
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_FILES = 5;
+
+async function parseUpload<T>(res: Response): Promise<T> {
+  if (res.ok) return (await res.json()) as T;
+
+  // 413 (grande demais) e 422 (tipo/cota) trazem `{ message, reason }`.
+  if (res.status === 413 || res.status === 422) {
+    const body = (await res.json().catch(() => null)) as {
+      message?: string | { message?: string; reason?: string };
+      reason?: string;
+    } | null;
+    const nested = typeof body?.message === 'object' ? body.message : null;
+    const message =
+      nested?.message ??
+      (typeof body?.message === 'string' ? body.message : undefined) ??
+      'arquivo recusado';
+    throw new UploadRejectedError(message, nested?.reason ?? body?.reason ?? 'unknown');
+  }
+
+  if (res.status === 404 || res.status === 410) throw new LinkGoneError();
+  throw new UnreachableError(`HTTP ${res.status}`);
+}
+
+export async function listAttachments(
+  token: string,
+  signal?: AbortSignal,
+): Promise<Attachment[]> {
+  const res = await fetch(url(token, '/attachments'), { signal }).catch(() => {
+    throw new UnreachableError('rede indisponível');
+  });
+  return parse<Attachment[]>(res);
+}
+
+export async function uploadAttachment(
+  token: string,
+  file: File,
+): Promise<Attachment> {
+  const form = new FormData();
+  form.append('file', file);
+
+  // Sem `Content-Type` manual: o browser precisa gerar o boundary do multipart.
+  const res = await fetch(url(token, '/attachments'), {
+    method: 'POST',
+    body: form,
+  }).catch(() => {
+    throw new UnreachableError('rede indisponível');
+  });
+
+  return parseUpload<Attachment>(res);
+}
+
+export async function removeAttachment(token: string, id: string): Promise<void> {
+  const res = await fetch(url(token, `/attachments/${encodeURIComponent(id)}`), {
+    method: 'DELETE',
+  }).catch(() => {
+    throw new UnreachableError('rede indisponível');
+  });
+
+  // 204 não tem corpo — `parse` tentaria `.json()` e quebraria.
+  if (res.ok) return;
+  if (res.status === 404 || res.status === 410) throw new LinkGoneError();
+  throw new UnreachableError(`HTTP ${res.status}`);
+}
