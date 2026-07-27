@@ -312,7 +312,10 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
                 // funil não tem como receber card (FIX #134).
                 onClick={() => setOpenClient(client)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') setOpenClient(client);
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setOpenClient(client);
+                  }
                 }}
                 tabIndex={0}
                 role="button"
