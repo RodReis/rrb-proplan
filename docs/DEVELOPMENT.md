@@ -2269,6 +2269,7 @@ cidades"* não teria como passar. Decisão do PI (2026-07-27): entram juntos.
 | `steps.ts` (web) | as 9 etapas do lado da tela — espelho do domain |
 | `briefingApi.ts` | `fetch` cru da rota pública, sem `request()` (FIX #136) |
 | `StepField.tsx` | um campo por `kind`; componente burro |
+| `masks.ts` | telefone, valor e data em pt-BR — formatam, não validam |
 | `BriefingForm.tsx` | navegação, autosave, revisão da etapa 9 |
 
 **Três rotas de leitura, não uma.** `GET /b/:token` (estado do rascunho, muda a
@@ -2286,6 +2287,34 @@ não sai — há teste provando que a query nem chega a rodar.
 do `briefing-steps.ts` do domain de propósito: evita um round-trip para
 descobrir que um obrigatório está vazio. Quem decide é o servidor — quando o 422
 discorda da checagem local, a mensagem dele vence e a tela fica na etapa do erro.
+
+#### Máscaras de telefone, valor e data (FIX #152)
+
+Três campos eram `input` de texto cru: `whatsapp` (etapa 6), `desiredDate` e
+`budgetRange` (etapa 7). Ganharam máscara **pt-BR** via `mask?: MaskName` na
+`FieldDef` — `(62) 98525-0959`, `dd/mm/aaaa`, `R$ 12.500,00`. Campo mascarado
+também abre teclado numérico no celular (`inputMode`) e mostra o formato no
+placeholder.
+
+**Formatam, não validam** — e isso é a decisão, não o atalho. O domain aceita os
+três como texto livre, então máscara que **recusa** entrada transformaria
+conveniência de digitação em bloqueio de envio: telefone estrangeiro, "a
+combinar" no orçamento, mês sem dia certo. Por isso `31/02/2027` passa: recusar
+exigiria decidir o que fazer com data parcial, e `31/0` é inválido no meio de
+`31/03/2027` — travaria justamente quem está digitando certo.
+
+- **Valor entra pela direita**, como caixa de supermercado: `12500` → `R$ 125,00`.
+  Não exige explicar onde fica a vírgula e evita o clássico mil-vezes-o-valor.
+- **Data é texto mascarado, não `<input type="date">`**: o campo é opcional e a
+  spec chama de *data desejada*; o picker nativo exige data exata e válida, e
+  quem responde muitas vezes só sabe "março de 2027".
+- **O hífen do telefone anda.** Até o 10º dígito o número ainda pode ser fixo
+  (hífen depois de 4); o 11º resolve a ambiguidade e ele passa para depois de 5.
+
+Puras e fora do React pelo mesmo motivo do `clientDetailView.ts`: o defeito de
+máscara é **silencioso**. Perder o último dígito, ou travar quando se apaga no
+meio, passa por revisão visual — quem testa digita uma vez, do início ao fim, e
+nunca vê. Há teste para os dois casos.
 
 **Campo vazio não vira `""` no payload.** `pruneBlank` remove antes de enviar:
 ausência é informação (ADR-014), e `""` no `jsonb` seria indistinguível de "não

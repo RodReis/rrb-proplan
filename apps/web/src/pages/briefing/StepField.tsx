@@ -1,4 +1,5 @@
 import type { Catalog, Option } from './briefingApi';
+import { applyMask, MASK_INPUT_MODE, MASK_PLACEHOLDER } from './masks';
 import { COMPLEXITY_OPTIONS, type FieldDef } from './steps';
 
 /**
@@ -22,9 +23,7 @@ interface Props {
   isLoadingCities?: boolean;
 }
 
-const inputClass =
-  'w-full rounded-md border border-border2 bg-surface px-3 py-2 text-sm text-text2 ' +
-  'placeholder:text-dim focus:border-accentBorder focus:outline-none focus:ring-1 focus:ring-accentBorder';
+const inputClass = 'briefing-control';
 
 export function StepField({
   field,
@@ -42,13 +41,13 @@ export function StepField({
     .join(' ');
 
   return (
-    <div className="space-y-1.5">
+    <div className={`briefing-field${error ? ' briefing-field--error' : ''}`}>
       {/* O checkbox traz o próprio rótulo ao lado da caixa. */}
       {field.kind !== 'checkbox' && (
-        <label htmlFor={id} className="block text-sm font-medium text-text2">
+        <label htmlFor={id} className="briefing-label">
           {field.label}
           {field.required && (
-            <span className="ml-1 text-error" aria-hidden="true">
+            <span className="briefing-required" aria-hidden="true">
               *
             </span>
           )}
@@ -69,12 +68,12 @@ export function StepField({
       />
 
       {field.hint && (
-        <p id={`${id}-hint`} className="text-xs leading-relaxed text-faint">
+        <p id={`${id}-hint`} className="briefing-hint">
           {field.hint}
         </p>
       )}
       {error && (
-        <p id={`${id}-error`} role="alert" className="text-xs font-medium text-error">
+        <p id={`${id}-error`} role="alert" className="briefing-error">
           {error}
         </p>
       )}
@@ -100,7 +99,7 @@ function Control({
   segment,
   isLoadingCities,
 }: ControlProps) {
-  const border = hasError ? ' border-error' : '';
+  const border = hasError ? ' briefing-control--error' : '';
 
   switch (field.kind) {
     case 'textarea':
@@ -176,11 +175,11 @@ function Control({
 
     case 'checkbox':
       return (
-        <label htmlFor={id} className="flex items-start gap-2.5 text-sm text-text2">
+        <label htmlFor={id} className="briefing-check">
           <input
             id={id}
             type="checkbox"
-            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+            className="briefing-checkbox"
             aria-describedby={describedBy}
             aria-invalid={hasError || undefined}
             checked={value === true}
@@ -227,11 +226,20 @@ function Control({
           id={id}
           type="text"
           className={inputClass + border}
-          placeholder={field.placeholder}
+          // Máscara: teclado numérico no celular e o formato visível antes da
+          // primeira tecla. Sem máscara, o placeholder da definição manda.
+          inputMode={field.mask ? MASK_INPUT_MODE[field.mask] : undefined}
+          placeholder={
+            field.placeholder ?? (field.mask ? MASK_PLACEHOLDER[field.mask] : undefined)
+          }
           aria-describedby={describedBy}
           aria-invalid={hasError || undefined}
           value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) =>
+            onChange(
+              field.mask ? applyMask(field.mask, e.target.value) : e.target.value,
+            )
+          }
         />
       );
   }
@@ -310,9 +318,9 @@ function ServicesField({
   const extras = selected.filter((s) => !options.includes(s));
 
   return (
-    <div className="space-y-2" aria-describedby={describedBy}>
+    <div className="briefing-services" aria-describedby={describedBy}>
       {options.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="briefing-chip-row">
           {options.map((label) => {
             const on = selected.includes(label);
             return (
@@ -322,10 +330,10 @@ function ServicesField({
                 aria-pressed={on}
                 onClick={() => toggle(label)}
                 className={
-                  'rounded-full border px-3 py-1 text-xs transition-colors duration-150 ' +
+                  'briefing-chip ' +
                   (on
-                    ? 'border-accentBorder bg-accentSoft text-text2'
-                    : 'border-border2 text-body2 hover:bg-surface-hover')
+                    ? 'briefing-chip--on'
+                    : 'briefing-chip--off')
                 }
               >
                 {label}
@@ -351,18 +359,18 @@ function ServicesField({
       />
 
       {extras.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="briefing-chip-row">
           {extras.map((label) => (
             <span
               key={label}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border2 bg-surface px-3 py-1 text-xs text-body2"
+              className="briefing-extra-chip"
             >
               {label}
               <button
                 type="button"
                 aria-label={`Remover ${label}`}
                 onClick={() => onChange(selected.filter((s) => s !== label))}
-                className="text-dim hover:text-text2"
+                className="briefing-chip-remove"
               >
                 ×
               </button>
@@ -391,7 +399,12 @@ function ComplexityField({
   describedBy?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label="Nível de complexidade" aria-describedby={describedBy} className="space-y-2">
+    <div
+      role="radiogroup"
+      aria-label="Nível de complexidade"
+      aria-describedby={describedBy}
+      className="briefing-complexity"
+    >
       {COMPLEXITY_OPTIONS.map((opt) => {
         const on = value === opt.value;
         return (
@@ -402,14 +415,15 @@ function ComplexityField({
             aria-checked={on}
             onClick={() => onChange(opt.value)}
             className={
-              'block w-full rounded-lg border px-3.5 py-3 text-left transition-colors duration-150 ' +
-              (on
-                ? 'border-accentBorder bg-accentSoft'
-                : 'border-border2 hover:bg-surface-hover')
+              'briefing-complexity-card ' +
+              (on ? 'briefing-complexity-card--on' : 'briefing-complexity-card--off')
             }
           >
-            <span className="block text-sm font-semibold text-text2">{opt.label}</span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-body2">
+            <span className="briefing-complexity-title">
+              <span aria-hidden="true" />
+              {opt.label}
+            </span>
+            <span className="briefing-complexity-description">
               {opt.description}
             </span>
           </button>

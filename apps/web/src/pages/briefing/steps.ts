@@ -11,6 +11,8 @@
  * com o contrato do domain: campo fora do contrato é **recusado**, não ignorado.
  */
 
+import type { MaskName } from './masks';
+
 export const STEP_COUNT = 9;
 
 export type FieldKind =
@@ -35,6 +37,11 @@ export interface FieldDef {
   hint?: string;
   placeholder?: string;
   options?: readonly { value: string; label: string }[];
+  /**
+   * Máscara de digitação (pt-BR). **Só formata** — o contrato do domain aceita
+   * estes campos como texto livre, e a barreira continua sendo a API.
+   */
+  mask?: MaskName;
 }
 
 export interface StepDef {
@@ -213,7 +220,7 @@ export const STEPS: readonly StepDef[] = [
     intro: 'O que já existe e vai precisar conversar com o novo.',
     fields: [
       { name: 'payment', label: 'Pagamento online', kind: 'text' },
-      { name: 'whatsapp', label: 'WhatsApp', kind: 'text' },
+      { name: 'whatsapp', label: 'WhatsApp', kind: 'text', mask: 'phone' },
       { name: 'erp', label: 'ERP ou sistema atual', kind: 'text' },
       { name: 'email', label: 'E-mail / disparos', kind: 'text' },
       { name: 'hosting', label: 'Hospedagem já contratada', kind: 'text' },
@@ -230,12 +237,13 @@ export const STEPS: readonly StepDef[] = [
     title: 'Prazo e orçamento',
     intro: 'Nada aqui é obrigatório, mas quanto mais souber, melhor a estimativa.',
     fields: [
-      { name: 'desiredDate', label: 'Data desejada', kind: 'text' },
+      { name: 'desiredDate', label: 'Data desejada', kind: 'text', mask: 'date' },
       { name: 'urgency', label: 'Urgência', kind: 'select', options: URGENCY_OPTIONS },
       {
         name: 'budgetRange',
         label: 'Faixa de orçamento',
         kind: 'text',
+        mask: 'currency',
         hint: 'Opcional. Ajuda a propor um escopo que caiba.',
       },
     ],
