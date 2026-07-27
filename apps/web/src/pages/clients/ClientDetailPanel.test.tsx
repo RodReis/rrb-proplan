@@ -87,13 +87,14 @@ describe('ClientDetailPanel', () => {
 
     expect(await screen.findByText('Site institucional')).toBeInTheDocument();
     expect(screen.getByText('landing + blog')).toBeInTheDocument();
-    expect(screen.getByText('Rascunho')).toBeInTheDocument();
+    expect(screen.getAllByText('Rascunho').length).toBeGreaterThan(0);
+    expect(screen.getByText(/criado em 26\/07\/2026/i)).toBeInTheDocument();
   });
 
   it('cliente sem projeto explica que criar é o que alimenta o funil', async () => {
     renderPanel();
     expect(
-      await screen.findByText(/crie o primeiro para ele aparecer no funil/i),
+      await screen.findByText(/o primeiro projeto cria o card do funil/i),
     ).toBeInTheDocument();
   });
 
@@ -167,6 +168,36 @@ describe('ClientDetailPanel', () => {
     ).toBeInTheDocument();
   });
 
+  it('não fecha por backdrop quando o token único está visível', async () => {
+    apiMock.createClientProject.mockResolvedValue({
+      id: 'p-novo',
+      clientId: 'c1',
+      title: 'Loja virtual',
+      description: null,
+      state: 'DRAFT',
+      createdAt: '2026-07-26T13:00:00Z',
+      updatedAt: '2026-07-26T13:00:00Z',
+    });
+    renderPanel();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /novo projeto/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/título/i), 'Loja virtual');
+    await userEvent.click(screen.getByRole('button', { name: /criar projeto/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^gerar link$/i }),
+    );
+
+    expect(await screen.findByDisplayValue(/\/b\/tok-secreto-256$/)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('briefing-link-backdrop'));
+
+    expect(
+      screen.getByRole('dialog', { name: /link de briefing/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/\/b\/tok-secreto-256$/)).toBeInTheDocument();
+  });
+
   it('link válido oferece Revogar e o botão diz Regenerar, não Gerar', async () => {
     apiMock.getClient.mockResolvedValue(
       detail([
@@ -184,7 +215,7 @@ describe('ClientDetailPanel', () => {
     apiMock.getBriefingLink.mockResolvedValue({
       active: true,
       id: 'l1',
-      expiresAt: null,
+      expiresAt: '2026-08-01T23:59:59.000Z',
       createdAt: '2026-07-26T12:00:00Z',
       status: 'valid',
     });
@@ -200,6 +231,8 @@ describe('ClientDetailPanel', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^gerar link$/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /revogar/i })).toBeInTheDocument();
+    expect(screen.getByText('26/07/2026')).toBeInTheDocument();
+    expect(screen.getByText('01/08/2026')).toBeInTheDocument();
   });
 
   it('regenerar pede confirmação — invalida o link que o cliente já recebeu', async () => {

@@ -86,11 +86,13 @@ A IA **não pode**: alterar respostas originais; acessar dados de outro tenant; 
 | Fatia | SPEC | entrega |
 |---|---|---|
 | 19 | SPEC-029 | Clientes + projetos de cliente + funil Kanban + ciclo de vida do link público |
-| 20 | SPEC-030 | Briefing público: 9 etapas, salvamento parcial, versão imutável, `BriefingSubmitted` |
-| 21 | SPEC-031 | Pipeline de IA + artefatos versionados + aprovação humana |
-| 22 | SPEC-032 | Estimativa de desenvolvimento (determinística + decomposição por IA) |
-| 23 | SPEC-033 | Contratos: perfil do prestador, templates versionados, snapshot, link público |
-| 24 | SPEC-034 | Dashboard/resumo operacional do funil (+ notificações, se doerem até lá) |
+| 20 | SPEC-031 | Briefing público: 9 etapas, salvamento parcial, versão imutável, `BriefingSubmitted` |
+| 21 | SPEC-032 | Pipeline de IA + artefatos versionados + aprovação humana |
+| 22 | SPEC-033 | Estimativa de desenvolvimento (determinística + decomposição por IA) |
+| 23 | SPEC-034 | Contratos: perfil do prestador, templates versionados, snapshot, link público |
+| 24 | SPEC-035 | Dashboard/resumo operacional do funil (+ notificações, se doerem até lá) |
+
+> **Numeração deslocada em 2026-07-25**: `SPEC-NNN` é ID em **ordem de criação** e a SPEC-030 (painel de detalhe do card) nasceu antes destas. Reserva de número não vale contra a ordem de criação — o par canônico é o do `docs/STATUS.md`.
 
 Ao aprovar cada spec, registrar o par no **Índice Fatia ↔ SPEC** do `docs/STATUS.md` (fonte única).
 
@@ -105,5 +107,5 @@ Ao aprovar cada spec, registrar o par no **Índice Fatia ↔ SPEC** do `docs/STA
 
 ## 10. Perguntas abertas
 
-- **Etapa 1 do briefing — "API free para pesquisa de produtos/serviços"**: estados/cidades = IBGE Localidades (free, sem chave); segmento = CNAE/IBGE. Para **produtos/serviços** não há fonte gratuita óbvia — proposta: lista curada própria por segmento, editável pelo workspace. Decidir na SPEC-030.
+- ~~**Etapa 1 do briefing — "API free para pesquisa de produtos/serviços"**~~ → **resolvido pelo PI em 2026-07-26, na SPEC-031**: produtos/serviços = **lista curada própria por segmento**, editável pelo workspace (`ServiceCatalogItem`), com item livre permitido na resposta sem poluir o catálogo. Estados/cidades e segmentos (CNAE) do IBGE entram **por seed**, não por chamada em runtime — formulário público não pode ficar refém de API externa no caminho do cliente.
 - Numeração de fatia 19–24 é provisória até o PI validar contra o board.
