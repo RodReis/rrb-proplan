@@ -2685,3 +2685,68 @@ O `fullDate` nasceu recortando a string ISO e foi corrigido antes do commit: o
 `submittedAt` chega em `Z`, e recortar mostraria **21/07** para um envio das 22h
 de 20/07 no Brasil — "recebido em" com o dia errado. `toLocaleDateString` é o
 que o resto do painel já usa.
+
+## FIX #144 — login local travado no consent screen do Google — `feito`
+
+Issue **#144**, PR **#143**. Card `[INFRA][FIX]` criado pelo próprio Code: o
+comportamento correto já estava escrito no `docs/DEPLOY.md` §3.1 (`NODE_ENV=production`
+obrigatória no serviço `api`) e no `apps/api/Dockerfile:51` — a regra que este FIX
+tinha de respeitar é *produção exige login, sempre*.
+
+### Não era bug do código
+
+O fluxo OAuth foi investigado antes de qualquer edição. A API monta a URL de
+autorização certa, com `redirect_uri=http://localhost:3311/auth/google/callback`,
+e o Google aceita o `client_id` e o redirect — chega na tela de login sem
+`redirect_uri_mismatch` nem `invalid_client`. O que trava é **externo ao
+repositório**: o consent screen está em modo *Testing* no Cloud Console e recusa
+quem não está na lista de Usuários de teste (*"Acesso bloqueado"*). Nenhum deploy
+nosso conserta isso.
+
+Por isso o bypass **não substitui** a correção de raiz: adicionar o email em
+*OAuth consent screen → Test users*, ou publicar o app. Registrado no `DEPLOY.md` §3.3.
+
+### Três camadas independentes barram produção
+
+| camada | o que garante |
+|---|---|
+| a regra (`identity/domain/dev-auth-bypass.ts`) | exige `NODE_ENV !== 'production'` **no AND** — produção recusa mesmo com a flag ligada por engano |
+| `apps/api/Dockerfile:51` | fixa `ENV NODE_ENV=production` — a trava está assada na imagem, não depende do painel |
+| Railway | as variáveis não existem no serviço `@proplan/api` (verificado) |
+
+A redundância é deliberada: o pior caso vira um bypass que **não funciona**, em vez
+de um que funciona sem ninguém notar. `.env` copiado, restore de config e
+`railway variables` mal aplicado são todos cobertos pela primeira camada sozinha.
+
+A decisão é congelada no **construtor** do guard, não lida por request — ler
+`process.env` a cada chamada deixaria o estado da autenticação mutável em runtime.
+Em DEV o boot loga um `WARN` dizendo que a autenticação está desligada: **se esse
+aviso aparecer em log de produção, é incidente.**
+
+O usuário assumido é **real** (o do seed), não sintético: as rotas `/t/:tenant`
+exigem alguém com membership, e um usuário inventado quebraria ali de um jeito
+confuso de diagnosticar.
+
+### Verificado na mão, não só por teste
+
+A mesma API com `DEV_AUTH_BYPASS=true` no `.env`, subida com `NODE_ENV=production`
+na porta 3399 → **401** em `/auth/me` e **zero** avisos de boot. Em DEV, responde
+200 com a sessão completa e o app abre no catálogo.
+
+**24 testes novos** (17 da regra + 7 do guard — que **não tinha teste próprio** até
+aqui), incluindo produção recusando com a flag ligada e a flag exigindo a palavra
+exata `true`: `1`, `yes` e `TRUE` não ligam. Para algo que desliga autenticação,
+permissividade é defeito.
+
+### Rebase antes do merge
+
+O PR foi aberto de `2d87c92` e os três FIX de briefing (#154/#155/#156) entraram
+depois, conflitando em `reports/TESTS.md`. O conflito era **só no bloco "Estado
+atual"** — que o `TESTING.md` §4 define como regenerado, não acumulado; o histórico
+append-only não conflitou. Resolver à mão seria editar artefato gerado, então o
+branch foi refeito sobre a `main` atual com o commit de código e o relatório
+**regenerado** (`REPORT_DATE`/`REPORT_ISSUE`/`REPORT_PR`), com `test:report --check`
+verde. Suítes na base nova: **915 API** (125 suítes) · **252 web**.
+
+Para testar o login real no dev: `DEV_AUTH_BYPASS=false` e **reiniciar** a API — o
+`--watch` recompila código mas não relê o `.env`.

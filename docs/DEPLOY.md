@@ -118,6 +118,44 @@ Base em `.env.example`. **Nenhum secret entra no repo** — todos vivem nas
 > **Atenção ao `VITE_`:** variáveis Vite são resolvidas em *build*, não em runtime.
 > Trocar a URL da API exige **novo build** do serviço web, não só editar a variável.
 
+### 3.3 `DEV_AUTH_BYPASS` — só desenvolvimento local, **nunca** produção
+
+> ⛔ **Estas duas variáveis não existem no Railway e não devem ser criadas lá.**
+> Elas desligam a autenticação inteira.
+
+| Variável | Valor em DEV | Produção |
+|---|---|---|
+| `DEV_AUTH_BYPASS` | `true` | **ausente** |
+| `DEV_AUTH_USER_ID` | uuid de um usuário real do banco local | **ausente** |
+
+**Por que existe** (decisão do PI, 2026-07-27): o consent screen do Google está
+em modo *Testing* no Cloud Console, e recusa quem não está na lista de
+**Usuários de teste** — a tela diz *"Acesso bloqueado"*. Isso trava o
+desenvolvimento local por configuração **externa ao repositório**, que nenhum
+deploy nosso conserta. Com o bypass ligado, `localhost:5180` abre já logado.
+
+**Por que é seguro.** A regra (`identity/domain/dev-auth-bypass.ts`) exige as
+três condições com **AND**, e a primeira é `NODE_ENV !== 'production'`. O
+serviço `api` no Railway tem `NODE_ENV=production` (linha obrigatória da tabela
+§3.1), então **produção recusa mesmo que as variáveis vazem para lá** — por
+`.env` copiado, restore de config, ou engano no `railway variables`. O pior caso
+é um bypass que não funciona, em vez de um que funciona sem ninguém notar.
+
+Provado por teste (`dev-auth-bypass.spec.ts`, `jwt-auth.guard.spec.ts`) **e** na
+mão: a mesma API, com `DEV_AUTH_BYPASS=true` no `.env`, subida com
+`NODE_ENV=production`, responde **401** em `/auth/me` e não emite o aviso de
+boot. Em DEV o guard loga um `WARN` a cada boot dizendo que a autenticação está
+desligada — **se esse aviso aparecer num log de produção, é incidente.**
+
+**Para testar o login real do Google no dev**, troque para `DEV_AUTH_BYPASS=false`
+e reinicie a API. Reiniciar é obrigatório: a decisão é congelada no boot, e o
+`--watch` recompila código mas **não** relê o `.env`.
+
+**A correção de raiz** (que dispensaria o bypass) é adicionar o email em
+*APIs & Services → OAuth consent screen → Test users* no Google Cloud Console, ou
+publicar o app. O bypass não substitui isso — só destrava o dev enquanto não é
+feito.
+
 ---
 
 ## 4. DNS na Hostinger
