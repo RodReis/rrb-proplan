@@ -2965,9 +2965,9 @@ sem check nenhum).
 
 - [x] **PR-1 — schema: 4 tabelas, RLS e o índice parcial**
 - [x] **PR-2 — módulo `artifacts`, `inputHash` canônico e o gatilho** → fila
-- [x] **PR-3 — as 4 capacidades geradoras** (saída estruturada, retry, teto, ledger) *(este)*
-- [ ] **PR-4 — revisor, aprovação e edição humana** (o §7.4 inteiro)
-- [ ] **PR-5 — leitura no painel** (versões, autoria, parecer, regenerar com custo)
+- [x] **PR-3 — as 4 capacidades geradoras** (saída estruturada, retry, teto, ledger)
+- [x] **PR-4 — revisor, aprovação e edição humana** (o §7.4 inteiro)
+- [x] **PR-5 — leitura e revisão no painel** *(este)*
 - [ ] Dogfooding no navegador
 
 ### PR-1 — o que entrou
@@ -3192,3 +3192,69 @@ tinha nada a ver com o defeito. **Limpeza que depende da coluna sob teste deixa
 de limpar exatamente quando o teste falha.** Passou a limpar por
 `artifact_run_id`, com limpeza de entrada também, e está provado repetível
 rodando duas vezes seguidas.
+
+### PR-4 — o revisor prova por ausência que não bloqueia
+
+O `ArtifactReviewer` roda dentro do run, depois de cada capacidade, e o
+resultado vira `ReviewVerdict`. A decisão 1 do PI diz que ele **anota, nunca
+bloqueia** — e três coisas garantem isso, nenhuma delas um comentário:
+
+1. **`ArtifactReviewService` nunca consulta `ReviewVerdict`.** Há teste
+   afirmando essa ausência: o mock do Prisma não tem `reviewVerdict`, então
+   adicionar a consulta estoura, com o motivo escrito ao lado.
+2. **`verdict` é `TEXT` livre, não enum** (decidido no PR-1). Um valor
+   `'reject'` num tipo fechado seria convite a `WHERE verdict <> 'reject'` no
+   caminho da aprovação.
+3. **Revisor fora do ar não derruba o artefato** — o `catch` é deliberado.
+   Propagar faria o revisor bloquear *na prática* o que ele não pode bloquear
+   *por decisão*, e pela pior via: um `catch` ausente que ninguém decidiu.
+
+Outras decisões do PR-4:
+
+| decisão | por quê |
+|---|---|
+| Aprovar o 4º move o card; 3 de 4 não move (§2.7) | A regra que impede o card de avançar com trabalho pela metade. |
+| O ator é o usuário, **nunca nulo** | Diferente do briefing, que move com ator nulo por ser público. Aqui há uma pessoa decidindo. |
+| Falha na transição **não desfaz** a aprovação | A máquina de estados pode recusar (card já adiante); isso não pode virar erro numa ação que deu certo. |
+| Rejeitar **nunca** move o card de volta | Voltar card por efeito colateral de outra tela ninguém entende depois. |
+| Rejeição exige motivo | "Rejeitado" sem porquê deixa a tela sem pista, e quem rejeitou já esqueceu na semana seguinte. |
+| Editar devolve o artefato a `PENDING_REVIEW` | O conteúdo mudou depois de quem aprovou ter olhado. |
+| Editar recusa pai de outro artefato | Sem o filtro por `artifactId`, a linhagem atravessaria artefatos e a tela mostraria um pai que não é pai. |
+
+**Nenhum `PATCH`/`PUT`/`DELETE` no módulo.** Editar é `POST .../versions` — o
+verbo carrega a regra do §6 (*"nada é alterado no lugar"*). O teste que varre os
+metadados de rota do Nest, do PR-6 da SPEC-031, foi **estendido ao módulo novo**
+como o §5 pede.
+
+### PR-5 — a decisão do revisor, em pixels
+
+A tela mostra o parecer **e** mantém o botão de aprovar habilitado. Dois testes
+protegem isso, e o segundo importa tanto quanto o primeiro:
+
+- um monta uma versão com parecer **negativo** e afirma que o botão continua
+  habilitado;
+- o outro exige a frase *"quem decide é você"* em tela. Sem ela a pessoa lê
+  "incompleto" e presume que não deve aprovar — **o veto acontece na cabeça dela
+  em vez de no código, com o mesmo efeito**.
+
+As regras de leitura vivem em `artifactsView.ts`, **fora do React**: rótulo de
+estado, a distinção entre *não rodou* e *falhou*, e a contagem que autoriza
+mover o card. É o que erra sem aparecer em revisão visual — a classe de bug com
+5 ocorrências nesta frente (`Segmento: G`, `alta` em vez de "Alta") — e dentro
+de um componente só se testaria renderizando.
+
+Duas distinções que a tela mantém, ambas do MVP3 §9:
+
+- **`null` ≠ `FAILED`**: "não gerado" e "falhou" têm textos diferentes.
+  Colapsá-los faria *"ainda não usei"* parecer *"usei e deu errado"*.
+- **`costUsd: null` ≠ zero**: sem run não há custo a mostrar; com run e zero, o
+  zero é o resultado. E a tela diz que o número vem do **ledger**, para não
+  sugerir estimativa (ADR-016).
+
+### Verificação da fatia
+
+- **1388 testes verdes**: 1025 regras · 71 banco · 292 tela. Build de produção
+  OK. Relatório regenerado (ADR-019).
+- API subida ao vivo com as 5 rotas mapeadas e **nenhum verbo destrutivo**.
+- **Pendente: dogfooding no navegador** — a frente do briefing acumulou 5 bugs
+  que só o dogfooding pegou, todos com a suíte verde.

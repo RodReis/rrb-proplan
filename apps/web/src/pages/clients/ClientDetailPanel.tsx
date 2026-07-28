@@ -16,6 +16,7 @@ import {
 } from '../../lib/api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { STATE_LABELS } from './boardView';
+import { ArtifactsPanel } from './ArtifactsPanel';
 import { BriefingVersionPanel } from './BriefingVersionPanel';
 import {
   forgetToken,
@@ -72,6 +73,8 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
   const [creating, setCreating] = useState(false);
   const [linkFor, setLinkFor] = useState<ClientProject | null>(null);
   const [briefingFor, setBriefingFor] = useState<ClientProject | null>(null);
+  /** Artefatos do pipeline de IA (SPEC-032 §2.12). */
+  const [artifactsFor, setArtifactsFor] = useState<ClientProject | null>(null);
   /** Estado do briefing por projeto (SPEC-031 §6). */
   const [briefings, setBriefings] = useState<Record<string, BriefingStatus>>({});
 
@@ -290,6 +293,18 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
                           Ver briefing
                         </button>
                       )}
+                      {/* Artefatos existem a partir do briefing enviado: o
+                          pipeline só dispara no submit (SPEC-032 §2.1). Sem
+                          versão, o botão não aparece — não há o que mostrar. */}
+                      {(briefings[project.id]?.versions.length ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setArtifactsFor(project)}
+                          className="rounded-[8px] border border-accent-border px-3 py-1.5 text-xs font-semibold text-text2 transition-colors duration-150 hover:bg-accent-soft"
+                        >
+                          Artefatos
+                        </button>
+                      )}
                     </div>
                   </div>
                 </li>
@@ -323,6 +338,17 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
           versions={briefings[briefingFor.id].versions}
           projectTitle={briefingFor.title}
           onClose={() => setBriefingFor(null)}
+        />
+      )}
+
+      {artifactsFor && (
+        <ArtifactsPanel
+          projectId={artifactsFor.id}
+          projectTitle={artifactsFor.title}
+          onClose={() => setArtifactsFor(null)}
+          // Aprovar o 4º move o card no funil (§2.7) — o quadro atrás precisa
+          // refletir isso sem F5.
+          onCardMoved={onChanged}
         />
       )}
     </>
