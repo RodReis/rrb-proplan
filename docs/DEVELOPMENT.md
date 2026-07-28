@@ -3290,11 +3290,28 @@ que a tela *chama* `getArtifactVersion`, nenhum provava que a **URL montada**
 estava certa. *Mockar a fronteira esconde defeitos DA fronteira.* Corrigido com
 `withTenantPrefix` exportada e 16 testes próprios, guarda provada reprovando.
 
-**2. `jobId` retido bloqueia re-disparo.** O job de um run que falhou fica em
-`completed` no Redis pelo `removeOnComplete: 50`, e um novo `add` com o mesmo
-`jobId` é **descartado em silêncio** — nada no log, nada no banco. Um briefing
-cujo pipeline falhou fica sem gatilho até o job sair da retenção. Tive de apagar
-a chave à mão para o dogfooding prosseguir.
+**2. `jobId` retido bloqueia re-disparo (corrigido).** O job de um run que
+falhou fica em `completed` no Redis pelo `removeOnComplete: 50`, e um novo `add`
+com o mesmo `jobId` era **descartado em silêncio** — nada no log, nada no banco.
+Um briefing cujo pipeline falhou ficava sem gatilho até o job sair da retenção.
+Tive de apagar a chave à mão para o dogfooding prosseguir.
+
+Corrigido por decisão do PI: o `jobId` passou a ser **por (briefing,
+tentativa)** — `briefing_<id>_<n>`, com `<n>` = runs existentes + 1, contado
+dentro de `runInTenantContext` (o listener também não tem request; sem contexto
+o RLS devolveria zero e a chave voltaria a colidir, que é o mesmo bug por outra
+causa).
+
+**O que se perde, e por que é aceitável**: a barreira da fila deixa de valer
+*entre* tentativas. O que continua protegendo é a do banco — `runPipeline`
+recusa abrir um 2º run quando já existe `RUNNING` ou `COMPLETED` para o mesmo
+briefing, e essa vale mesmo depois de o job sumir da fila. Um evento reentregue
+ainda produz um job a mais, mas ele para na 1ª query e **não gasta nada**.
+
+Falha ao contar não impede o enfileiramento: cai num fallback que garante chave
+única ao custo da numeração legível. Barrar o pipeline porque a query de um
+detalhe de fila falhou seria trocar um problema pequeno por um grande. **Guarda
+provada reprovando**: com o `jobId` fixo de volta, 3 testes falham.
 
 **3. Retry automático de 429 não existe.** A decisão 6 do PI (§8) pede *"backoff
 automático, 1 retentativa"*. O `runParsed` do recorder só retenta **erro de
@@ -3304,9 +3321,11 @@ dispara, porque o `runPipeline` captura a exceção e fecha o run como `FAILED`
 legível (o que a spec pede para o caso terminal), mas o *automático* está
 ausente.
 
-Os achados 2 e 3 são **decisão do PI** — corrigi-los envolve escolher entre
-relançar do service (que retentaria o run inteiro, refazendo capacidades já
-pagas) e adicionar retry de chamada no recorder (que afeta o `insight` também).
+O achado **3 segue em aberto**, por ser decisão do PI: corrigi-lo envolve
+escolher entre relançar do service (que retentaria o **run inteiro**, refazendo
+capacidades já pagas) e adicionar retry de chamada no recorder (que afeta o
+`insight` também). Hoje o run fica `FAILED` com motivo legível — o que a spec
+pede para o caso terminal —, mas o *automático* da decisão 6 não existe.
 
 ### Verificação no navegador (2026-07-28)
 

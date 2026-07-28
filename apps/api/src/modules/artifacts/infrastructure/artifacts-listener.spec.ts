@@ -1,4 +1,5 @@
 import type { Queue } from 'bullmq';
+import type { PrismaService } from '../../../prisma/prisma.service';
 import type { UsageService } from '../../llm';
 import type { BriefingSubmittedEvent } from '../../briefing/application/briefing-submit.service';
 import { ArtifactsEventListener, type ArtifactsJobData } from './artifacts.worker';
@@ -9,7 +10,7 @@ const evento: BriefingSubmittedEvent = {
   tenantId: 't-1',
 };
 
-function montar(podeGastar: boolean) {
+function montar(podeGastar: boolean, runsExistentes = 0, contagemFalha = false) {
   const queue = { add: jest.fn() } as unknown as Queue<ArtifactsJobData>;
   // O mock RECUSA um tenantId inesperado em vez de devolver o mesmo valor para
   // qualquer argumento. Foi exatamente essa frouxidão que fez a suíte do #158
@@ -22,7 +23,28 @@ function montar(podeGastar: boolean) {
       return podeGastar;
     }),
   } as unknown as UsageService;
-  return { listener: new ArtifactsEventListener(queue, usage), queue, usage };
+  const prisma = {
+    runInTenantContext: jest.fn(async (tenantIds: string[], fn: () => Promise<number>) => {
+      // O listener também não tem request: sem contexto o RLS devolveria zero e
+      // a chave voltaria a colidir. O mock recusa tenant inesperado em vez de
+      // aceitar qualquer coisa.
+      if (tenantIds[0] !== 't-1') throw new Error(`tenantId inesperado: ${tenantIds[0]}`);
+      return fn();
+    }),
+    artifactRun: {
+      count: jest.fn(async () => {
+        if (contagemFalha) throw new Error('db fora');
+        return runsExistentes;
+      }),
+    },
+  } as unknown as PrismaService;
+
+  return {
+    listener: new ArtifactsEventListener(queue, usage, prisma),
+    queue,
+    usage,
+    prisma,
+  };
 }
 
 describe('ArtifactsEventListener: gatilho do pipeline (SPEC-032 §2.1)', () => {
@@ -74,16 +96,54 @@ describe('ArtifactsEventListener: gatilho do pipeline (SPEC-032 §2.1)', () => {
     expect(usage.canSpendForTenant).toHaveBeenCalledWith('t-1');
   });
 
-  it('usa jobId derivado da versão do briefing (1ª barreira de idempotência)', async () => {
+  it('usa jobId por (briefing, tentativa) — 1ª barreira de idempotência', async () => {
     // §2.8: o BullMQ recusa id repetido enquanto o job existir na fila. É a
-    // barreira barata, antes de qualquer gasto — a definitiva é o `inputHash`
-    // no banco, que vale mesmo depois do `removeOnComplete`.
+    // barreira barata, antes de qualquer gasto.
     const { listener, queue } = montar(true);
 
     await listener.onBriefingSubmitted(evento);
 
     const [, , opts] = (queue.add as jest.Mock).mock.calls[0];
-    expect(opts.jobId).toBe('briefing_bv-1');
+    expect(opts.jobId).toBe('briefing_bv-1_1');
+  });
+
+  it('com run anterior, a chave muda — re-disparo não é engolido', async () => {
+    // O bug que este caso fecha, encontrado no dogfooding: com o id fixo em
+    // `briefing_<id>`, o job de um run que FALHOU continuava em `completed` no
+    // Redis (`removeOnComplete: 50`), e o `add` seguinte era descartado EM
+    // SILÊNCIO — nada no log, nada no banco. O briefing ficava sem gatilho.
+    const { listener, queue } = montar(true, 1);
+
+    await listener.onBriefingSubmitted(evento);
+
+    const [, , opts] = (queue.add as jest.Mock).mock.calls[0];
+    expect(opts.jobId).toBe('briefing_bv-1_2');
+  });
+
+  it('conta as execuções DENTRO do contexto do tenant', async () => {
+    // O listener não tem request. Contar sem contexto devolveria zero sob RLS
+    // fail-closed, e a chave voltaria a colidir — o mesmo bug, outra causa.
+    const { listener, prisma } = montar(true, 2);
+
+    await listener.onBriefingSubmitted(evento);
+
+    expect(prisma.runInTenantContext).toHaveBeenCalledWith(
+      ['t-1'],
+      expect.any(Function),
+    );
+  });
+
+  it('falha ao contar não impede o enfileiramento', async () => {
+    // Barrar o pipeline porque a query de um detalhe de fila falhou seria
+    // trocar um problema pequeno por um grande. Cai num fallback que garante
+    // chave única ao custo de perder a numeração legível.
+    const { listener, queue } = montar(true, 0, true);
+
+    await listener.onBriefingSubmitted(evento);
+
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    const [, , opts] = (queue.add as jest.Mock).mock.calls[0];
+    expect(opts.jobId).toMatch(/^briefing_bv-1_\d+$/);
   });
 
   it('configura UMA retentativa, não o padrão da fila', async () => {
