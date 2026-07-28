@@ -89,17 +89,36 @@ describe('contracts: a fronteira com os módulos que ele consome (ADR-001)', () 
 });
 
 describe('contracts: emitir NÃO move o card (§2.6)', () => {
-  it('nenhuma transição de funil sai deste módulo', () => {
-    // Emitir duas versões do contrato não pode mexer no funil duas vezes. O
-    // único ato que move é o aceite (PR-5), e ele pedirá a transição ao
-    // `ClientsService` em vez de gravar a linha por conta própria.
-    const transicoes = varrer(/prisma\.clientStatusTransition\.|\.transition\(/);
-    expect(transicoes).toEqual([]);
+  /**
+   * A regra afrouxou no PR-5, e a diferença é a que importa: o módulo passou a
+   * **pedir** a transição ao `ClientsService`, mas continua sem **gravá-la**.
+   *
+   * `prisma.clientStatusTransition.create` escreveria a trilha por fora da
+   * máquina de estados — sem `canTransition`, sem a atomicidade entre estado e
+   * trilha que o `ClientsService.transition` garante numa transação só. É a
+   * escrita que continua proibida, e a varredura abaixo continua barrando.
+   */
+  it('nenhuma trilha de funil é gravada direto por este módulo', () => {
+    const gravadas = varrer(new RegExp(`prisma\\.clientStatusTransition\\.${ESCRITAS}`));
+    expect(gravadas).toEqual([]);
   });
 
-  it('nenhum estado do funil é escrito como literal no módulo', () => {
+  it('o único `.transition(` do módulo é o do aceite, e é UM só', () => {
+    // Emitir duas versões do contrato não pode mexer no funil duas vezes: a
+    // emissão (`contract-issue.service.ts`) tem que continuar sem transição
+    // nenhuma. Se um segundo arquivo passar a mover o card, esta lista cresce e
+    // o teste cai — a decisão aparece no diff.
+    const chamadas = varrer(/\.transition\(/);
+    expect(chamadas.map((o) => o.arquivo.replace(/\\/g, '/'))).toEqual([
+      '/application/contract-acceptance.service.ts',
+    ]);
+  });
+
+  it('o estado só aparece no aceite — a emissão não nomeia nenhum', () => {
     const estados = varrer(/'(CONTRACT_PENDING|CONTRACT_APPROVED|ARTIFACTS_READY)'/);
-    expect(estados).toEqual([]);
+    expect(estados.map((o) => o.arquivo.replace(/\\/g, '/'))).toEqual([
+      '/application/contract-acceptance.service.ts',
+    ]);
   });
 });
 

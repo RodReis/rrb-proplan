@@ -21,6 +21,10 @@ import {
   ContractIssueService,
   type IssueContractInput,
 } from '../application/contract-issue.service';
+import {
+  ContractAcceptanceService,
+  type AcceptContractInput,
+} from '../application/contract-acceptance.service';
 import { ContractLinkService } from '../application/contract-link.service';
 import {
   ContractTemplateService,
@@ -61,6 +65,7 @@ export class ContractsController {
     private readonly templates: ContractTemplateService,
     private readonly contracts: ContractIssueService,
     private readonly links: ContractLinkService,
+    private readonly acceptance: ContractAcceptanceService,
   ) {}
 
   /** Perfil do prestador. Leitura para qualquer membro do workspace. */
@@ -174,6 +179,26 @@ export class ContractsController {
     @Param('id') contractId: string,
   ) {
     return this.links.createOrRegenerate(req.tenantId!, contractId);
+  }
+
+  /**
+   * Registra o aceite — **é aqui, e só aqui, que o card se move** (§2.6, §2.10).
+   *
+   * `POST` sobre um sub-recurso, não `PATCH` no contrato: o aceite é um **fato
+   * novo** registrado sobre o documento, não uma edição dele. O `renderedHtml`
+   * continua imutável — é por isso que esta rota não aparece na lista de
+   * exceções da guarda de imutabilidade.
+   *
+   * O ator sai de `req.userId` e o service **recusa** se ele faltar: contrato
+   * aceito por ninguém não é aceite.
+   */
+  @Post('contracts/:id/acceptance')
+  acceptContract(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') contractId: string,
+    @Body() body: AcceptContractInput,
+  ) {
+    return this.acceptance.accept(req.tenantId!, contractId, body ?? {}, req.userId);
   }
 
   /**
