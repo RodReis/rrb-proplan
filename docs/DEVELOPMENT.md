@@ -2824,9 +2824,27 @@ O `GET /settings/llm-caps` devolve `canEditCaps` junto do número, e a tela só
 obedece. Sem isso, o não-`owner` veria um campo que a API recusa — pior que
 campo ausente, porque parece ter salvado.
 
-### Pendente
+### Dogfooding no navegador (2026-07-27) — feito
 
-- [ ] **Dogfooding no navegador** — as telas não foram abertas.
+Migração aplicada no **banco de dev real** e as telas abertas de verdade:
+
+- **Backfill preservou o teto configurado**: 10 USD do `owner`, não o default 20.
+- **Escrita pela tela**: 12 → 25 no campo, blur, confirmado no banco.
+- **`member` recusado**: com o papel rebaixado no banco, `PUT /settings/llm-caps`
+  devolveu **403** e o valor ficou intacto; a tela mostrou os números **sem campo
+  editável** e com o aviso *“Só o dono do workspace altera o teto”*.
+
+**Um susto que era meu, não do produto**: a 1ª tentativa de editar pela tela não
+persistiu. Causa: eu disparei `blur()` sintético por `js`, e o `onBlur` do React
+não roda assim. `PUT` direto na rota gravou, e a edição com `fill` + clique fora
+também — o defeito estava no meu script de verificação. Fica registrado porque a
+conclusão apressada seria “bug na tela”.
+
+**Watchers órfãos de novo**: 6 `nest --watch` acumulados seguravam a engine do
+Prisma (`EPERM` no `generate`) e um `vite` de 08:41 ocupava a 5180, derrubando o
+`pnpm dev` inteiro. Matar todos antes de subir.
+
+### Pendente
 - [ ] **Pré-requisito 2 da SPEC-032** (extração do módulo `llm`): **o ADR ainda
       não existe**. O §4 da spec pede *"ADR novo + 1º PR"*, e ADR é do Cowork. O
       PI decidiu em 2026-07-27 seguir com a extração **sem** o ADR escrito —
