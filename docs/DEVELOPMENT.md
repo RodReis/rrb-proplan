@@ -3375,8 +3375,8 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 
 - [x] **PR-1 — schema: `estimates`, `effort_breakdown` e os parâmetros do tenant**
 - [x] **PR-2 — a 5ª capacidade (`EffortEstimator`) + rotas de decomposição**
-- [x] **PR-3 — o cálculo determinístico** (3 cenários, contingência, custos, MVPs) e o `approve` que move o card *(este)*
-- [ ] **PR-4 — parâmetros por workspace** (valor/hora, % contingência, câmbio) só-`owner`
+- [x] **PR-3 — o cálculo determinístico** (3 cenários, contingência, custos, MVPs) e o `approve` que move o card
+- [x] **PR-4 — parâmetros por workspace** (valor/hora, % contingência, câmbio) só-`owner` *(este)*
 - [ ] **PR-5 — painel de estimativa no prestador**
 - [ ] Dogfooding no navegador
 
@@ -3638,3 +3638,70 @@ estava.
 - Build OK e **API subida ao vivo** com as 4 rotas mapeadas (`GET`/`POST
   .../estimates`, `GET /estimates/:id`, `POST /estimates/:id/approve`).
 - Relatório regenerado: **1565 testes** (1168 regras · 89 banco · 308 tela).
+
+### PR-4 — o que entrou
+
+Os parâmetros de estimativa por workspace (§2.6): duas rotas
+(`GET`/`PATCH /t/:tenant/tenant-settings`), a guarda de `owner` e o client de
+API no web.
+
+**A divergência do §6, agora exercida.** A spec pede
+`PATCH /t/:tenant/tenant-settings`; o teto de IA (ADR-026) vive em
+`/settings/llm-caps`, rota **global** que resolve o tenant por
+`personalTenantId(userId)`. As duas convivem sobre a mesma tabela, e a diferença
+é o **escopo**: parâmetro de *workspace* precisa do tenant **da URL** — com o
+tenant pessoal, quem participa de dois workspaces editaria sempre o valor/hora do
+seu, achando que mexeu no do cliente. Decisão do PI antes de codar.
+
+**O papel vem do `TenantGuard`**, não de uma query nova. `req.role` já está
+resolvido para a URL — diferente do `SettingsService`, que consulta a membership
+à mão porque `/settings` é rota global sem `TenantGuard`.
+
+**`canEdit` é resolvido no servidor** e viaja na resposta: regra duplicada no
+front divergiria da recusa real no primeiro clique, e a tela mostraria campo
+editável para quem a API vai recusar — botão morto, e pior que morto: um que
+parece ter salvado.
+
+**A data do câmbio é do servidor, nunca digitada.** Ela responde *"quando esta
+cotação foi informada"*; aceitá-la do cliente permitiria carimbar hoje uma taxa
+do ano passado — exatamente a confusão que o par taxa+data existe para evitar.
+
+**`null` limpa a taxa; ausente não toca.** A distinção viaja do corpo HTTP até o
+banco porque limpar é decisão legítima: cotação velha é pior que nenhuma, já que
+segue exibida como se fosse corrente — e sem o `null` não haveria como voltar
+atrás depois de digitar uma vez. Os dois campos saem juntos (o CHECK do PR-1
+exige o par).
+
+**Validação no service além do CHECK no banco.** Os limites já estão no
+`tenant_settings` desde o PR-1; aqui eles ganham **motivo legível** em vez de
+virarem um 500 de constraint. O CHECK continua sendo a barreira que vale para
+qualquer caminho de escrita — inclusive um `UPDATE` à mão no psql.
+
+**`PATCH` é o único verbo de alteração-no-lugar do módulo**, e a guarda de
+imutabilidade ganhou **exceção nominal** para ele. A regra que ela protege é
+sobre *conteúdo versionado* (`ArtifactVersion`, `BriefingVersion`); configuração
+de workspace **não é versionada** — o valor/hora corrente é um só, e cada
+`Estimate` já guarda o seu snapshot (PR-1), que é o que preserva a conta de uma
+proposta enviada. A exceção é uma **lista de nomes**, não um padrão genérico:
+afrouxar o filtro deixaria a próxima exceção entrar sem ninguém decidir, e há
+teste afirmando que a lista contém exatamente `['tenant-settings']`.
+
+**`/estimates/` e `/tenant-settings` entraram na allowlist do `withTenantPrefix`**
+— literalmente o FIX #166. Sem isso as chamadas sairiam sem `/t/:tenant`, a API
+devolveria 404 e a tela falharia **muda**, porque todos os testes do web mockam a
+camada de API e nenhum passa por essa função. O `tenantPrefix.test.ts`, que
+nasceu daquele bug, foi estendido com as 5 rotas novas.
+
+**A UI dos parâmetros fica no PR-5**, junto do painel: é lá que o usuário está
+quando precisa mudar valor/hora, e uma seção em `/settings` (rota global, sem
+tenant na URL) teria de escolher um workspace arbitrário para editar.
+
+### PR-4 — verificação
+
+- **1278 testes na API** (era 1257) e **311 no web** (era 308).
+- **Duas guardas provadas reprovando**: (1) um `@Patch('estimates/:id')` fora da
+  exceção faz a guarda de imutabilidade falhar **nomeando a rota**; (2) remover
+  `/estimates/` da allowlist derruba 2 testes do `tenantPrefix`.
+- Build OK e **API subida ao vivo** com `GET` e `PATCH /t/:tenant/tenant-settings`
+  mapeadas.
+- Relatório regenerado: **1591 testes** (1189 regras · 89 banco · 313 tela).

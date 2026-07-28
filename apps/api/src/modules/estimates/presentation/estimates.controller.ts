@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -17,6 +18,10 @@ import {
 import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { TenantGuard } from '../../identity/presentation/tenant.guard';
 import { EffortBreakdownService } from '../application/effort-breakdown.service';
+import {
+  EstimateSettingsService,
+  type UpdateEstimateSettingsInput,
+} from '../application/estimate-settings.service';
 import { EstimatesService, type GenerateInput } from '../application/estimates.service';
 import { ESTIMATES_QUEUE } from '../estimates.constants';
 import type { DirectCost } from '../domain/calculation';
@@ -67,6 +72,7 @@ export class EstimatesController {
   constructor(
     private readonly effort: EffortBreakdownService,
     private readonly estimates: EstimatesService,
+    private readonly settings: EstimateSettingsService,
     @InjectQueue(ESTIMATES_QUEUE) private readonly queue: Queue<EffortJobData>,
   ) {}
 
@@ -158,5 +164,46 @@ export class EstimatesController {
   @Post('estimates/:id/approve')
   approve(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.estimates.approve(req.tenantId!, id, req.userId!);
+  }
+
+  /** Parâmetros de estimativa do workspace. Leitura para qualquer membro. */
+  @Get('tenant-settings')
+  tenantSettings(@Req() req: AuthenticatedRequest) {
+    return this.settings.get(req.tenantId!, req.role);
+  }
+
+  /**
+   * Altera os parâmetros. **Só o `owner`** (§2.6, mesma regra do ADR-026).
+   *
+   * `PATCH` — e este é o **único** verbo de alteração-no-lugar do módulo, de
+   * propósito. Configuração de workspace **não é versionada**: o valor/hora
+   * corrente é um só, e cada `Estimate` já guarda o seu **snapshot** (PR-1), que
+   * é o que preserva a conta de uma proposta já enviada. Versionar a
+   * configuração além disso guardaria a mesma história duas vezes.
+   *
+   * A guarda de imutabilidade (`artifact-version-immutable.spec.ts`) tem
+   * exceção nominal para esta rota — a regra que ela protege é sobre
+   * `ArtifactVersion`, não sobre config.
+   */
+  @Patch('tenant-settings')
+  updateTenantSettings(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateEstimateSettingsInput,
+  ) {
+    return this.settings.update(req.tenantId!, req.role, {
+      hourlyRateBrl:
+        body?.hourlyRateBrl === undefined ? undefined : String(body.hourlyRateBrl),
+      contingencyPercent:
+        body?.contingencyPercent === undefined
+          ? undefined
+          : String(body.contingencyPercent),
+      // `null` sobrevive de propósito: é o que limpa a taxa (§2.6).
+      exchangeRateUsdBrl:
+        body?.exchangeRateUsdBrl === undefined
+          ? undefined
+          : body.exchangeRateUsdBrl === null
+            ? null
+            : String(body.exchangeRateUsdBrl),
+    });
   }
 }

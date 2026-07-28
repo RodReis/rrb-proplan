@@ -20,6 +20,23 @@ const WRITE_METHODS = new Set([
   RequestMethod.DELETE,
 ]);
 
+/**
+ * Rotas de alteração-no-lugar permitidas, **por nome** (SPEC-033 §2.6).
+ *
+ * A regra que este arquivo protege é sobre **conteúdo versionado**:
+ * `ArtifactVersion` e `BriefingVersion` são imutáveis, e editar cria versão.
+ * `tenant-settings` é **configuração de workspace**, não conteúdo — o valor/hora
+ * corrente é um só, e cada `Estimate` já guarda o seu snapshot (SPEC-033 PR-1),
+ * que é o que preserva a conta de uma proposta já enviada. Versionar a config
+ * além disso guardaria a mesma história duas vezes.
+ *
+ * A lista é nominal de propósito: afrouxar o filtro por padrão genérico (por
+ * exemplo, "PATCH pode se não tiver `versions` no caminho") deixaria a próxima
+ * exceção entrar sem ninguém decidir. Aqui, acrescentar um item é uma linha de
+ * diff que se lê.
+ */
+const EXCECOES = ['tenant-settings'];
+
 interface Route {
   controller: string;
   method: RequestMethod;
@@ -66,9 +83,18 @@ describe('ArtifactVersion é imutável (SPEC-032 §6)', () => {
   });
 
   it('nenhuma rota de escrita destrutiva no módulo', () => {
-    const offending = routes.filter((r) => WRITE_METHODS.has(r.method));
+    const offending = routes
+      .filter((r) => WRITE_METHODS.has(r.method))
+      .filter((r) => !EXCECOES.some((e) => r.path.endsWith(e)));
 
     expect(offending).toEqual([]);
+  });
+
+  it('a exceção é nominal e mínima — só configuração, nunca conteúdo', () => {
+    // A lista existe para ser lida, não para crescer sem discussão. Se alguém
+    // acrescentar um caminho aqui, o diff mostra exatamente o quê — que é o
+    // oposto de afrouxar o filtro genérico e a exceção passar despercebida.
+    expect(EXCECOES).toEqual(['tenant-settings']);
   });
 
   it('editar é POST em .../versions — nada é alterado no lugar', () => {

@@ -90,6 +90,13 @@ const TENANT_SCOPED_PREFIXES = [
   // aprovar, rejeitar e editar param todas de funcionar. A lista continuava OK
   // porque o caminho dela começa com `/client-projects`, que já estava aqui.
   '/artifacts/',
+  // SPEC-033 §6: estimativa e parâmetros também vivem sob `/t/:tenant`. Sem
+  // estas duas linhas, `/estimates/:id/approve` e `/tenant-settings` saem SEM o
+  // prefixo e a API devolve 404 — com falha muda em tela, porque todos os testes
+  // do web mockam esta camada e nenhum deles passa por aqui. É literalmente o
+  // FIX #166, e o motivo de ele estar anotado logo acima.
+  '/estimates/',
+  '/tenant-settings',
 ];
 
 /**
@@ -1132,6 +1139,44 @@ export function createArtifactVersion(
   return request(`/artifacts/${id}/versions`, {
     method: 'POST',
     body: JSON.stringify({ parentVersionId, content }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SPEC-033 — Estimativa. Todo valor monetário trafega como STRING: serializado
+// como número, um valor com muitas casas perderia precisão exatamente no dado
+// que a fatia existe para manter exato.
+// ---------------------------------------------------------------------------
+
+/** Parâmetros de estimativa do workspace (§2.6). `canEdit` vem do servidor. */
+export interface EstimateSettings {
+  hourlyRateBrl: string;
+  contingencyPercent: string;
+  /** `null` é estado legítimo: sem câmbio, o custo de IA fica em USD. */
+  exchangeRateUsdBrl: string | null;
+  exchangeRateAt: string | null;
+  canEdit: boolean;
+}
+
+export function getEstimateSettings(): Promise<EstimateSettings> {
+  return request<EstimateSettings>('/tenant-settings');
+}
+
+/**
+ * Altera os parâmetros. Só o `owner` — a API recusa os demais.
+ *
+ * `exchangeRateUsdBrl: null` **limpa** a taxa; omitir o campo não a toca. A
+ * distinção viaja até aqui de propósito: cotação velha é pior que nenhuma, e
+ * sem o `null` não haveria como voltar atrás depois de digitar uma vez.
+ */
+export function updateEstimateSettings(patch: {
+  hourlyRateBrl?: string;
+  contingencyPercent?: string;
+  exchangeRateUsdBrl?: string | null;
+}): Promise<EstimateSettings> {
+  return request('/tenant-settings', {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
   });
 }
 
