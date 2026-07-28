@@ -29,6 +29,8 @@ interface Cenario {
   tetoAte?: number;
   /** Capacidade que falha na validação (nome do `kind` do ledger). */
   falhaEm?: string;
+  /** O revisor cai — não pode derrubar o artefato (§2.9). */
+  revisorFalha?: boolean;
 }
 
 function montar({
@@ -36,8 +38,10 @@ function montar({
   runExistente = null,
   tetoAte = Infinity,
   falhaEm,
+  revisorFalha = false,
 }: Cenario = {}) {
   const versoes: Array<Record<string, unknown>> = [];
+  const pareceres: Array<Record<string, unknown>> = [];
   let checagensDeTeto = 0;
 
   const prisma = {
@@ -60,6 +64,12 @@ function montar({
         return { id: `av-${versoes.length}` };
       }),
     },
+    reviewVerdict: {
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        pareceres.push(data);
+        return { id: `rv-${pareceres.length}` };
+      }),
+    },
   } as unknown as PrismaService;
 
   const chamadasLedger: Array<Record<string, unknown>> = [];
@@ -75,7 +85,14 @@ function montar({
         if (falhaEm === ctx.kind) {
           throw new InvalidArtifactError('scope', 'campo "entregaveis" ausente ou vazio');
         }
-        return parse(JSON.stringify(RESPOSTAS[ctx.kind as string]));
+        const kind = String(ctx.kind);
+        if (kind.startsWith('artifact_review_')) {
+          if (revisorFalha) throw new Error('revisor fora do ar');
+          return parse(
+            JSON.stringify({ veredito: 'ok', justificativa: 'coerente.', pontos: [] }),
+          );
+        }
+        return parse(JSON.stringify(RESPOSTAS[kind]));
       },
     ),
   } as unknown as LlmUsageRecorder;
@@ -101,6 +118,7 @@ function montar({
     recorder,
     usageGate,
     versoes,
+    pareceres,
     chamadasLedger,
   };
 }
@@ -177,18 +195,29 @@ describe('ArtifactsService: ledger e teto (§2.6, §5)', () => {
     // Critério de aceite §5. Sem `tenantId`, a linha nasce NULL e a policy do
     // llm_usage a trata como "do tenant ativo" — o gasto de um tenant apareceria
     // no teto de quem estivesse olhando.
+    //
+    // São 8 chamadas, não 4: cada capacidade é seguida do `ArtifactReviewer`
+    // (§2.9). A revisão gasta dinheiro como qualquer outra chamada, e uma linha
+    // dela sem tenant seria gasto real fora da soma de alguém.
     const { service, chamadasLedger } = montar();
 
     await service.runPipeline(job);
 
-    expect(chamadasLedger).toHaveLength(4);
+    expect(chamadasLedger).toHaveLength(8);
+    expect(chamadasLedger.filter((c) => String(c.kind).startsWith('artifact_review_'))).
+      toHaveLength(4);
     chamadasLedger.forEach((ctx) => {
       expect(ctx.tenantId).toBe('t-1');
       expect(ctx.artifactRunId).toBe('run-1');
       // `projectId` NULO de propósito: o pipeline nasce de ClientProject, que
       // não é o `Project` (repo do GitHub) do ledger.
       expect(ctx.projectId).toBeNull();
-      expect(ctx.inputHash).toEqual(expect.any(String));
+      // Só a GERAÇÃO carrega `inputHash` — ele é a chave de idempotência do
+      // artefato. A revisão não produz artefato versionado, então não tem hash
+      // a carregar: inventar um seria chave que não abre nada.
+      if (!String(ctx.kind).startsWith('artifact_review_')) {
+        expect(ctx.inputHash).toEqual(expect.any(String));
+      }
     });
   });
 
@@ -225,6 +254,45 @@ describe('ArtifactsService: ledger e teto (§2.6, §5)', () => {
     expect(versoes).toHaveLength(0);
     const ultima = (prisma.artifactRun.update as jest.Mock).mock.calls.at(-1)![0];
     expect(ultima.data.status).toBe('FAILED');
+  });
+});
+
+describe('ArtifactsService: o revisor roda mas não manda (§2.9)', () => {
+  it('grava um parecer por artefato gerado', async () => {
+    const { service, pareceres } = montar();
+
+    await service.runPipeline(job);
+
+    expect(pareceres).toHaveLength(4);
+    expect(pareceres[0].verdict).toBe('ok');
+  });
+
+  it('revisor fora do ar NÃO derruba o artefato', async () => {
+    // A decisão 1 do PI diz que o revisor anota e nunca bloqueia. Propagar o
+    // erro dele faria bloquear na prática — e pela pior via: um `catch`
+    // ausente, que ninguém decidiu.
+    const { service, versoes, prisma, pareceres } = montar({ revisorFalha: true });
+
+    await service.runPipeline(job);
+
+    expect(versoes).toHaveLength(4);
+    expect(pareceres).toHaveLength(0);
+    const ultima = (prisma.artifactRun.update as jest.Mock).mock.calls.at(-1)![0];
+    expect(ultima.data.status).toBe('COMPLETED');
+  });
+
+  it('o parecer é gravado DEPOIS da versão, ligado a ela', async () => {
+    const { service, pareceres } = montar();
+
+    await service.runPipeline(job);
+
+    // Cada parecer aponta para a versão que acabou de nascer.
+    expect(pareceres.map((p) => p.artifactVersionId)).toEqual([
+      'av-1',
+      'av-2',
+      'av-3',
+      'av-4',
+    ]);
   });
 });
 
