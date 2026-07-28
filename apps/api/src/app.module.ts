@@ -19,6 +19,7 @@ import { PortfolioModule } from './modules/portfolio/portfolio.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ArtifactsModule } from './modules/artifacts/artifacts.module';
+import { EstimatesModule } from './modules/estimates/estimates.module';
 import { BriefingModule } from './modules/briefing/briefing.module';
 import { redisConnectionFromUrl } from './shared/redis-connection';
 
@@ -58,6 +59,11 @@ import { redisConnectionFromUrl } from './shared/redis-connection';
     // `BriefingSubmitted` — o briefing não sabe (nem deve saber) que alguém o
     // escuta.
     ArtifactsModule,
+    // Estimativa sobre os requisitos aprovados (SPEC-033). Consome `artifacts`
+    // e `llm`, nunca o inverso (§2). Fila própria: a decomposição é gatilho
+    // humano sob demanda e não pode disputar worker com o pipeline automático
+    // do briefing recém-enviado.
+    EstimatesModule,
   ],
   controllers: [HealthController],
 })

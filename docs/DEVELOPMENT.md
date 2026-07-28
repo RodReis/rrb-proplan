@@ -3373,8 +3373,8 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 
 ### Passos
 
-- [x] **PR-1 — schema: `estimates`, `effort_breakdown` e os parâmetros do tenant** *(este)*
-- [ ] **PR-2 — a 5ª capacidade (`EffortEstimator`) + rotas de decomposição**
+- [x] **PR-1 — schema: `estimates`, `effort_breakdown` e os parâmetros do tenant**
+- [x] **PR-2 — a 5ª capacidade (`EffortEstimator`) + rotas de decomposição** *(este)*
 - [ ] **PR-3 — o cálculo determinístico** (3 cenários, contingência, custos, MVPs) e o `approve` que move o card
 - [ ] **PR-4 — parâmetros por workspace** (valor/hora, % contingência, câmbio) só-`owner`
 - [ ] **PR-5 — painel de estimativa no prestador**
@@ -3459,3 +3459,95 @@ Decisão do PI ao ser apresentada a divergência, antes de qualquer linha escrit
 - `estimates` entrou em `TENANT_TABLES` no `rls-audit.int-spec.ts` — a rede que
   faz uma tabela futura sem policy quebrar o build.
 - Relatório regenerado: **1425 testes** (1028 regras · 89 banco · 308 tela).
+
+### PR-2 — o que entrou
+
+A **5ª capacidade** (`EffortEstimator`), a fila `estimates` e as duas rotas de
+decomposição. A partir daqui existe artefato de esforço — versionado, revisável
+e **inútil até um humano aprovar**, como os outros quatro.
+
+**O schema não tem onde guardar um total.** Esta é a decisão central do PR. O
+prompt proíbe somar em três lugares, mas proibir no texto e aceitar no schema
+deixaria a proibição valendo **só enquanto o modelo obedecesse** — um
+`totalHoras` vindo do modelo entraria numa proposta comercial sem ninguém
+conferir a aritmética. O parser monta o objeto com chaves fixas: campo de soma
+que o modelo invente é **descartado**, e há teste provando o descarte.
+
+**Faixa fora de ordem nunca vira artefato.** `horasMin ≤ horasProvavel ≤
+horasMax` é critério de aceite (§5), e o motivo é o formato do defeito: uma faixa
+invertida **não quebra nada na hora** — os três cenários continuam somando, e o
+"otimista" só sai maior que o "pessimista". Ninguém lê isso como erro. Junto vêm
+três barreiras numéricas que pegam falhas distintas: `1e999` (que `JSON.parse`
+devolve como `Infinity`, sobrevive a toda soma e contamina o total **sem nunca
+lançar**), zero/negativo (linha que reduz o orçamento em silêncio) e o teto de
+2000 h por tarefa (o dígito a mais: `800` virando `8000` não parece errado numa
+lista de 30 linhas, mas multiplica a proposta por dez).
+
+**Tarefa pendurada em requisito inexistente é recusada.** Sem isso o modelo
+inventaria um requisito, a tarefa entraria na conta, e o total ficaria maior por
+um trabalho que ninguém pediu.
+
+**Requisito sem tarefa, porém, anota — não bloqueia.** Recusar o artefato inteiro
+jogaria fora as outras tarefas boas, pagando o modelo de novo por elas. A lacuna
+vai no conteúdo (`requisitosSemTarefa`) para a tela mostrar e o humano decidir —
+mesmo desenho do `ArtifactReviewer`.
+
+**Decompõe a versão CORRENTE do `requirements`, não a da IA.** Se um humano
+editou os requisitos (§2.10 da SPEC-032), é a edição dele que vale — decompor a
+versão da IA ignoraria a correção e geraria tarefas para requisito que deixou de
+existir.
+
+**O `inputHash` é sobre o `requirements`, não sobre o briefing.** O insumo desta
+capacidade são os requisitos aprovados: é deles que as tarefas saem. Hashear
+`answers` faria o hash mudar por edição de briefing que não afeta a decomposição
+e **não mudar** quando alguém corrige um requisito à mão — exatamente ao
+contrário do que a idempotência precisa.
+
+**Fila própria (`estimates`), não a do `artifacts`.** A decomposição é gatilho
+humano sob demanda; um job dela na fila do pipeline automático disputaria worker
+com a geração dos 4 artefatos, que é o caminho crítico de um briefing
+recém-enviado.
+
+**A chave da fila conta TODOS os runs do projeto**, e o filtro "certo" seria o
+bug. Contar `completedKinds: {has: 'effort_breakdown'}` parece mais preciso e
+**reintroduziria o achado do dogfooding da Fatia 21**: run `FAILED` fecha com a
+lista vazia, não entraria na conta, a tentativa seguinte reusaria a chave, e o
+job retido em `completed` no Redis **engoliria o clique em silêncio**. Contar
+demais custa um número maior; contar de menos custa o botão parar de funcionar.
+
+**A fronteira com `artifacts` é decisão, não impedimento técnico.** `estimates`
+**não escreve** em `artifacts`/`artifact_versions`/`artifact_runs`: pede ao
+`ArtifactsService` (`openExternalRun` · `saveExternalVersion` ·
+`closeExternalRun`). `PrismaService` é global, então nada barraria o
+`prisma.artifactVersion.create` direto — funcionaria hoje e desmancharia a
+fronteira em silêncio. O `estimates-boundaries.arch.spec.ts` varre o módulo e
+quebra o build se acontecer, no instrumento da casa (`tenant-scope`,
+`llm-public-surface`).
+
+**O mesmo arch-spec prova a ausência de GitHub** (§2.9, §5: *"auditável por
+ausência"*): nenhum import de client, nenhuma URL da API. A decomposição em MVPs
+é **só dado** — criar issues no repo do cliente mudaria a fronteira do MVP3 §3 e
+pede ADR próprio.
+
+**Edição humana não ganhou rota nova**: reaproveita
+`POST /t/:tenant/artifacts/:id/versions` da SPEC-032, que já cria versão `human`
+com `parentVersionId`. Rota própria duplicaria o contrato de linhagem, e as duas
+divergiriam na primeira correção.
+
+**A guarda de imutabilidade foi estendida ao controller novo** — e ela pegou um
+caso real: a asserção *"toda rota sob `client-projects` é GET"* deixou de valer
+com `POST .../effort-breakdown/generate`, que é escrita legítima (enfileira um
+job). O recorte agora exclui ações explícitas (`/generate`, `/approve`,
+`/reject`) em vez de proibir toda escrita sob o prefixo, que não era o que a
+asserção queria dizer.
+
+### PR-2 — verificação
+
+- **1184 testes verdes** (era 1117): **+67**, sendo 37 do schema da capacidade.
+- **Guarda de fronteira provada reprovando**: um `prisma.artifactVersion.create`
+  inserido de propósito no service faz o arch-spec falhar **nomeando arquivo e
+  linha**. Removido, verde.
+- Build OK e **API subida ao vivo** com as duas rotas mapeadas
+  (`GET .../effort-breakdown` e `POST .../effort-breakdown/generate`) e o
+  `EstimatesController` registrado.
+- Relatório regenerado: **1492 testes** (1095 regras · 89 banco · 308 tela).
