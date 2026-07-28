@@ -288,7 +288,7 @@ Alternativas rejeitadas: (a) *resolver inteiro no `insight`* — deixa a cauda b
 
 ## ADR-016 — Uso de LLM é ledger append-only; custo é congelado na escrita
 
-**Status**: aprovado pelo PI em 2026-07-12. Implementado na **Fatia 4.6** (SPEC-009).
+**Status**: aprovado pelo PI em 2026-07-12. Implementado na **Fatia 4.6** (SPEC-009). **Emendado pelo ADR-026 (2026-07-27)**: este ADR criou o teto sem dizer **de quem** ele é — o item 6 abaixo trata de provedores, não de donos. O ADR-026 decide que o teto pertence ao **tenant** (tabela `TenantSettings`), e não ao usuário. Tudo o mais aqui continua valendo.
 
 **Contexto**: hoje o consumo de IA só aparece como colunas da tabela `insights` (`inputTokens`, `outputTokens`, `provider`, `model`). Parece suficiente — não é. `insights` é **cache de artefato**, chaveado por `docs_tree_sha` (ADR-002): ela guarda o *resultado* de uma inferência bem-sucedida. Três classes de gasto ficam invisíveis:
 
@@ -404,7 +404,9 @@ O GitHub jamais dará isso — ele não conhece as asserções humanas (ADR-013)
 3. *Fail-closed*: sem contexto, `= ANY(NULL)` → **zero linhas**. Nunca defaultar para "todos".
 4. **Proibido**: bypass de RLS, role `BYPASSRLS`, conexão como owner para leitura global. A garantia mora no **banco**, não no service. Checagem no CI barra o merge que reintroduzir bypass.
 
-**Consequências**: o catálogo lê cross-tenant **sob RLS**, com uma policy só (simplifica, não incha). Custo: a rota global monta o array de membership por request — um passo, o **elo crítico**, que deriva da identidade autenticada. Este ADR existe para que ninguém reabra bypass "só para um relatório" sem confrontar a decisão datada. Complementa ADR-015 (auth/tenant) e ADR-016 (teto de IA por tenant).
+**Consequências**: o catálogo lê cross-tenant **sob RLS**, com uma policy só (simplifica, não incha). Custo: a rota global monta o array de membership por request — um passo, o **elo crítico**, que deriva da identidade autenticada. Este ADR existe para que ninguém reabra bypass "só para um relatório" sem confrontar a decisão datada. Complementa ADR-015 (auth/tenant) e ADR-016 (teto e ledger de IA).
+
+**Correção (2026-07-27)**: a frase acima dizia *"ADR-016 (teto de IA **por tenant**)"* — e o ADR-016 nunca decidiu isso. Era comportamento entregue na Fatia 8 descrito como se fosse decisão registrada. Quem decide o teto por tenant é o **ADR-026**, datado de hoje.
 
 ## ADR-021 — Identidade é o GitHub App no MVP; login genérico (Google/outros) desacoplado das conexões fica para o módulo `identity`
 
@@ -536,3 +538,33 @@ Três candidatos, e o critério que decide não é custo nem elegância: é **is
 
 - **Volume do Railway** — banco magro, mas o isolamento entre tenants passaria a ser código nosso em vez de policy do banco (contra o espírito do ADR-020), o backup viraria um segundo procedimento no `DEPLOY.md` e o volume prende a API a uma instância, matando escala horizontal por um motivo lateral.
 - **Ativar o Supabase Storage** — tira o Supabase da reserva por um caso de uso de 25 MB, traz um segundo fornecedor para o caminho de dados e herda o free tier que **pausa após 7 dias sem request** (ADR-022) — exatamente o motivo pelo qual ele foi engavetado. Se algum dia o volume justificar object storage, a escolha se faz na hora, com o número na mão, e não agora por antecipação.
+
+## ADR-026 — Teto de gasto de IA pertence ao tenant, não ao usuário
+
+**Status**: **aprovado pelo PI em 2026-07-27**. **Emenda o ADR-016** (que criou o teto sem dizer de quem ele é) e o fecho do ADR-020 (que já o chamava de "por tenant" sem que isso estivesse escrito em lugar nenhum). Exigido pela SPEC-032 (Fatia 21, issue #147) — é o 1º dos dois pré-requisitos dela, e o outro depende deste.
+
+**Contexto**: o ADR-016 criou o ledger `LlmUsage` e o teto de gasto. O texto dele **nunca diz "por tenant"** — o item 6 diz *"teto é global, nunca por provedor"*, e isso é sobre **provedores**, não sobre donos. A Fatia 8 (SPEC-022) trouxe multi-tenancy e, na prática, escopou o gasto: `LlmUsage.tenantId`, soma sob `withTenant`, comentário no `usage.service.ts` afirmando *"o gasto é POR TENANT (ADR-016)"* e a linha de fecho do ADR-020 dizendo o mesmo. Ou seja: **o produto se comporta há duas fatias como se esta decisão existisse, e ela nunca foi tomada.** Metade deste ADR é ratificação datada disso — dizer na cara é melhor que fingir que sempre esteve escrito.
+
+A outra metade é decisão nova, e ela aparece porque a SPEC-032 quebra duas coisas de uma vez:
+
+1. **A chave é a pessoa, não o tenant.** `Settings.userId` é `@unique`; `capsOf(userId)` resolve `personalTenantId(userId)`, que é `membership.findFirst({ where: { userId }, orderBy: { role: 'asc' } })`. O teto pertence a **um usuário** e o `tenantId` é acompanhante. Num tenant com dois membros existem **dois tetos** sobre **a mesma soma** — o resultado do gate depende de quem chamou. Isso não é "teto por tenant"; é "teto por usuário, medido no tenant dele". Enquanto o produto foi de usuário único, a distinção não custou nada.
+2. **Nem sempre existe um usuário.** O pipeline da SPEC-032 dispara do envio de um briefing **público, por cliente anônimo**. Não há `userId` no contexto, e `canSpend(projectId)` ainda recebe o `Project` errado (repo do GitHub, não `ClientProject`). O gate atual é **literalmente inalcançável** a partir do caminho que mais precisa dele — o único onde quem gasta o dinheiro não é quem paga.
+
+**Decisão**:
+
+1. **Teto e alerta são do tenant**, em tabela nova `TenantSettings` (`tenant_id` único, `ENABLE`+`FORCE` RLS como as demais raízes). As colunas `llm_alert_usd_monthly` e `llm_hard_cap_usd_monthly` **saem** de `settings`. `Settings` continua existindo como preferência de **usuário** (provedor, limiares de UI, limiar de recusa canônica) — o que sobra lá é escolha pessoal, não bolso.
+2. **`capsOf` recebe `tenantId`, nunca `userId`.** Nenhum caminho do sistema resolve teto a partir de pessoa. `personalTenantId` deixa de ser usado para dinheiro (segue servindo às preferências).
+3. **Migração: vence o teto do `owner`.** Havendo mais de um `owner` no tenant, vence o de `Membership.created_at` mais antiga. Tenant sem `owner` (não deve existir) recebe o padrão do schema. **É one-way e perde dado de propósito**: os tetos configurados por não-`owner` desaparecem. Eles nunca representaram o bolso de ninguém — representavam uma leitura pessoal de um limite compartilhado.
+4. **Só `owner` altera o teto.** `member` e `viewer` **leem** (o `member` "vê custo", ADR-015/enum `Role`) e não escrevem. Teto é decisão de quem paga a fatura, e é o mesmo papel que já é o único a finalizar issue (ADR-011).
+5. **O gate roda com tenant explícito, inclusive fora de request.** Job não tem sessão: resolve o tenant a partir do id do agregado que está processando e abre o próprio `runInTenantContext` antes de somar. Somar sob RLS *fail-closed* sem contexto **não dá erro — dá zero**, e zero passa no gate. Esta frente já acumulou 5 ocorrências desta classe, todas com a suíte verde.
+6. **Continua valendo do ADR-016, sem alteração**: o teto é global **entre provedores** (o bolso é um só); o ledger é append-only; o custo é congelado na escrita com `priceSnapshot`; chamada com `priceMissing` não entra na soma e o aviso correspondente não pode ser escondido.
+
+**Consequência**: o teto passa a ter **um** lugar e **um** dono, e o gate fica chamável de qualquer caminho — inclusive de job disparado por anônimo, que é o caso que motivou tudo. Custo: uma tabela nova, uma migração destrutiva por decisão, e um `capsOf` cuja assinatura muda em todos os call sites. Efeito colateral aceito: num tenant com vários membros, quem não é `owner` perde o botão que tinha (mesmo que o botão nunca tenha feito o que ele achava que fazia).
+
+**Este ADR bloqueia o outro.** A extração do módulo `llm` (2º pré-requisito da SPEC-032) expõe uma porta de gate para o módulo `artifacts`; se essa porta nascer recebendo `userId`, nasce errada. **Sequencial, não paralelo.**
+
+**Alternativas rejeitadas**:
+
+- **Manter em `settings` e desempatar dentro do `capsOf`** (ex.: "vence o do owner", resolvido em código). Mais barato hoje e não exige migração. Rejeitado porque deixa a ambiguidade **no código em vez de no modelo**: `settings` continuaria tendo N linhas com um teto cada, e quem abrisse a tabela — ou a tela — continuaria lendo "meu teto" onde o número não é de ninguém. Regra que só existe numa função é regra que a próxima query esquece.
+- **Colunas de teto direto no `Tenant`.** Uma tabela a menos. Rejeitado porque mistura identidade de tenancy com configuração de billing: `Tenant` viraria gaveta conforme outras configurações por tenant aparecerem, e a primeira delas já está encomendada (mapeamento de complexidade→acabamento, SPEC-033).
+- **Teto por `ClientProject` ou por briefing.** Controle mais fino e atraente para cobrar do cliente final. Rejeitado pelo **mesmo argumento do item 6 do ADR-016 contra teto por provedor**: o bolso é um só, e N tetos parciais dão a sensação de controle enquanto a exposição real é a soma deles. Se um dia for preciso limitar por projeto, isso é **quota**, não teto — nome diferente, ADR diferente.

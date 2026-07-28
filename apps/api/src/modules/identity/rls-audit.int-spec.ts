@@ -16,7 +16,7 @@ import { ownerClient, applyMigrations, grantAppRole } from '../../../test/int/db
 // ganhar uma tabela de projeto nova sem policy, este array desatualiza e o
 // teste de cobertura abaixo falha — forçando a decisão consciente.
 const TENANT_TABLES = [
-  'projects', 'settings', 'llm_usage',
+  'projects', 'settings', 'tenant_settings', 'llm_usage',
   'documents', 'doc_links', 'document_resolutions', 'canonical_fields',
   'assertions', 'insights', 'insight_runs', 'sync_runs', 'board_mutations',
   'operations', 'suppressed_links', 'issues',

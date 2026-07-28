@@ -1,13 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { LlmProvider, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 
+/**
+ * Preferência de USUÁRIO. O teto de gasto saiu daqui em 2026-07-27 (ADR-026) —
+ * ele é do tenant, e vive em `tenantCaps` / `updateTenantCaps`.
+ */
 export interface SettingsView {
   llmProvider: LlmProvider;
   docsStalenessThresholdDays: number;
-  /** Teto de gasto de IA (SPEC-009), USD/mês. String para preservar Decimal no JSON. */
-  llmAlertUsdMonthly: string;
-  llmHardCapUsdMonthly: string;
   /** Limiar de recusa do modelo canônico (SPEC-014). 0..1; 0 desliga. */
   canonicalRefusalThreshold: number;
   /** Provedores com chave no .env — os demais ficam desabilitados na UI. */
@@ -17,8 +18,6 @@ export interface SettingsView {
 export interface UpdateSettingsInput {
   llmProvider?: LlmProvider;
   docsStalenessThresholdDays?: number;
-  llmAlertUsdMonthly?: string;
-  llmHardCapUsdMonthly?: string;
   canonicalRefusalThreshold?: number;
 }
 
@@ -58,24 +57,97 @@ export class SettingsService {
     return {
       llmProvider: s.llmProvider,
       docsStalenessThresholdDays: s.docsStalenessThresholdDays,
-      llmAlertUsdMonthly: s.llmAlertUsdMonthly.toString(),
-      llmHardCapUsdMonthly: s.llmHardCapUsdMonthly.toString(),
       canonicalRefusalThreshold: s.canonicalRefusalThreshold,
       availableProviders: availableProviders(),
     };
   }
 
-  /** Teto de gasto de IA do tenant (ADR-016 por tenant). Gate do UsageService. */
-  async capsOf(userId: string): Promise<{ alert: Prisma.Decimal; hardCap: Prisma.Decimal }> {
-    const tenantId = await this.personalTenantId(userId);
+  /**
+   * Teto de gasto de IA do TENANT (ADR-026). Gate do UsageService.
+   *
+   * Recebe `tenantId`, nunca `userId`: nenhum caminho do sistema resolve teto a
+   * partir de pessoa. O motivo não é estilo — é que o pipeline da SPEC-032
+   * dispara de briefing público anônimo, onde não existe usuário para resolver.
+   *
+   * Abre o próprio `runInTenantContext`: `tenant_settings` tem RLS fail-closed,
+   * e ler sem contexto não dá erro — devolve zero linhas. Aqui isso seria pior
+   * que um erro: o upsert criaria uma linha nova com o DEFAULT (20 USD) e o
+   * gate passaria a medir contra um teto que ninguém configurou.
+   */
+  async capsOf(tenantId: string): Promise<{ alert: Prisma.Decimal; hardCap: Prisma.Decimal }> {
     const s = await this.prisma.withTenant([tenantId], (tx) =>
-      tx.settings.upsert({
-        where: { userId },
-        create: { userId, tenantId },
+      tx.tenantSettings.upsert({
+        where: { tenantId },
+        create: { tenantId },
         update: {},
       }),
     );
     return { alert: s.llmAlertUsdMonthly, hardCap: s.llmHardCapUsdMonthly };
+  }
+
+  /**
+   * Papel do usuário no tenant. Só `owner` altera o teto (ADR-026 decisão 4):
+   * teto é decisão de quem paga a fatura, e é o mesmo papel que já é o único a
+   * finalizar issue (ADR-011).
+   *
+   * A checagem mora aqui e não no `RoleGuard` porque `/settings` é rota global,
+   * sem `TenantGuard` — que é justamente quem popularia `req.role`.
+   */
+  private async assertOwner(userId: string, tenantId: string): Promise<void> {
+    const m = await this.prisma.membership.findFirst({
+      where: { userId, tenantId },
+      select: { role: true },
+    });
+    if (m?.role !== 'owner') {
+      throw new ForbiddenException(
+        'Só o dono do tenant altera o teto de gasto de IA',
+      );
+    }
+  }
+
+  /** Teto do tenant para leitura na tela, junto do papel de quem pediu. */
+  async tenantCaps(userId: string): Promise<{
+    llmAlertUsdMonthly: string;
+    llmHardCapUsdMonthly: string;
+    canEditCaps: boolean;
+  }> {
+    const tenantId = await this.personalTenantId(userId);
+    const { alert, hardCap } = await this.capsOf(tenantId);
+    const m = await this.prisma.membership.findFirst({
+      where: { userId, tenantId },
+      select: { role: true },
+    });
+    return {
+      llmAlertUsdMonthly: alert.toString(),
+      llmHardCapUsdMonthly: hardCap.toString(),
+      canEditCaps: m?.role === 'owner',
+    };
+  }
+
+  /** Altera o teto do tenant. Só `owner` (ADR-026 decisão 4). */
+  async updateTenantCaps(
+    userId: string,
+    input: { llmAlertUsdMonthly?: string; llmHardCapUsdMonthly?: string },
+  ) {
+    const alert = parseUsd(input.llmAlertUsdMonthly, 'Alerta de gasto');
+    const hardCap = parseUsd(input.llmHardCapUsdMonthly, 'Teto de gasto');
+    const tenantId = await this.personalTenantId(userId);
+    await this.assertOwner(userId, tenantId);
+    await this.prisma.withTenant([tenantId], (tx) =>
+      tx.tenantSettings.upsert({
+        where: { tenantId },
+        create: {
+          tenantId,
+          ...(alert !== undefined ? { llmAlertUsdMonthly: alert } : {}),
+          ...(hardCap !== undefined ? { llmHardCapUsdMonthly: hardCap } : {}),
+        },
+        update: {
+          ...(alert !== undefined ? { llmAlertUsdMonthly: alert } : {}),
+          ...(hardCap !== undefined ? { llmHardCapUsdMonthly: hardCap } : {}),
+        },
+      }),
+    );
+    return this.tenantCaps(userId);
   }
 
   async update(
@@ -94,8 +166,6 @@ export class SettingsService {
     if (canonThreshold !== undefined && (canonThreshold < 0 || canonThreshold > 1)) {
       throw new Error('Limiar de recusa deve estar entre 0 e 1');
     }
-    const alert = parseUsd(input.llmAlertUsdMonthly, 'Alerta de gasto');
-    const hardCap = parseUsd(input.llmHardCapUsdMonthly, 'Teto de gasto');
     const canon = canonThreshold !== undefined ? { canonicalRefusalThreshold: canonThreshold } : {};
     const tenantId = await this.personalTenantId(userId);
     await this.prisma.withTenant([tenantId], (tx) =>
@@ -106,15 +176,11 @@ export class SettingsService {
         tenantId,
         llmProvider: input.llmProvider,
         docsStalenessThresholdDays: threshold,
-        ...(alert !== undefined ? { llmAlertUsdMonthly: alert } : {}),
-        ...(hardCap !== undefined ? { llmHardCapUsdMonthly: hardCap } : {}),
         ...canon,
       },
       update: {
         llmProvider: input.llmProvider,
         docsStalenessThresholdDays: threshold,
-        ...(alert !== undefined ? { llmAlertUsdMonthly: alert } : {}),
-        ...(hardCap !== undefined ? { llmHardCapUsdMonthly: hardCap } : {}),
         ...canon,
       },
     }),

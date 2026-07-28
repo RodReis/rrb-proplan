@@ -2750,3 +2750,103 @@ verde. Suítes na base nova: **915 API** (125 suítes) · **252 web**.
 
 Para testar o login real no dev: `DEV_AUTH_BYPASS=false` e **reiniciar** a API — o
 `--watch` recompila código mas não relê o `.env`.
+
+---
+
+## SPEC-032 pré-requisito 1 — teto de IA por tenant (ADR-026) — `feito` (issue #157)
+
+**1º dos dois pré-requisitos do §4 da SPEC-032.** Não é fatia: o comportamento
+correto já estava escrito e datado no **ADR-026** (aprovado pelo PI em
+2026-07-27), então não havia escopo a decidir — só a decisão a executar.
+
+### O defeito, e por que a suíte verde não o via
+
+`Settings.userId` é `@unique` e `capsOf(userId)` resolvia
+`personalTenantId(userId)`. Três consequências, todas em produção hoje:
+
+1. **Um tenant com dois membros tinha dois tetos sobre a mesma soma**, sem regra
+   de desempate — o veredito do gate dependia de **quem chamou**.
+2. **Nem sempre existe um usuário**: o pipeline da SPEC-032 dispara do envio de
+   um briefing **público, anônimo**. O gate era literalmente inalcançável a
+   partir do caminho que mais precisa dele.
+3. `canSpend(projectId)` resolvia `project.userId` — o dono, não o bolso.
+
+Nada disso quebrava um teste, porque **nenhum teste afirmava de quem era o
+teto**. O `usage.service.spec.ts` passava `'u1'` para o parâmetro e o mock
+devolvia o mesmo teto para qualquer argumento: verde sem provar nada. O mock
+agora **recusa** um `tenantId` inesperado — foi a mudança que deu sentido ao
+resto.
+
+### Passos
+
+- [x] **`TenantSettings`** (`schema.prisma` + migration
+      `20260727150000_adr_026_tenant_settings`): `tenant_id` **UNIQUE**,
+      `ENABLE`+`FORCE` RLS como as demais raízes, `CHECK` de não-negativo. As
+      colunas `llm_alert_usd_monthly`/`llm_hard_cap_usd_monthly` **saíram** de
+      `settings`.
+- [x] **Backfill: vence o teto do `owner` de `Membership.created_at` mais
+      antiga** (decisão 3). `LEFT JOIN LATERAL` + `COALESCE` para o default —
+      tenant sem `owner` não casa no join e recebe 5/20 em vez de `NULL`.
+      **One-way e destrutiva por decisão**: os tetos de não-`owner` somem.
+- [x] **`capsOf(tenantId)`** — nunca `userId`. Abre o próprio
+      `runInTenantContext`.
+- [x] **`canSpendForTenant(tenantId)`** — o gate sem sessão que a SPEC-032 vai
+      consumir. `canSpend`/`canSpendForUser` continuam, resolvendo o tenant e
+      delegando.
+- [x] **Guarda de `owner`** (`assertOwner`) + rotas `GET`/`PUT
+      /settings/llm-caps`.
+- [x] **Tela**: `TenantCapsSection` lê de `/settings/llm-caps`; quem não é
+      `owner` vê os números **sem** campo editável.
+- [x] **19 testes novos na API** + **5 na web**; `tenant_settings` entrou na
+      auditoria de RLS do CI.
+
+### O UNIQUE é a correção, não um detalhe de DDL
+
+Dois tetos para o mesmo tenant era exatamente o estado de que estamos saindo, e
+ele vinha **de graça** do modelo antigo (`settings.user_id` UNIQUE = um teto por
+pessoa). Pôr o `UNIQUE` no `tenant_id` faz o banco recusar o estado em vez de
+confiar que o código não o crie — mesmo argumento pelo qual o ADR-026 rejeitou
+"desempatar dentro do `capsOf`": regra que só vive numa função é regra que a
+próxima query esquece.
+
+### Por que a guarda de `owner` ficou no service, não no `RoleGuard`
+
+O `RoleGuard`/`@RequireRole` já existe e seria o lugar óbvio, mas ele lê
+`req.role` — que quem popula é o `TenantGuard`, e `/settings` é rota **global**,
+sem `:tenant` no path. Usar o guard exigiria mover a rota para `/t/:tenant`,
+mudança de contrato que ninguém pediu. A checagem mora no `assertOwner`, e o
+teste garante que ela recusa **antes** de gravar.
+
+### `canEditCaps` vem do servidor
+
+A tela poderia inferir o papel, mas então teria duas fontes para a mesma regra.
+O `GET /settings/llm-caps` devolve `canEditCaps` junto do número, e a tela só
+obedece. Sem isso, o não-`owner` veria um campo que a API recusa — pior que
+campo ausente, porque parece ter salvado.
+
+### Dogfooding no navegador (2026-07-27) — feito
+
+Migração aplicada no **banco de dev real** e as telas abertas de verdade:
+
+- **Backfill preservou o teto configurado**: 10 USD do `owner`, não o default 20.
+- **Escrita pela tela**: 12 → 25 no campo, blur, confirmado no banco.
+- **`member` recusado**: com o papel rebaixado no banco, `PUT /settings/llm-caps`
+  devolveu **403** e o valor ficou intacto; a tela mostrou os números **sem campo
+  editável** e com o aviso *“Só o dono do workspace altera o teto”*.
+
+**Um susto que era meu, não do produto**: a 1ª tentativa de editar pela tela não
+persistiu. Causa: eu disparei `blur()` sintético por `js`, e o `onBlur` do React
+não roda assim. `PUT` direto na rota gravou, e a edição com `fill` + clique fora
+também — o defeito estava no meu script de verificação. Fica registrado porque a
+conclusão apressada seria “bug na tela”.
+
+**Watchers órfãos de novo**: 6 `nest --watch` acumulados seguravam a engine do
+Prisma (`EPERM` no `generate`) e um `vite` de 08:41 ocupava a 5180, derrubando o
+`pnpm dev` inteiro. Matar todos antes de subir.
+
+### Pendente
+- [ ] **Pré-requisito 2 da SPEC-032** (extração do módulo `llm`): **o ADR ainda
+      não existe**. O §4 da spec pede *"ADR novo + 1º PR"*, e ADR é do Cowork. O
+      PI decidiu em 2026-07-27 seguir com a extração **sem** o ADR escrito —
+      fica registrado aqui como **débito documental deliberado**, para o Cowork
+      carimbar depois. A fatia 21 só abre depois dessa extração.

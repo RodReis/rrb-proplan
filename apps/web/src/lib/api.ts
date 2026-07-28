@@ -329,14 +329,18 @@ export const api = {
       body: JSON.stringify(input),
     }),
   updateSettings: (
-    input: Partial<
-      Pick<
-        Settings,
-        'llmProvider' | 'docsStalenessThresholdDays' | 'llmAlertUsdMonthly' | 'llmHardCapUsdMonthly'
-      >
-    >,
+    input: Partial<Pick<Settings, 'llmProvider' | 'docsStalenessThresholdDays'>>,
   ) =>
     request<Settings>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  /** Teto de gasto do tenant (ADR-026). Rota própria — dono diferente de `/settings`. */
+  llmCaps: () => request<TenantCaps>('/settings/llm-caps'),
+  updateLlmCaps: (
+    input: Partial<Pick<TenantCaps, 'llmAlertUsdMonthly' | 'llmHardCapUsdMonthly'>>,
+  ) =>
+    request<TenantCaps>('/settings/llm-caps', {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
@@ -578,12 +582,22 @@ export interface DocGraph {
 
 export type LlmProvider = 'anthropic' | 'openai' | 'openrouter';
 
+/** Preferência de USUÁRIO. O teto de gasto saiu daqui (ADR-026) — ver `TenantCaps`. */
 export interface Settings {
   llmProvider: LlmProvider;
   docsStalenessThresholdDays: number;
+  availableProviders: LlmProvider[];
+}
+
+/**
+ * Teto de gasto de IA do TENANT (ADR-026). Separado de `Settings` porque o dono
+ * é outro: aquilo é escolha pessoal, isto é o bolso. `canEditCaps` vem do
+ * servidor — só `owner` escreve, e a tela não deve oferecer o que a API recusa.
+ */
+export interface TenantCaps {
   llmAlertUsdMonthly: string;
   llmHardCapUsdMonthly: string;
-  availableProviders: LlmProvider[];
+  canEditCaps: boolean;
 }
 
 /** Gasto de IA do mês corrente (SPEC-009) — alimenta a barra e a faixa de alerta. */
