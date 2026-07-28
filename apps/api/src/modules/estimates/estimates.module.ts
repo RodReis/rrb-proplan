@@ -1,9 +1,11 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
+import { ClientsModule } from '../clients/clients.module';
 import { IdentityModule } from '../identity/identity.module';
 import { LlmModule } from '../llm';
 import { EffortBreakdownService } from './application/effort-breakdown.service';
+import { EstimatesService } from './application/estimates.service';
 import { ESTIMATES_QUEUE } from './estimates.constants';
 import { EstimatesWorker } from './infrastructure/estimates.worker';
 import { EstimatesController } from './presentation/estimates.controller';
@@ -26,12 +28,17 @@ import { EstimatesController } from './presentation/estimates.controller';
 @Module({
   imports: [
     ArtifactsModule,
+    // Aprovar a estimativa move o card `ARTIFACTS_READY → CONTRACT_PENDING`
+    // (§2.11). O `estimates` **pede** a transição pelo service público de
+    // `clients` em vez de escrever em `client_projects`: a máquina de estados
+    // vive no `domain/` daquele módulo (ADR-001). Mesmo caminho do `artifacts`.
+    ClientsModule,
     LlmModule,
     IdentityModule,
     BullModule.registerQueue({ name: ESTIMATES_QUEUE }),
   ],
   controllers: [EstimatesController],
-  providers: [EffortBreakdownService, EstimatesWorker],
-  exports: [EffortBreakdownService],
+  providers: [EffortBreakdownService, EstimatesService, EstimatesWorker],
+  exports: [EffortBreakdownService, EstimatesService],
 })
 export class EstimatesModule {}

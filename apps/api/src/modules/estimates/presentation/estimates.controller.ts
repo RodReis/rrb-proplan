@@ -1,5 +1,14 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Controller, Get, Param, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Queue } from 'bullmq';
 import {
   AuthenticatedRequest,
@@ -8,8 +17,37 @@ import {
 import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { TenantGuard } from '../../identity/presentation/tenant.guard';
 import { EffortBreakdownService } from '../application/effort-breakdown.service';
+import { EstimatesService, type GenerateInput } from '../application/estimates.service';
 import { ESTIMATES_QUEUE } from '../estimates.constants';
+import type { DirectCost } from '../domain/calculation';
 import type { EffortJobData } from '../infrastructure/estimates.worker';
+
+interface GenerateEstimateBody {
+  directCosts?: unknown;
+  aiCostProjectedUsd?: unknown;
+}
+
+/**
+ * Normaliza os custos diretos digitados (§2.7): descarta item sem rótulo ou com
+ * valor não-numérico.
+ *
+ * Descartar e não corrigir: um valor ilegível "corrigido" para zero entraria no
+ * subtotal como se fosse decisão de alguém, e o item sumiria da conta sem
+ * sumir da tela. O que chega errado não entra.
+ */
+function normalizarCustos(bruto: unknown): DirectCost[] {
+  if (!Array.isArray(bruto)) return [];
+  const out: DirectCost[] = [];
+  for (const item of bruto) {
+    if (typeof item !== 'object' || item === null) continue;
+    const c = item as Record<string, unknown>;
+    const label = String(c.label ?? '').trim();
+    const valor = Number(c.valueBrl);
+    if (label === '' || !Number.isFinite(valor) || valor < 0) continue;
+    out.push({ label, valueBrl: String(c.valueBrl) });
+  }
+  return out;
+}
 
 /**
  * Decomposição de esforço no painel do prestador (SPEC-033 §6).
@@ -28,6 +66,7 @@ import type { EffortJobData } from '../infrastructure/estimates.worker';
 export class EstimatesController {
   constructor(
     private readonly effort: EffortBreakdownService,
+    private readonly estimates: EstimatesService,
     @InjectQueue(ESTIMATES_QUEUE) private readonly queue: Queue<EffortJobData>,
   ) {}
 
@@ -70,5 +109,54 @@ export class EstimatesController {
     );
 
     return { enqueued: true };
+  }
+
+  /** Versões da estimativa, mais recente primeiro (§6). */
+  @Get('client-projects/:id/estimates')
+  listEstimates(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.estimates.list(req.tenantId!, id);
+  }
+
+  /**
+   * Calcula uma versão nova (§6). **Sempre cria** — reestimar nunca sobrescreve
+   * (§2.10).
+   *
+   * `POST` e síncrono, ao contrário da decomposição: aqui **não há IA**, só
+   * soma e multiplicação sobre dados que já estão no banco. Enfileirar um
+   * cálculo determinístico de milissegundos só adiaria a resposta e obrigaria a
+   * tela a fazer polling por um número que já estaria pronto.
+   */
+  @Post('client-projects/:id/estimates/generate')
+  generateEstimate(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: GenerateEstimateBody,
+  ) {
+    const input: GenerateInput = {
+      directCosts: normalizarCustos(body?.directCosts),
+      aiCostProjectedUsd:
+        body?.aiCostProjectedUsd === undefined || body.aiCostProjectedUsd === null
+          ? undefined
+          : String(body.aiCostProjectedUsd),
+    };
+    return this.estimates.generate(req.tenantId!, id, req.userId!, input);
+  }
+
+  /** Uma versão, com a conta inteira. */
+  @Get('estimates/:id')
+  estimate(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.estimates.byId(req.tenantId!, id);
+  }
+
+  /**
+   * Aprova a estimativa. **Só aqui o card se move** (§2.11, §7.1) — o `approve`
+   * do `effort_breakdown` é aprovação de artefato comum e não move nada.
+   *
+   * Rota separada, método separado e rótulo separado na tela: se os dois botões
+   * parecerem o mesmo, a decisão do PI vira ambígua na prática.
+   */
+  @Post('estimates/:id/approve')
+  approve(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.estimates.approve(req.tenantId!, id, req.userId!);
   }
 }

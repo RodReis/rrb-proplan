@@ -3374,8 +3374,8 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 ### Passos
 
 - [x] **PR-1 — schema: `estimates`, `effort_breakdown` e os parâmetros do tenant**
-- [x] **PR-2 — a 5ª capacidade (`EffortEstimator`) + rotas de decomposição** *(este)*
-- [ ] **PR-3 — o cálculo determinístico** (3 cenários, contingência, custos, MVPs) e o `approve` que move o card
+- [x] **PR-2 — a 5ª capacidade (`EffortEstimator`) + rotas de decomposição**
+- [x] **PR-3 — o cálculo determinístico** (3 cenários, contingência, custos, MVPs) e o `approve` que move o card *(este)*
 - [ ] **PR-4 — parâmetros por workspace** (valor/hora, % contingência, câmbio) só-`owner`
 - [ ] **PR-5 — painel de estimativa no prestador**
 - [ ] Dogfooding no navegador
@@ -3551,3 +3551,90 @@ asserção queria dizer.
   (`GET .../effort-breakdown` e `POST .../effort-breakdown/generate`) e o
   `EstimatesController` registrado.
 - Relatório regenerado: **1492 testes** (1095 regras · 89 banco · 308 tela).
+
+### PR-3 — o que entrou
+
+O **cálculo**. `domain/calculation.ts` é regra pura — sem Prisma, sem HTTP, sem
+Nest —, e é o outro lado do ADR-012: a IA decompôs, aqui o **código calcula**.
+Nenhuma linha depende de um modelo de linguagem, e é isso que faz cada número
+conseguir mostrar a sua conta.
+
+**`Decimal`, nunca `number`.** Dinheiro em ponto flutuante acumula erro em
+frações de centavo (`0.1 + 0.2 !== 0.3`), e numa soma de 30 tarefas × valor/hora
+× multiplicador × contingência o desvio deixa de ser teórico. Mesmo motivo pelo
+qual `LlmUsage.costUsd` é `numeric` no banco. Na fronteira HTTP os `Decimal`
+viram **string**: serializados como número, valores com muitas casas perderiam
+precisão exatamente no dado que a fatia existe para manter exato.
+
+**Cada cenário carrega as suas parcelas.** `horasBrutas`, `horas`, `maoDeObra`,
+`custosDiretos`, `subtotal`, `contingencia` e `total` viajam separados (§2.5:
+*"linha própria e visível… nunca embutida"*). Devolver só o total obrigaria a
+tela a redividir para exibir a conta — e uma tela que recalcula é uma **segunda
+implementação da regra**, que diverge na primeira correção.
+
+**Os 3 cenários saem de somar as colunas, não de um fator global** (§2.4).
+Otimista = Σ`horasMin`, provável = Σ`horasProvavel`, pessimista = Σ`horasMax`. A
+diferença importa: a faixa de cada tarefa carrega a incerteza *daquela* tarefa, e
+um "provável ±X%" achataria a informação que o modelo produziu item a item.
+
+**A ordem das operações é a conta.** Multiplicador do grau de acabamento →
+subtotal → contingência. Aplicar o fator depois faria a contingência ser
+calculada sobre horas que não são as do orçamento. E a contingência incide sobre
+**mão de obra + custos diretos**: só sobre a mão de obra, uma estimativa com
+custo direto alto teria reserva proporcionalmente menor justo onde há mais a dar
+errado.
+
+**O custo de IA nunca entra no total dos cenários.** É linha informativa, não
+item do orçamento: somá-lo cobraria do cliente o custo de gerar a proposta dele.
+
+**Sem taxa de câmbio, não converte** — `incurredBrl` e `projectedBrl` ficam
+`null` e a tela mostra USD rotulado, fora do total (§2.6). Converter com taxa
+inventada seria pior que não converter: o número entraria no total e ninguém
+saberia que é chute.
+
+**O piso de 3 runs para projetar** (§2.8): média de 1 ou 2 execuções não é média,
+é a última execução com cara de estatística — e entraria na conta com aparência
+de número medido. Abaixo do piso, cai no campo digitado, rotulado. Com histórico,
+o valor é **calculado e o digitado é ignorado**: aceitar os dois deixaria o
+número exibido dependendo de qual caminho o código tomou. Em ambos os casos o
+rótulo é *"projeção"* — `isCalculated` diz **como** o número veio, não que ele
+deixou de ser estimativa.
+
+**Parâmetros viram snapshot na linha** (a decisão do PR-1, agora exercida): a
+`Estimate` guarda a conta que foi feita, não uma referência que pode mudar.
+
+**Decomposição em MVPs usa o cenário provável e não inclui contingência** — ela é
+do orçamento, não do grupo; distribuí-la faria a soma dos grupos *parecer* o
+total sem ser. Ordenação alfabética para a tabela não mudar de ordem a cada
+regeneração.
+
+**Leitura defensiva do `jsonb`**: a versão corrente do `effort_breakdown` pode ter
+sido **editada à mão** (§2.10 da SPEC-032) e edição humana não passa por schema.
+Item malformado é **descartado, nunca corrigido** — adivinhar o que um campo
+quebrado queria dizer produziria horas inventadas dentro de um cálculo que existe
+justamente para não ter nenhuma. Tarefa sem MVP cai num balde nomeado (`sem
+MVP`): some do agrupamento, não do orçamento.
+
+**`POST /estimates/generate` é síncrono**, ao contrário da decomposição: aqui
+**não há IA**, só soma e multiplicação sobre dados que já estão no banco.
+Enfileirar um cálculo determinístico de milissegundos só adiaria a resposta e
+obrigaria a tela a fazer polling por um número já pronto.
+
+**O `approve` que move o card** (§2.11, §7.1) — rota, método e rótulo separados
+do `approve` do artefato, porque *"se os dois botões parecerem o mesmo na tela, a
+decisão do PI vira ambígua na prática"*. Ator **nunca nulo**: há uma pessoa
+decidindo o preço que vai ao cliente. Aprovar duas vezes é **idempotente** (dois
+cliques não são um problema a reportar), e transição recusada **não desfaz a
+aprovação** — mesmo desenho do `ArtifactReviewService`. **Reestimar nunca chama
+`transition`** (§2.12): a versão nova fica disponível e o funil segue de onde
+estava.
+
+### PR-3 — verificação
+
+- **1257 testes verdes** (era 1184): **+73**, sendo 44 do cálculo puro.
+- As contas dos cenários estão **conferidas à mão** nos testes (20 h × R$ 200 =
+  R$ 4.000 · 15% = R$ 600 · total R$ 4.600), e há teste afirmando
+  `total = subtotal + contingência` nos três cenários.
+- Build OK e **API subida ao vivo** com as 4 rotas mapeadas (`GET`/`POST
+  .../estimates`, `GET /estimates/:id`, `POST /estimates/:id/approve`).
+- Relatório regenerado: **1565 testes** (1168 regras · 89 banco · 308 tela).
