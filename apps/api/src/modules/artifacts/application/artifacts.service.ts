@@ -15,6 +15,12 @@ import {
   type Capability,
 } from '../domain/capabilities';
 import { inputHashOf } from '../domain/input-hash';
+import {
+  REVIEWER_PROMPT_VERSION,
+  REVIEWER_SYSTEM,
+  buildReviewUser,
+  parseReview,
+} from '../domain/reviewer';
 import type { ArtifactsJobData } from '../infrastructure/artifacts.worker';
 
 /** Motivo de parada, em português — vai para `ArtifactRun.failureReason` e à tela. */
@@ -229,7 +235,63 @@ export class ArtifactsService {
       data: { currentVersionId: version.id, state: 'PENDING_REVIEW' },
     });
 
+    await this.revisar(version.id, cap.kind, runId, data, answers, conteudo);
+
     return conteudo;
+  }
+
+  /**
+   * Roda o `ArtifactReviewer` sobre a versão recém-gerada (§2.9).
+   *
+   * **Falhar aqui não derruba o artefato.** O parecer é conteúdo de tela, não
+   * gate: um revisor que não respondeu deixa o artefato sem anotação, e o botão
+   * de aprovar continua livre — que é exatamente a decisão 1 do PI. Propagar o
+   * erro faria o revisor bloquear na prática o que ele não pode bloquear por
+   * decisão, e pela pior via: um `catch` ausente.
+   */
+  private async revisar(
+    versionId: string,
+    kind: ArtifactKind,
+    runId: string,
+    data: ArtifactsJobData,
+    answers: Prisma.JsonValue,
+    conteudo: unknown,
+  ): Promise<void> {
+    try {
+      const client = this.llmFactory.create('anthropic');
+      const parecer = await this.recorder.runParsed(
+        client,
+        {
+          system: REVIEWER_SYSTEM,
+          user: buildReviewUser(kind, answers, conteudo),
+          maxTokens: 2000,
+          model: ARTIFACTS_MODEL,
+        },
+        {
+          projectId: null,
+          tenantId: data.tenantId,
+          artifactRunId: runId,
+          kind: `artifact_review_${kind}`,
+        },
+        (text) => parseReview(text),
+      );
+
+      await this.prisma.reviewVerdict.create({
+        data: {
+          artifactVersionId: versionId,
+          verdict: parecer.veredito,
+          rationale: [parecer.justificativa, ...parecer.pontos.map((p) => `- ${p}`)].join(
+            '\n',
+          ),
+          promptVersion: REVIEWER_PROMPT_VERSION,
+          model: ARTIFACTS_MODEL,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Revisor falhou para a versão ${versionId} (${kind}): ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   /** Sequencial por artefato — v1, v2..., como `BriefingVersion.version`. */
