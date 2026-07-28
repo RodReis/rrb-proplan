@@ -17,7 +17,24 @@ import {
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { STATE_LABELS } from './boardView';
 import { ArtifactsPanel } from './ArtifactsPanel';
+import { EstimatePanel } from './EstimatePanel';
 import { BriefingVersionPanel } from './BriefingVersionPanel';
+
+/**
+ * Estados em que o botão "Estimativa" aparece (SPEC-033 §2.2).
+ *
+ * Começa em `ARTIFACTS_READY` porque antes disso não há requisitos aprovados
+ * para decompor — o botão levaria a uma recusa do servidor. **Continua depois**
+ * de o card avançar: a estimativa aprovada precisa seguir consultável, e é dela
+ * que o contrato (SPEC-034) tira o valor.
+ */
+const ESTADOS_COM_ESTIMATIVA = [
+  'ARTIFACTS_READY',
+  'CONTRACT_PENDING',
+  'CONTRACT_APPROVED',
+  'IN_PRODUCTION',
+  'DELIVERED',
+];
 import {
   forgetToken,
   recallToken,
@@ -75,6 +92,8 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
   const [briefingFor, setBriefingFor] = useState<ClientProject | null>(null);
   /** Artefatos do pipeline de IA (SPEC-032 §2.12). */
   const [artifactsFor, setArtifactsFor] = useState<ClientProject | null>(null);
+  /** Estimativa: decomposição + cálculo (SPEC-033). */
+  const [estimateFor, setEstimateFor] = useState<ClientProject | null>(null);
   /** Estado do briefing por projeto (SPEC-031 §6). */
   const [briefings, setBriefings] = useState<Record<string, BriefingStatus>>({});
 
@@ -305,6 +324,20 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
                           Artefatos
                         </button>
                       )}
+                      {/* Estimativa a partir de `ARTIFACTS_READY` (SPEC-033
+                          §2.2): antes disso não há requisitos aprovados para
+                          decompor, e o botão levaria a uma recusa. Continua
+                          visível depois de o card avançar — a estimativa
+                          aprovada precisa ser consultável. */}
+                      {ESTADOS_COM_ESTIMATIVA.includes(project.state) && (
+                        <button
+                          type="button"
+                          onClick={() => setEstimateFor(project)}
+                          className="rounded-[8px] border border-accent-border px-3 py-1.5 text-xs font-semibold text-text2 transition-colors duration-150 hover:bg-accent-soft"
+                        >
+                          Estimativa
+                        </button>
+                      )}
                     </div>
                   </div>
                 </li>
@@ -348,6 +381,19 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
           onClose={() => setArtifactsFor(null)}
           // Aprovar o 4º move o card no funil (§2.7) — o quadro atrás precisa
           // refletir isso sem F5.
+          onCardMoved={onChanged}
+        />
+      )}
+
+      {estimateFor && (
+        <EstimatePanel
+          projectId={estimateFor.id}
+          projectTitle={estimateFor.title}
+          onClose={() => {
+            setEstimateFor(null);
+            void load();
+          }}
+          // Aprovar a estimativa move o card para `CONTRACT_PENDING` (§2.11).
           onCardMoved={onChanged}
         />
       )}

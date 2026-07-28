@@ -3376,9 +3376,9 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 - [x] **PR-1 — schema: `estimates`, `effort_breakdown` e os parâmetros do tenant**
 - [x] **PR-2 — a 5ª capacidade (`EffortEstimator`) + rotas de decomposição**
 - [x] **PR-3 — o cálculo determinístico** (3 cenários, contingência, custos, MVPs) e o `approve` que move o card
-- [x] **PR-4 — parâmetros por workspace** (valor/hora, % contingência, câmbio) só-`owner` *(este)*
-- [ ] **PR-5 — painel de estimativa no prestador**
-- [ ] Dogfooding no navegador
+- [x] **PR-4 — parâmetros por workspace** (valor/hora, % contingência, câmbio) só-`owner`
+- [x] **PR-5 — painel de estimativa no prestador** *(este)*
+- [x] Dogfooding no navegador
 
 ### PR-1 — o que entrou
 
@@ -3705,3 +3705,69 @@ tenant na URL) teria de escolher um workspace arbitrário para editar.
 - Build OK e **API subida ao vivo** com `GET` e `PATCH /t/:tenant/tenant-settings`
   mapeadas.
 - Relatório regenerado: **1591 testes** (1189 regras · 89 banco · 313 tela).
+
+### PR-5 — o que entrou
+
+O painel de estimativa, que fecha a fatia: parâmetros do workspace, os dois
+passos (decompor → calcular), as versões, a conta inteira em tela e o botão que
+move o card.
+
+**Os dois "aprovar" não podem parecer o mesmo botão** (§7.1) — e isso vive em
+texto, não em intenção. O que move o card se chama **"Aprovar estimativa e
+avançar o card"**, com a frase *"não confundir com aprovar a decomposição, que
+só marca as tarefas como revisadas"* logo abaixo. Enquanto a decomposição está
+pendente, o passo 1 diz que aprová-la **não** move o card. Sem essas frases,
+alguém aprova a decomposição, vê o card parado e conclui que o sistema não
+funcionou — a decisão do PI viraria ambígua na prática.
+
+**Nada na tela recalcula.** `scenarioLines` monta as parcelas na ordem da conta a
+partir do que o servidor mandou; há teste passando um `totalBrl` propositalmente
+inconsistente para provar que a tela **exibe o que recebeu**. Uma tela que refaz
+a conta é uma segunda implementação da regra.
+
+**Regras de leitura em `estimatesView.ts`, fora do React** — mesmo motivo do
+`artifactsView.ts`: é o que erra sem aparecer em revisão visual. `complexityLabel`
+existe porque o dado é `'media'` **sem acento** e exibi-lo cru já produziu defeito
+nesta frente (a etapa 9 mostrava `alta` no dogfooding da SPEC-031).
+
+**O botão aparece de `ARTIFACTS_READY` em diante**, e continua depois de o card
+avançar: a estimativa aprovada precisa seguir consultável — é dela que o contrato
+(SPEC-034) tira o valor.
+
+### Dogfooding (2026-07-28) — o ciclo inteiro contra dados reais
+
+Feito no "Projeto EPG2", o mesmo da Fatia 21.
+
+- **Decomposição real**: 31 tarefas em ~18 s, **US$ 0,0173** no ledger. As
+  garantias do schema **valeram no dado de verdade**: 31/31 faixas com
+  `min ≤ provável ≤ máx`, 2 grupos de MVP, e o `content` com **exatamente**
+  `tarefas` e `requisitosSemTarefa` — nenhum total escapou do modelo.
+- **Cálculo conferido à mão em tela**: 770 h × R$ 200 = R$ 154.000 · +R$ 1.200 de
+  custo direto = R$ 155.200 · 15% = R$ 23.280 · **total R$ 178.480**. Os
+  subtotais por MVP (660 + 110 h) somam exatamente o provável.
+- **Reestimar criou v2 e preservou v1** (R$ 177.100), como o §2.10 exige.
+- **Aprovar moveu o card** `ARTIFACTS_READY → CONTRACT_PENDING` com ator não
+  nulo e uma linha na trilha; a **2ª aprovação devolveu `alreadyApproved: true`,
+  `cardMoved: false`** e a trilha continuou com **uma** transição.
+- Custo de IA em USD, rotulado e **fora** do total, com o aviso em tela.
+
+**Um achado de ambiente, não de código**: a primeira tentativa deu **404 na rota
+de estimativas**. A causa foi `EADDRINUSE` **silencioso** — uma instância da API
+de horas antes ainda segurava a porta 3311, a nova morreu no boot, e a velha (sem
+as rotas desta fatia) respondeu. É a classe já registrada no repo; o que ela custou
+aqui foi um diagnóstico inicial errado. **O painel se comportou bem no incidente**:
+mostrou o 404 em tela em vez de falhar mudo.
+
+**Duas limitações do headless, verificadas como não sendo bug do produto**: o
+`fill`/`type` do browse não dispara o `onChange` de input controlado do React (o
+valor entra quando o evento nativo é disparado corretamente — testado), e o
+clique no botão de aprovar não chegou ao servidor pelo mesmo motivo. **A rota foi
+exercitada por `curl` e o resultado conferido no banco** — o comportamento do §2.11
+está provado, só não pelo caminho do clique sintético.
+
+### PR-5 — verificação
+
+- **365 testes no web** (era 311): **+54**, sendo 30 das regras puras e 22 do
+  painel.
+- Build do web OK, `tsc --noEmit` limpo.
+- Relatório regenerado: **1643 testes** (1189 regras · 89 banco · 365 tela).

@@ -13,16 +13,17 @@ updated: 2026-07-28
 > **Aprovada com a dependência do §4 em aberto, por decisão explícita do PI.**
 > O Cowork recomendou esperar a Fatia 21 (SPEC-032, issue #147) ser **aceita**
 > antes do carimbo, porque o `EffortEstimator` consome a `ArtifactVersion` de
-> `kind = requirements` como contrato de entrada, e essa fatia ainda é
-> `proplan:doing` — com PR-5 aberto e um achado do dogfooding (retry de 429)
-> aguardando decisão. O PI decidiu carimbar assim mesmo, em 2026-07-28.
+> `kind = requirements` como contrato de entrada, e essa fatia ainda era
+> `proplan:doing` naquele momento. O PI decidiu carimbar assim mesmo.
 >
-> **Consequência aceita, registrada aqui para não virar surpresa depois**: se o
-> contrato de `requirements` mudar até a Fatia 21 ser aceita — e o dogfooding
-> dessa fatia já corrigiu comportamento depois de suíte verde mais de uma vez —
-> esta spec precisará de emenda datada, não de reinterpretação silenciosa. O
-> ponto exato a reler nesse caso é o §6 (formato de `requirements` que o
-> `EffortEstimator` consome) e o §2.1.
+> **✅ Dependência resolvida no mesmo dia**: a **issue #147 foi finalizada
+> (`proplan:finalizado`) em 2026-07-28** — o PI aceitou a Fatia 21, e o
+> contrato de `requirements` estabilizou. A emenda datada que este cabeçalho
+> previa **não foi necessária**. O risco existiu e não se materializou;
+> o registro fica porque decisão de risco aceita conscientemente é o tipo de
+> coisa que se relê depois, não se apaga.
+>
+> **Emenda de 2026-07-28 — o contrato carrega horas, não dias.** Ver §3.
 
 ## 1. Objetivo
 
@@ -117,31 +118,43 @@ público) e o módulo `llm` — nunca o inverso.
 - **Referência de mercado** sem fonte + região + data (MVP3 §9): sem isso, o
   rótulo obrigatório é *"referência não verificada"*, e referência que precisa
   desse rótulo não ajuda a decidir — não entra.
-- **Cronograma com datas de início.** A fatia produz **duração em dias**,
-  nunca data (mesma restrição que a #149/contrato registra).
+- **Cronograma com datas de início.** Nenhuma fatia do MVP3 produz data.
+- **Duração em dias.** ~~A fatia produz duração em dias~~ → **removido por
+  emenda do PI em 2026-07-28**. Os cenários entregam **horas e dinheiro**
+  (`horasBrutas`, `horas`, `subtotalBrl`, `totalBrl`) e nada mais; a conversão
+  horas→dias não existe em lugar nenhum do MVP3.
+
+  > **Por que a emenda**: a decisão do PI de 2026-07-27 (#149) dizia que o
+  > contrato carregaria duração em dias, e esta spec repetia isso. A
+  > implementação da fatia (PRs de 2026-07-28) **não** produziu o campo — o
+  > `ScenarioResult` de `estimates/domain/calculation.ts` confirma: horas e
+  > BRL, sem dias. Confrontado com a lacuna, o PI **revisou a decisão de
+  > 27/07**: o contrato carrega **horas**. O texto acompanha o código, em vez
+  > de exigir retrabalho por causa de um papel escrito antes dele.
+  >
+  > O que sai junto: o divisor de horas produtivas por dia (o *"nominal 10h/dia
+  > e realista 6-8h produtivas"* do MVP3 §3) **não é implementado em fatia
+  > nenhuma**. Se voltar a ser desejado, é fatia própria — não um `/6` escondido
+  > numa tela.
 - Valor/hora por tipo de tarefa, senioridade ou cliente.
 - Parecer do `ArtifactReviewer` sobre a estimativa **calculada** — o revisor
   (SPEC-032 §2.9) se estende à saída do `EffortEstimator` (mesma regra: anota,
   nunca bloqueia), mas não tem o que opinar sobre soma e multiplicação, que são
   determinísticas e auditáveis por construção.
 
-## 4. Pré-requisitos — bloqueiam **código**, não mais a spec
+## 4. Pré-requisitos — todos resolvidos
 
-1. **Fatia 21 (SPEC-032) precisa estar entregue e aceita antes de esta fatia ser
-   codificada** — em 2026-07-28 é `proplan:doing` (issue #147). O
-   `EffortEstimator` consome `ArtifactVersion` de `kind = requirements` como
-   contrato de entrada.
+1. ✅ **Fatia 21 (SPEC-032) aceita** — issue **#147 `proplan:finalizado` em
+   2026-07-28**. O `EffortEstimator` consome `ArtifactVersion` de
+   `kind = requirements`, contrato agora estável.
 
-   > **O carimbo desta spec foi dado antes disso, por decisão do PI em
-   > 2026-07-28** (ver cabeçalho). A recomendação do Cowork era esperar: o
-   > dogfooding da Fatia 21 já corrigiu comportamento depois de suíte verde mais
-   > de uma vez, e o contrato de `requirements` só estabiliza no aceite. A
-   > decisão foi tomada com esse risco na mesa.
-   >
-   > **O que isso muda na prática**: `aprovada-pi` libera o Code a codificar
-   > quando a Fatia 21 for aceita — **não** a começar agora contra código em
-   > andamento. Se `requirements` mudar até lá, esta spec recebe **emenda
-   > datada** (§6 e §2.1 são os pontos a reler), nunca reinterpretação silenciosa.
+   > **Histórico, porque o processo importa mais que o desfecho**: o carimbo
+   > desta spec foi dado **antes** do aceite, por decisão do PI, contra a
+   > recomendação do Cowork — que era esperar, porque o dogfooding da Fatia 21
+   > já havia corrigido comportamento depois de suíte verde mais de uma vez. O
+   > aceite veio no mesmo dia e o risco não se materializou. Isso **não**
+   > transforma "carimbar antes do aceite" em prática recomendada: a decisão
+   > deu certo, o raciocínio que a desaconselhava continua de pé.
 
 2. ✅ **ADR-026 (teto por tenant)** e ✅ **ADR-027 (módulo `llm`)** — já
    entregues na Fatia 21, reaproveitados sem mudança.

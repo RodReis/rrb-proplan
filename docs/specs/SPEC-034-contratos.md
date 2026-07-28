@@ -2,19 +2,25 @@
 proplan: v1
 spec: SPEC-034
 fatia: 23
-status: rascunho # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
+status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi — aprovado pelo PI em 2026-07-28
 updated: 2026-07-28
 ---
 # SPEC-034 — Contratos: perfil, templates versionados, snapshot imutável e link público
 
-> **`rascunho` em 2026-07-28.** As decisões do PI de 2026-07-27 (corpo da #149)
-> e as 6 de 2026-07-28 (§8) estão incorporadas — **não há pergunta aberta**.
+> **`aprovada-pi` em 2026-07-28.** As decisões do PI de 2026-07-27 (corpo da
+> #149) e as 7 de 2026-07-28 (§8) estão incorporadas — **não há pergunta
+> aberta**.
 >
-> **Dependência dupla, e é dela que vem o carimbo**: o contrato congela
-> **escopo** (SPEC-032, `kind = scope`) e **valor** (SPEC-033, `Estimate`
-> aprovada). A SPEC-033 foi carimbada `aprovada-pi` em 2026-07-28 com a
-> dependência dela própria em aberto; encadear um segundo carimbo sobre isso
-> empilharia duas aprovações sobre a mesma incerteza. Ver §4.
+> **O que mudou entre o rascunho e o carimbo, no mesmo dia**: as duas objeções
+> que sustentavam o `rascunho` caíram por fato, não por insistência. (1) A
+> **Fatia 21 foi aceita** (#147 `proplan:finalizado`), estabilizando o `scope`.
+> (2) A **Fatia 22 saiu do papel**: `Estimate`, cálculo determinístico e o
+> `approve` que move o card já estão em código — o contrato de dados que esta
+> spec consome **existe e foi lido**, não é mais promessa.
+>
+> **E o exame desse código achou um buraco**: o `Estimate` implementado **não
+> produz duração em dias**, ao contrário do que a decisão de 27/07 previa. O PI
+> revisou: **o contrato carrega horas**. Ver §8.7 e §6.
 
 ## 1. Objetivo
 
@@ -48,12 +54,16 @@ padrão (`presentation/` · `application/` · `domain/` · `infrastructure/`).
 4. **Placeholders por substituição escapada**, nunca engine que avalie
    expressão: `{{provider_name}}`, `{{provider_document}}`, `{{provider_address}}`,
    `{{client_name}}`, `{{client_document}}`, `{{client_address}}`, `{{scope}}`,
-   `{{budget}}`, `{{duration_days}}`, `{{payment_terms}}`, `{{date}}`,
+   `{{budget}}`, `{{effort_hours}}`, `{{payment_terms}}`, `{{date}}`,
    `{{modality}}`. Placeholder desconhecido é **erro de validação na hora de
    salvar o template**, não texto cru vazando para o contrato do cliente.
+
+   > **`{{effort_hours}}`, não `{{duration_days}}`** (§8.7): o `Estimate`
+   > implementado entrega horas e dinheiro; dias não existem em fatia nenhuma
+   > do MVP3.
 5. **`Contract` é snapshot imutável**: copia — não referencia — prestador,
    cliente, escopo (da `ArtifactVersion` aprovada de `kind = scope`), valor e
-   duração em dias (da `Estimate` aprovada), texto renderizado e a
+   **horas** (da `Estimate` aprovada), texto renderizado e a
    `ContractTemplateVersion` usada. Editar qualquer origem depois **não** muda
    contrato emitido; refazer **emite contrato novo**, versionado.
 6. **Emitir contrato NÃO move o card.** Quem move para `CONTRACT_PENDING` é a
@@ -96,8 +106,9 @@ padrão (`presentation/` · `application/` · `domain/` · `infrastructure/`).
   desta fatia é **registro do prestador**, não assinatura — e a spec não deve
   sugerir o contrário em lugar nenhum da UI.
 - **Geração ou armazenamento de PDF** (§2.9).
-- **Data de início.** O contrato carrega **duração em dias** — nenhuma fatia do
-  MVP3 produz data (mesma restrição da SPEC-033 §3).
+- **Data de início e duração em dias.** O contrato carrega **horas**
+  (`{{effort_hours}}`) e valor. Nenhuma fatia do MVP3 produz data, e a
+  conversão horas→dias foi removida por emenda do PI em 2026-07-28 (§8.7).
 - **Segunda barreira de autenticação no link** (ex.: confirmar 4 dígitos do
   documento). Avaliada e descartada nesta fatia por atrito e tamanho; volta a
   ser candidata se o gatilho do §7.1 disparar.
@@ -105,19 +116,20 @@ padrão (`presentation/` · `application/` · `domain/` · `infrastructure/`).
 
 ## 4. Pré-requisitos
 
-1. **SPEC-032 (Fatia 21) aceita** — o `{{scope}}` vem da `ArtifactVersion`
-   aprovada de `kind = scope`.
-2. **SPEC-033 (Fatia 22) entregue e aceita** — `{{budget}}` e
-   `{{duration_days}}` vêm da `Estimate` aprovada, e é a aprovação dela que põe
-   o card em `CONTRACT_PENDING`, estado a partir do qual esta fatia opera.
+1. ✅ **SPEC-032 (Fatia 21) aceita** — #147 `proplan:finalizado` em 2026-07-28.
+   O `{{scope}}` vem da `ArtifactVersion` aprovada de `kind = scope`.
+2. **SPEC-033 (Fatia 22) entregue** — bloqueia **código**, não mais o carimbo.
+   `{{budget}}` e `{{effort_hours}}` vêm da `Estimate` aprovada, e é a
+   aprovação dela que põe o card em `CONTRACT_PENDING`, estado a partir do qual
+   esta fatia opera.
 
-   > **Por que esta spec não é carimbada junto**: a SPEC-033 recebeu
-   > `aprovada-pi` em 2026-07-28 **com a dependência dela em aberto**, por
-   > decisão do PI. Carimbar a SPEC-034 agora empilharia um segundo carimbo
-   > sobre a mesma incerteza — duas specs aprovadas contra um contrato de dados
-   > (`Estimate`) que ainda não existe em código. Uma vez é decisão de risco
-   > tomada de olhos abertos; duas vira hábito, e o hábito é o que este produto
-   > existe para detectar.
+   > **O que destravou o carimbo em 2026-07-28**: a Fatia 22 saiu do papel no
+   > mesmo dia — `Estimate`, `calculation.ts` e o `approve` que move o card
+   > estão em código. A objeção que sustentava o `rascunho` era *"aprovar
+   > contra contrato de dados que não existe"*; o contrato passou a existir e
+   > foi **lido**, não presumido. Foi essa leitura que produziu a emenda do
+   > §8.7 — a spec deixou de assumir um campo (`duration_days`) que a
+   > implementação não tem.
 
 3. **Nenhum ADR novo previsto.** Se a decisão de expor documento completo em URL
    pública for revisada (gatilho no §7.1), aí sim vira ADR — porque terá virado
@@ -192,14 +204,22 @@ padrão (`presentation/` · `application/` · `domain/` · `infrastructure/`).
 // artifacts (SPEC-032) — ArtifactVersion.content quando kind = 'scope'
 { entregaveis: string[]; foraDeEscopo: string[]; premissas: string[]; riscos: string[] }
 
-// estimates (SPEC-033) — Estimate aprovada
-{ scenarios: { provavel: { totalBrl: number; durationDays: number } } }
+// estimates (SPEC-033) — Estimate aprovada. Shape REAL, lido de
+// estimates/domain/calculation.ts em 2026-07-28 (não presumido):
+// ScenarioResult = { horasBrutas, horas, subtotalBrl, totalBrl } — strings.
+{ scenarios: { provavel: { horas: string; totalBrl: string } } }
 ```
 
-> **Ponto a reler se a SPEC-033 mudar** (§4): o contrato consome **um** número
-> de valor e **um** de duração. Qual cenário vira `{{budget}}` é decisão de
-> produto que a SPEC-033 §2 não fixa explicitamente — esta spec assume o
-> **provável**, e o assume **em voz alta** em vez de escolher em silêncio.
+> **Duas coisas que esta spec escolhe em voz alta, em vez de em silêncio:**
+>
+> 1. **Cenário `provavel`** vira `{{budget}}`/`{{effort_hours}}`. A SPEC-033 §2
+>    não fixa qual dos três vai para o contrato — prometer o otimista ao
+>    cliente seria o erro caro, e o pessimista perderia venda.
+> 2. **Os valores são `string`**, não `number` — o `calculation.ts` usa
+>    `Prisma.Decimal` e serializa como texto, de propósito (dinheiro em `Float`
+>    acumula erro de fração de centavo, ADR-016). O renderizador **não pode**
+>    passar por `Number()` no caminho: o contrato deve imprimir exatamente o
+>    que o `Estimate` congelou.
 
 **Modelos novos** (assinatura, não implementação):
 
@@ -211,12 +231,16 @@ padrão (`presentation/` · `application/` · `domain/` · `infrastructure/`).
   prestador).
 - `ContractTemplateVersion` — **imutável**: `version` sequencial por template,
   `body` (texto com placeholders), `createdBy`, `createdAt`.
-- `Contract` — raiz, **imutável**: `clientProjectId`, `modality`,
+- `Contract` — raiz, **imutável**: `clientProjectId`, `estimateId`, `modality`,
   `templateVersionId`, `renderedHtml`, `providerSnapshot` (`jsonb`),
-  `clientSnapshot` (`jsonb`), `scopeSnapshot` (`jsonb`), `budgetBrl`,
-  `durationDays`, `paymentTerms`, `version` sequencial por projeto,
-  `acceptedAt`, `acceptedBy`, `acceptanceChannel`, `acceptanceNote`,
-  `createdAt`.
+  `clientSnapshot` (`jsonb`), `scopeSnapshot` (`jsonb`), `budgetBrl`
+  (`Decimal(12,2)`), `effortHours` (`Decimal(12,2)`), `paymentTerms`,
+  `version` sequencial por projeto, `acceptedAt`, `acceptedBy`,
+  `acceptanceChannel`, `acceptanceNote`, `createdAt`.
+
+  > `estimateId` com `onDelete: Restrict`, mesmo padrão de
+  > `Estimate.effortVersionId`: o snapshot responde *"deste contrato saiu qual
+  > estimativa?"* sem depender de casar por timestamp.
 - `ContractLink` — token 256 bits, **só o hash persiste** (padrão
   `BriefingLink`): `contractId`, `tokenHash` @unique, `expiresAt` (default
   agora + 48 h), `revokedAt`, `createdAt`.
@@ -326,6 +350,22 @@ acesso.
 | 4 | Link depois do aceite | **Continua válido até expirar** | §2.10 |
 | 5 | Segunda barreira no link (4 dígitos do documento) | **Fora desta fatia** — atrito e tamanho; volta se o gatilho do §7.1 disparar | §3, §7.1 |
 | 6 | Expiração | **48 h** (revisa a decisão de 7 dias da #149, como mitigação da #1) | §2.8 |
+| 7 | Horas→dias: onde converte? | **Não converte. O contrato carrega horas** — revisa a decisão de 27/07 ("contrato carrega duração em dias") | §2.4, §3, §6 |
+
+**Sobre a decisão 7 — ela nasceu de ler o código, não a spec.** A Fatia 22 foi
+implementada em 2026-07-28 e o `ScenarioResult` de
+`estimates/domain/calculation.ts` entrega `horasBrutas`, `horas`, `subtotalBrl`
+e `totalBrl` — **nenhum campo de dias**. O papel de 27/07 prometia dias; o
+código não os produz, e o divisor de horas produtivas por dia (*"nominal 10h/dia
+e realista 6-8h produtivas"*, MVP3 §3) não foi implementado em fatia nenhuma.
+
+Havia quatro saídas: emendar a Fatia 22 para emitir dias (6h ou 8h/dia),
+converter aqui, ou tirar dias do contrato. O PI escolheu **tirar**. As duas
+alternativas rejeitadas e por quê: emendar uma fatia em andamento custaria
+retrabalho por causa de um papel escrito antes do código; converter na SPEC-034
+poria a conta de prazo em dois módulos e faria o número do contrato deixar de
+ser rastreável ao snapshot do `Estimate` — contra o princípio central desta
+fatia.
 
 **Não há pergunta aberta.**
 
@@ -336,8 +376,16 @@ tinha sido corrigido** em 2026-07-27 — ela diz, com todas as letras, que o
 arquivo não existe e que *"até lá, nada de código"*. Esta spec materializa o
 arquivo; o ponteiro deixa de ser promessa.
 
-**O que esta spec deliberadamente não faz**: virar `aprovada-pi` junto. A
-SPEC-033 foi carimbada com a dependência em aberto por decisão do PI, e isso é
-prerrogativa dele — mas repetir aqui transformaria uma exceção consciente em
-regra silenciosa. O carimbo desta fica para quando a Fatia 22 estiver entregue,
-ou para uma decisão explícita do PI que saiba que está sendo a segunda.
+**O carimbo veio no mesmo dia, e a razão mudou no meio.** O rascunho recusava
+`aprovada-pi` por um motivo concreto — a `Estimate` não existia em código, e
+aprovar contra contrato inexistente seria o segundo carimbo especulativo do dia.
+Horas depois, a Fatia 22 foi implementada e a objeção deixou de ter objeto.
+
+O que vale reter é o que a leitura do código produziu: a spec **assumia**
+`{{duration_days}}` e a implementação não tem esse campo. Se o carimbo tivesse
+saído antes — quando a única fonte era o papel de 27/07 — a SPEC-034 estaria
+aprovada com um placeholder impossível de preencher, e o defeito só apareceria
+no PR, com o texto jurídico já escrito em cima dele.
+
+Essa é a diferença entre esperar por burocracia e esperar por informação. A
+espera aqui durou uma tarde e evitou um retrabalho.
