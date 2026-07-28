@@ -1,5 +1,6 @@
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
+import { EstimatesController } from '../../estimates/presentation/estimates.controller';
 import { ArtifactsController } from './artifacts.controller';
 
 /**
@@ -52,7 +53,11 @@ function routesOf(controllers: readonly Function[]): Route[] {
 }
 
 describe('ArtifactVersion é imutável (SPEC-032 §6)', () => {
-  const routes = routesOf([ArtifactsController]);
+  // O `EstimatesController` (SPEC-033) entra na mesma varredura porque grava
+  // versões do `effort_breakdown` nas MESMAS tabelas. Deixá-lo de fora faria a
+  // garantia valer só para o controller que já a respeitava — e a rota nova
+  // seria exatamente onde a imutabilidade se perderia sem ninguém notar.
+  const routes = routesOf([ArtifactsController, EstimatesController]);
 
   it('a varredura encontra rotas — senão o teste passaria vazio', () => {
     // Sem esta âncora, um erro na leitura dos metadados transformaria o teste
@@ -76,7 +81,17 @@ describe('ArtifactVersion é imutável (SPEC-032 §6)', () => {
   });
 
   it('as leituras são GET', () => {
-    const leituras = routes.filter((r) => r.path.includes('client-projects'));
+    // Rota sob `client-projects` que NÃO termina numa ação explícita
+    // (`/generate`, `/approve`…) é leitura de estado, e leitura é GET. O
+    // filtro por ação existe desde a SPEC-033: `POST
+    // .../effort-breakdown/generate` mora sob o mesmo prefixo e é escrita
+    // legítima — enfileira um job. Sem o recorte, a asserção passaria a
+    // proibir toda escrita sob `client-projects`, que não é o que ela quer
+    // dizer.
+    const ACOES = ['/generate', '/approve', '/reject'];
+    const leituras = routes.filter(
+      (r) => r.path.includes('client-projects') && !ACOES.some((a) => r.path.endsWith(a)),
+    );
 
     expect(leituras.length).toBeGreaterThan(0);
     expect(leituras.every((r) => r.method === RequestMethod.GET)).toBe(true);

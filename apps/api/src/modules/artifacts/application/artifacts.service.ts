@@ -294,6 +294,123 @@ export class ArtifactsService {
     }
   }
 
+  /**
+   * Abre um `ArtifactRun` **sob demanda**, fora do pipeline do
+   * `BriefingSubmitted` (SPEC-033 §7.2).
+   *
+   * O run da SPEC-032 nasce do evento e roda as 4 capacidades em sequência. O
+   * `effort_breakdown` **não pertence a esse run**: nasce de um run próprio,
+   * aberto depois de `ARTIFACTS_READY`. A chave de idempotência
+   * (`briefingVersionId`, `kind`, `inputHash`) continua valendo porque
+   * `briefingVersionId` não muda — o que muda é apenas *quando* o run é aberto.
+   *
+   * Não repete a checagem de "já existe run" do `runPipeline`: lá ela impede o
+   * pipeline automático de rodar duas vezes; aqui o gatilho é humano e clicar
+   * "gerar de novo" é o próprio ato de pedir um run novo. Quem barra o
+   * desperdício é o índice parcial `(artifact_id, input_hash) WHERE author='ai'`,
+   * que recusa gravar a mesma saída duas vezes.
+   */
+  async openExternalRun(input: {
+    tenantId: string;
+    clientProjectId: string;
+    briefingVersionId: string;
+    kind: ArtifactKind;
+  }): Promise<string> {
+    const run = await this.prisma.artifactRun.create({
+      data: {
+        tenantId: input.tenantId,
+        clientProjectId: input.clientProjectId,
+        briefingVersionId: input.briefingVersionId,
+        status: 'RUNNING',
+        completedKinds: [],
+      },
+      select: { id: true },
+    });
+    return run.id;
+  }
+
+  /**
+   * Fecha um run aberto por `openExternalRun`.
+   *
+   * `motivo` é texto legível em português — é o que o painel mostra quando o
+   * teto estoura ou o schema não valida (§2.5 da SPEC-032, herdado aqui).
+   */
+  async closeExternalRun(
+    runId: string,
+    status: 'COMPLETED' | 'FAILED',
+    concluidas: ArtifactKind[],
+    motivo: string | null,
+  ): Promise<void> {
+    await this.fecharRun(runId, status, concluidas, motivo);
+  }
+
+  /**
+   * Grava um artefato gerado **fora** do pipeline das 4 capacidades — hoje só o
+   * `effort_breakdown` da SPEC-033 (§7.2).
+   *
+   * Existe para que o módulo `estimates` **não escreva** em `artifacts`,
+   * `artifact_versions` nem `artifact_runs`. A regra do ADR-001 é que módulo não
+   * toca entidade interna de outro; a alternativa — o `estimates` fazendo
+   * `prisma.artifactVersion.create` — funcionaria hoje e desmancharia a fronteira
+   * em silêncio, porque `PrismaService` é global e nada barraria o import.
+   *
+   * O que este método deliberadamente **não** faz: decidir *quando* gerar,
+   * montar prompt ou validar schema. Isso é do `estimates`, que é o dono da
+   * capacidade. Aqui só se persiste no formato que o painel já sabe ler.
+   */
+  async saveExternalVersion(input: {
+    tenantId: string;
+    clientProjectId: string;
+    kind: ArtifactKind;
+    content: unknown;
+    inputHash: string;
+    promptVersion: string;
+    model: string;
+    artifactRunId: string;
+  }): Promise<{ artifactId: string; versionId: string; version: number }> {
+    const artifact = await this.prisma.artifact.upsert({
+      where: {
+        clientProjectId_kind: {
+          clientProjectId: input.clientProjectId,
+          kind: input.kind,
+        },
+      },
+      create: {
+        tenantId: input.tenantId,
+        clientProjectId: input.clientProjectId,
+        kind: input.kind,
+        state: 'PENDING_REVIEW',
+      },
+      update: {},
+      select: { id: true },
+    });
+
+    const version = await this.prisma.artifactVersion.create({
+      data: {
+        tenantId: input.tenantId,
+        artifactId: artifact.id,
+        version: await this.proximaVersao(artifact.id),
+        content: input.content as Prisma.InputJsonValue,
+        author: 'ai',
+        inputHash: input.inputHash,
+        promptVersion: input.promptVersion,
+        model: input.model,
+        artifactRunId: input.artifactRunId,
+      },
+      select: { id: true, version: true },
+    });
+
+    await this.prisma.artifact.update({
+      where: { id: artifact.id },
+      // Volta a `PENDING_REVIEW` mesmo se já estava aprovado: regenerar produz
+      // conteúdo que ninguém revisou ainda, e manter `APPROVED` faria a
+      // aprovação anterior valer para um texto novo.
+      data: { currentVersionId: version.id, state: 'PENDING_REVIEW' },
+    });
+
+    return { artifactId: artifact.id, versionId: version.id, version: version.version };
+  }
+
   /** Sequencial por artefato — v1, v2..., como `BriefingVersion.version`. */
   private async proximaVersao(artifactId: string): Promise<number> {
     const ultima = await this.prisma.artifactVersion.findFirst({
