@@ -32,7 +32,9 @@ export class OpenAiCompatClient implements LlmClient {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: this.config.model,
+        // `req.model` sobrepõe o do adapter quando o chamador declara o seu
+        // (SPEC-032 §2.4); sem ele, o modelo global do env.
+        model: req.model ?? this.config.model,
         max_tokens: req.maxTokens,
         messages: [
           { role: 'system', content: req.system },

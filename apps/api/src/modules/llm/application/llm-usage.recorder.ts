@@ -12,6 +12,23 @@ export interface RecordContext {
   attempt?: number;
   /** Hash do prompt (SPEC-011) — liga esta chamada ao artefato Insight. Ausente fora do gate. */
   inputHash?: string;
+  /**
+   * Dono do gasto (ADR-026). **Obrigatório quando não há `projectId`**: sem um
+   * dos dois, a linha nasce com `tenant_id` NULL, e a policy do `llm_usage`
+   * trata NULL como *"pertence ao tenant ativo"* — o gasto de um tenant
+   * apareceria no teto de quem estivesse olhando.
+   *
+   * Com `projectId`, o recorder o resolve sozinho (`Project.tenantId`) e este
+   * campo é dispensável. O pipeline da SPEC-032 **não tem** `projectId` (é
+   * `ClientProject`, outro domínio), então ele passa o tenant explicitamente.
+   */
+  tenantId?: string;
+  /**
+   * Liga a chamada ao run do pipeline de artefatos (SPEC-032 §5). É o que faz
+   * *"quanto custou este briefing"* ser consulta ao **ledger**, nunca derivação
+   * de `ArtifactVersion` (ADR-016).
+   */
+  artifactRunId?: string;
 }
 
 /**
@@ -141,6 +158,8 @@ export class LlmUsageRecorder {
       await this.prisma.llmUsage.create({
         data: {
           projectId: ctx.projectId,
+          tenantId: await this.tenantOf(ctx),
+          artifactRunId: ctx.artifactRunId ?? null,
           kind: ctx.kind,
           provider,
           model,
@@ -165,6 +184,37 @@ export class LlmUsageRecorder {
       this.logger.warn(
         `Falha ao gravar LlmUsage (${provider}/${model}, ${ctx.kind}): ${err instanceof Error ? err.message : err}`,
       );
+    }
+  }
+
+  /**
+   * Dono do gasto. Explícito quando o chamador o informa; senão, resolvido do
+   * projeto.
+   *
+   * **Por que isto não existia até agora, e por que é um bug e não um detalhe**:
+   * a coluna `tenant_id` nasceu na Fatia 8 com um backfill único, e nada nunca
+   * a preencheu depois — toda linha gravada desde então tem NULL. A policy do
+   * `llm_usage` aceita NULL de propósito (o histórico órfão pertence ao tenant
+   * ativo, decisão F4), então nada quebrou e ninguém viu. O que a SPEC-032
+   * cobra é justamente o caso em que isso deixa de ser inofensivo: o pipeline
+   * roda **sem sessão**, e uma linha NULL faria o gasto do briefing de um
+   * tenant ser somado no teto de qualquer um que olhasse.
+   *
+   * Falha na resolução devolve `null` em vez de estourar: a regra de ouro do
+   * recorder é que o ledger nunca derruba a chamada. Linha sem tenant é ruim;
+   * perder o trabalho que o usuário pediu é pior.
+   */
+  private async tenantOf(ctx: RecordContext): Promise<string | null> {
+    if (ctx.tenantId) return ctx.tenantId;
+    if (!ctx.projectId) return null;
+    try {
+      const project = await this.prisma.project.findUnique({
+        where: { id: ctx.projectId },
+        select: { tenantId: true },
+      });
+      return project?.tenantId ?? null;
+    } catch {
+      return null;
     }
   }
 
