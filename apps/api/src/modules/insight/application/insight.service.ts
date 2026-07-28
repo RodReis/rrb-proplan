@@ -5,8 +5,7 @@ import { SettingsService } from '../../settings/application/settings.service';
 import { IngestionService } from '../../ingestion/application/ingestion.service';
 import { ResolutionService } from '../../ingestion/application/resolution.service';
 import { Entity, ENTITIES } from '../../ingestion/domain/entity';
-import { LlmUsageRecorder } from '../../llm/application/llm-usage.recorder';
-import { UsageService } from '../../llm/application/usage.service';
+import { LlmClientFactory, LlmRequest, LlmUsageRecorder, UsageService } from '../../llm';
 import { selectContext } from '../domain/context-budget';
 import { buildSummaryUser, SUMMARY_SYSTEM } from '../domain/summary-prompt';
 import { parseSummary, StateSummary } from '../domain/summary';
@@ -27,8 +26,6 @@ import {
 import { summarizeDoc } from '../domain/summarize-doc';
 import { buildFallbackUser, FALLBACK_SYSTEM } from '../domain/fallback-prompt';
 import { computeInputHash } from '../domain/input-hash';
-import { LlmClientFactory } from '../../llm/infrastructure/llm-client.factory';
-import { LlmRequest } from '../../llm/domain/llm-client';
 
 /** Entidades com fallback inferido quando ausentes (eixo C, Fatia 7). */
 type FallbackEntity = 'architecture' | 'design';

@@ -8,7 +8,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { InsightModule } from './modules/insight/insight.module';
-import { LlmModule } from './modules/llm/llm.module';
+import { LlmModule } from './modules/llm';
 import { BoardModule } from './modules/board/board.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { ActivityModule } from './modules/activity/activity.module';

@@ -2855,7 +2855,7 @@ Prisma (`EPERM` no `generate`) e um `vite` de 08:41 ocupava a 5180, derrubando o
 
 ## SPEC-032 pré-requisito 2 — extração do módulo `llm` — `feito` (issue #159)
 
-**Refatoração pura, sem comportamento novo** (SPEC-032 §7.2). Move para um
+**Refatoração pura, sem comportamento novo** (SPEC-032 §7.2 e **ADR-027**). Move para um
 módulo próprio o que o `artifacts` (Fatia 21) precisa chamar: porta, adapters,
 ledger, preço e gate do teto.
 
@@ -2899,9 +2899,11 @@ dependeriam de o insight existir. São coisas independentes agora.
 
 ### Verificação
 
-- **984 testes verdes** — exatamente a mesma contagem de antes da extração, que
-  é o resultado esperado de uma movimentação pura. Suítes de `insight` + `llm`:
-  15 arquivos, 87 casos.
+- **987 testes verdes**: 984 — exatamente a mesma contagem de antes da
+  extração, que é o resultado esperado de uma movimentação pura — mais os 3 do
+  arch-spec novo. Nenhuma asserção existente precisou mudar: teste que muda de
+  expectativa numa "refatoração" é sinal de que ela mudou comportamento
+  (ADR-027, decisão 4).
 - **API subida ao vivo**: zero erros no boot, `Mapped {/usage/llm/current-month,
   GET}` e `Mapped {/usage/llm, GET}` idênticas, e `GET /usage/llm/current-month`
   devolvendo o gasto real contra o teto do tenant (`capUsd: 10`, do
@@ -2912,12 +2914,40 @@ dependeriam de o insight existir. São coisas independentes agora.
 ocupada por instância velha. Se eu tivesse testado a rota sem olhar o log, teria
 verificado o código **anterior** à extração e chamado de sucesso.
 
-### Débito documental deliberado
+### O ADR-027 chegou no meio da implementação — e reprovou o 1º corte
 
-O §4 da spec pede **"ADR novo + 1º PR"** para esta extração, e **o ADR não
-existe** — ADR é do Cowork. O PI decidiu em 2026-07-27 seguir sem ele. Fica
-registrado para o Cowork carimbar depois; a decisão de arquitetura embutida aqui
-é a fronteira do módulo `llm` descrita acima.
+A entrega começou como **débito documental**: o §4 pede "ADR novo + 1º PR", o
+ADR não existia e o PI mandou seguir sem ele. **O Cowork escreveu o ADR-027
+enquanto eu implementava**, e ele nomeia exatamente o que eu tinha feito como a
+**alternativa rejeitada nº 2**: *"mover os arquivos e confiar no `exports` do
+`@Module`… é o meio do caminho, e é o mais perigoso dos três: dá a aparência de
+fronteira enquanto os imports profundos continuam livres"*.
+
+Estava certo. O `exports` do Nest resolve **injeção de dependência**; não resolve
+o import de TypeScript, que é onde o acoplamento mora. Meu 1º corte deixava
+`artifacts` livre para escrever `from '../../llm/domain/llm-client'` — a mesma
+violação do ADR-001, no endereço novo. As decisões 2 e 3 do ADR foram
+implementadas depois:
+
+- **Barril `modules/llm/index.ts`** (decisão 2) — superfície pública única e
+  explícita. Todo consumidor passou a importar de `'../../llm'`.
+- **`llm-public-surface.arch.spec.ts`** (decisão 3) — 3 casos: import profundo
+  de fora reprova; o barril precisa exportar os 5 símbolos do ADR; e o `llm` não
+  pode importar do `insight` (a dependência foi invertida, e se voltar a
+  apontar para lá a extração se desfaz em silêncio).
+
+A 1ª versão do ADR pedia a regra "com `no-restricted-imports`, checada no CI" —
+e **o repo não usa ESLint**: não há config nem script de lint em lugar nenhum.
+Usei a varredura estática em `*.arch.spec.ts`, o mecanismo da casa para a mesma
+classe de regra (`tenant-scope.arch.spec.ts`, `batch-transaction.arch.spec.ts`),
+porque o que o ADR exige é *verificação por máquina* — introduzir ESLint no meio
+de uma refatoração pura seria escopo que ninguém pediu. **Apontado no PR, o
+Cowork corrigiu o ADR no mesmo dia**: o mecanismo virou detalhe de
+implementação, a checagem automática continua obrigatória.
+
+**A guarda foi provada reprovando**: com um import profundo reintroduzido de
+propósito no `fake-recorder.ts`, o teste falha e **nomeia o arquivo infrator**.
+Teste de arquitetura que nunca reprova não protege nada.
 
 **Com isto, os dois pré-requisitos do §4 estão cumpridos e a Fatia 21 (#147)
 está liberada para código.**

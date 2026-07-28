@@ -1,7 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
-import { LlmModule } from '../llm/llm.module';
+import { LlmModule } from '../llm';
 import { SettingsModule } from '../settings/settings.module';
 import { IngestionModule } from '../ingestion/ingestion.module';
 import { InsightService } from './application/insight.service';
