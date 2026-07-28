@@ -33,6 +33,17 @@ describe('withTenantPrefix: rotas escopadas por tenant', () => {
     ['/artifacts/a-1/approve', '/t/T/artifacts/a-1/approve'],
     ['/artifacts/a-1/reject', '/t/T/artifacts/a-1/reject'],
     ['/artifacts/a-1/versions', '/t/T/artifacts/a-1/versions'],
+    // SPEC-033 §6. As duas primeiras já cairiam em `/client-projects`, mas
+    // estão aqui porque é a regressão que interessa — não a implementação
+    // atual da lista.
+    [
+      '/client-projects/cp-1/effort-breakdown',
+      '/t/T/client-projects/cp-1/effort-breakdown',
+    ],
+    ['/client-projects/cp-1/estimates', '/t/T/client-projects/cp-1/estimates'],
+    ['/estimates/e-1', '/t/T/estimates/e-1'],
+    ['/estimates/e-1/approve', '/t/T/estimates/e-1/approve'],
+    ['/tenant-settings', '/t/T/tenant-settings'],
   ])('%s recebe o prefixo', (path, esperado) => {
     setActiveTenant(TENANT);
     expect(withTenantPrefix(path)).toBe(esperado.replace('/t/T', `/t/${TENANT}`));

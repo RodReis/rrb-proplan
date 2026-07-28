@@ -5,6 +5,7 @@ import { ClientsModule } from '../clients/clients.module';
 import { IdentityModule } from '../identity/identity.module';
 import { LlmModule } from '../llm';
 import { EffortBreakdownService } from './application/effort-breakdown.service';
+import { EstimateSettingsService } from './application/estimate-settings.service';
 import { EstimatesService } from './application/estimates.service';
 import { ESTIMATES_QUEUE } from './estimates.constants';
 import { EstimatesWorker } from './infrastructure/estimates.worker';
@@ -38,7 +39,12 @@ import { EstimatesController } from './presentation/estimates.controller';
     BullModule.registerQueue({ name: ESTIMATES_QUEUE }),
   ],
   controllers: [EstimatesController],
-  providers: [EffortBreakdownService, EstimatesService, EstimatesWorker],
+  providers: [
+    EffortBreakdownService,
+    EstimatesService,
+    EstimateSettingsService,
+    EstimatesWorker,
+  ],
   exports: [EffortBreakdownService, EstimatesService],
 })
 export class EstimatesModule {}
