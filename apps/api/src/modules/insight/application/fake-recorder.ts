@@ -1,5 +1,5 @@
-import { LlmUsageRecorder } from './llm-usage.recorder';
-import { UsageService } from './usage.service';
+import { LlmUsageRecorder } from '../../llm/application/llm-usage.recorder';
+import { UsageService } from '../../llm/application/usage.service';
 
 /** Gate de teto fake que sempre permite gastar (para specs que não testam o teto). */
 export function fakeUsageGate(): UsageService {

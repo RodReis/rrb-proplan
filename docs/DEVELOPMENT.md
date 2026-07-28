@@ -2850,3 +2850,74 @@ Prisma (`EPERM` no `generate`) e um `vite` de 08:41 ocupava a 5180, derrubando o
       PI decidiu em 2026-07-27 seguir com a extração **sem** o ADR escrito —
       fica registrado aqui como **débito documental deliberado**, para o Cowork
       carimbar depois. A fatia 21 só abre depois dessa extração.
+
+---
+
+## SPEC-032 pré-requisito 2 — extração do módulo `llm` — `feito` (issue #159)
+
+**Refatoração pura, sem comportamento novo** (SPEC-032 §7.2). Move para um
+módulo próprio o que o `artifacts` (Fatia 21) precisa chamar: porta, adapters,
+ledger, preço e gate do teto.
+
+### O que motivou
+
+`artifacts` importando `insight/domain/llm-client` é **violação direta e
+greppável do ADR-001** — módulos se comunicam por interfaces públicas
+exportadas, nunca importando entidade interna de outro módulo.
+
+**Hoje não havia importador externo**: a extração é preventiva. Feita depois
+que o `artifacts` existisse, seria refatoração sob pressão de uma fatia grande —
+o pior momento para mover fronteira de módulo.
+
+### O que moveu (11 arquivos, todos `git mv`)
+
+| de `insight/` | para `llm/` |
+|---|---|
+| `domain/llm-client.ts` · `domain/cost.ts` (+spec) | `domain/` |
+| `application/llm-usage.recorder.ts` (+spec) | `application/` |
+| `application/usage.service.ts` (+spec) | `application/` |
+| `presentation/usage.controller.ts` | `presentation/` |
+| `infrastructure/{llm-client.factory,anthropic.client,openai-compat.client}.ts` | `infrastructure/` |
+
+`git mv` de propósito: o git registrou os 11 como **rename**, então `git log
+--follow` continua achando a história de cada arquivo. Um delete+create teria
+apagado o rastro de decisões como o `priceSnapshot` (ADR-016).
+
+### O `UsageService` foi junto, e a lista do §7.2 não o citava
+
+O §7.2 fala em "porta, recorder, fábrica, adapters e preço". O gate do teto não
+está lá, mas o **§2.6 manda o `artifacts` verificá-lo antes de enfileirar e
+antes de cada capacidade**. Deixá-lo no `insight` só adiaria a violação que a
+extração existe para evitar: o `artifacts` importaria `insight` para consultar
+dinheiro. Foram junto o `UsageController` e as rotas `/usage/llm` — **que não
+mudaram de caminho** (critério de aceite).
+
+### `LlmModule` entrou também no `AppModule`
+
+Chegaria de carona pelo `InsightModule`, mas então a rota `/usage/llm` e o gate
+dependeriam de o insight existir. São coisas independentes agora.
+
+### Verificação
+
+- **984 testes verdes** — exatamente a mesma contagem de antes da extração, que
+  é o resultado esperado de uma movimentação pura. Suítes de `insight` + `llm`:
+  15 arquivos, 87 casos.
+- **API subida ao vivo**: zero erros no boot, `Mapped {/usage/llm/current-month,
+  GET}` e `Mapped {/usage/llm, GET}` idênticas, e `GET /usage/llm/current-month`
+  devolvendo o gasto real contra o teto do tenant (`capUsd: 10`, do
+  `TenantSettings` da entrega anterior).
+- Nenhuma migração de banco.
+
+**`EADDRINUSE` de novo** (3ª vez nesta sessão): a 1ª subida achou a porta 3311
+ocupada por instância velha. Se eu tivesse testado a rota sem olhar o log, teria
+verificado o código **anterior** à extração e chamado de sucesso.
+
+### Débito documental deliberado
+
+O §4 da spec pede **"ADR novo + 1º PR"** para esta extração, e **o ADR não
+existe** — ADR é do Cowork. O PI decidiu em 2026-07-27 seguir sem ele. Fica
+registrado para o Cowork carimbar depois; a decisão de arquitetura embutida aqui
+é a fronteira do módulo `llm` descrita acima.
+
+**Com isto, os dois pré-requisitos do §4 estão cumpridos e a Fatia 21 (#147)
+está liberada para código.**

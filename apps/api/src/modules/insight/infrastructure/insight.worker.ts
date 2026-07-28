@@ -8,7 +8,7 @@ import {
   DocsSyncedEvent,
 } from '../../ingestion/application/sync.service';
 import { InsightService } from '../application/insight.service';
-import { UsageService } from '../application/usage.service';
+import { UsageService } from '../../llm/application/usage.service';
 import { INSIGHT_QUEUE } from '../insight.constants';
 
 interface InsightJobData {
