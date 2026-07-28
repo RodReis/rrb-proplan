@@ -19,7 +19,7 @@ import {
   type AttachmentDto,
 } from '../application/briefing-attachment.service';
 import { MAX_FILE_BYTES } from '../domain/file-signature';
-import { SlidingWindowRateLimiter } from '../domain/rate-limiter';
+import { SlidingWindowRateLimiter } from '../../../shared/rate-limiter';
 
 /**
  * Forma do arquivo que o Multer entrega.

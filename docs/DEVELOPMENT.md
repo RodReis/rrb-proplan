@@ -3375,8 +3375,8 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 
 - [x] **PR-1 — schema: perfil, templates, contrato, link e `resolve_contract_link`**
 - [x] **PR-2 — perfil do prestador + templates versionados**
-- [x] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé) *(este)*
-- [ ] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar)
+- [x] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé)
+- [x] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar) *(este)*
 - [ ] **PR-5 — aceite + painel** (canal de lista fechada, move o card, tela no prestador)
 - [x] Dogfooding do PR-3 no navegador *(pela API, com sessão real — a tela é do PR-5)*
 
@@ -3712,6 +3712,71 @@ saiu correto no documento.
    contrato imprime fielmente o que existe; formatar no render seria inventar
    apresentação que a spec não pediu. Se o PI quiser CPF/CNPJ normalizado, é
    decisão de produto sobre o cadastro (SPEC-029), não sobre esta fatia.
+
+### PR-4 — o que entrou
+
+O **2º link público do produto** (§7.2): `GET /c/:token`, sem sessão, servindo
+um documento que traz CPF/CNPJ e endereço completos das duas partes. Mais as
+duas rotas de ciclo de vida no painel (gerar/regenerar e revogar) e a leitura do
+estado do link.
+
+**O fail-closed já estava provado antes deste PR.** O §7.2 exige o teste da
+`resolve_contract_link` **antes** do controller, e o PR-1 o escreveu — 7 casos
+no `contracts-rls.int-spec.ts`, incluindo o que afirma que um `SELECT` direto
+sem contexto devolve zero (o bug que a função existe para evitar). Este PR
+consome a garantia; não a refez.
+
+**O rate limiter mudou de casa, não foi duplicado.** `SlidingWindowRateLimiter`
+saiu de `briefing/domain/` para `shared/`. A fronteira entre módulos proíbe o
+`contracts` importar entidade interna do `briefing`, e a alternativa era uma
+segunda cópia do mesmo limitador — com os mesmos testes, envelhecendo em
+paralelo. Mover custa 3 imports; duplicar custaria para sempre. Os 3 call sites
+do briefing seguem verdes.
+
+**`Retry-After` passou a existir de verdade.** O critério do §5 pede o header no
+429. O produto **não o emitia em rota nenhuma**: o `description` da
+`HttpException` do Nest não vira header — vira `cause`, que morre no servidor. O
+comentário do limitador prometia `Retry-After` desde a SPEC-029 e ninguém
+entregava. Agora sai por `res.setHeader` antes do throw, provado ao vivo
+(`Retry-After: 4`).
+
+**Estado que não serve responde 200, não 404.** O código de status é observável
+por quem sonda: um 404 para inexistente e 200 para revogado distinguiria os
+dois, que é exatamente a diferença que o não-diferencial (§5) proíbe expor. Os
+quatro estados devolvem 200 com a página explicando — e nenhuma delas cita
+tenant, cliente, projeto ou id de link.
+
+**O aviso é provado por POSIÇÃO, não por presença.** A SPEC-031 já pagou esse
+defeito uma vez, com um aviso invisível na etapa 9. O teste compara o índice do
+aviso com o do corpo do contrato: presença é o que passa quando o aviso está no
+rodapé que ninguém rola até.
+
+**A página não tem `<form>`, `<button>` nem `<input>`** — ausência provada por
+teste. Aceite anônimo seria assinatura sem nenhuma garantia de assinatura
+(§2.7); quem registra o aceite é o prestador, no painel (PR-5).
+
+**A página não reescapa o `renderedHtml`.** Ele foi escapado na emissão e é
+imutável — reescapar transformaria `&amp;` em `&amp;amp;` e a página exibiria um
+documento diferente do que foi emitido. Há teste nos dois sentidos.
+
+**Revogar entrou na lista nominal de exceções da guarda de imutabilidade**, e a
+guarda do PR-2 reprovou o PR-4 até que a decisão fosse escrita — que é o
+desenho: a exceção aparece no diff. O link é **credencial de acesso**, não
+documento; revogar não toca o contrato, e um `DELETE contracts/:id` continua
+derrubando o teste.
+
+### Verificação do PR-4
+
+- **1368 testes verdes** em `regras` (era 1306: +62); 124 em `banco`, 365 em `tela`
+- `tsc --noEmit` limpo, build OK, as 4 rotas novas mapeadas ao vivo sem `EADDRINUSE`
+- **Dogfooding pela API, com o contrato v1 do PR-3**: link gerado com expiração
+  em 48 h exatas; os 4 headers conferidos na resposta real (`no-store`,
+  `no-cache`, `noindex, nofollow`, `text/html`); aviso acima do contrato;
+  revogação com efeito **na requisição seguinte**; rate limit barrando com
+  `Retry-After: 4`
+- **Auditoria conferida no banco**: 5 eventos, nenhum com IP, user agent ou
+  token em claro; o acesso ao link revogado também auditado; token inexistente
+  **não** gerou evento (não há tenant a descobrir)
 
 ---
 
