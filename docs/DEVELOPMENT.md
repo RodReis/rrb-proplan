@@ -3378,7 +3378,7 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 - [x] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé) *(este)*
 - [ ] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar)
 - [ ] **PR-5 — aceite + painel** (canal de lista fechada, move o card, tela no prestador)
-- [ ] Dogfooding no navegador
+- [x] Dogfooding do PR-3 no navegador *(pela API, com sessão real — a tela é do PR-5)*
 
 ### PR-1 — o que entrou
 
@@ -3649,6 +3649,69 @@ do documento — nunca um `TypeError` derrubando a emissão.
   mapeadas (`POST`/`GET client-projects/:id/contracts`, `GET contracts/:id`),
   sem `EADDRINUSE`.
 - Relatório regenerado **com o carimbo** (`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`).
+
+### PR-3 — dogfooding no navegador
+
+Feito em 2026-07-28 no projeto **EPG2** (cliente Rafaela), pela API real com a
+sessão autenticada do browser — **não pela tela**, que é do PR-5. O que a suíte
+não pega e o dogfooding pegou está abaixo.
+
+**As quatro recusas saíram na ordem, com dado de verdade.** O estado do dev
+tinha as quatro travas armadas ao mesmo tempo, então cada uma apareceu ao
+derrubar a anterior — que é exatamente como o prestador vai encontrá-las:
+
+1. `Edite e salve o template desta modalidade antes de emitir o primeiro contrato`
+2. `O escopo precisa estar aprovado antes de emitir o contrato.`
+3. `Preencha o perfil do prestador antes de emitir o primeiro contrato.`
+4. (a 4ª, da estimativa, já estava satisfeita — a Fatia 22 aprovou uma no dev)
+
+**A trava do seed destravou pelo ato certo**: salvar a v2 do template pela rota
+do PR-2 virou `isSeedExample=false` e `readyToIssue=true`, e só então a emissão
+passou.
+
+**O contrato emitido, conferido como documento e não como JSON**: v1 com
+R$ 178.480,00, 770 horas, template v2, estimativa v2, 3.074 caracteres de HTML.
+Renderizado no browser, lê-se como contrato — títulos, cláusulas numeradas,
+escopo em lista, disclaimer em itálico no rodapé.
+
+**Imutabilidade provada mexendo no dado vivo, não em mock.** Depois de emitir:
+trocado o `legalName` do prestador por `NOME TROCADO DEPOIS DA EMISSAO` e salva
+uma v3 do template com uma cláusula 11 nova. O contrato v1 relido pela API veio
+**byte a byte idêntico** — nome original preservado, cláusula nova ausente,
+`templateVersion` ainda 2. E emitir de novo produziu a **v2 com o texto novo**,
+com a v1 intacta ao lado: é a diferença entre copiar e referenciar, vista no
+banco.
+
+**Emitir não moveu o card — e a prova é temporal.** A trilha de
+`client_status_transitions` mostra a última transição às **20:42:44.076**, 16 ms
+depois da aprovação do escopo (`reviewed_at` 20:42:44.06). Os dois contratos
+foram criados às **20:43:21** e **20:44:17**, e **nenhuma transição** existe
+depois disso. O §2.6 vale em produção, não só no arch-spec.
+
+**O teste de XSS refeito com dado hostil no banco.** O nome do cliente virou
+`<script>alert(1)</script> & **Cia**` e um contrato foi emitido em cima disso: o
+`<script>` aparece **como texto legível** na página, `document.querySelectorAll('script').length` é **0**, o `**` não virou negrito e o `&` saiu como `&amp;` — não
+`&amp;amp;`. É o mesmo caso do teste unitário, agora com o dado atravessando
+Prisma, `jsonb` e HTTP. Dado de teste restaurado ao fim.
+
+**`&` no nome do prestador foi deliberado.** O perfil foi cadastrado como
+`RRB Software & Cia Ltda` justamente para exercer o reescape no caminho real —
+saiu correto no documento.
+
+**Duas observações que não são deste PR, registradas para o PI:**
+
+1. **O card regrediu `CONTRACT_PENDING → ARTIFACTS_READY`** quando o escopo foi
+   aprovado. É transição permitida (`funnel.ts`) e vem do `moverSeCompleto` do
+   `ArtifactReviewService` (Fatia 21), que move o card ao completar os 4
+   artefatos — inclusive para trás, quando o card já estava adiante. Não afeta a
+   emissão (que não exige estado de card, só escopo e estimativa aprovados), mas
+   um card andando para trás por efeito colateral de outra tela é do tipo que
+   ninguém entende depois.
+2. **O documento do cliente sai sem máscara** (`35027047000123`), porque está
+   cru no banco — o do prestador, digitado com máscara, saiu com máscara. O
+   contrato imprime fielmente o que existe; formatar no render seria inventar
+   apresentação que a spec não pediu. Se o PI quiser CPF/CNPJ normalizado, é
+   decisão de produto sobre o cadastro (SPEC-029), não sobre esta fatia.
 
 ---
 
