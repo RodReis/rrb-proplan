@@ -97,6 +97,11 @@ model Tenant {
   fileAssets     FileAsset[]
   // Teto de gasto de IA (ADR-026): 1:1, o bolso é do tenant.
   llmSettings    TenantSettings?
+  // Pipeline de IA (SPEC-032): as três são raízes, pelo mesmo motivo do
+  // FileAsset — o painel busca cada uma direto por `id`.
+  artifacts      Artifact[]
+  artifactVersions ArtifactVersion[]
+  artifactRuns   ArtifactRun[]
 
   @@map("tenants")
 }
@@ -467,6 +472,12 @@ model LlmUsage {
   // mostrar tokens/custo por linha. Nullable: chamadas fora do fluxo de gate
   // (ex.: proposeCards) não têm hash. NÃO é fonte de gasto — só chave.
   inputHash            String?        @map("input_hash")
+  // Liga a chamada ao run do pipeline de artefatos que a disparou (SPEC-032).
+  // É o que faz "quanto custou este briefing" ser CONSULTA AO LEDGER — derivar
+  // o custo de `ArtifactVersion` é exatamente o que o ADR-016 proíbe (o ledger
+  // é a fonte; o artefato é o produto). Nullable porque o ledger é append-only
+  // e anterior a esta fatia: toda linha do `insight` continua sem run.
+  artifactRunId        String?        @map("artifact_run_id")
   priceMissing         Boolean        @default(false) @map("price_missing")
   priceSnapshot        Json?          @map("price_snapshot") // as 4 tarifas usadas, congeladas
   pricedAt             DateTime?      @map("priced_at")
@@ -478,6 +489,9 @@ model LlmUsage {
   @@index([createdAt])
   @@index([projectId, createdAt])
   @@index([projectId, kind, inputHash])
+  // "Quanto custou este briefing" é uma varredura por run. Sem índice, a
+  // pergunta que justifica a coluna faz seq scan no ledger, que só cresce.
+  @@index([artifactRunId])
   @@map("llm_usage")
 }
 
@@ -730,6 +744,8 @@ model ClientProject {
   transitions ClientStatusTransition[]
   briefingLinks BriefingLink[]
   briefingVersions BriefingVersion[]
+  artifacts   Artifact[]
+  artifactRuns ArtifactRun[]
 
   @@index([clientId, deletedAt])
   @@index([state])
@@ -833,6 +849,7 @@ model BriefingVersion {
   clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
   briefingLink    BriefingLink  @relation(fields: [briefingLinkId], references: [id], onDelete: Cascade)
   files           FileAsset[]
+  artifactRuns    ArtifactRun[]
 
   @@unique([clientProjectId, version])
   @@unique([briefingLinkId, contentHash])
@@ -934,4 +951,165 @@ model Segment {
   label String
 
   @@map("segments")
+}
+
+// ===========================================================================
+// Pipeline de IA — artefatos versionados com aprovação humana (SPEC-032).
+//
+// As três primeiras são RAÍZES de tenancy (`tenant_id` na linha), não filhas
+// por JOIN, pelo mesmo motivo do `FileAsset` (ADR-025): as rotas do §6 buscam
+// artefato, versão e run DIRETO POR `id`, e `ClientProject` é neta de `Client`
+// — a policy viraria um JOIN de três níveis no caminho de toda leitura, que é
+// policy que ninguém relê. `ReviewVerdict` é a exceção: pendura em
+// `ArtifactVersion`, nunca é buscado sozinho, herda o corte por JOIN.
+// ===========================================================================
+
+enum ArtifactKind {
+  normalize
+  scope
+  requirements
+  site_prompt
+}
+
+enum ArtifactState {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  FAILED
+}
+
+// Quem escreveu a versão. NÃO é metadado opcional (§7.4.1): sem ele a linhagem
+// some e ninguém mais sabe o que o modelo produziu e o que o humano mudou.
+enum ArtifactAuthor {
+  ai
+  human
+}
+
+enum ArtifactRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// Um artefato por (`ClientProject`, `kind`). O conteúdo NÃO mora aqui — mora
+// nas versões. Esta linha é o estado revisável e o ponteiro para a corrente.
+model Artifact {
+  id              String        @id @default(uuid())
+  tenantId        String        @map("tenant_id")
+  clientProjectId String        @map("client_project_id")
+  kind            ArtifactKind
+  state           ArtifactState @default(PENDING_REVIEW)
+  // Versão exibida no painel. Nullable no instante entre criar o artefato e
+  // gravar a 1ª versão, e em `FAILED` sem nenhuma versão válida.
+  currentVersionId String?      @map("current_version_id")
+  // Motivo da rejeição (§5: "rejeitar registra motivo"). Some numa aprovação
+  // posterior? Não — fica, porque a trilha de por que já foi rejeitado uma vez
+  // é justamente o que o dono vai querer reler.
+  rejectionReason String?       @map("rejection_reason")
+  reviewedAt      DateTime?     @map("reviewed_at")
+  reviewedBy      String?       @map("reviewed_by")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  versions        ArtifactVersion[]
+
+  // Um artefato por tipo, por projeto. As tentativas viram VERSÕES, não linhas
+  // novas aqui — é o que faz "os 4 aprovados" (§2.7) ser contável.
+  @@unique([clientProjectId, kind])
+  @@index([tenantId, createdAt])
+  @@map("artifacts")
+}
+
+// IMUTÁVEL. Editar cria versão nova com `author = human` e `parentVersionId`
+// (§2.10) — nunca reescreve a da IA. Regenerar também cria nova, mesmo com
+// `inputHash` idêntico (§2.11).
+model ArtifactVersion {
+  id              String         @id @default(uuid())
+  tenantId        String         @map("tenant_id")
+  artifactId      String         @map("artifact_id")
+  // Sequencial POR artefato — v1, v2..., como `BriefingVersion.version`.
+  version         Int
+  content         Json
+  author          ArtifactAuthor
+  // A versão da IA que esta edição humana derivou. Nullable: a v1 da IA não
+  // tem pai.
+  parentVersionId String?        @map("parent_version_id")
+  // Hash canônico do insumo (§2.8). NULL em versão humana — texto escrito à
+  // mão não tem insumo para hashear, e inventar um hash seria mentira com cara
+  // de chave (§7.4.2). É o que obriga o índice único a ser PARCIAL.
+  inputHash       String?        @map("input_hash")
+  promptVersion   String?        @map("prompt_version")
+  // NULL em versão humana: nenhum modelo a produziu.
+  model           String?
+  editedBy        String?        @map("edited_by")
+  // O run que a gerou. NULL em versão humana (nasce fora do pipeline).
+  artifactRunId   String?        @map("artifact_run_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  artifact        Artifact       @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  parentVersion   ArtifactVersion?  @relation("VersionLineage", fields: [parentVersionId], references: [id], onDelete: SetNull)
+  children        ArtifactVersion[] @relation("VersionLineage")
+  artifactRun     ArtifactRun?   @relation(fields: [artifactRunId], references: [id], onDelete: SetNull)
+  verdicts        ReviewVerdict[]
+
+  @@unique([artifactId, version])
+  // O único por (artifactId, inputHash) é PARCIAL — `WHERE author = 'ai'` — e
+  // não cabe no `@@unique` do Prisma. Vive na migration em SQL puro; ver a nota
+  // lá. Sem o parcial, duas edições humanas colidiriam no NULL (no Postgres
+  // NULLs não colidem, mas o `regenerate` da IA com hash repetido colidiria).
+  @@index([artifactId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("artifact_versions")
+}
+
+// Uma execução do pipeline sobre uma `BriefingVersion`. O CUSTO NÃO MORA AQUI
+// — mora no ledger `LlmUsage.artifactRunId` (ADR-016). Guardar custo aqui
+// criaria a segunda verdade sobre dinheiro que o ADR proíbe.
+model ArtifactRun {
+  id                String            @id @default(uuid())
+  tenantId          String            @map("tenant_id")
+  clientProjectId   String            @map("client_project_id")
+  briefingVersionId String            @map("briefing_version_id")
+  status            ArtifactRunStatus @default(RUNNING)
+  // Capacidades já concluídas, na ordem. Teto estourado no meio (§5) para o run
+  // em FAILED, e o que já gerou continua visível e aprovável.
+  completedKinds    ArtifactKind[]    @map("completed_kinds")
+  attempts          Int               @default(1)
+  // Motivo legível, em português — é o que o painel mostra quando o teto
+  // estoura ou o schema não valida (§2.5).
+  failureReason     String?           @map("failure_reason")
+  startedAt         DateTime          @default(now()) @map("started_at")
+  finishedAt        DateTime?         @map("finished_at")
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientProject     ClientProject     @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  briefingVersion   BriefingVersion   @relation(fields: [briefingVersionId], references: [id], onDelete: Cascade)
+  versions          ArtifactVersion[]
+
+  @@index([clientProjectId, startedAt])
+  @@index([briefingVersionId])
+  @@index([tenantId, startedAt])
+  @@map("artifact_runs")
+}
+
+// Parecer do `ArtifactReviewer` sobre uma versão. ANOTA, NUNCA BLOQUEIA
+// (§2.9): jamais consultado como gate de aprovação — é conteúdo de tela.
+// Bloquear daria à IA poder de veto por via indireta.
+//
+// Filha por JOIN (`artifact_versions` → `tenant_id`), não raiz: nunca é
+// buscada por `id` solto, sempre junto da versão.
+model ReviewVerdict {
+  id                String          @id @default(uuid())
+  artifactVersionId String          @map("artifact_version_id")
+  // Livre de propósito: o revisor anota, e enum aqui viraria a tentação de
+  // ler `verdict = 'reject'` como gate.
+  verdict           String
+  rationale         String
+  promptVersion     String?         @map("prompt_version")
+  model             String?
+  createdAt         DateTime        @default(now()) @map("created_at")
+  artifactVersion   ArtifactVersion @relation(fields: [artifactVersionId], references: [id], onDelete: Cascade)
+
+  @@index([artifactVersionId])
+  @@map("review_verdicts")
 }
