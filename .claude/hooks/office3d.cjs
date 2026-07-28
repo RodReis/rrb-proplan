@@ -103,24 +103,21 @@ function slim(payload) {
   return out
 }
 
-function inferProvider(payload) {
-  if (payload?.provider === 'codex' || payload?.provider === 'claude') return payload.provider
-
-  // O Codex do VS Code pode acionar o hook compatível sem `provider`.
-  // O Claude Code moderno envia `transcript_path`; sem ele, tratamos como Codex.
-  return payload?.transcript_path ? 'claude' : 'codex'
-}
-
 function preparePayload(payload, cwd = process.cwd()) {
   if (!payload || typeof payload !== 'object') return payload
   const out = { ...payload }
   if (!out.cwd) out.cwd = cwd
-  out.provider = inferProvider(out)
+  // F1.2 (ANALISE-TROCA-ABAS): provider pela IDENTIDADE do hook, não por
+  // heurística. Este arquivo só é instalado em `.claude/hooks` — tudo que
+  // passa por aqui É Claude. A inferência antiga classificava eventos do
+  // Claude sem `transcript_path` como codex, silenciava o watcher e criava
+  // mismatch de provider no orquestrador.
+  out.provider = 'claude'
   return slim(out)
 }
 
 // Permite `require()` nos testes sem disparar a leitura de stdin.
-module.exports = { slim, slimValue, slimTodos, slimResponse, inferProvider, preparePayload }
+module.exports = { slim, slimValue, slimTodos, slimResponse, preparePayload }
 
 function main() {
 const chunks = []
