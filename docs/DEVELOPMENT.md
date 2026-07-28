@@ -3350,7 +3350,136 @@ Depois do FIX #166, com API e web de pé:
 
 ---
 
-## Fatia 22 (SPEC-033) — Estimativa: cálculo determinístico e decomposição por IA — `em andamento`
+## Fatia 23 (SPEC-034) — Contratos: perfil, templates versionados, snapshot imutável e link público — `em andamento`
+
+Issue **#149** (spec `aprovada-pi` 2026-07-28). Congela escopo (SPEC-032) e valor
+(SPEC-033) num **contrato-snapshot imutável**, gerado de um template versionado e
+acessível ao cliente por **link público auditado e de leitura**, com o aceite
+registrado pelo prestador no painel.
+
+**É a fatia com o maior custo de erro do MVP3** (#149), e a razão é dupla: expõe
+dado pessoal de duas partes numa URL sem autenticação, e produz um documento que
+alguém pode tratar como vinculante. As duas coisas são escopo, não rodapé.
+
+**Liberada em 2026-07-28**: o §4 da spec condicionava o código à entrega da Fatia
+22, e a #148 foi aceita (`proplan:finalizado`) nessa data. O `Estimate` que esta
+fatia consome existe em código e **foi lido** — foi essa leitura que produziu a
+emenda do §8.7 (o contrato carrega **horas**, não dias: o `ScenarioResult` não
+tem campo de dias, e o divisor de horas produtivas/dia não existe em fatia
+nenhuma do MVP3).
+
+Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
+(senão o PR fica sem check nenhum).
+
+### Passos
+
+- [x] **PR-1 — schema: perfil, templates, contrato, link e `resolve_contract_link`** *(este)*
+- [ ] **PR-2 — perfil do prestador + templates versionados** (só-`owner`, validação de placeholder ao salvar, trava do `isSeedExample`)
+- [ ] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé)
+- [ ] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar)
+- [ ] **PR-5 — aceite + painel** (canal de lista fechada, move o card, tela no prestador)
+- [ ] Dogfooding no navegador
+
+### PR-1 — o que entrou
+
+Cinco tabelas (`provider_profiles`, `contract_templates`,
+`contract_template_versions`, `contracts`, `contract_links`), dois enums, a
+função `resolve_contract_link` e o seed dos três templates-exemplo. Sem módulo,
+sem rota, sem renderização — o que entra aqui é a **forma dos dados**, porque é
+a decisão mais cara de desfazer.
+
+**O contrato é snapshot, não referência.** É a regra que organiza a fatia
+inteira, e o schema já a reflete: `provider_snapshot`, `client_snapshot`,
+`scope_snapshot`, `budget_brl` e `effort_hours` são **cópia**. Se o contrato
+lesse o cliente ou a estimativa por FK, corrigir o endereço do cliente meses
+depois mudaria em silêncio o que está escrito num documento **já enviado** — e
+nada falharia. As FKs que sobram (`estimate_id`, `template_version_id`) existem
+para responder *"de onde este número saiu?"*, não para alimentar o texto — e são
+`RESTRICT` pelo mesmo motivo do `Estimate.effortVersionId`: `CASCADE` levaria
+junto um contrato já entregue, `SET NULL` deixaria o documento órfão da origem.
+
+**`rendered_html` é gravado, não recalculado na leitura.** Renderizar de novo a
+cada acesso permitiria que uma mudança no renderizador alterasse, meses depois,
+um documento que o cliente já leu.
+
+**`contracts` é raiz de tenancy**; `contract_template_versions` e
+`contract_links` são filhas por JOIN. O critério é o padrão de acesso, o mesmo
+do `FileAsset` (ADR-025) e do `Estimate`: as rotas de link e de aceite buscam
+**direto por `id`** e `client_projects` é neta de `clients` — a policy viraria um
+JOIN de três níveis no caminho de uma escrita que move card. As duas filhas nunca
+são buscadas sozinhas fora do contexto do pai.
+
+**`expires_at` é NOT NULL — a diferença deliberada em relação ao
+`briefing_links`.** Lá a expiração é opcional; aqui o link expõe CPF/CNPJ e
+endereço das **duas** partes (§2.7), e link sem prazo seria dado pessoal legível
+para sempre por quem tiver a URL. A coluna NOT NULL é o que impede o "esqueci de
+definir" — a decisão 6 do PI (48 h) precisa de um lugar onde não dependa de o
+service lembrar.
+
+**Os CHECKs, e por que nenhum é decorativo.** Todos barram erro que **não levanta
+exceção** e produz um documento plausível:
+
+| CHECK | o que ele impede |
+|---|---|
+| `contracts_acceptance_triple` | aceite sem ator ou sem canal — é o ato que move o card para `CONTRACT_APPROVED`, e "aceito por ninguém" é o fechamento frágil que este produto existe para detectar |
+| `contracts_budget_positive` | R$ 0,00 **com aparência de conta feita**, dentro de um documento que o cliente pode tratar como vinculante |
+| `contracts_rendered_html_present` | documento em branco que a rota pública serviria como se fosse o contrato |
+| `contract_links_expires_after_creation` | erro de sinal nas 48 h: link morto que a tela mostra como recém-criado |
+| `provider_profiles_identity_present` | string vazia passa por `NOT NULL` sem dizer nada — e deixaria uma das partes não identificada |
+| `provider_profiles_document_type_valid` | o tipo decide o rótulo ("CPF nº" vs "CNPJ nº"); fora dos dois, rótulo errado no dado que identifica a parte |
+
+**`resolve_contract_link` — e o teste que veio antes do controller.** Espelha a
+`resolve_briefing_link` porque o problema é o mesmo e já custou **cinco
+ocorrências** nesta frente: `GET /c/:token` não tem sessão, roda sem
+`app.tenant_ids`, e o RLS fail-closed devolveria vazio para **todo** token —
+inclusive os válidos, sem erro nenhum no log. O §7.2 item 5 exige que o teste de
+fail-closed venha **antes** do controller, e veio: escrito depois, ele
+documentaria o que foi construído em vez de barrar o que não pode existir.
+
+A função devolve o ciclo de vida do link + tenant + contrato, e **não devolve o
+`rendered_html`** — de propósito. Ela responde *"este token serve, e para qual
+contrato?"*; o documento é lido depois, já sob o contexto do tenant que ela
+devolveu. Assim quem protege o conteúdo continua sendo o RLS, e não a lista de
+colunas de uma função privilegiada.
+
+**O seed dos três templates, e por que ele é insuficiente de propósito.** Sem
+seed, o prestador encara um editor vazio no dia 1. Com seed, o risco é o texto
+ser usado **como veio**, com o produto virando fonte de minuta jurídica sem
+advogado por trás (§7.3). Duas barreiras respondem: `isSeedExample = true` (o 1º
+contrato exige uma versão salva pelo dono) e o disclaimer no rodapé do documento
+renderizado (§2.12) — que viaja junto do que o cliente lê, o lugar certo. A trava
+é fraca de propósito: exige **uma** edição, não revisão de verdade. Ela não
+garante que o texto foi lido; garante que o dono passou pela tela e assumiu o
+texto uma vez, e que o `isSeedExample` deixa de mentir.
+
+**Três templates e não um com seção condicional** (§2.2, decisão do PI):
+condicional dentro de texto jurídico é o pior lugar possível para um `if` — quem
+lê o template não vê qual versão o cliente recebeu, e um erro na condição produz
+um contrato **válido** dizendo a coisa errada sobre propriedade de código. O
+teste afirma que as três cláusulas de propriedade intelectual são distintas, e
+que só a modalidade de venda **cede** titularidade (as outras concedem licença de
+uso).
+
+**O seed nunca sobrescreve.** Template existente não é tocado: ele pode já ter
+versões escritas pelo dono, e reescrever o corpo apagaria texto jurídico que
+alguém revisou. Reseed é idempotente pelo unique `(tenant_id, modality)`.
+
+### PR-1 — verificação
+
+- **1200 testes em `regras`** (era 1189: +11 do seed de templates) e **124 em
+  `banco`** (era 89: +35).
+- Migration validada em **banco de teste recriado do zero** (`DROP DATABASE` +
+  `CREATE DATABASE`), 38 migrations aplicadas em sequência.
+- **Guarda provada reprovando**: com RLS desabilitada em `contracts`,
+  `contract_links` e `provider_profiles`, **7 testes falham**; religada, 35/35.
+- Migration aplicada no **banco de dev real** e seed rodado: 3 templates com
+  `is_seed_example = true` e `current_version_id` apontando para a v1. **Segunda
+  execução: 0 novos** — idempotência conferida no dado, não só no código.
+- Relatório regenerado: **1689 testes** (1200 regras · 124 banco · 365 tela).
+
+---
+
+## Fatia 22 (SPEC-033) — Estimativa: cálculo determinístico e decomposição por IA — `entregue`
 
 Issue **#148** (spec `aprovada-pi` 2026-07-28). Consome os requisitos aprovados
 da Fatia 21 e produz uma estimativa versionada e reproduzível: horas por tarefa,
