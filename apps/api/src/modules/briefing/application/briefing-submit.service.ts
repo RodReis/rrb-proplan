@@ -25,6 +25,19 @@ export const BRIEFING_SUBMITTED = 'briefing.submitted';
 export interface BriefingSubmittedEvent {
   clientProjectId: string;
   briefingVersionId: string;
+  /**
+   * Contexto RLS para o consumidor (SPEC-032 §7.3), no mesmo padrão do
+   * `DocsSyncedEvent` → `InsightEventListener`.
+   *
+   * O §6 da spec previa que o consumidor resolvesse o tenant por lookup
+   * próprio, porque descrevia o evento como ele era: sem este campo. Só que o
+   * pipeline roda em JOB, sem request, e sob RLS fail-closed o lookup dele
+   * devolveria ZERO linhas — precisaria de uma função `SECURITY DEFINER` nova
+   * para recuperar um dado que **o emissor já tem na mão** (a linha abaixo o
+   * usa no `audit`). Superfície privilegiada é coisa que se cria quando não há
+   * alternativa, e aqui há: carregar o tenant no evento.
+   */
+  tenantId: string;
 }
 
 export interface SubmitResult {
@@ -125,6 +138,7 @@ export class BriefingSubmitService {
     this.events.emit(BRIEFING_SUBMITTED, {
       clientProjectId: row.client_project_id,
       briefingVersionId: version.versionId,
+      tenantId: row.tenant_id,
     } satisfies BriefingSubmittedEvent);
 
     await this.moveCard(row);

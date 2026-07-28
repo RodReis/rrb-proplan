@@ -18,6 +18,7 @@ import { HandoffModule } from './modules/handoff/handoff.module';
 import { PortfolioModule } from './modules/portfolio/portfolio.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { ClientsModule } from './modules/clients/clients.module';
+import { ArtifactsModule } from './modules/artifacts/artifacts.module';
 import { BriefingModule } from './modules/briefing/briefing.module';
 import { redisConnectionFromUrl } from './shared/redis-connection';
 
@@ -52,6 +53,11 @@ import { redisConnectionFromUrl } from './shared/redis-connection';
     // Ciclo de vida do link de briefing (SPEC-029). Expõe a única rota PÚBLICA
     // da frente (`/b/:token`), fora dos guards de tenant por design.
     BriefingModule,
+    // Pipeline de IA sobre o briefing enviado (SPEC-032). Registrado aqui, e
+    // não via BriefingModule, porque o acoplamento entre os dois é o EVENTO
+    // `BriefingSubmitted` — o briefing não sabe (nem deve saber) que alguém o
+    // escuta.
+    ArtifactsModule,
   ],
   controllers: [HealthController],
 })
