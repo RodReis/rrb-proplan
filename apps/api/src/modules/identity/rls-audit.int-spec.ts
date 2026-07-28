@@ -25,6 +25,10 @@ const TENANT_TABLES = [
   // `briefing_versions` e `briefing_drafts` também estão fora desta lista. A
   // policy dela é provada no `artifacts-rls.int-spec.ts`.
   'artifacts', 'artifact_versions', 'artifact_runs',
+  // Estimativa (SPEC-033). Raiz pelo mesmo motivo das três acima: a rota de
+  // aprovar busca por `id` e move o card, e `client_projects` é neta de
+  // `clients` — a policy viraria JOIN de três níveis no caminho de uma escrita.
+  'estimates',
 ];
 
 describe('RLS: auditoria de cobertura + idempotência da migração', () => {

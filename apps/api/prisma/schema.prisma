@@ -102,6 +102,8 @@ model Tenant {
   artifacts      Artifact[]
   artifactVersions ArtifactVersion[]
   artifactRuns   ArtifactRun[]
+  // Estimativa (SPEC-033): raiz pelo mesmo motivo das três acima.
+  estimates      Estimate[]
 
   @@map("tenants")
 }
@@ -128,6 +130,23 @@ model TenantSettings {
   // Alerta = faixa âmbar; teto = nenhuma chamada de IA. 0 desliga o teto.
   llmAlertUsdMonthly   Decimal  @default(5)  @map("llm_alert_usd_monthly")   @db.Decimal(10, 4)
   llmHardCapUsdMonthly Decimal  @default(20) @map("llm_hard_cap_usd_monthly") @db.Decimal(10, 4)
+
+  // --- Parâmetros de estimativa (SPEC-033 §6) -------------------------------
+  // Reaproveitam esta tabela em vez de criar uma 2ª de configuração: ela já é
+  // por tenant e já só o `owner` escreve (ADR-026), que são exatamente as duas
+  // regras que a spec pede para estes campos. É também a "2ª configuração por
+  // tenant" que o comentário acima dava como encomendada.
+  hourlyRateBrl        Decimal  @default(200) @map("hourly_rate_brl")   @db.Decimal(12, 2)
+  contingencyPercent   Decimal  @default(15)  @map("contingency_percent") @db.Decimal(5, 2)
+  // Câmbio DIGITADO À MÃO, com a data em que foi digitado (§2.6) — sem API
+  // externa, mesmo motivo do IBGE virar seed na SPEC-031: fonte de terceiro no
+  // caminho da conta trava a estimativa quando o terceiro cai. Nullable é
+  // estado legítimo e não "falta preencher": sem taxa, o custo de IA aparece em
+  // USD, rotulado, e FORA do total em BRL — o total não finge incluir o que não
+  // converteu.
+  exchangeRateUsdBrl   Decimal? @map("exchange_rate_usd_brl") @db.Decimal(12, 6)
+  exchangeRateAt       DateTime? @map("exchange_rate_at")
+
   updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@map("tenant_settings")
@@ -746,6 +765,7 @@ model ClientProject {
   briefingVersions BriefingVersion[]
   artifacts   Artifact[]
   artifactRuns ArtifactRun[]
+  estimates   Estimate[]
 
   @@index([clientId, deletedAt])
   @@index([state])
@@ -969,6 +989,13 @@ enum ArtifactKind {
   scope
   requirements
   site_prompt
+  // SPEC-033 §6. Deliberadamente FORA de `ARTIFACT_KINDS` /
+  // `REQUIRED_ARTIFACT_COUNT` (`artifacts/domain/artifact-kind.ts`): aquele
+  // array é o que gate a transição para `ARTIFACTS_READY`, e o
+  // `effort_breakdown` só passa a existir DEPOIS desse estado. Incluí-lo ali
+  // exigiria 5 aprovações para um estado que hoje exige 4, quebrando um
+  // critério de aceite já aceito da Fatia 21.
+  effort_breakdown
 }
 
 enum ArtifactState {
@@ -1052,6 +1079,10 @@ model ArtifactVersion {
   children        ArtifactVersion[] @relation("VersionLineage")
   artifactRun     ArtifactRun?   @relation(fields: [artifactRunId], references: [id], onDelete: SetNull)
   verdicts        ReviewVerdict[]
+  // Estimativas calculadas a partir desta versão (SPEC-033). O lado FK usa
+  // `Restrict`: apagar a decomposição que originou um número já enviado ao
+  // cliente deixaria a estimativa sem a conta que a explica.
+  estimates       Estimate[]
 
   @@unique([artifactId, version])
   // O único por (artifactId, inputHash) é PARCIAL — `WHERE author = 'ai'` — e
@@ -1112,4 +1143,84 @@ model ReviewVerdict {
 
   @@index([artifactVersionId])
   @@map("review_verdicts")
+}
+
+// ===========================================================================
+// SPEC-033 — Estimativa. A IA decompõe, o CÓDIGO calcula (ADR-012 aplicado a
+// dinheiro): nenhum número desta tabela saiu de um modelo de linguagem.
+//
+// IMUTÁVEL POR VERSÃO, como `BriefingVersion`/`ArtifactVersion` (§2.10):
+// reestimar cria linha nova, nunca sobrescreve. O motivo é o mesmo das irmãs e
+// vale repetir: uma estimativa vira proposta enviada ao cliente, e sobrescrever
+// apagaria o número que ele recebeu.
+//
+// Raiz de tenancy (`tenant_id` na linha), não filha por JOIN — a rota
+// `POST /t/:tenant/estimates/:id/approve` busca DIRETO POR `id`, e
+// `client_projects` é neta de `clients`. Mesmo precedente das três tabelas do
+// pipeline e do `FileAsset` (ADR-025).
+//
+// Os parâmetros (valor/hora, contingência, câmbio) são COPIADOS para cá no
+// instante do cálculo, não lidos por relação: `TenantSettings` muda, e uma
+// estimativa que se recalcula sozinha quando alguém edita o valor/hora deixaria
+// de bater com a proposta já enviada. Snapshot é o que torna o número
+// reproduzível.
+model Estimate {
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  clientProjectId    String    @map("client_project_id")
+  // Sequencial POR projeto — v1, v2..., como as demais versões da casa.
+  version            Int
+  // A versão do `effort_breakdown` de onde as tarefas vieram. Sem isto, "de
+  // qual decomposição este número saiu?" vira arqueologia por timestamp.
+  effortVersionId    String    @map("effort_version_id")
+
+  // --- Snapshot dos parâmetros no instante do cálculo ----------------------
+  hourlyRateBrl      Decimal   @map("hourly_rate_brl")   @db.Decimal(12, 2)
+  contingencyPercent Decimal   @map("contingency_percent") @db.Decimal(5, 2)
+  // Multiplicador do grau de acabamento (§2.3): baixa=0,85 · media=1,00 ·
+  // alta=1,30. Gravado além do nível porque a tabela de multiplicadores pode
+  // mudar, e a conta desta linha não pode mudar com ela.
+  complexity         String
+  complexityFactor   Decimal   @map("complexity_factor") @db.Decimal(5, 4)
+  exchangeRate       Decimal?  @map("exchange_rate") @db.Decimal(12, 6)
+  exchangeRateAt     DateTime? @map("exchange_rate_at")
+
+  // --- Custos --------------------------------------------------------------
+  // Digitação livre nesta fatia (§2.7): `{label, valueBrl}[]`. Sem catálogo —
+  // catálogo reutilizável vira fatia própria se doer.
+  directCosts        Json      @map("direct_costs")
+  // FATO, consultado no ledger (`LlmUsage.costUsd` via `artifactRunId`) no
+  // instante de gerar. NUNCA derivado de `ArtifactVersion` (ADR-016).
+  aiCostIncurredUsd  Decimal   @map("ai_cost_incurred_usd") @db.Decimal(12, 8)
+  // PROJEÇÃO: `{valueUsd, isCalculated}`. `isCalculated=false` quando o tenant
+  // tem <3 runs concluídos e o número foi digitado à mão. Leva o rótulo
+  // "projeção" nos DOIS casos (§2.8) — projeção calculada continua projeção, e
+  // mostrá-la com a mesma confiança de um número medido é o erro que o rótulo
+  // existe para impedir.
+  aiCostProjected    Json      @map("ai_cost_projected")
+
+  // --- Resultado -----------------------------------------------------------
+  // `{otimista, provavel, pessimista}`, cada um com horas, subtotal,
+  // contingência e total em BRL — cada número mostrando a sua conta (§1). A
+  // contingência é LINHA PRÓPRIA dentro de cada cenário, nunca embutida.
+  scenarios          Json
+  // Agrupamento das tarefas em MVP1/MVP2/… com subtotal (§2.9). SÓ DADO: este
+  // caminho não fala com o GitHub, e há teste afirmando essa ausência.
+  mvpBreakdown       Json      @map("mvp_breakdown")
+
+  // Aprovar move o card `ARTIFACTS_READY → CONTRACT_PENDING` (§2.11) — e é o
+  // ÚNICO "aprovar" desta fatia que move (o do `effort_breakdown` não move).
+  approvedAt         DateTime? @map("approved_at")
+  approvedBy         String?   @map("approved_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  createdBy          String?   @map("created_by")
+
+  tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientProject      ClientProject   @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  effortVersion      ArtifactVersion @relation(fields: [effortVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([clientProjectId, version])
+  @@index([clientProjectId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("estimates")
 }

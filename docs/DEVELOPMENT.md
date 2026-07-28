@@ -2954,7 +2954,12 @@ está liberada para código.**
 
 ---
 
-## Fatia 21 (SPEC-032) — Pipeline de IA: artefatos versionados com aprovação humana — `em andamento`
+## Fatia 21 (SPEC-032) — Pipeline de IA: artefatos versionados com aprovação humana — `aceita`
+
+> **Aceita pelo PI em 2026-07-28** (issue #147 fechada com `proplan:finalizado`).
+> É este aceite que libera a Fatia 22 a codificar — a SPEC-033 §4 condicionava o
+> código à aceitação desta fatia, não ao carimbo da spec dela.
+
 
 Issue **#147** (spec `aprovada-pi` 2026-07-27). Dá consumidor ao evento
 `BriefingSubmitted`, que a SPEC-031 deixou solto de propósito. Fatia grande —
@@ -3342,3 +3347,115 @@ Depois do FIX #166, com API e web de pé:
 - Uma edição real feita pelo navegador gravou **v2 `human`** e devolveu o
   artefato a `PENDING_REVIEW`, com a tela passando a dizer *"3 de 4 aprovados /
   faltam 1 de 4 aprovações"*.
+
+---
+
+## Fatia 22 (SPEC-033) — Estimativa: cálculo determinístico e decomposição por IA — `em andamento`
+
+Issue **#148** (spec `aprovada-pi` 2026-07-28). Consome os requisitos aprovados
+da Fatia 21 e produz uma estimativa versionada e reproduzível: horas por tarefa,
+três cenários, custos diretos e de IA, contingência e preço final em BRL — **cada
+número mostrando a sua conta**.
+
+A regra que organiza a fatia inteira: **a IA decompõe, o código calcula**
+(ADR-012 aplicado a dinheiro). Nenhuma multiplicação, soma, cenário ou preço sai
+de um modelo de linguagem. O motivo não é purismo: erro de aritmética de IA é
+plausível, e erro de soma numa estimativa **não aparece como falha** — aparece
+como proposta enviada ao cliente.
+
+**Liberada em 2026-07-28**: o §4 da spec condicionava o código à **aceitação** da
+Fatia 21 (não ao carimbo da spec), e a #147 foi fechada com `proplan:finalizado`
+nessa data. O contrato de `requirements` que o `EffortEstimator` consome está,
+portanto, estável — nenhuma emenda datada foi necessária.
+
+Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
+(senão o PR fica sem check nenhum).
+
+### Passos
+
+- [x] **PR-1 — schema: `estimates`, `effort_breakdown` e os parâmetros do tenant** *(este)*
+- [ ] **PR-2 — a 5ª capacidade (`EffortEstimator`) + rotas de decomposição**
+- [ ] **PR-3 — o cálculo determinístico** (3 cenários, contingência, custos, MVPs) e o `approve` que move o card
+- [ ] **PR-4 — parâmetros por workspace** (valor/hora, % contingência, câmbio) só-`owner`
+- [ ] **PR-5 — painel de estimativa no prestador**
+- [ ] Dogfooding no navegador
+
+### PR-1 — o que entrou
+
+Uma tabela nova (`estimates`), um valor novo no enum `ArtifactKind`
+(`effort_breakdown`) e quatro colunas em `tenant_settings`.
+
+**`effort_breakdown` entra no enum e NÃO no array.** `ARTIFACT_KINDS` /
+`REQUIRED_ARTIFACT_COUNT` (`artifacts/domain/artifact-kind.ts`) continuam sendo
+exatamente os 4 da SPEC-032, porque é esse array que gate a transição para
+`ARTIFACTS_READY`. O motivo é temporal: o `effort_breakdown` só passa a existir
+**depois** desse estado (§2.2 — o botão só aparece com os 4 aprovados). Incluí-lo
+ali exigiria 5 aprovações para um estado que hoje exige 4 — quebraria um critério
+de aceite **já aceito** da Fatia 21.
+
+**`estimates` é raiz de tenancy**, não filha por JOIN. Mesmo critério das três
+tabelas do pipeline e do `FileAsset` (ADR-025), e pelo mesmo motivo: a rota
+`POST /t/:tenant/estimates/:id/approve` busca **direto por `id`**, e
+`client_projects` é neta de `clients` — a policy viraria um JOIN de três níveis
+no caminho de uma escrita que **move card**.
+
+**Os parâmetros são copiados para a linha, não lidos por relação.** Valor/hora,
+% de contingência, câmbio e o multiplicador de complexidade viram **snapshot** no
+instante do cálculo. Se a estimativa lesse `tenant_settings` por relação, editar
+o valor/hora do tenant **recalcularia silenciosamente uma proposta já enviada ao
+cliente** — o número em tela deixaria de ser o número que ele recebeu, e nada
+falharia. É snapshot que torna "reproduzível" verdade.
+
+O **fator** de complexidade é gravado além do **nível**: a tabela de
+multiplicadores (0,85 / 1,00 / 1,30) pode ser revista, e a conta de uma linha já
+gravada não pode mudar retroativamente com ela.
+
+**`RESTRICT` na FK para `artifact_versions`**, não `CASCADE` nem `SET NULL`. A
+versão do `effort_breakdown` é a **conta que explica o número**: com `CASCADE`,
+apagá-la levaria junto a estimativa que o cliente já recebeu; com `SET NULL`,
+deixaria o número órfão da decomposição que o produziu. Que o banco recuse e a
+decisão seja consciente.
+
+**Quatro CHECKs, e nenhum é decorativo** — todos barram erro que *não levanta
+exceção no caminho feliz* e produz número plausível:
+
+| CHECK | o que barra | por que passaria despercebido |
+|---|---|---|
+| `estimates_approval_pair` | `approved_at` sem `approved_by` | estimativa "aprovada por ninguém" — e é este ato que move o card para `CONTRACT_PENDING` (§2.11 exige ator nunca nulo) |
+| `estimates_contingency_range` | contingência fora de 0–100 | `150` no lugar de `15` multiplica o orçamento por 2,5; o total sai maior e parece deliberado |
+| `estimates_hourly_rate_positive` | valor/hora ≤ 0 | orçamento de R$ 0,00 **com aparência de conta feita** |
+| `estimates_exchange_rate_pair` | taxa sem data (ou vice-versa) | taxa sem data é número sem validade: meses depois ninguém sabe se a cotação era de ontem, e o total em BRL segue exibido como corrente |
+
+Os mesmos CHECKs de faixa existem **nas duas tabelas**, de propósito: a linha de
+`estimates` é snapshot e **não herda nada** de `tenant_settings`, então um valor
+absurdo pode entrar por um caminho que nunca passou pela tela de parâmetros.
+
+**Câmbio nasce NULL e isso é estado legítimo**, não "falta preencher": sem taxa
+informada, o custo de IA aparece em USD, rotulado, e **fora** do total em BRL
+(§2.6). Um DEFAULT aqui seria pior que o NULL — inventaria uma cotação que
+ninguém digitou e a faria entrar num total que o dono assinaria sem saber.
+
+**Os parâmetros reaproveitam `tenant_settings`** em vez de criarem uma 2ª tabela
+de configuração: ela já é por tenant e já só o `owner` escreve (ADR-026), que são
+exatamente as duas regras que a spec pede. É também, nominalmente, a "2ª
+configuração por tenant" que o comentário do ADR-026 dava como encomendada.
+
+**Divergência da spec, registrada e decidida pelo PI (2026-07-28)**: o §6 pede
+`PATCH /t/:tenant/tenant-settings`, mas o teto de IA (ADR-026) hoje vive em
+`/settings/llm-caps` — rota **global**, que resolve o tenant por
+`personalTenantId(userId)` e não pela URL. As duas rotas vão conviver sobre a
+mesma tabela: a nova, sob `withTenant`, para os parâmetros de estimativa (é o que
+a spec pede, e o que faz sentido para config de *workspace*); a antiga, intocada.
+Decisão do PI ao ser apresentada a divergência, antes de qualquer linha escrita.
+
+### PR-1 — verificação
+
+- **1117 testes verdes** na API (era 1099): **+18** no project `banco`.
+- Migration aplicada num **banco de teste recriado do zero** — o SQL foi validado
+  de ponta a ponta, não só o `ALTER` incremental.
+- **Guarda provada reprovando**: com `ALTER TABLE estimates DISABLE ROW LEVEL
+  SECURITY`, **4 testes falham** (3 de isolamento + a auditoria de cobertura).
+  Religada, 21/21 verdes.
+- `estimates` entrou em `TENANT_TABLES` no `rls-audit.int-spec.ts` — a rede que
+  faz uma tabela futura sem policy quebrar o build.
+- Relatório regenerado: **1425 testes** (1028 regras · 89 banco · 308 tela).
