@@ -2963,8 +2963,8 @@ sem check nenhum).
 
 ### Passos
 
-- [x] **PR-1 — schema: 4 tabelas, RLS e o índice parcial** *(este)*
-- [ ] **PR-2 — módulo `artifacts`, `inputHash` canônico e o gatilho** → fila
+- [x] **PR-1 — schema: 4 tabelas, RLS e o índice parcial**
+- [x] **PR-2 — módulo `artifacts`, `inputHash` canônico e o gatilho** → fila *(este)*
 - [ ] **PR-3 — as 4 capacidades geradoras** (saída estruturada, retry, teto, ledger)
 - [ ] **PR-4 — revisor, aprovação e edição humana** (o §7.4 inteiro)
 - [ ] **PR-5 — leitura no painel** (versões, autoria, parecer, regenerar com custo)
@@ -3045,3 +3045,75 @@ tem request**. Ler ou gravar sem `runInTenantContext` sob RLS fail-closed **não
 dá erro — dá zero linhas**, e um pipeline que gravou zero artefatos tem a mesma
 cara de um bem-sucedido visto de fora. Esta frente já acumulou **5 ocorrências**
 desta classe, duas encontradas só no dogfooding, todas com a suíte verde.
+
+### PR-2 — o que entrou
+
+Módulo `artifacts` com listener, worker, service e o `inputHash` canônico. **O
+run abre, valida e fecha vazio** — `completedKinds: []` diz a verdade sobre o
+que rodou. As capacidades chegam no PR-3; um run que se dissesse completo *com*
+artefatos aqui seria a mentira que esta fatia existe para não produzir.
+
+O módulo **não importa o `BriefingModule`**: o acoplamento entre os dois é o
+*evento*, entregue pelo `EventEmitter2`. O que atravessa a fronteira é o **tipo**
+do payload, não um provider — e o briefing continua sem saber que alguém o
+escuta, que era o ponto de ter emitido o evento sem consumidor na SPEC-031.
+
+### Duas divergências do texto da spec, e por que ambas
+
+**1. O evento passa a carregar `tenantId`.** O §6 previa lookup próprio no
+consumidor. Isso descrevia o evento como ele *era* — sem o campo — não como
+precisa ser: o consumidor é um **job, sem request**, e sob RLS fail-closed o
+lookup devolveria zero linhas. Resolver exigiria uma função `SECURITY DEFINER`
+nova para recuperar um dado que **o emissor já tem na mão** (a linha seguinte do
+`submit` o usa no `audit`). Superfície privilegiada se cria quando não há
+alternativa; aqui há, e o `DocsSyncedEvent` → `InsightEventListener` já resolveu
+o mesmo problema do mesmo jeito.
+
+**2. `canonicalJson` subiu para `shared/`.** O `inputHash` precisa exatamente da
+regra do `contentHash`, e `artifacts` importar de `briefing/domain/**` violaria
+o ADR-001. Duplicar as 18 linhas criaria **duas verdades** sobre *"estes dois
+conteúdos são o mesmo?"*, e uma correção num lado reapareceria como bug de
+idempotência no outro. `shared/` já é o lugar desse tipo de utilitário puro
+(`convention/columns.ts`, `github/writeback-merge.ts`). O que fica no briefing é
+o que é dele: **qual** conteúdo é hasheado.
+
+### Idempotência em duas barreiras, com propósitos diferentes
+
+| barreira | quando vale | custo |
+|---|---|---|
+| `jobId: briefing_<id>` na fila | enquanto o job existe no Redis | barato, **antes de qualquer gasto** |
+| `ArtifactRun` por `briefingVersionId` no banco | sempre | uma query |
+
+A primeira some com o `removeOnComplete`, então um evento reentregue depois
+passaria por ela — a segunda é a que garante a regra. O filtro é
+`status: RUNNING | COMPLETED` de propósito: um run `FAILED` (teto estourado,
+provedor fora) **precisa** poder ser refeito, senão o briefing fica preso para
+sempre por uma falha passageira.
+
+### O `promptVersion` dentro do hash é o caso que mais importa
+
+Sem ele, um prompt corrigido devolveria o artefato velho do índice e a correção
+**não teria efeito nenhum**. É o pior tipo de bug: o que se parece com sucesso.
+O objeto hasheado é montado com chaves fixas, e não repassando o input inteiro,
+para que incluir algo no hash seja um ato explícito — quebrar a idempotência de
+propósito é diferente de quebrá-la por descuido.
+
+### Verificação
+
+- **1023 testes verdes** (era 999): 12 do PR-2. Relatório regenerado (ADR-019).
+- **API subida ao vivo**: `ArtifactsModule dependencies initialized` sem erro, e
+  a fila aparece no Redis (`bull:artifacts:meta`) ao lado de
+  `insight`/`board`/`sync`.
+- O teste do worker afirma a **ordem** (`['contexto:t-1', 'pipeline']`), não só
+  que `runInTenantContext` foi chamado: rodar o pipeline antes do `set_config`
+  gravaria nada e terminaria "com sucesso".
+- O mock do gate **recusa** `tenantId` inesperado em vez de devolver o mesmo
+  valor para qualquer argumento — foi essa frouxidão que deixou a suíte do #158
+  verde sem nunca afirmar de quem era o teto.
+
+**Erro meu no meio do caminho, que vale registrar**: reportei 1011 numa medição
+intermediária. Um `git mv` de teste tinha renomeado `content-hash.spec.ts` para
+`.tmp`, e o Jest simplesmente deixou de vê-lo — a suíte ficou verde com 12
+testes a menos e nada apontou isso. Restaurado, o número é 1023. Contagem de
+teste que cai sem ninguém notar é o tipo de verde que não prova nada, e foi o
+`git status` antes do commit que pegou.
