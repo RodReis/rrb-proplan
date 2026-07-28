@@ -3373,8 +3373,8 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 
 ### Passos
 
-- [x] **PR-1 — schema: perfil, templates, contrato, link e `resolve_contract_link`** *(este)*
-- [ ] **PR-2 — perfil do prestador + templates versionados** (só-`owner`, validação de placeholder ao salvar, trava do `isSeedExample`)
+- [x] **PR-1 — schema: perfil, templates, contrato, link e `resolve_contract_link`**
+- [x] **PR-2 — perfil do prestador + templates versionados** *(este)*
 - [ ] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé)
 - [ ] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar)
 - [ ] **PR-5 — aceite + painel** (canal de lista fechada, move o card, tela no prestador)
@@ -3476,6 +3476,81 @@ alguém revisou. Reseed é idempotente pelo unique `(tenant_id, modality)`.
   `is_seed_example = true` e `current_version_id` apontando para a v1. **Segunda
   execução: 0 novos** — idempotência conferida no dado, não só no código.
 - Relatório regenerado: **1689 testes** (1200 regras · 124 banco · 365 tela).
+
+**A guarda do ADR-019 barrou o PR, e estava certa.** O CI do #173 falhou com
+todos os 1324 testes passando: o que faltava era a **linha de histórico** no
+`reports/TESTS.md` para a issue #149. O `test:report` só a escreve quando recebe
+`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`, e a primeira execução foi sem elas. Sem
+o carimbo, a tabela sugere que a entrega não teve teste — que é exatamente o que
+o ADR-019 existe para impedir. Corrigido no próprio PR-1, com o comando completo.
+
+### PR-2 — o que entrou
+
+O módulo `contracts` nasce: perfil do prestador, os três templates versionados,
+a validação de placeholder e a trava que destrava a emissão. Seis rotas, todas
+autenticadas e sob `withTenant` — a rota **pública** chega no PR-4.
+
+**Validação de placeholder ao SALVAR, não ao renderizar** (§2.4). Descoberto na
+renderização já é tarde: ou o placeholder errado vaza como **literal cru** no
+meio de uma cláusula do documento que o cliente lê, ou derruba a emissão com o
+texto jurídico já escrito em cima dele. Recusar ao salvar devolve o erro a quem
+pode consertá-lo, na tela em que ele está — e **com o nome do placeholder na
+mensagem**, senão a pessoa procura num texto de 2.400 caracteres qual dos
+`{{...}}` está errado. A validação devolve **todos** os problemas, não o
+primeiro: corrigir um por vez, com um `POST` e um recarregamento a cada volta, é
+o que faz alguém desistir e colar o texto de volta sem os placeholders.
+
+**A regex é permissiva de propósito, e isso é a parte que erra sem aparecer.** Se
+ela casasse só com o bem formado (`\{\{\w+\}\}`), um `{{client name}}` com espaço
+no meio **não seria encontrado** — e o que a validação não vê, ela aprova. O
+literal cru reapareceria no contrato do cliente. Há teste afirmando que o
+malformado é **encontrado**, não só recusado.
+
+**A trava do seed é por modalidade, não global** (§2.3). Editar o template de
+`desenvolvimento` não pode destravar o de `desenvolvimento_venda_codigo`: são
+textos jurídicos diferentes, e é justamente a cláusula de propriedade intelectual
+que difere entre eles — destravar em bloco emitiria uma cessão de código que
+ninguém leu. A trava vive no `requireIssuable` do service, não na tela, para que
+a emissão por qualquer caminho que não passe pelo botão também seja recusada.
+
+**`PUT` no perfil é a única escrita-no-lugar do módulo, e é exceção nominal.** A
+regra que a guarda de imutabilidade protege é sobre **conteúdo versionado**
+(`Contract`, `ContractTemplateVersion`); o perfil **não é versionado** — é um por
+tenant, substituído por inteiro, e cada contrato guarda o seu `providerSnapshot`
+(PR-1), que é o que preserva o dado como estava no dia da emissão. Salvar
+template é `POST .../versions`, porque ali nada é alterado no lugar. A exceção é
+**lista de nomes** com teste afirmando que contém exatamente
+`['provider-profile']`: afrouxar o filtro deixaria a próxima entrar sem ninguém
+decidir — mesmo desenho da exceção de `tenant-settings` na Fatia 22.
+
+**`PUT` e não `PATCH` no perfil**, ainda: um `PATCH` deixaria o endereço antigo
+convivendo com o documento novo se o cliente mandasse metade dos campos.
+
+**Ausência é informação (ADR-014)**: tenant sem perfil recebe a forma vazia com
+`exists: false`, não um 404 — a configuração ainda não existe, e a tela precisa
+saber que é o primeiro preenchimento em vez de mostrar erro. Campo opcional vazio
+vira `null`, nunca string vazia: `''` no banco mentiria dizendo "preenchido", e
+sairia no contrato como uma linha em branco entre vírgulas.
+
+**`ensureSeeded` no service, além do `prisma/seed.ts`.** O seed cobre os tenants
+que existiam quando a fatia saiu; este caminho cobre o tenant criado **depois**,
+que sem ele abriria a tela de contratos vazia e não conseguiria emitir nada — um
+estado sem saída pela própria UI. Idempotente pelo unique e **nunca sobrescreve**.
+
+**`canEdit` resolvido no servidor** e viajando na resposta, como no PR-4 da Fatia
+22: regra duplicada no front divergiria da recusa real no primeiro clique, e a
+tela mostraria campo editável para quem a API vai recusar — botão morto, e pior,
+um que parece ter salvado.
+
+### PR-2 — verificação
+
+- **1247 testes em `regras`** (era 1200: +47).
+- **Guarda de imutabilidade provada reprovando**: um `@Patch('contracts/:id')`
+  inserido de propósito faz **2 testes falharem**, nomeando a rota.
+- Build OK e **API subida ao vivo** com as 6 rotas mapeadas
+  (`GET`/`PUT provider-profile`, `GET contract-templates`,
+  `GET .../:modality`, `GET`/`POST .../:modality/versions`), sem `EADDRINUSE`.
+- Relatório regenerado **com o carimbo** (`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`).
 
 ---
 
