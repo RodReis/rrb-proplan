@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, LlmProvider, Settings as SettingsData } from '../lib/api';
+import { api, LlmProvider, Settings as SettingsData, TenantCaps } from '../lib/api';
 import { UsageTab } from './UsageTab';
 
 interface Props {
@@ -150,60 +150,109 @@ export function Settings({ onClose }: Props) {
               </div>
             </section>
 
-            <section>
-              <h3 className="mb-1 text-sm font-medium">Teto de gasto de IA</h3>
-              <p className="mb-2 text-xs text-text-muted">
-                USD por mês, somando todos os provedores. Ao passar do{' '}
-                <strong>teto</strong>, nenhuma chamada de IA é feita até você ajustar. Use{' '}
-                <code>0</code> no teto para desligar o bloqueio.
-              </p>
-              <div className="flex flex-wrap items-end gap-4">
-                <label className="flex flex-col gap-1 text-xs text-text-muted">
-                  Alerta (âmbar)
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-text-muted">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      defaultValue={state.data.llmAlertUsdMonthly}
-                      disabled={saving}
-                      onBlur={(e) => {
-                        const v = e.target.value;
-                        if (Number(v) >= 0 && v !== state.data.llmAlertUsdMonthly) {
-                          void save({ llmAlertUsdMonthly: v });
-                        }
-                      }}
-                      className="w-24 rounded-md border border-border px-3 py-1.5 text-sm tabular-nums"
-                    />
-                  </div>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-text-muted">
-                  Teto (bloqueia)
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-text-muted">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      defaultValue={state.data.llmHardCapUsdMonthly}
-                      disabled={saving}
-                      onBlur={(e) => {
-                        const v = e.target.value;
-                        if (Number(v) >= 0 && v !== state.data.llmHardCapUsdMonthly) {
-                          void save({ llmHardCapUsdMonthly: v });
-                        }
-                      }}
-                      className="w-24 rounded-md border border-border px-3 py-1.5 text-sm tabular-nums"
-                    />
-                  </div>
-                </label>
-              </div>
-            </section>
+            <TenantCapsSection />
           </div>
         )}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Teto de gasto de IA do TENANT (ADR-026). Carrega de `/settings/llm-caps`, não
+ * de `/settings`: o dono do dado é outro — aquilo é preferência de pessoa, isto
+ * é o bolso do tenant.
+ *
+ * Quem não é `owner` vê os números e não os edita. Mostrar campo editável a
+ * quem a API vai recusar seria botão morto — e pior que morto: um que parece
+ * ter salvado.
+ */
+export function TenantCapsSection() {
+  const [caps, setCaps] = useState<TenantCaps | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api
+      .llmCaps()
+      .then(setCaps)
+      .catch((err) => setError(String(err)));
+  }, []);
+
+  async function saveCaps(patch: Partial<TenantCaps>) {
+    setSaving(true);
+    setError(null);
+    try {
+      setCaps(await api.updateLlmCaps(patch));
+    } catch (err) {
+      // Sem isto, uma recusa do servidor deixaria o número velho na tela e o
+      // usuário acharia que salvou.
+      setError(String(err));
+      setCaps(await api.llmCaps());
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (error && !caps) {
+    return (
+      <section>
+        <h3 className="mb-1 text-sm font-medium">Teto de gasto de IA</h3>
+        <p className="text-xs text-danger">{error}</p>
+      </section>
+    );
+  }
+  if (!caps) return null;
+
+  const field = (
+    label: string,
+    value: string,
+    key: 'llmAlertUsdMonthly' | 'llmHardCapUsdMonthly',
+  ) => (
+    <label className="flex flex-col gap-1 text-xs text-text-muted">
+      {label}
+      <div className="flex items-center gap-1.5">
+        <span className="text-text-muted">$</span>
+        {caps.canEditCaps ? (
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            defaultValue={value}
+            disabled={saving}
+            onBlur={(e) => {
+              const v = e.target.value;
+              if (Number(v) >= 0 && v !== value) void saveCaps({ [key]: v });
+            }}
+            className="w-24 rounded-md border border-border px-3 py-1.5 text-sm tabular-nums"
+          />
+        ) : (
+          <span className="w-24 px-3 py-1.5 text-sm tabular-nums">{value}</span>
+        )}
+      </div>
+    </label>
+  );
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-medium">Teto de gasto de IA</h3>
+      <p className="mb-2 text-xs text-text-muted">
+        USD por mês, somando todos os provedores. Ao passar do <strong>teto</strong>,
+        nenhuma chamada de IA é feita até alguém ajustar. Use <code>0</code> no teto
+        para desligar o bloqueio. O limite é <strong>do workspace</strong>, não seu —
+        vale para todos os membros.
+      </p>
+      {!caps.canEditCaps && (
+        <p className="mb-2 text-xs text-text-muted">
+          Só o dono do workspace altera o teto.
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-4">
+        {field('Alerta (âmbar)', caps.llmAlertUsdMonthly, 'llmAlertUsdMonthly')}
+        {field('Teto (bloqueia)', caps.llmHardCapUsdMonthly, 'llmHardCapUsdMonthly')}
+      </div>
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+    </section>
   );
 }

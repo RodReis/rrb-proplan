@@ -37,12 +37,16 @@ export class UsageService {
   ) {}
 
   /**
-   * Gasto do mês corrente vs alerta/teto do usuário. `now` injetável para teste.
-   * A verificação é `SUM(cost_usd)` do mês, de todos os provedores juntos.
+   * Gasto do mês corrente vs alerta/teto DO TENANT (ADR-026). `now` injetável
+   * para teste. A verificação é `SUM(cost_usd)` do mês, de todos os provedores
+   * juntos.
+   *
+   * Recebe `tenantId`, não `userId`: o teto é do bolso, e bolso é do tenant.
+   * Antes disto, um tenant com dois membros tinha dois tetos sobre esta mesma
+   * soma e o resultado dependia de quem chamou.
    */
-  async currentMonth(userId: string, now = new Date()): Promise<CurrentMonthUsage> {
-    const { alert, hardCap } = await this.settings.capsOf(userId);
-    const tenantId = await this.settings.personalTenantId(userId);
+  async currentMonth(tenantId: string, now = new Date()): Promise<CurrentMonthUsage> {
+    const { alert, hardCap } = await this.settings.capsOf(tenantId);
     const from = monthStart(now);
     const to = nextMonthStart(now);
 
@@ -74,21 +78,40 @@ export class UsageService {
 
   /**
    * Gate do teto: `true` = pode enfileirar/gastar. Barrar ANTES de gastar
-   * (SPEC-009). Resolve o dono do projeto internamente (o Settings é por usuário).
+   * (SPEC-009). Resolve o TENANT do projeto (ADR-026) — não o dono dele.
+   *
+   * Projeto sem tenant não existe de fato (a migração da Fatia 8 preencheu e o
+   * SQL fez o SET NOT NULL; a coluna só é nullable no schema Prisma). Se
+   * aparecer, o gate FECHA: não gastar por engano é mais barato que gastar por
+   * engano.
    */
   async canSpend(projectId: string, now = new Date()): Promise<boolean> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      select: { userId: true },
+      select: { tenantId: true },
     });
-    if (!project) return false;
-    const { blocked } = await this.currentMonth(project.userId, now);
+    if (!project?.tenantId) return false;
+    const { blocked } = await this.currentMonth(project.tenantId, now);
     return !blocked;
   }
 
-  /** Mesmo gate, mas já com o userId (endpoints que têm o usuário logado). */
+  /**
+   * Mesmo gate a partir do usuário logado (endpoints com sessão). Resolve o
+   * tenant e delega — o teto continua sendo do tenant, nunca da pessoa.
+   */
   async canSpendForUser(userId: string, now = new Date()): Promise<boolean> {
-    const { blocked } = await this.currentMonth(userId, now);
+    const tenantId = await this.settings.personalTenantId(userId);
+    const { blocked } = await this.currentMonth(tenantId, now);
+    return !blocked;
+  }
+
+  /**
+   * Gate para caminho SEM sessão (SPEC-032: briefing público dispara pipeline).
+   * Existe para que o job não precise inventar um usuário — o caso que motivou
+   * o ADR-026 inteiro. O chamador resolve o tenant do agregado que processa.
+   */
+  async canSpendForTenant(tenantId: string, now = new Date()): Promise<boolean> {
+    const { blocked } = await this.currentMonth(tenantId, now);
     return !blocked;
   }
 
@@ -98,11 +121,10 @@ export class UsageService {
    * total de tokens e nº de chamadas. Tudo derivado do `SUM` bruto do banco — a
    * UI não tem conta própria (critério de aceite).
    */
-  async report(userId: string, from: Date, to: Date) {
+  async report(tenantId: string, from: Date, to: Date) {
     const where = { createdAt: { gte: from, lt: to } };
-    const tenantId = await this.settings.personalTenantId(userId);
 
-    // Relatório POR TENANT (ADR-016): llm_usage tem RLS, roda sob contexto.
+    // Relatório POR TENANT (ADR-016/ADR-026): llm_usage tem RLS, roda sob contexto.
     const { total, byProvider, byKind, byStatus, byProject, missingPriceCount } =
       await this.prisma.withTenant([tenantId], async (tx) => {
         const [total, byProvider, byKind, byStatus, byProject] = await Promise.all([

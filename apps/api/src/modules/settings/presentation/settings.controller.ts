@@ -23,6 +23,24 @@ export class SettingsController {
     return this.settings.update(req.userId, body);
   }
 
+  /**
+   * Teto de gasto de IA do tenant (ADR-026). Separado de `/settings` porque o
+   * dono é outro: aquilo é preferência de pessoa, isto é o bolso do tenant.
+   * `canEditCaps` diz à tela se deve mostrar o controle — só `owner` escreve.
+   */
+  @Get('llm-caps')
+  llmCaps(@Req() req: AuthenticatedRequest) {
+    return this.settings.tenantCaps(req.userId);
+  }
+
+  @Put('llm-caps')
+  updateLlmCaps(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { llmAlertUsdMonthly?: string; llmHardCapUsdMonthly?: string },
+  ) {
+    return this.settings.updateTenantCaps(req.userId, body);
+  }
+
   @Get('model-prices')
   modelPrices() {
     return this.settings.modelPrices();

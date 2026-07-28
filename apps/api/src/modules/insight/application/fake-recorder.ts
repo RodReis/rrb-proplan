@@ -10,6 +10,9 @@ export function fakeUsageGate(): UsageService {
     async canSpendForUser() {
       return true;
     },
+    async canSpendForTenant() {
+      return true;
+    },
   } as unknown as UsageService;
 }
 

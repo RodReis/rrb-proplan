@@ -95,8 +95,37 @@ model Tenant {
   serviceCatalogItems ServiceCatalogItem[]
   // Anexos (ADR-025): raiz de tenancy própria, não herda por JOIN.
   fileAssets     FileAsset[]
+  // Teto de gasto de IA (ADR-026): 1:1, o bolso é do tenant.
+  llmSettings    TenantSettings?
 
   @@map("tenants")
+}
+
+// Configuração de gasto de IA POR TENANT (ADR-026, pré-requisito da SPEC-032).
+//
+// Existe separada de `Settings` porque as duas respondem perguntas diferentes:
+// `Settings` é preferência de PESSOA (provedor, limiares de UI); esta é o
+// BOLSO, e bolso é do tenant. Enquanto o teto morou em `Settings.userId`
+// (`@unique`), um tenant com dois membros tinha dois tetos sobre a mesma soma e
+// o gate dependia de quem chamou — não era "teto por tenant", era "teto por
+// usuário, medido no tenant dele".
+//
+// Tabela nova em vez de colunas no `Tenant` (alternativa rejeitada no ADR-026):
+// `Tenant` é identidade de tenancy, e misturar billing ali o transformaria em
+// gaveta assim que a 2ª configuração por tenant aparecesse — a primeira já está
+// encomendada (complexidade→acabamento, SPEC-033).
+model TenantSettings {
+  id                   String   @id @default(uuid())
+  // @unique: um teto por tenant. É a correção que motiva o ADR inteiro.
+  tenantId             String   @unique @map("tenant_id")
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // USD/mês, global entre provedores (ADR-016 item 6 — o bolso é um só).
+  // Alerta = faixa âmbar; teto = nenhuma chamada de IA. 0 desliga o teto.
+  llmAlertUsdMonthly   Decimal  @default(5)  @map("llm_alert_usd_monthly")   @db.Decimal(10, 4)
+  llmHardCapUsdMonthly Decimal  @default(20) @map("llm_hard_cap_usd_monthly") @db.Decimal(10, 4)
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("tenant_settings")
 }
 
 enum Role {
@@ -313,6 +342,9 @@ enum LlmProvider {
   openrouter
 }
 
+// Preferência de USUÁRIO. O teto de gasto saiu daqui em 2026-07-27 (ADR-026):
+// o que sobrou é escolha pessoal — provedor e limiares de leitura —, não bolso.
+// Ver `TenantSettings` para dinheiro.
 model Settings {
   id                        String      @id @default(uuid())
   userId                    String      @unique @map("user_id")
@@ -322,10 +354,6 @@ model Settings {
   tenant                    Tenant?     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   llmProvider               LlmProvider @default(anthropic) @map("llm_provider")
   docsStalenessThresholdDays Int        @default(90) @map("docs_staleness_threshold_days")
-  // Teto de gasto de IA (ADR-016, SPEC-009). USD/mês, global (soma provedores).
-  // Alerta = faixa âmbar; teto = nenhum job de IA enfileirado. 0 desliga o teto.
-  llmAlertUsdMonthly        Decimal     @default(5)  @map("llm_alert_usd_monthly")  @db.Decimal(10, 4)
-  llmHardCapUsdMonthly      Decimal     @default(20) @map("llm_hard_cap_usd_monthly") @db.Decimal(10, 4)
   // Limiar de recusa do modelo canônico (SPEC-014). Campo com confiança abaixo
   // disto responde "não sei" em vez de palpite. 0 desliga (mostra tudo cru).
   canonicalRefusalThreshold Float       @default(0.4) @map("canonical_refusal_threshold")
