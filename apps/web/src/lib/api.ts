@@ -85,9 +85,21 @@ const TENANT_SCOPED_PREFIXES = [
   '/client-projects',
   '/briefing-versions',
   '/files/',
+  // SPEC-032 §6: as rotas de artefato vivem sob `/t/:tenant`. Sem esta linha,
+  // `/artifacts/:id/...` sai SEM o prefixo e a API devolve 404 — ver versão,
+  // aprovar, rejeitar e editar param todas de funcionar. A lista continuava OK
+  // porque o caminho dela começa com `/client-projects`, que já estava aqui.
+  '/artifacts/',
 ];
 
-function withTenantPrefix(path: string): string {
+/**
+ * Exportada para teste. A lista acima é fácil de esquecer ao adicionar rotas —
+ * e o efeito é silencioso: a chamada sai sem tenant, a API devolve 404, e a
+ * tela mostra vazio sem erro. Aconteceu com `/artifacts/` no dogfooding da
+ * SPEC-032, e nenhum teste pegou porque todos mockam a camada de API inteira,
+ * que é justamente onde esta função vive.
+ */
+export function withTenantPrefix(path: string): string {
   if (activeTenant && TENANT_SCOPED_PREFIXES.some((p) => path.startsWith(p))) {
     return `/t/${activeTenant}${path}`;
   }

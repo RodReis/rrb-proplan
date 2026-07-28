@@ -33,6 +33,7 @@ export class ArtifactsEventListener {
   constructor(
     @InjectQueue(ARTIFACTS_QUEUE) private readonly queue: Queue<ArtifactsJobData>,
     private readonly usage: UsageService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @OnEvent(BRIEFING_SUBMITTED)
@@ -57,16 +58,31 @@ export class ArtifactsEventListener {
       tenantId: event.tenantId,
     };
 
+    const tentativa = await this.proximaTentativa(
+      event.briefingVersionId,
+      event.tenantId,
+    );
+
     this.logger.log(
-      `BriefingSubmitted → enfileira pipeline do briefing ${event.briefingVersionId}`,
+      `BriefingSubmitted → enfileira pipeline do briefing ${event.briefingVersionId} (tentativa ${tentativa})`,
     );
     await this.queue.add('pipeline', data, {
-      // `jobId` pela versão do briefing: o BullMQ recusa um job com id repetido
-      // enquanto ele existir na fila. É a PRIMEIRA barreira de idempotência
-      // (§2.8) — barata e antes de qualquer gasto. A segunda é o `inputHash` no
-      // banco, que vale mesmo depois de o job ter sido removido da fila
-      // (`removeOnComplete`), e é a que realmente garante a regra.
-      jobId: `briefing_${event.briefingVersionId}`,
+      // `jobId` por (briefing, TENTATIVA). O BullMQ recusa id repetido enquanto
+      // o job existir na fila — é a 1ª barreira de idempotência (§2.8), barata e
+      // antes de qualquer gasto.
+      //
+      // **A tentativa entra na chave por causa de um achado do dogfooding**: com
+      // o id fixo em `briefing_<id>`, o job de um run que FALHOU continuava em
+      // `completed` no Redis (`removeOnComplete: 50`), e o `add` seguinte era
+      // **descartado em silêncio** — nada no log, nada no banco. Um briefing
+      // cujo pipeline falhou ficava sem gatilho até o job sair da retenção.
+      //
+      // O que se perde: a barreira da fila deixa de valer ENTRE tentativas. O
+      // que continua protegendo é a do banco — `runPipeline` recusa abrir um 2º
+      // run quando já existe um `RUNNING` ou `COMPLETED` para o mesmo briefing,
+      // e essa vale mesmo depois de o job sumir da fila. Um evento reentregue
+      // ainda produz um job a mais, mas ele para na 1ª query e não gasta nada.
+      jobId: `briefing_${event.briefingVersionId}_${tentativa}`,
       // UMA retentativa (decisão 6 do PI, §8): cobre o 429 passageiro. A
       // segunda já seria gastar de novo numa falha que pode ser estrutural, e
       // aí a decisão volta a ser humana — o botão de regenerar (PR-4).
@@ -75,6 +91,36 @@ export class ArtifactsEventListener {
       removeOnComplete: 50,
       removeOnFail: 50,
     });
+  }
+
+  /**
+   * Quantas execuções já houve para este briefing, + 1.
+   *
+   * Conta **todos** os runs, inclusive os `FAILED` — é justamente o run que
+   * falhou que precisa produzir uma chave nova. Roda no contexto do tenant
+   * porque o listener também não tem request: sem isso o RLS devolveria zero e
+   * a chave voltaria a colidir, que é o bug de origem com outra causa.
+   *
+   * Falha na contagem não impede o enfileiramento: cai em `Date.now()`, que
+   * garante chave única ao custo de perder a numeração legível. Barrar o
+   * pipeline porque a query de um detalhe de fila falhou seria trocar um
+   * problema pequeno por um grande.
+   */
+  private async proximaTentativa(
+    briefingVersionId: string,
+    tenantId: string,
+  ): Promise<number> {
+    try {
+      const total = await this.prisma.runInTenantContext([tenantId], () =>
+        this.prisma.artifactRun.count({ where: { briefingVersionId } }),
+      );
+      return total + 1;
+    } catch (err) {
+      this.logger.warn(
+        `Não consegui contar as execuções de ${briefingVersionId}: ${err instanceof Error ? err.message : err}`,
+      );
+      return Date.now();
+    }
   }
 }
 
