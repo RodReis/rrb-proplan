@@ -17,6 +17,10 @@ import {
 import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { TenantGuard } from '../../identity/presentation/tenant.guard';
 import {
+  ContractIssueService,
+  type IssueContractInput,
+} from '../application/contract-issue.service';
+import {
   ContractTemplateService,
 } from '../application/contract-template.service';
 import {
@@ -29,7 +33,7 @@ interface SaveTemplateBody {
 }
 
 /**
- * Perfil do prestador e templates de contrato (SPEC-034 §6).
+ * Perfil do prestador, templates e **emissão do contrato** (SPEC-034 §6).
  *
  * Tudo autenticado e sob `withTenant` — a rota **pública** do contrato
  * (`GET /c/:token`) vive em controller próprio, sem guard, e chega no PR-4.
@@ -48,6 +52,7 @@ export class ContractsController {
   constructor(
     private readonly profile: ProviderProfileService,
     private readonly templates: ContractTemplateService,
+    private readonly contracts: ContractIssueService,
   ) {}
 
   /** Perfil do prestador. Leitura para qualquer membro do workspace. */
@@ -109,5 +114,36 @@ export class ContractsController {
       body?.body,
       req.userId,
     );
+  }
+
+  /**
+   * Emite o contrato — o snapshot (§2.5).
+   *
+   * `POST` e nunca `PUT`/`PATCH`: refazer **emite versão nova**, e a anterior
+   * continua legível porque pode já ter sido enviada ao cliente. Emitir **não
+   * move o card** (§2.6) — quem move é o aceite, no PR-5.
+   */
+  @Post('client-projects/:id/contracts')
+  issueContract(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') clientProjectId: string,
+    @Body() body: IssueContractInput,
+  ) {
+    return this.contracts.issue(req.tenantId!, clientProjectId, body ?? {}, req.userId);
+  }
+
+  /** As versões emitidas do projeto (§2.13). */
+  @Get('client-projects/:id/contracts')
+  listContracts(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') clientProjectId: string,
+  ) {
+    return this.contracts.list(req.tenantId!, clientProjectId);
+  }
+
+  /** Um contrato, com o HTML renderizado — leitura no painel do prestador. */
+  @Get('contracts/:id')
+  contract(@Req() req: AuthenticatedRequest, @Param('id') contractId: string) {
+    return this.contracts.byId(req.tenantId!, contractId);
   }
 }
