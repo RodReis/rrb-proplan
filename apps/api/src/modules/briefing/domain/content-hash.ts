@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canonicalJson } from '../../../shared/canonical-json';
 import type { Answers } from './briefing-steps';
 
 /**
@@ -21,41 +22,25 @@ import type { Answers } from './briefing-steps';
  * silenciosamente: o duplo clique voltaria a criar duas versões, e ninguém
  * descobriria até ver dois cards iguais no funil.
  *
- * A serialização canônica abaixo ordena as chaves em todos os níveis, então o
- * hash depende do **conteúdo**, não do caminho que o usuário fez para chegar
- * nele.
+ * A serialização canônica ordena as chaves em todos os níveis, então o hash
+ * depende do **conteúdo**, não do caminho que o usuário fez para chegar nele.
  *
  * Arrays NÃO são ordenados de propósito: `['a','b']` e `['b','a']` são respostas
  * diferentes (a ordem em que o cliente listou funcionalidades ou referências é
  * informação dele, não ruído nosso).
- */
-
-/**
- * JSON com chaves de objeto ordenadas recursivamente.
  *
- * `null` e escalares saem como o `JSON.stringify` faria. `undefined` some, como
- * no JSON normal — coerente com a regra de que ausência é informação (ADR-014)
- * e não vira string vazia.
+ * ## A serialização subiu para `shared/` em 2026-07-28
+ *
+ * O `inputHash` do pipeline de IA (SPEC-032 §2.8) precisa exatamente da mesma
+ * regra, e `artifacts` importar de `briefing/domain/**` violaria o ADR-001.
+ * Duplicá-la criaria duas verdades sobre *"estes dois conteúdos são o mesmo?"*.
+ * O que continua morando aqui é o que é do briefing: **qual** conteúdo é
+ * hasheado.
  */
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value) ?? 'null';
-  }
 
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(',')}]`;
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>)
-    // `undefined` não entra no JSON; deixá-lo produziria `"k":undefined`, que
-    // nem é JSON válido.
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-
-  return `{${entries
-    .map(([key, v]) => `${JSON.stringify(key)}:${canonicalJson(v)}`)
-    .join(',')}}`;
-}
+// Reexportado para quem já importava daqui — e porque é aqui que a explicação
+// de POR QUE a canonicalização existe faz sentido de ler.
+export { canonicalJson };
 
 /**
  * Hash do conteúdo do briefing.

@@ -107,9 +107,15 @@ describe('BriefingSubmitService (SPEC-031 §5)', () => {
         version: 1,
         alreadySubmitted: false,
       });
+      // `tenantId` entrou no payload na SPEC-032 (§7.3): o consumidor é um JOB,
+      // sem request, e sob RLS fail-closed um lookup dele devolveria zero
+      // linhas. A alternativa era uma função `SECURITY DEFINER` nova para
+      // recuperar um dado que o emissor já tem na mão — superfície privilegiada
+      // sem necessidade. Mesmo padrão do `DocsSyncedEvent`.
       expect(events.emit).toHaveBeenCalledWith(BRIEFING_SUBMITTED, {
         clientProjectId: PROJECT,
         briefingVersionId: 'bv-novo',
+        tenantId: TENANT,
       });
     });
 
