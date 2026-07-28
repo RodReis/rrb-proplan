@@ -2951,3 +2951,97 @@ Teste de arquitetura que nunca reprova não protege nada.
 
 **Com isto, os dois pré-requisitos do §4 estão cumpridos e a Fatia 21 (#147)
 está liberada para código.**
+
+---
+
+## Fatia 21 (SPEC-032) — Pipeline de IA: artefatos versionados com aprovação humana — `em andamento`
+
+Issue **#147** (spec `aprovada-pi` 2026-07-27). Dá consumidor ao evento
+`BriefingSubmitted`, que a SPEC-031 deixou solto de propósito. Fatia grande —
+**5 PRs empilhados**, um branch por PR, todos com base `main` (senão o PR fica
+sem check nenhum).
+
+### Passos
+
+- [x] **PR-1 — schema: 4 tabelas, RLS e o índice parcial** *(este)*
+- [ ] **PR-2 — módulo `artifacts`, `inputHash` canônico e o gatilho** → fila
+- [ ] **PR-3 — as 4 capacidades geradoras** (saída estruturada, retry, teto, ledger)
+- [ ] **PR-4 — revisor, aprovação e edição humana** (o §7.4 inteiro)
+- [ ] **PR-5 — leitura no painel** (versões, autoria, parecer, regenerar com custo)
+- [ ] Dogfooding no navegador
+
+### PR-1 — o que entrou
+
+Quatro tabelas novas, e a divisão de tenancy entre elas não é detalhe de DDL:
+
+| tabela | tenancy | por quê |
+|---|---|---|
+| `artifacts` | **raiz** (`tenant_id` próprio) | as rotas do §6 buscam por `id` |
+| `artifact_versions` | **raiz** | idem |
+| `artifact_runs` | **raiz** | idem |
+| `review_verdicts` | filha por JOIN (até `artifact_versions`) | nunca buscada por `id` solto |
+
+Três raízes é o **oposto** da divisão da SPEC-031, onde `briefing_drafts` e
+`briefing_versions` herdam por JOIN — e a diferença é o padrão de acesso, não o
+gosto. Lá o rascunho é sempre alcançado pelo token do link; aqui o painel busca
+artefato, versão e run **direto por `id`**, e `client_projects` é neta de
+`clients`. A policy viraria um JOIN de três níveis no caminho de toda leitura, e
+policy que ninguém relê é policy que ninguém audita. O precedente é o
+`FileAsset` (ADR-025), que virou raiz pelo mesmo motivo.
+
+### O índice parcial — a decisão mais delicada do PR
+
+O único de idempotência é `(artifact_id, input_hash)` **apenas quando
+`author = 'ai'`** (§7.4.2). Duas razões, nenhuma estética:
+
+1. **Versão humana não tem insumo para hashear.** Inventar um hash para texto
+   escrito à mão seria mentira com cara de chave.
+2. **Sem o `WHERE`, o índice mentiria por omissão.** Ele cobriria linhas de
+   `input_hash` NULL, e como NULLs não colidem no Postgres, existiria dando a
+   impressão de proteger uma idempotência que nunca protegeu.
+
+**Consequência aceita, anotada na própria migration**: um `regenerate` manual
+com insumo idêntico é **recusado** por este índice. A decisão 3 do PI (§2.11)
+diz que regenerar sempre cria versão nova — então o **PR-4**, que implementa o
+botão, é quem trata a colisão. Não pode virar 500.
+
+### Duas escolhas menores, com motivo
+
+- **`verdict` é `TEXT`, não enum.** Um enum com valor `'reject'` seria convite a
+  alguém escrever `WHERE verdict <> 'reject'` no caminho da aprovação —
+  exatamente o poder de veto que a decisão 1 do PI recusa (*o revisor anota,
+  nunca bloqueia*). O tipo do dado defende a decisão melhor que um comentário.
+- **`parent_version_id` é `SET NULL`, não `CASCADE`.** Apagar a versão-pai não
+  pode apagar a edição humana que derivou dela: a linhagem perde o elo, o
+  trabalho do dono não.
+- **`llm_usage.artifact_run_id` sem FK forte**, no mesmo espírito de
+  `tenant_id`: o ledger é append-only e sobrevive ao que o originou. Um run
+  apagado não pode levar junto o registro de dinheiro já gasto — é o que faz
+  *"quanto custou este briefing"* ser consulta ao **ledger** (ADR-016), nunca
+  derivação de `ArtifactVersion`.
+
+### Verificação
+
+- **999 testes verdes** (era 987): 11 do int-spec novo + 1 caso na auditoria de
+  RLS do CI. Relatório regenerado (ADR-019).
+- **Migração aplicada no banco de dev real**, com conferência direta no
+  Postgres: RLS `ENABLE`+`FORCE` nas 4 tabelas e o índice parcial com o
+  `WHERE (author = 'ai'::"ArtifactAuthor")` exato.
+- **A guarda foi provada reprovando**: com RLS desabilitada em
+  `artifact_versions`, **3 testes falham** (fail-closed, isolamento e a
+  auditoria do CI).
+
+**Uma tentativa de sabotagem não reprovou, e o motivo importa**: remover só o
+`FORCE` não muda nada para estes testes, porque eles usam `appClient` (role
+`proplan_app`, **não-owner**) e `FORCE` só afeta o owner da tabela. O teste
+estava certo; a sabotagem é que não atingia o caminho exercido. Registro porque
+a conclusão apressada seria a inversa — "o teste não pega, então é fraco" — e
+teria me feito reescrever um teste correto.
+
+### O que o PR-1 deixa cobrado do PR-2
+
+A migration diz isso em comentário, no lugar onde a armadilha mora: **o job não
+tem request**. Ler ou gravar sem `runInTenantContext` sob RLS fail-closed **não
+dá erro — dá zero linhas**, e um pipeline que gravou zero artefatos tem a mesma
+cara de um bem-sucedido visto de fora. Esta frente já acumulou **5 ocorrências**
+desta classe, duas encontradas só no dogfooding, todas com a suíte verde.

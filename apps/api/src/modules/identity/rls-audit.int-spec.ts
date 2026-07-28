@@ -20,6 +20,11 @@ const TENANT_TABLES = [
   'documents', 'doc_links', 'document_resolutions', 'canonical_fields',
   'assertions', 'insights', 'insight_runs', 'sync_runs', 'board_mutations',
   'operations', 'suppressed_links', 'issues',
+  // Pipeline de IA (SPEC-032). As três raízes entram aqui; `review_verdicts`
+  // não, porque corta por JOIN até `artifact_versions` — mesma razão pela qual
+  // `briefing_versions` e `briefing_drafts` também estão fora desta lista. A
+  // policy dela é provada no `artifacts-rls.int-spec.ts`.
+  'artifacts', 'artifact_versions', 'artifact_runs',
 ];
 
 describe('RLS: auditoria de cobertura + idempotência da migração', () => {
