@@ -2964,8 +2964,8 @@ sem check nenhum).
 ### Passos
 
 - [x] **PR-1 — schema: 4 tabelas, RLS e o índice parcial**
-- [x] **PR-2 — módulo `artifacts`, `inputHash` canônico e o gatilho** → fila *(este)*
-- [ ] **PR-3 — as 4 capacidades geradoras** (saída estruturada, retry, teto, ledger)
+- [x] **PR-2 — módulo `artifacts`, `inputHash` canônico e o gatilho** → fila
+- [x] **PR-3 — as 4 capacidades geradoras** (saída estruturada, retry, teto, ledger) *(este)*
 - [ ] **PR-4 — revisor, aprovação e edição humana** (o §7.4 inteiro)
 - [ ] **PR-5 — leitura no painel** (versões, autoria, parecer, regenerar com custo)
 - [ ] Dogfooding no navegador
@@ -3117,3 +3117,78 @@ intermediária. Um `git mv` de teste tinha renomeado `content-hash.spec.ts` para
 testes a menos e nada apontou isso. Restaurado, o número é 1023. Contagem de
 teste que cai sem ninguém notar é o tipo de verde que não prova nada, e foi o
 `git status` antes do commit que pegou.
+
+### PR-3 — o que entrou
+
+As 4 capacidades geradoras, com prompt e **schema obrigatório** cada uma. O
+pipeline passa a gerar de verdade: `normalize` → `scope` → `requirements` →
+`site_prompt`, em sequência, cada uma consumindo a saída das anteriores.
+
+Sequencial e **não** paralelo porque a dependência é real — o `scope` lê o
+`normalize`. Paralelizar produziria um `scope` que ignora a normalização:
+plausível e errado, que é a pior combinação para um artefato que um humano vai
+aprovar.
+
+### Um bug pré-existente que a fatia obrigou a encarar
+
+**O ledger não gravava `tenant_id`.** A coluna nasceu na Fatia 8 com um backfill
+único e nada nunca a preencheu depois:
+
+| `tenant_id` | linhas |
+|---|---|
+| preenchido | 79 (todas do backfill de 2026-07-17) |
+| NULL | 44 (tudo gravado desde então) |
+
+A policy do `llm_usage` aceita NULL de propósito (histórico órfão pertence ao
+tenant ativo, decisão F4 da SPEC-022), então **nada quebrou e ninguém viu**. O
+caso em que isso deixa de ser inofensivo é justamente o desta fatia: o pipeline
+roda **sem sessão**, e uma linha NULL faria o gasto do briefing de um tenant ser
+somado no teto de qualquer um que olhasse.
+
+Corrigido **na raiz** por decisão do PI, não só no caminho novo: `RecordContext`
+ganha `tenantId` e `artifactRunId`, e o recorder resolve o tenant a partir do
+projeto quando o chamador não informa — por isso **nenhum dos 6 chamadores do
+`insight` precisou mudar**.
+
+### Decisões do PR-3
+
+| decisão | por quê |
+|---|---|
+| **Modelo único da frente** via `LLM_MODEL_ARTIFACTS` + `model?` novo no `LlmRequest` | Env próprio porque o `insight` roda no global; trocar `LLM_MODEL_ANTHROPIC` para Haiku mudaria o resumo de projeto junto. **Não** é o tier→modelo que o ADR-008 rejeita — não há tabela de complexidade escolhendo modelo, é uma frente declarando o seu, uma vez. |
+| **Teto antes de CADA capacidade** (§2.6) | São 4 chamadas; o teto pode estourar na 2ª por gasto de outro caminho. Checar só na entrada deixaria o run gastar as quatro. |
+| **Teto estourado guarda o parcial como `FAILED`** (decisão 4 do PI) | Jogar fora trabalho já pago porque o 3º passo não coube seria queimar dinheiro duas vezes. |
+| **Falha de schema para o pipeline** | `requirements` consome `scope`. Pular para a próxima geraria artefato construído sobre um buraco. |
+| **`upsert` no artefato, não `create`** | Ele pode existir de um run anterior que falhou depois dele — `create` estouraria o UNIQUE e transformaria "tentar de novo" em erro. |
+| **`extractJsonObject` subiu para `shared/`** | Mesmo argumento do `canonicalJson` no PR-2. |
+| **Prioridade barrada na origem** | `"alta"`/`"média"` é o que um modelo produz naturalmente; passariam como texto e quebrariam na SPEC-033, longe daqui. |
+
+Todo prompt carrega a proibição de estimar horas, prazo ou preço (ADR-012 e
+MVP3 §9), com teste afirmando isso nos quatro. Um modelo que "estima 40 horas"
+produz número plausível e não auditável, e estimativa é da SPEC-033, onde a
+conta é determinística.
+
+### Verificação do PR-3
+
+- **1064 testes verdes** (era 1023): 41 do PR-3. **Nenhum teste do `insight`
+  quebrou** — a resolução por `projectId` manteve os 6 chamadores intactos.
+- **int-spec contra Postgres real** prova que a linha **nasce** com tenant e que
+  o gasto de um tenant não aparece na leitura do outro. O mock só provaria que o
+  recorder *passa* o valor ao Prisma; o bug corrigido aqui viveu dois meses
+  justamente porque nada além do banco o revelava.
+- **Guarda provada reprovando**: com `tenantId: null` forçado, 2 int-specs falham.
+- **API subida ao vivo** depois de matar instância órfã que segurava a 3311 —
+  sem isso eu teria verificado o código **anterior** ao PR e chamado de sucesso.
+
+**A cobertura do project `banco` caiu de 92,6% para 70,6%, e isso não é
+regressão**: o `jest.config.js` não tem `collectCoverageFrom`, então a cobertura
+mede o que os testes importam. O int-spec novo importa o `LlmUsageRecorder`, e
+com ele o módulo `llm` inteiro entrou no denominador de um project que antes
+praticamente só media Prisma. O numerador cresceu; o denominador cresceu mais.
+
+**Um erro meu que virou melhoria no teste**: a rodada de sabotagem deixou linhas
+com `tenant_id` NULL no banco, e meu `afterAll` limpava **por `tenant_id`** —
+não as pegou. A rodada seguinte viu 2 linhas onde esperava 1, e a falha não
+tinha nada a ver com o defeito. **Limpeza que depende da coluna sob teste deixa
+de limpar exatamente quando o teste falha.** Passou a limpar por
+`artifact_run_id`, com limpeza de entrada também, e está provado repetível
+rodando duas vezes seguidas.

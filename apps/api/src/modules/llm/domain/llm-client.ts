@@ -4,6 +4,20 @@ export interface LlmRequest {
   user: string;
   /** Limite de tokens de saída. */
   maxTokens: number;
+  /**
+   * Modelo desta chamada, sobrepondo o do adapter. **Opcional de propósito**:
+   * quem não passa continua no modelo global do env, que é o comportamento de
+   * todo chamador anterior a 2026-07-28.
+   *
+   * Existe porque a SPEC-032 §2.4 decide **um modelo só para a frente inteira
+   * (Haiku)**, enquanto o `insight` roda no modelo global. Sem o override, as
+   * opções seriam rodar o pipeline no modelo caro ou trocar o env global e
+   * mudar o `insight` junto — efeito colateral fora da fatia.
+   *
+   * Não é o mapeamento tier→modelo que o ADR-008 rejeita: não há tabela de
+   * complexidade escolhendo modelo, é um chamador declarando o seu.
+   */
+  model?: string;
 }
 
 export interface LlmResponse {

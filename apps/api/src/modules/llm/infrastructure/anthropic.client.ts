@@ -11,7 +11,10 @@ export class AnthropicClient implements LlmClient {
   readonly model = process.env.LLM_MODEL_ANTHROPIC ?? 'claude-sonnet-5';
 
   async complete(req: LlmRequest): Promise<LlmResponse> {
-    const model = this.model;
+    // `req.model` sobrepõe o do adapter quando o chamador declara o seu
+    // (SPEC-032 §2.4). Sem ele, o modelo global do env — o comportamento de
+    // todo chamador anterior.
+    const model = req.model ?? this.model;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
