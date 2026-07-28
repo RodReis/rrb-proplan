@@ -19,6 +19,7 @@ import { PortfolioModule } from './modules/portfolio/portfolio.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ArtifactsModule } from './modules/artifacts/artifacts.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
 import { EstimatesModule } from './modules/estimates/estimates.module';
 import { BriefingModule } from './modules/briefing/briefing.module';
 import { redisConnectionFromUrl } from './shared/redis-connection';
@@ -64,6 +65,10 @@ import { redisConnectionFromUrl } from './shared/redis-connection';
     // humano sob demanda e não pode disputar worker com o pipeline automático
     // do briefing recém-enviado.
     EstimatesModule,
+    // Contratos sobre a estimativa aprovada (SPEC-034). Expõe a 2ª rota PÚBLICA
+    // da frente (`/c/:token`, PR-4) — e, como a do briefing, fora dos guards de
+    // tenant por design: o tenant vem do hash do token (ADR-020).
+    ContractsModule,
   ],
   controllers: [HealthController],
 })
