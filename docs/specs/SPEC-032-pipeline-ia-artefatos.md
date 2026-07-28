@@ -96,10 +96,18 @@ a tomar.
    **vence o teto do `owner`**, alteração **só pelo `owner`**. `Settings`
    continua existindo como preferência de **usuário**. Ver §7.1 para o
    levantamento que motivou.
-2. **ADR novo + 1º PR: extrair o módulo `llm`** (porta, fábrica, adapters,
-   ledger, preço, teto) de dentro do `insight`, consumido por `insight` e
-   `artifacts`. **Refatoração pura, sem comportamento novo**; prova de que nada
-   quebrou = suíte do `insight` inteira verde. Ver §7.2.
+2. ✅ **`ADR-027` — módulo `llm` com superfície pública declarada** (escrito e
+   aprovado em 2026-07-27). Porta, fábrica, adapters, ledger, preço e gate saem
+   do `insight`; a interface pública é `modules/llm/index.ts` e **import
+   profundo a partir de fora quebra o build** (lint no CI). **Refatoração pura,
+   sem comportamento novo**: nenhuma rota muda e a suíte do `insight` fica verde
+   **sem alteração de asserção**. Ver §7.2.
+
+   > **Atenção — mover o diretório não resolve.** Consumidor importando
+   > `llm/domain/llm-client` ou `llm/infrastructure/llm-client.factory`
+   > reproduz a violação do ADR-001 no endereço novo. O `exports` do `@Module`
+   > resolve a injeção; não resolve o import de TypeScript, que é onde o
+   > acoplamento mora.
 
 **Sequência obrigatória, não paralela**: o ADR do `llm` depende do ADR-026 — se
 o gate deixa de ser `capsOf(userId)` e passa a resolver por tenant, a assinatura
