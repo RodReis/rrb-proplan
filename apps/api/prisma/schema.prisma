@@ -104,6 +104,10 @@ model Tenant {
   artifactRuns   ArtifactRun[]
   // Estimativa (SPEC-033): raiz pelo mesmo motivo das três acima.
   estimates      Estimate[]
+  // Contratos (SPEC-034): perfil 1:1, templates e contratos por tenant.
+  providerProfile   ProviderProfile?
+  contractTemplates ContractTemplate[]
+  contracts         Contract[]
 
   @@map("tenants")
 }
@@ -766,6 +770,7 @@ model ClientProject {
   artifacts   Artifact[]
   artifactRuns ArtifactRun[]
   estimates   Estimate[]
+  contracts   Contract[]
 
   @@index([clientId, deletedAt])
   @@index([state])
@@ -1218,9 +1223,197 @@ model Estimate {
   tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   clientProject      ClientProject   @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
   effortVersion      ArtifactVersion @relation(fields: [effortVersionId], references: [id], onDelete: Restrict)
+  // `Restrict` do lado do contrato: ver `Contract.estimate`.
+  contracts          Contract[]
 
   @@unique([clientProjectId, version])
   @@index([clientProjectId, createdAt])
   @@index([tenantId, createdAt])
   @@map("estimates")
+}
+
+// ===========================================================================
+// MVP3 / Contratos (SPEC-034, Fatia 23)
+//
+// A fatia com o maior custo de erro do MVP3: expõe dado pessoal de duas partes
+// numa URL sem autenticação e produz um documento que alguém pode tratar como
+// vinculante. As duas coisas são tratadas como escopo, não como rodapé.
+// ===========================================================================
+
+// Canal por onde o cliente comunicou o aceite. Lista FECHADA (§8.3): canal
+// livre viraria campo de texto que ninguém consegue somar depois.
+enum AcceptanceChannel {
+  email
+  whatsapp
+  presencial
+  telefone
+}
+
+// Modalidade do contrato (MVP3 §3). Um template por modalidade (§2.2), sem
+// seção condicional dentro de texto jurídico — decisão do PI em #149.
+enum ContractModality {
+  desenvolvimento
+  desenvolvimento_manutencao
+  desenvolvimento_venda_codigo
+}
+
+// Dados do prestador — UM por tenant (§2.1). Alterável só pelo `owner`
+// (ADR-026), como os demais parâmetros de workspace.
+//
+// Mascarado em log e em payload de erro, NUNCA no contrato em si: o documento
+// é justamente onde estes dados precisam aparecer por inteiro (§2.7).
+model ProviderProfile {
+  id           String   @id @default(uuid())
+  // @unique: um perfil por tenant. Dois perfis significaria que o contrato
+  // precisaria escolher um, e nada diria qual.
+  tenantId     String   @unique @map("tenant_id")
+  legalName    String   @map("legal_name")
+  documentType String   @map("document_type") // cpf | cnpj
+  document     String
+  zipCode      String?  @map("zip_code")
+  street       String?
+  district     String?
+  city         String?
+  state        String?
+  email        String?
+  phone        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("provider_profiles")
+}
+
+// Template por modalidade. A linha é o PONTEIRO para a versão corrente; o texto
+// vive nas versões, que são imutáveis (§2.2).
+//
+// `isSeedExample` deixa de ser `true` na 1ª versão salva pelo prestador, e é o
+// que a trava do §2.3 consulta: o produto não emite contrato com texto que o
+// dono nunca leu.
+model ContractTemplate {
+  id               String                    @id @default(uuid())
+  tenantId         String                    @map("tenant_id")
+  modality         ContractModality
+  // Nullable só entre o INSERT do template e o da 1ª versão (o seed grava os
+  // dois na mesma transação). Fora disso, sempre preenchido.
+  currentVersionId String?                   @unique @map("current_version_id")
+  isSeedExample    Boolean                   @default(true) @map("is_seed_example")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  currentVersion   ContractTemplateVersion?  @relation("current_version", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  versions         ContractTemplateVersion[] @relation("template_versions")
+
+  // Um template por modalidade, por tenant (§2.2).
+  @@unique([tenantId, modality])
+  @@map("contract_templates")
+}
+
+// Versão do template — IMUTÁVEL. Editar cria linha nova; a anterior continua
+// legível, porque um contrato emitido aponta para ela e precisa continuar
+// explicando de que texto saiu.
+//
+// Filha por JOIN a `contract_templates`: nunca é buscada sozinha por `id` fora
+// do contexto do template, então não precisa ser raiz de tenancy.
+model ContractTemplateVersion {
+  id         String           @id @default(uuid())
+  templateId String           @map("template_id")
+  // Sequencial POR template — v1, v2..., como as demais versões da casa.
+  version    Int
+  // Texto com placeholders `{{...}}`. Substituição ESCAPADA na renderização,
+  // nunca engine que avalie expressão (§2.4).
+  body       String
+  createdBy  String?          @map("created_by")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  template   ContractTemplate @relation("template_versions", fields: [templateId], references: [id], onDelete: Cascade)
+  currentOf  ContractTemplate? @relation("current_version")
+  contracts  Contract[]
+
+  @@unique([templateId, version])
+  @@map("contract_template_versions")
+}
+
+// O contrato — SNAPSHOT IMUTÁVEL (§2.5). Copia, não referencia: prestador,
+// cliente, escopo, valor e horas viajam como cópia dentro da linha.
+//
+// Por que copiar: um contrato é o documento que o cliente recebeu. Se ele
+// lesse o `Client` por FK, corrigir o endereço do cliente meses depois mudaria
+// em silêncio o que está escrito num documento já enviado — e nada falharia.
+// As FKs que sobram (`estimateId`, `templateVersionId`) existem para responder
+// "de onde este número saiu?", não para alimentar o texto.
+//
+// RAIZ de tenancy pelo mesmo critério do `Estimate` e do `FileAsset`
+// (ADR-025): as rotas de link e de aceite buscam DIRETO POR `id`, e
+// `client_projects` é neta de `clients` — a policy viraria JOIN de três níveis
+// no caminho de uma escrita que move card.
+model Contract {
+  id                String             @id @default(uuid())
+  tenantId          String             @map("tenant_id")
+  clientProjectId   String             @map("client_project_id")
+  // Sequencial POR projeto: refazer o contrato emite v2, nunca altera a v1.
+  version           Int
+  modality          ContractModality
+  estimateId        String             @map("estimate_id")
+  templateVersionId String             @map("template_version_id")
+
+  // --- O snapshot ----------------------------------------------------------
+  // HTML final, já renderizado e escapado, com o disclaimer no rodapé (§2.12).
+  // É o que a rota pública serve — renderizar de novo na leitura permitiria que
+  // uma mudança no renderizador alterasse um documento já entregue.
+  renderedHtml      String             @map("rendered_html")
+  providerSnapshot  Json               @map("provider_snapshot")
+  clientSnapshot    Json               @map("client_snapshot")
+  scopeSnapshot     Json               @map("scope_snapshot")
+  // Do cenário PROVÁVEL da `Estimate` aprovada (§6). `Decimal`, nunca `Float`:
+  // é o mesmo dinheiro do `Estimate`, e o contrato tem de imprimir exatamente
+  // o que ela congelou.
+  budgetBrl         Decimal            @map("budget_brl")   @db.Decimal(12, 2)
+  effortHours       Decimal            @map("effort_hours") @db.Decimal(12, 2)
+  paymentTerms      String?            @map("payment_terms")
+
+  // --- Aceite (§2.10) ------------------------------------------------------
+  // Registrado pelo PRESTADOR no painel, nunca pelo cliente na rota pública.
+  // Não é assinatura eletrônica, e a UI não deve sugerir que seja (§3).
+  acceptedAt        DateTime?          @map("accepted_at")
+  acceptedBy        String?            @map("accepted_by")
+  acceptanceChannel AcceptanceChannel? @map("acceptance_channel")
+  acceptanceNote    String?            @map("acceptance_note")
+
+  createdAt         DateTime           @default(now()) @map("created_at")
+  createdBy         String?            @map("created_by")
+
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientProject     ClientProject           @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  // `Restrict`, mesmo padrão de `Estimate.effortVersion`: a estimativa é a
+  // conta que explica o valor do contrato. `Cascade` levaria junto um contrato
+  // já enviado; `SET NULL` deixaria o número órfão da conta que o produziu.
+  estimate          Estimate                @relation(fields: [estimateId], references: [id], onDelete: Restrict)
+  templateVersion   ContractTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  links             ContractLink[]
+
+  @@unique([clientProjectId, version])
+  @@index([clientProjectId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("contracts")
+}
+
+// Link público do contrato — 2º do produto, mesmo desenho do `BriefingLink`:
+// token de 256 bits exibido UMA ÚNICA VEZ, só o hash SHA-256 persiste.
+//
+// A diferença que importa: aqui o link expõe CPF/CNPJ e endereço das duas
+// partes (§2.7), então `expiresAt` é NOT NULL e nasce em agora + 48 h (§2.8).
+// No briefing a expiração é opcional; aqui, deixar um link sem prazo seria
+// deixar dado pessoal legível para sempre para quem tiver a URL.
+model ContractLink {
+  id         String    @id @default(uuid())
+  contractId String    @map("contract_id")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  createdBy  String?   @map("created_by")
+  contract   Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@map("contract_links")
 }

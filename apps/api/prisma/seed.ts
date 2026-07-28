@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
+import { CONTRACT_TEMPLATE_SEEDS } from './contract-templates.seed';
 
 /**
  * Seed de dados de desenvolvimento (CLAUDE.md: sem hardcode/mock — dado local
@@ -165,6 +166,60 @@ async function seedServiceCatalog() {
   );
 }
 
+/**
+ * Templates-exemplo de contrato, um por modalidade (SPEC-034 §2.3).
+ *
+ * Nasce com `isSeedExample = true`, e é isto que a trava do §7.3 consulta: o 1º
+ * contrato de uma modalidade exige uma versão salva pelo prestador. O seed
+ * existe para a fatia ser utilizável no dia 1, não para ser assinado como veio.
+ *
+ * Idempotente pelo unique `(tenant_id, modality)`: reseed não duplica. E
+ * **nunca sobrescreve** — se o template já existe, o seed não o toca, porque
+ * ele pode já ter versões escritas pelo dono, e reescrever o corpo apagaria
+ * texto jurídico que alguém revisou.
+ */
+async function seedContractTemplates() {
+  const tenants = await prisma.tenant.findMany({ select: { id: true } });
+  let created = 0;
+
+  for (const tenant of tenants) {
+    // RLS com FORCE: sem `app.tenant_ids` a policy barra até o OWNER. Mesma
+    // mecânica do `PrismaService.withTenant`.
+    created += await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_ids', ${`{${tenant.id}}`}, true)`;
+
+      let count = 0;
+      for (const { modality, body } of CONTRACT_TEMPLATE_SEEDS) {
+        const existente = await tx.contractTemplate.findUnique({
+          where: { tenantId_modality: { tenantId: tenant.id, modality } },
+          select: { id: true },
+        });
+        if (existente) continue;
+
+        // Template e 1ª versão na MESMA transação: `current_version_id` é
+        // nullable só nesta janela, e um template sem versão corrente seria um
+        // registro que a tela mostra e a emissão não consegue usar.
+        const template = await tx.contractTemplate.create({
+          data: { tenantId: tenant.id, modality, isSeedExample: true },
+        });
+        const versao = await tx.contractTemplateVersion.create({
+          data: { templateId: template.id, version: 1, body },
+        });
+        await tx.contractTemplate.update({
+          where: { id: template.id },
+          data: { currentVersionId: versao.id },
+        });
+        count += 1;
+      }
+      return count;
+    });
+  }
+
+  console.log(
+    `ContractTemplate seed: ${created} templates novos em ${tenants.length} tenant(s)`,
+  );
+}
+
 async function seedSegments() {
   for (const s of SEGMENTS) {
     await prisma.segment.upsert({
@@ -180,6 +235,7 @@ async function main() {
   await seedLocalidades();
   await seedSegments();
   await seedServiceCatalog();
+  await seedContractTemplates();
 
   for (const p of PRICES) {
     await prisma.modelPrice.upsert({
