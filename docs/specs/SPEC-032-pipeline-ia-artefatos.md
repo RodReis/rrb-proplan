@@ -90,20 +90,22 @@ fatia ser codificada. **A ordem correta é: esta spec fecha primeiro, os ADRs
 registram as decisões que ela força** — ADR registra decisão tomada, não decisão
 a tomar.
 
-1. **Emenda ao ADR-016 / ADR-020 — teto de IA por tenant.** Decidido pelo PI em
-   2026-07-27 (§8): tabela **`TenantSettings` nova**, migração em que **vence o
-   teto do `owner`**, alteração **só pelo `owner`**. `Settings` continua
-   existindo como preferência de **usuário** (provedor, limiares de UI). Ver
-   §7.1 para o levantamento do que está quebrado hoje.
+1. ✅ **`ADR-026` — teto de IA pertence ao tenant** (escrito e aprovado em
+   2026-07-27; emenda o ADR-016 e corrige o fecho do ADR-020). Tabela
+   **`TenantSettings` nova**, `capsOf` passa a receber `tenantId`, migração
+   **vence o teto do `owner`**, alteração **só pelo `owner`**. `Settings`
+   continua existindo como preferência de **usuário**. Ver §7.1 para o
+   levantamento que motivou.
 2. **ADR novo + 1º PR: extrair o módulo `llm`** (porta, fábrica, adapters,
    ledger, preço, teto) de dentro do `insight`, consumido por `insight` e
    `artifacts`. **Refatoração pura, sem comportamento novo**; prova de que nada
    quebrou = suíte do `insight` inteira verde. Ver §7.2.
 
-**Sequência obrigatória, não paralela**: o ADR do `llm` depende da emenda do
-teto — se o gate deixa de ser `capsOf(userId)` e passa a resolver por tenant, a
-assinatura que o `llm` expõe ao `artifacts` muda junto. Escritos em paralelo, o
-ADR do `llm` nasce desenhado em torno de `userId` e precisa de retrabalho.
+**Sequência obrigatória, não paralela**: o ADR do `llm` depende do ADR-026 — se
+o gate deixa de ser `capsOf(userId)` e passa a resolver por tenant, a assinatura
+que o `llm` expõe ao `artifacts` muda junto. Escrito antes, o ADR do `llm`
+nasceria desenhado em torno de `userId`. Com o ADR-026 já fechado, a porta do
+`llm` nasce recebendo `tenantId` — que é o ponto de escrever nesta ordem.
 
 ## 5. Critérios de aceite
 
