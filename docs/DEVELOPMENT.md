@@ -3256,5 +3256,70 @@ Duas distinções que a tela mantém, ambas do MVP3 §9:
 - **1388 testes verdes**: 1025 regras · 71 banco · 292 tela. Build de produção
   OK. Relatório regenerado (ADR-019).
 - API subida ao vivo com as 5 rotas mapeadas e **nenhum verbo destrutivo**.
-- **Pendente: dogfooding no navegador** — a frente do briefing acumulou 5 bugs
-  que só o dogfooding pegou, todos com a suíte verde.
+### Dogfooding (2026-07-28) — o pipeline rodou de verdade
+
+Executado contra o briefing real do **"Projeto EPG2"**, preenchido pelo PI na
+SPEC-031. **65 segundos, 8 chamadas ao Haiku, US$ 0,0453.**
+
+| critério §5 | resultado |
+|---|---|
+| 4 artefatos em `PENDING_REVIEW`, card **não** move pelo job | ✅ |
+| 8 linhas no ledger com `tenantId` e `artifactRunId`, custo real | ✅ `price_missing = false` |
+| "Quanto custou" vem do ledger | ✅ `costUsd: 0.045301`, bate com o SQL |
+| Aprovar 3 de 4 **não** move | ✅ `cardMoved: false` × 3 |
+| Aprovar o 4º move para `ARTIFACTS_READY` | ✅ `cardMoved: true` |
+| Trilha com ator **não nulo** | ✅ e a linha do briefing, ao lado, com ator nulo |
+| Rejeitar sem motivo | ✅ 422 |
+| Edição cria v2 `human` com pai, sem hash/modelo | ✅ v1 da IA intacta |
+| Tenant alheio / id inexistente | ✅ 403 / 404 |
+
+**O revisor provou seu valor.** Os 4 pareceres apontaram a mesma falha real —
+*"o artefato adiciona funcionalidades não mencionadas no briefing"* — e um deles
+foi específico ao ponto de perguntar se os R$ 20.000 do briefing cobrem o
+reconhecimento facial que o artefato assumiu. É exatamente o que a decisão 1 do
+PI queria: anotar o que a pessoa deveria conferir, sem bloquear.
+
+### Três achados do dogfooding
+
+**1. `/artifacts/` sem `/t/:tenant` → 404 (FIX #166, corrigido).** Quatro das
+cinco rotas do §6 saíam sem o prefixo de tenant no cliente web. Em tela o
+defeito era **mudo**: clicar em "Ver" não mostrava nada — sem conteúdo, sem
+parecer, sem erro. Nenhum teste pegou porque **todos mockam a camada de API
+inteira**, que é onde `withTenantPrefix` vive: os 13 testes do painel provavam
+que a tela *chama* `getArtifactVersion`, nenhum provava que a **URL montada**
+estava certa. *Mockar a fronteira esconde defeitos DA fronteira.* Corrigido com
+`withTenantPrefix` exportada e 16 testes próprios, guarda provada reprovando.
+
+**2. `jobId` retido bloqueia re-disparo.** O job de um run que falhou fica em
+`completed` no Redis pelo `removeOnComplete: 50`, e um novo `add` com o mesmo
+`jobId` é **descartado em silêncio** — nada no log, nada no banco. Um briefing
+cujo pipeline falhou fica sem gatilho até o job sair da retenção. Tive de apagar
+a chave à mão para o dogfooding prosseguir.
+
+**3. Retry automático de 429 não existe.** A decisão 6 do PI (§8) pede *"backoff
+automático, 1 retentativa"*. O `runParsed` do recorder só retenta **erro de
+parse** — erro de chamada relança direto. E o `attempts: 2` da fila também não
+dispara, porque o `runPipeline` captura a exceção e fecha o run como `FAILED`
+**sem relançar**: o BullMQ vê o job como sucesso. O run fica `FAILED` com motivo
+legível (o que a spec pede para o caso terminal), mas o *automático* está
+ausente.
+
+Os achados 2 e 3 são **decisão do PI** — corrigi-los envolve escolher entre
+relançar do service (que retentaria o run inteiro, refazendo capacidades já
+pagas) e adicionar retry de chamada no recorder (que afeta o `insight` também).
+
+### Verificação no navegador (2026-07-28)
+
+Depois do FIX #166, com API e web de pé:
+
+- O botão **"Artefatos"** aparece só no projeto com briefing enviado.
+- O painel mostra **"4 de 4 aprovados — o projeto avançou no funil"** e
+  **"Custo desta geração: US$ 0.0453 (do ledger)"**.
+- O parecer do revisor aparece **e o botão "Aprovar" fica habilitado** — a
+  decisão 1 do PI em pixels, com a frase *"quem decide é você"* em tela.
+- Editar promete **"cria uma versão nova"** e **"a versão da IA continua
+  guardada"**; o botão é **"Salvar como versão nova"**, não "Salvar".
+- **JSON inválido é barrado na tela**, sem ir ao servidor.
+- Uma edição real feita pelo navegador gravou **v2 `human`** e devolveu o
+  artefato a `PENDING_REVIEW`, com a tela passando a dizer *"3 de 4 aprovados /
+  faltam 1 de 4 aprovações"*.
