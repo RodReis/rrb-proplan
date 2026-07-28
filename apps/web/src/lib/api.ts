@@ -1016,6 +1016,113 @@ export function getBriefingVersion(id: string): Promise<BriefingVersionDetail> {
   return request<BriefingVersionDetail>(`/briefing-versions/${id}`);
 }
 
+/** Artefatos gerados pelo pipeline de IA (SPEC-032 §2.12). */
+
+export type ArtifactKind = 'normalize' | 'scope' | 'requirements' | 'site_prompt';
+export type ArtifactState = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'FAILED';
+export type ArtifactAuthor = 'ai' | 'human';
+
+export interface ArtifactVersionRef {
+  id: string;
+  version: number;
+  author: ArtifactAuthor;
+  model: string | null;
+  promptVersion: string | null;
+  editedBy: string | null;
+  parentVersionId: string | null;
+  createdAt: string;
+}
+
+export interface ArtifactSummary {
+  id?: string;
+  kind: ArtifactKind;
+  /**
+   * `null` = a capacidade não rodou. **Diferente de `FAILED`**, que tentou e
+   * falhou — colapsar os dois faria "ainda não usei" parecer "usei e deu
+   * errado" (MVP3 §9).
+   */
+  state: ArtifactState | null;
+  currentVersionId?: string | null;
+  rejectionReason?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  /** Mais nova primeiro. */
+  versions: ArtifactVersionRef[];
+}
+
+export interface ArtifactRunRef {
+  id: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  completedKinds: ArtifactKind[];
+  /** Motivo legível em português — teto estourado, schema inválido. */
+  failureReason: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface ArtifactsOverview {
+  artifacts: ArtifactSummary[];
+  run: ArtifactRunRef | null;
+  approvedCount: number;
+  requiredCount: number;
+  /** Do LEDGER, nunca derivado das versões (ADR-016). `null` sem run. */
+  costUsd: string | null;
+}
+
+export interface ReviewVerdictRef {
+  verdict: string;
+  rationale: string;
+  model: string | null;
+  createdAt: string;
+}
+
+export interface ArtifactVersionDetail extends ArtifactVersionRef {
+  content: Record<string, unknown>;
+  artifact: { id: string; kind: ArtifactKind; state: ArtifactState };
+  /** Parecer do revisor. **Nunca é gate de aprovação** — é conteúdo de tela. */
+  verdicts: ReviewVerdictRef[];
+}
+
+export function getArtifacts(projectId: string): Promise<ArtifactsOverview> {
+  return request<ArtifactsOverview>(`/client-projects/${projectId}/artifacts`);
+}
+
+export function getArtifactVersion(
+  artifactId: string,
+  versionId: string,
+): Promise<ArtifactVersionDetail> {
+  return request<ArtifactVersionDetail>(`/artifacts/${artifactId}/versions/${versionId}`);
+}
+
+export function approveArtifact(id: string): Promise<{ state: 'APPROVED'; cardMoved: boolean }> {
+  return request(`/artifacts/${id}/approve`, { method: 'POST' });
+}
+
+export function rejectArtifact(
+  id: string,
+  reason: string,
+): Promise<{ state: 'REJECTED'; cardMoved: boolean }> {
+  return request(`/artifacts/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/**
+ * Edição humana: **cria versão**, não altera no lugar (§2.10). `POST`, e não
+ * `PATCH`, porque o verbo carrega a regra.
+ */
+export function createArtifactVersion(
+  id: string,
+  parentVersionId: string,
+  content: Record<string, unknown>,
+): Promise<{ id: string; version: number }> {
+  return request(`/artifacts/${id}/versions`, {
+    method: 'POST',
+    body: JSON.stringify({ parentVersionId, content }),
+  });
+}
+
 /**
  * URL do download do anexo. É um `<a href>` normal, não `fetch`: o browser
  * precisa receber o `Content-Disposition: attachment` para salvar o arquivo, e
