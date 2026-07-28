@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -20,6 +21,7 @@ import {
   ContractIssueService,
   type IssueContractInput,
 } from '../application/contract-issue.service';
+import { ContractLinkService } from '../application/contract-link.service';
 import {
   ContractTemplateService,
 } from '../application/contract-template.service';
@@ -38,12 +40,17 @@ interface SaveTemplateBody {
  * Tudo autenticado e sob `withTenant` — a rota **pública** do contrato
  * (`GET /c/:token`) vive em controller próprio, sem guard, e chega no PR-4.
  *
- * **Nenhum `PATCH`/`PUT`/`DELETE` sobre conteúdo versionado.** O `PUT` do
- * perfil é a exceção deliberada, e a razão é que perfil **não é versionado**: é
- * um só por tenant, substituído por inteiro, e cada contrato já guarda o seu
- * `providerSnapshot` (PR-1) — que é o que preserva o dado como estava no dia da
- * emissão. Salvar template é `POST .../versions`, porque ali nada é alterado no
- * lugar.
+ * **Nenhum `PATCH`/`PUT`/`DELETE` sobre conteúdo versionado.** Duas exceções
+ * deliberadas, ambas sobre coisas que **não são** conteúdo versionado:
+ *
+ * - `PUT /provider-profile` — perfil é um só por tenant, substituído por
+ *   inteiro, e cada contrato já guarda o seu `providerSnapshot` (PR-1), que é o
+ *   que preserva o dado como estava no dia da emissão.
+ * - `DELETE /contracts/:id/link` — o link é **credencial de acesso**, não
+ *   documento. Revogar não toca o contrato: o `renderedHtml` continua imutável
+ *   e legível no painel; o que morre é a URL pública (§2.8).
+ *
+ * Salvar template é `POST .../versions`, porque ali nada é alterado no lugar.
  */
 @Controller('t/:tenant')
 @UseGuards(JwtAuthGuard, TenantGuard)
@@ -53,6 +60,7 @@ export class ContractsController {
     private readonly profile: ProviderProfileService,
     private readonly templates: ContractTemplateService,
     private readonly contracts: ContractIssueService,
+    private readonly links: ContractLinkService,
   ) {}
 
   /** Perfil do prestador. Leitura para qualquer membro do workspace. */
@@ -145,5 +153,42 @@ export class ContractsController {
   @Get('contracts/:id')
   contract(@Req() req: AuthenticatedRequest, @Param('id') contractId: string) {
     return this.contracts.byId(req.tenantId!, contractId);
+  }
+
+  /** Estado do link ativo — nunca o token, que não é recuperável (§2.13). */
+  @Get('contracts/:id/link')
+  contractLink(@Req() req: AuthenticatedRequest, @Param('id') contractId: string) {
+    return this.links.getActive(req.tenantId!, contractId);
+  }
+
+  /**
+   * Gera ou regenera o link público (§2.8).
+   *
+   * `POST` e não `PUT`: regenerar **revoga o anterior e cria outro**, com token
+   * novo. O token em claro sai na resposta uma única vez — depois disso só o
+   * hash existe, e nem o painel consegue relê-lo.
+   */
+  @Post('contracts/:id/link')
+  createContractLink(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') contractId: string,
+  ) {
+    return this.links.createOrRegenerate(req.tenantId!, contractId);
+  }
+
+  /**
+   * Revogação em 1 clique, com efeito imediato (§2.8).
+   *
+   * `DELETE` sobre o **link**, não sobre o contrato — e é a única exceção ao
+   * "nenhum verbo destrutivo neste controller": o link é credencial de acesso,
+   * não conteúdo versionado. O contrato em si continua imutável, e revogar não
+   * o toca.
+   */
+  @Delete('contracts/:id/link')
+  revokeContractLink(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') contractId: string,
+  ) {
+    return this.links.revoke(req.tenantId!, contractId);
   }
 }

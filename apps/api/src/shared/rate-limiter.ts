@@ -1,5 +1,11 @@
 /**
- * Rate limit da rota pública `GET /b/:token` (SPEC-029).
+ * Rate limit das rotas públicas sem sessão: `GET /b/:token` (SPEC-029) e
+ * `GET /c/:token` (SPEC-034).
+ *
+ * Mora em `shared/` e não no `briefing/` porque passou a ter dois donos. Mover
+ * foi preferido a duplicar: a alternativa era uma segunda cópia do mesmo
+ * limitador dentro do `contracts` — que a fronteira entre módulos exigiria, já
+ * que um módulo não importa entidade interna do outro.
  *
  * Janela deslizante por chave (IP + token), em memória. Sem dependência nova:
  * o `@nestjs/throttler` não está instalado, e o que a spec pede — barrar

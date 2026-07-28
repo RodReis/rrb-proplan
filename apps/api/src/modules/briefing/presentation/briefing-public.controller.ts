@@ -14,7 +14,7 @@ import type { Request } from 'express';
 import { BriefingDraftService } from '../application/briefing-draft.service';
 import { BriefingReferenceService } from '../application/briefing-reference.service';
 import { BriefingSubmitService } from '../application/briefing-submit.service';
-import { SlidingWindowRateLimiter } from '../domain/rate-limiter';
+import { SlidingWindowRateLimiter } from '../../../shared/rate-limiter';
 
 /** 20 requisições por minuto, por par IP+token. */
 const RATE_LIMIT = 20;

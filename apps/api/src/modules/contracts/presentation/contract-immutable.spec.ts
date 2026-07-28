@@ -33,8 +33,17 @@ const WRITE_METHODS = new Set([
   RequestMethod.DELETE,
 ]);
 
-/** Rotas de escrita-no-lugar permitidas. Cada nova entrada é uma decisão. */
-const EXCECOES = ['provider-profile'];
+/**
+ * Rotas de escrita-no-lugar permitidas. Cada nova entrada é uma decisão.
+ *
+ * - `provider-profile` (PR-2): perfil não é versionado — um por tenant,
+ *   substituído por inteiro, e cada contrato guarda o seu `providerSnapshot`.
+ * - `contracts/:id/link` (PR-4): o link é **credencial de acesso**, não
+ *   documento. Revogar não toca o contrato — o `renderedHtml` continua imutável
+ *   e legível no painel; o que morre é a URL pública (§2.8, revogação em 1
+ *   clique com efeito imediato).
+ */
+const EXCECOES = ['provider-profile', 'contracts/:id/link'];
 
 interface Route {
   controller: string;
@@ -77,11 +86,28 @@ describe('Contract é imutável (SPEC-034 §2.5)', () => {
     expect(routes.length).toBeGreaterThan(4);
   });
 
-  it('nenhuma rota de escrita menciona contracts', () => {
+  it('nenhuma rota de escrita alcança o contrato em si', () => {
+    // O `/link` no fim do caminho é a fronteira: `contracts/:id` é o documento
+    // (imutável), `contracts/:id/link` é a credencial de acesso a ele. Um
+    // `DELETE contracts/:id` — ou qualquer escrita que pare no documento —
+    // continua derrubando este teste.
     const offending = routes.filter(
-      (r) => WRITE_METHODS.has(r.method) && r.path.includes('contract'),
+      (r) =>
+        WRITE_METHODS.has(r.method) &&
+        r.path.includes('contract') &&
+        !r.path.endsWith('/link'),
     );
     expect(offending).toEqual([]);
+  });
+
+  it('a escrita permitida em contracts para no link, nunca no documento', () => {
+    const escritasEmContrato = routes
+      .filter((r) => WRITE_METHODS.has(r.method) && r.path.includes('contracts/'))
+      .map((r) => r.path.replace(/^t\/:tenant\//, ''));
+
+    // Exatamente uma, e é o link. Se alguém acrescentar `contracts/:id` aqui,
+    // a lista deixa de bater e a decisão aparece no diff.
+    expect(escritasEmContrato).toEqual(['contracts/:id/link']);
   });
 
   it('a única escrita-no-lugar do módulo é a exceção nominal', () => {
@@ -91,11 +117,11 @@ describe('Contract é imutável (SPEC-034 §2.5)', () => {
     expect(escritas).toEqual(EXCECOES);
   });
 
-  it('a lista de exceções contém exatamente provider-profile', () => {
+  it('a lista de exceções contém exatamente as duas decididas', () => {
     // Afrouxar o filtro deixaria a próxima exceção entrar sem ninguém decidir.
     // Se este teste precisar mudar, foi porque alguém decidiu — e é o que se
     // quer: a decisão aparece no diff.
-    expect(EXCECOES).toEqual(['provider-profile']);
+    expect(EXCECOES).toEqual(['provider-profile', 'contracts/:id/link']);
   });
 
   it('salvar template é POST, não PATCH — editar cria versão', () => {
