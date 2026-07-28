@@ -3374,8 +3374,8 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 ### Passos
 
 - [x] **PR-1 — schema: perfil, templates, contrato, link e `resolve_contract_link`**
-- [x] **PR-2 — perfil do prestador + templates versionados** *(este)*
-- [ ] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé)
+- [x] **PR-2 — perfil do prestador + templates versionados**
+- [x] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé) *(este)*
 - [ ] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar)
 - [ ] **PR-5 — aceite + painel** (canal de lista fechada, move o card, tela no prestador)
 - [ ] Dogfooding no navegador
@@ -3550,6 +3550,104 @@ um que parece ter salvado.
 - Build OK e **API subida ao vivo** com as 6 rotas mapeadas
   (`GET`/`PUT provider-profile`, `GET contract-templates`,
   `GET .../:modality`, `GET`/`POST .../:modality/versions`), sem `EADDRINUSE`.
+- Relatório regenerado **com o carimbo** (`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`).
+
+### PR-3 — o que entrou
+
+A emissão: o contrato deixa de ser tabela e vira **documento**. Duas regras
+puras (`render.ts`, `snapshot.ts`), o `ContractIssueService`, três rotas e o
+arch-spec de fronteira que o PR-2 tinha deixado nomeado no `contracts.module.ts`.
+
+**A ordem do renderizador é a decisão inteira do PR**, e é a parte que erra sem
+aparecer. Escapa o corpo do template → substitui os placeholders escapando cada
+valor no ato → **só então** converte a marcação em tags. Converter por último é
+o que garante que as únicas tags do documento nasceram do conversor: qualquer
+`<` vindo do template ou de um valor já virou `&lt;` antes, e não há caminho em
+que volte a ser tag.
+
+**O escape do valor mora dentro do `substitute`, não em quem o chama.** Foi
+assim depois de um defeito real durante o PR: a primeira versão escapava só o
+corpo do template, e o teste do critério de aceite do §5 pegou o `<script>` do
+nome do cliente **executável** no HTML. Quem monta os valores lê de quatro
+fontes (perfil, cliente, escopo, estimativa) — um caminho que esquecesse de
+escapar produziria a página pública com a tag viva. Escapar no ponto único por
+onde **todo** valor passa é o que torna o esquecimento impossível.
+
+**`{{scope}}` é a exceção, e é uma lista de nomes.** É o único placeholder que
+entra com marcação própria (`- item`, `**título**`), porque o `scopeToMarkup`
+monta a lista a partir de itens **já escapados um a um**. A exceção é
+`MARKUP_PLACEHOLDERS`, com o mesmo desenho da exceção de `provider-profile` na
+guarda de imutabilidade: afrouxar para um padrão genérico deixaria a próxima
+entrar sem ninguém decidir. E o escape item a item não é zelo: o escopo nasce de
+um artefato que a IA gerou a partir do briefing que o **cliente** preencheu.
+
+**Marcação vinda de valor é neutralizada** (`*`, `#`, `_`, `-` viram entidade).
+Não é segurança — nenhuma tag nova nasce daí —, é o documento saindo diferente
+do que o dono escreveu: um cliente com `**` no nome deixaria metade da cláusula
+em negrito. Quem marca é o template; valor é conteúdo, e conteúdo não formata.
+
+**Markdown escrito à mão, sem biblioteca.** O subconjunto dos templates é `#`,
+`##`, `- item`, `**negrito**` e parágrafo. Toda biblioteca de markdown aceita
+HTML embutido por padrão, e desligar isso corretamente é mais superfície de
+configuração do que o conversor inteiro daqui. Numa página que serve dado
+pessoal sem autenticação, a superfície menor ganha.
+
+**Dinheiro nunca passa por `Number()`** (§6). O `calculation.ts` serializa
+`Prisma.Decimal` como texto de propósito (ADR-016), então a formatação trabalha
+**sobre a string**: separa centavos e agrupa milhares por manipulação de texto.
+Um teste emite `12345678901234567.89` e afirma o valor íntegro no HTML — com
+`Number` no caminho ele sairia arredondado, e o contrato mostraria um número que
+a estimativa nunca produziu. Valor que não parece decimal sai como veio, não
+como `R$ NaN`: o documento erra em voz alta.
+
+**Emitir não move o card** (§2.6), e isso é provado por ausência: o arch-spec
+varre o módulo e afirma que **nenhuma** transição de funil sai dele — nem
+`prisma.clientStatusTransition`, nem `.transition(`, nem os literais dos
+estados. Emitir duas versões do contrato não pode mexer no funil duas vezes.
+
+**As quatro recusas têm ordem deliberada** — template, escopo, estimativa,
+perfil —, cada uma com motivo legível. A pessoa está a um clique de um documento
+que vai ao cliente e precisa saber o que falta, não receber um 422 genérico. A
+quinta é a menos óbvia e a mais cara: estimativa aprovada **sem cenário provável
+legível** é recusada, senão o contrato sairia com o valor em branco — um
+documento plausível dizendo nada sobre preço.
+
+**O escopo lido é a versão CORRENTE do artefato aprovado**, não a da IA. Se um
+humano editou o escopo, é a edição dele que vale; copiar a da IA descartaria a
+correção sem avisar, e o contrato descreveria um escopo que ninguém aprovou.
+Mesmo desenho do `exigirEffortAprovado` da SPEC-033. A estimativa é a **última**
+aprovada, pelo mesmo motivo.
+
+**`parseScope` é defensivo porque o `content` é `jsonb` editável à mão** (§2.10
+da SPEC-032): campo ausente ou com tipo errado vira lista vazia, e a seção some
+do documento — nunca um `TypeError` derrubando a emissão.
+
+### Decisões do PR-3
+
+| decisão | por quê |
+|---|---|
+| **`RenderValues` é `Record<ContractPlaceholder, string>`**, não interface com 12 campos | acrescentar placeholder no PR-2 passa a quebrar aqui até alguém decidir de onde ele sai. Duas listas divergiriam em silêncio, e o placeholder novo apareceria vazio no contrato do cliente |
+| **Placeholder sem valor vira vazio**, não literal cru | o desconhecido já foi recusado ao salvar (§2.4); o que chega aqui sem valor é campo opcional em branco, e `{{payment_terms}}` cru no contrato é pior que uma linha vazia |
+| **CNPJ na frente do CPF** no `clientSnapshot` | cliente com os dois é pessoa jurídica contratando, e é o CNPJ que identifica a parte |
+| **Seção de escopo vazia SOME** do documento | um "Riscos" com lista vazia sugere que ninguém preencheu; o certo é não haver a seção |
+| **`paymentTerms` vazio grava `null`**, nunca `''` | `''` mentiria dizendo "preenchido" e sairia como linha em branco no documento |
+| **Rotas `POST`/`GET` apenas** | refazer emite versão nova; a anterior continua legível porque pode já ter sido enviada ao cliente |
+
+### PR-3 — verificação
+
+- **1306 testes em `regras`** (era 1247: +59).
+- **O critério de aceite do §5 provado como teste, não como comentário**: um
+  cliente chamado `<script>alert(1)</script>` aparece como texto no HTML, tanto
+  no domain quanto passando pelo service inteiro.
+- **A ordem de escape provada nos dois sentidos**: `Bar & Cia` não vira
+  `&amp;amp;` (não reescapa) e `<img onerror>` no corpo do template não vira tag.
+- **Imutabilidade provada em cima do snapshot gravado**: editar o template ou o
+  cliente depois da emissão não altera o `renderedHtml` relido.
+- **Guarda de imutabilidade provada reprovando de novo**, agora com as rotas de
+  contrato existindo: `@Patch('contracts/:id')` faz **2 testes falharem**.
+- Build OK, `tsc --noEmit` limpo e **API subida ao vivo** com as 3 rotas novas
+  mapeadas (`POST`/`GET client-projects/:id/contracts`, `GET contracts/:id`),
+  sem `EADDRINUSE`.
 - Relatório regenerado **com o carimbo** (`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`).
 
 ---
