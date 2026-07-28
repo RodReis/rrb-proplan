@@ -1162,6 +1162,129 @@ export function getEstimateSettings(): Promise<EstimateSettings> {
   return request<EstimateSettings>('/tenant-settings');
 }
 
+/** Estado da decomposição de esforço + se o botão de gerar pode aparecer. */
+export interface EffortBreakdownView {
+  /** Resolvido no SERVIDOR: a rota recusa fora de `ARTIFACTS_READY` de qualquer jeito. */
+  canGenerate: boolean;
+  state: string;
+  artifact: {
+    id?: string;
+    kind: 'effort_breakdown';
+    state: ArtifactState | null;
+    currentVersionId?: string | null;
+    rejectionReason?: string | null;
+    versions: ArtifactVersionRef[];
+  };
+  run: ArtifactRunRef | null;
+}
+
+/** Uma tarefa da decomposição, como a IA a propôs. */
+export interface EffortTaskView {
+  requisito: string;
+  tarefa: string;
+  horasMin: number;
+  horasProvavel: number;
+  horasMax: number;
+  mvp: string;
+}
+
+/** Um cenário calculado. Todo valor é STRING — precisão de dinheiro. */
+export interface ScenarioView {
+  horasBrutas: string;
+  horas: string;
+  maoDeObraBrl: string;
+  custosDiretosBrl: string;
+  subtotalBrl: string;
+  /** Linha própria e visível (§2.5) — nunca embutida no total. */
+  contingenciaBrl: string;
+  totalBrl: string;
+}
+
+export interface MvpGroupView {
+  mvp: string;
+  tarefas: number;
+  horas: string;
+  custoBrl: string;
+}
+
+export interface EstimateDetail {
+  id: string;
+  version: number;
+  clientProjectId: string;
+  effortVersionId: string;
+  hourlyRateBrl: string;
+  contingencyPercent: string;
+  complexity: string;
+  complexityFactor: string;
+  exchangeRate: string | null;
+  exchangeRateAt: string | null;
+  directCosts: Array<{ label: string; valueBrl: string }>;
+  aiCostIncurredUsd: string;
+  /** `isCalculated` diz COMO o número veio — não que deixou de ser projeção. */
+  aiCostProjected: { valueUsd: string; isCalculated: boolean };
+  scenarios: { otimista: ScenarioView; provavel: ScenarioView; pessimista: ScenarioView };
+  mvpBreakdown: MvpGroupView[];
+  approvedAt: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+export interface EstimateListItem {
+  id: string;
+  version: number;
+  complexity: string;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  totalProvavelBrl: string | null;
+}
+
+export function getEffortBreakdown(projectId: string): Promise<EffortBreakdownView> {
+  return request<EffortBreakdownView>(`/client-projects/${projectId}/effort-breakdown`);
+}
+
+export function generateEffortBreakdown(projectId: string): Promise<{ enqueued: true }> {
+  return request(`/client-projects/${projectId}/effort-breakdown/generate`, {
+    method: 'POST',
+  });
+}
+
+export function listEstimates(
+  projectId: string,
+): Promise<{ estimates: EstimateListItem[] }> {
+  return request(`/client-projects/${projectId}/estimates`);
+}
+
+export function getEstimate(id: string): Promise<EstimateDetail> {
+  return request<EstimateDetail>(`/estimates/${id}`);
+}
+
+/** Calcula uma versão nova. **Sempre cria** — reestimar nunca sobrescreve. */
+export function generateEstimate(
+  projectId: string,
+  input: {
+    directCosts?: Array<{ label: string; valueBrl: string }>;
+    aiCostProjectedUsd?: string;
+  },
+): Promise<EstimateDetail> {
+  return request(`/client-projects/${projectId}/estimates/generate`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Aprova a estimativa. **Só este move o card** — o `approveArtifact` do
+ * `effort_breakdown` é aprovação de artefato e não move nada.
+ */
+export function approveEstimate(
+  id: string,
+): Promise<{ approved: true; cardMoved: boolean; alreadyApproved: boolean }> {
+  return request(`/estimates/${id}/approve`, { method: 'POST' });
+}
+
 /**
  * Altera os parâmetros. Só o `owner` — a API recusa os demais.
  *
