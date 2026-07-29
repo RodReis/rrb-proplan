@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
@@ -294,6 +295,54 @@ async function seedLicensing() {
   );
 }
 
+/**
+ * Configuração de venda do tenant (SPEC-038): segredo do webhook e tolerância
+ * de inadimplência.
+ *
+ * **O segredo é sorteado, não fixo.** Um valor de seed igual em toda instalação
+ * seria um segredo público — e este aqui é o que separa "a Kiwify mandou" de
+ * "qualquer um mandou". O admin troca pelo valor real da plataforma ao
+ * configurar a integração; o sorteado é o que garante que, até lá, a rota não
+ * aceite entrega assinada por quem leu o repositório.
+ *
+ * Idempotente pelo unique `(tenant_id)` e **nunca sobrescreve**: reseed depois
+ * que o admin colou o segredo real derrubaria a integração em silêncio, e a
+ * primeira notícia disso seria uma venda que não virou licença.
+ */
+async function seedLicSettings() {
+  const tenants = await prisma.tenant.findMany({ select: { id: true } });
+  let created = 0;
+
+  for (const tenant of tenants) {
+    // RLS com FORCE: sem `app.tenant_ids` a policy barra até o OWNER.
+    created += await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_ids', ${`{${tenant.id}}`}, true)`;
+
+      const existente = await tx.licSettings.findUnique({
+        where: { tenantId: tenant.id },
+        select: { id: true },
+      });
+      if (existente) return 0;
+
+      await tx.licSettings.create({
+        data: {
+          tenantId: tenant.id,
+          webhookSecret: randomBytes(32).toString('hex'),
+          // 15 dias: o default da decisão #3 do PI, explícito aqui para que a
+          // linha semeada diga a política em vez de depender do default da
+          // coluna — se ele mudar, o que já existe não muda junto.
+          pastDueToleranceDays: 15,
+        },
+      });
+      return 1;
+    });
+  }
+
+  console.log(
+    `LicSettings seed: ${created} configuração(ões) nova(s) em ${tenants.length} tenant(s)`,
+  );
+}
+
 async function seedSegments() {
   for (const s of SEGMENTS) {
     await prisma.segment.upsert({
@@ -311,6 +360,7 @@ async function main() {
   await seedServiceCatalog();
   await seedContractTemplates();
   await seedLicensing();
+  await seedLicSettings();
 
   for (const p of PRICES) {
     await prisma.modelPrice.upsert({
