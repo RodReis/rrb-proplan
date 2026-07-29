@@ -19,13 +19,14 @@
 -- 7 dias.
 ALTER TABLE "tenant_settings" ADD COLUMN "stalled_days" INTEGER NOT NULL DEFAULT 7;
 
--- 2. O índice por tenant nos contratos JÁ EXISTE — nada a fazer aqui.
+-- 2. Nenhum índice novo — os que o dashboard precisa já existem.
 --
--- As duas consultas novas do dashboard filtram `contracts` por TENANT (contagem
--- no período e a lista dos sem aceite), e o §2.1 manda resolver latência com
--- índice. Ao conferir, `contracts_tenant_id_created_at_idx` já havia sido criado
--- pela migração da SPEC-034 — mas **não estava declarado no `schema.prisma`**.
+-- As duas consultas novas sobre `contracts` filtram por TENANT (contagem no
+-- período e a lista dos sem aceite), e o §2.1 manda resolver latência com
+-- índice. Ao conferir, `contracts_tenant_id_created_at_idx` já existia — criado
+-- pela migração da SPEC-034 e declarado no `schema.prisma`. O mesmo vale para
+-- `artifacts` (`[tenant_id, created_at]`).
 --
--- Esta migração não recria o índice; o que muda é o schema, que passa a declarar
--- o que o banco já tem. A divergência era silenciosa: `prisma migrate diff`
--- proporia dropar um índice em uso na próxima migração gerada automaticamente.
+-- Registrado aqui porque "não precisou de índice" é uma afirmação que alguém vai
+-- querer conferir depois, e a ausência de `CREATE INDEX` sozinha não distingue
+-- "conferi e já havia" de "esqueci de olhar".

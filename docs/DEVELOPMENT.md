@@ -4468,13 +4468,22 @@ não entra na projeção. Projetá-lo só na trilha que o tem produziria uma lis
 que um terço das linhas tem nome e o resto não, que é pior que nenhuma ter. Há
 teste afirmando o `select` sem ator, para que a promessa não volte por descuido.
 
-**Um achado de schema, corrigido de passagem.** O índice
-`contracts_tenant_id_created_at_idx` **já existia no banco** desde a migração da
-SPEC-034, mas **não estava declarado no `schema.prisma`**. A migração desta
-fatia não o recria (a primeira tentativa falhou com `42P07`, que foi como o
-descompasso apareceu); o que mudou foi o schema, que passa a declarar o que o
-banco tem. A divergência era silenciosa e cobrava juros: o próximo
-`migrate diff` automático proporia **dropar um índice em uso**.
+**Nenhum índice novo — e a verificação disso custou duas tentativas.** As
+consultas por tenant sobre `contracts` e `artifacts` pediam índice (§2.1), e a
+primeira versão do PR criou um. A migração falhou com `42P07`
+(*relation already exists*): `contracts_tenant_id_created_at_idx` **já existia**,
+criado pela SPEC-034.
+
+O diagnóstico inicial dessa falha foi **errado** — concluí que o índice existia
+no banco mas não no `schema.prisma`, e "corrigi" o schema, que na verdade já o
+declarava. O resultado foi um `@@index` duplicado, e quem o pegou foi o **CI**:
+`prisma generate` recusa nome de constraint repetido (`P1012`), então o build
+quebrou antes de qualquer teste rodar.
+
+O registro fica porque o erro é instrutivo: `42P07` diz *"esse índice já
+existe"*, e a leitura apressada foi tratá-lo como *"existe no banco, falta no
+schema"*. A pergunta que faltou fazer é a mais barata das duas —
+`grep` no schema antes de editá-lo.
 
 **Uma coluna, nenhuma tabela** (§5). `tenant_settings.stalled_days`, com
 `DEFAULT 7` — o valor da decisão do PI de 2026-07-27, então a migração não muda

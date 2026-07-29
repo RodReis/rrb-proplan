@@ -1403,10 +1403,9 @@ model Contract {
 
   @@unique([clientProjectId, version])
   @@index([clientProjectId, createdAt])
-  // O dashboard pergunta por TENANT, não por projeto (SPEC-035 §6): contagem no
-  // período e a lista dos sem aceite. O §2.1 é explícito em resolver latência
-  // com índice, nunca furando a fronteira do ADR-001.
-  @@index([tenantId, createdAt])
+  // Serve também o dashboard (SPEC-035 §6): contagem por tenant no período e a
+  // lista dos sem aceite. Já existia da SPEC-034 — o §2.1 pede resolver latência
+  // com índice, e este já estava no lugar.
   @@index([tenantId, createdAt])
   @@map("contracts")
 }
