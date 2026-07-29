@@ -5242,9 +5242,9 @@ Dado de teste removido do banco de dev ao fim (`DELETE 7 / 3 / 2`).
 
 #### PR-4 — verificação
 
-- **2310 testes verdes** (1640 regras · 157 banco · 513 tela) — **+50** sobre o
-  PR-3: 21 da lógica de apresentação, 18 da página, 13 do arch-spec (menos 2 de
-  ajuste de contagem entre projetos).
+- **2312 testes verdes** (1640 regras · 157 banco · 515 tela, pelo
+  `reports/TESTS.md`) — **+52** sobre o PR-3: 21 da lógica de apresentação, 18
+  da página, 13 do arch-spec.
 - `tsc --noEmit` limpo nos dois apps; `pnpm build` verde.
 - **Todos os critérios de aceite da SPEC-036 exercidos** — os de tela e os de
   API, estes últimos contra Postgres real.
