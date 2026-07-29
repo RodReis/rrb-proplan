@@ -20,6 +20,7 @@ import { McpModule } from './modules/mcp/mcp.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ArtifactsModule } from './modules/artifacts/artifacts.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
+import { LicensingModule } from './modules/licensing/licensing.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EstimatesModule } from './modules/estimates/estimates.module';
 import { BriefingModule } from './modules/briefing/briefing.module';
@@ -75,6 +76,12 @@ import { redisConnectionFromUrl } from './shared/redis-connection';
     // para os números da tela. Entra por último de propósito: consome todos os
     // outros e nenhum o consome.
     DashboardModule,
+    // Licenciamento (SPEC-036) — 1ª do MVP4, frente DISJUNTA das outras duas:
+    // não lê cliente, contrato nem card de funil. Expõe a 3ª rota PÚBLICA do
+    // produto (`/licensing/v1/activate`, PR-3), fora dos guards pelo mesmo
+    // motivo das outras: quem chama é o binário na máquina do comprador, e o
+    // tenant vem do hash da chave (ADR-020).
+    LicensingModule,
   ],
   controllers: [HealthController],
 })
