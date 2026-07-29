@@ -2,7 +2,7 @@
 proplan: v1
 spec: MVP4
 fatia: 25+
-status: rascunho # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
+status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi — aprovado pelo PI em 2026-07-29
 updated: 2026-07-29
 ---
 # MVP4 — Frente Licenciamento: keys, ativações e assinaturas dos produtos do tenant
@@ -93,8 +93,8 @@ Dependência externa (fora do board do ProPlan): cliente de licença no repo do 
 
 ## 9. Perguntas abertas do MVP4
 
-Bloqueiam as fatias indicadas, não a Fatia 25:
+**Resolvidas com o PI em 2026-07-29:**
 
-1. **Webhook Kiwify em dev** (Fatia 27): túnel (ngrok/cloudflared) ou replay de fixtures gravadas? Definir na SPEC-038.
-2. **Conta GitHub do comprador source** (Fatia 28): a Kiwify não pede username GitHub no checkout — coletar como? (e-mail pós-compra com link de formulário? página self-service?) Definir na SPEC-039.
+1. **Webhook Kiwify em dev** (Fatia 27): **túnel** (cloudflared/ngrok) apontando para a API local, para exercício manual. Os testes automatizados usam **fixtures gravadas** dos payloads — CI nunca depende de túnel nem da Kiwify. Setup documentado na SPEC-038.
+2. **Conta GitHub do comprador source** (Fatia 28, decisão delegada ao Cowork): **e-mail pós-compra com link único** (token derivado da licença) para uma página pública mínima onde o comprador informa o username GitHub; o servidor valida a existência do usuário via GitHub API antes de gravar. Sem username no dia 8 → o job **não convida** e a pendência fica visível no admin; fallback: o admin grava o username manualmente. Escolhido por não depender de campo custom no checkout — portável para Hotmart/Lemon Squeezy. Detalhamento na SPEC-039.
 3. **Portal self-service** (`GET /portal/:key` da spec de origem): fora das fatias 25–29; entra como fatia própria se houver demanda real de suporte.

@@ -2,7 +2,7 @@
 proplan: v1
 spec: SPEC-036
 fatia: 25
-status: rascunho # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
+status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi — aprovada pelo PI em 2026-07-29 (perguntas abertas resolvidas, ver §Perguntas abertas)
 updated: 2026-07-29
 ---
 # SPEC-036 — Licensing: schema, emissão manual e ativação com license file assinado
@@ -18,6 +18,7 @@ Emitir uma licença pelo admin e ativá-la numa máquina real via `POST /licensi
 - Schema Prisma do módulo `licensing`: `LicProduct`, `LicEdition`, `License`, `Activation`, `LicEvent` + enums — com `tenantId` e políticas RLS (ADR-020). Migração + seed dev (produto `warroom`, edições `closed` e `source`).
 - Par de chaves Ed25519: privada em env/secret (Railway), pública exportável; license file carrega `kid`. Script utilitário de geração do par documentado em `docs/DEPLOY.md`.
 - Admin (auth de sessão existente, escopo do tenant): CRUD mínimo de produto/edição; **emissão manual** de licença (e-mail + nome do comprador, edição) — chave em claro exibida **uma única vez** na resposta; persistência só do `keyHash` (sha256).
+- **Tela mínima de emissão** no painel: formulário (edição + e-mail + nome) → exibe a chave uma vez, com aviso de que não será mostrada de novo; lista simples de licenças do tenant com ação de revogar. O painel completo (busca avançada, métricas, demais ações) é da SPEC-040.
 - `POST /licensing/v1/activate` (público, sem sessão): valida chave, status e limite de máquinas; cria/reativa `Activation`; retorna license file assinado.
 - Revogação manual no admin (`status=REVOKED` + motivo) — necessária para testar o `410` do fluxo de ativação.
 - Trilha `LicEvent` para: `issued`, `activated`, `reactivated`, `revoked`.
@@ -34,7 +35,8 @@ Emitir uma licença pelo admin e ativá-la numa máquina real via `POST /licensi
 
 ## Critérios de aceite
 
-- [ ] Admin cria produto `warroom` com edições `closed` (PERPETUAL, maxMachines 2, updates 12 meses) e `source` (PERPETUAL, maxMachines 2, updates 12 meses) — via seed ou tela.
+- [ ] Admin cria produto `warroom` com edições `closed` (nome de exibição "Sem código-fonte") e `source` ("Com código-fonte") — ambas PERPETUAL, maxMachines 2, updates 12 meses — via seed ou tela.
+- [ ] Tela mínima de emissão funciona ponta a ponta: formulário → chave exibida uma vez → licença aparece na lista → revogar pela lista muda o status.
 - [ ] Emissão manual retorna chave no formato `WR-XXXX-XXXX-XXXX-XXXX`; a chave em claro não existe em nenhuma tabela (só `keyHash`); reconsultar a licença não revela a chave.
 - [ ] `POST /activate` com chave válida + fingerprint novo cria `Activation` e retorna license file cuja assinatura confere com a chave pública (verificação por script/teste, fora do servidor).
 - [ ] `payload.fingerprint` do license file = fingerprint enviado; `updatesUntil` = emissão + `updatesMonths` da edição.
@@ -80,8 +82,8 @@ Request: `{ key, fingerprint, hostname?, appVersion? }`
 
 ## Perguntas abertas
 
-Tudo aqui BLOQUEIA implementação — resolver com o PI antes de codificar.
+**Nenhuma pendente — resolvidas com o PI em 2026-07-29:**
 
-1. **`maxMachines` = 2 confirma para as duas edições do piloto?** (A spec de origem usa 2; fácil mudar por edição depois, mas o seed precisa de um valor.)
-2. **Rotação/registro da chave Ed25519**: gerar agora um par único (`kid: "2026-07"`) e documentar rotação em `docs/DEPLOY.md` é suficiente para o piloto? (Alternativa: tabela de chaves no banco — mais infra, sem necessidade visível.)
-3. **Tela admin ou API-first?** O mínimo desta fatia pode ser só endpoints admin (testáveis via painel de Atividade/HTTP) com a tela completa ficando para a SPEC-040 — ou o PI quer tela mínima de emissão já nesta fatia?
+1. **Edições do piloto**: duas — `closed` ("Sem código-fonte") e `source` ("Com código-fonte"). `maxMachines = 2` para ambas (default da spec de origem; ajustável por edição pelo admin).
+2. **Chave Ed25519**: só o suficiente para o piloto — par único (`kid: "2026-07"`), rotação documentada em `docs/DEPLOY.md`. Sem tabela de chaves no banco.
+3. **Tela**: tela mínima de emissão **nesta fatia** (formulário + lista + revogar); painel completo na SPEC-040.
