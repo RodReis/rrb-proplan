@@ -4364,7 +4364,22 @@ está provado, só não pelo caminho do clique sintético.
 
 ---
 
-## Fatia 24 (SPEC-035) — Dashboard: retomada, funil de clientes e Kanban de repos — `em andamento`
+## Fatia 24 (SPEC-035) — Dashboard: retomada, funil de clientes e Kanban de repos — `entregue`
+
+> **Entregue em 2026-07-29** — os 4 PRs mergeados (#179, #180, #181, #182),
+> `proplan:done` aplicado na #150. **Aguardando o aceite do PI**, que é quem
+> fecha a issue e aplica `proplan:finalizado` (ADR-011).
+>
+> **Fecha o MVP3 em código**: as seis fatias (19–24) estão entregues, e esta era
+> a última.
+>
+> **Dois critérios do §5 merecem nota explícita, para o aceite ser informado:**
+> *"nenhuma tabela nova na migração"* é verdade por construção — a migração tem
+> **uma coluna** e nenhum `CREATE TABLE`. Já *"usuário de outro tenant recebe a
+> mesma resposta de não-encontrado"* tem cobertura **indireta** pelo
+> `TenantGuard` (que barra não-membro com 403 e tem testes próprios), mas **não
+> há teste específico do dashboard** afirmando isso. Registrado como o que é: um
+> critério satisfeito por herança, não por prova local.
 
 Issue **#150** (spec `aprovada-pi` 2026-07-28). **6ª e última fatia do MVP3.**
 Acende o item `Dashboard` que a Fatia 19 deixou desabilitado com
