@@ -214,3 +214,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | 2026-07-29 | #188 | SPEC-037 | Regras de Negócio | 1640 | 1640 | 0 | 79.3 | #192 | [#192](https://github.com/RodReis/rrb-proplan/pull/192) |
 | 2026-07-29 | #188 | SPEC-037 | Banco | 180 | 180 | 0 | 70.0 | #192 | [#192](https://github.com/RodReis/rrb-proplan/pull/192) |
 | 2026-07-29 | #188 | SPEC-037 | Tela | 530 | 530 | 0 | 53.8 | #192 | [#192](https://github.com/RodReis/rrb-proplan/pull/192) |
+| 2026-07-29 | #190 | — | Regras de Negócio | 1640 | 1640 | 0 | 79.3 | #194 | [#194](https://github.com/RodReis/rrb-proplan/pull/194) |
+| 2026-07-29 | #190 | — | Banco | 180 | 180 | 0 | 70.0 | #194 | [#194](https://github.com/RodReis/rrb-proplan/pull/194) |
+| 2026-07-29 | #190 | — | Tela | 530 | 530 | 0 | 53.8 | #194 | [#194](https://github.com/RodReis/rrb-proplan/pull/194) |
