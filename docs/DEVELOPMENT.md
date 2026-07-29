@@ -5567,3 +5567,85 @@ nenhuma por trás. Coluna nullable, custo zero de migração.
   apps, `pnpm lint` 0 erros / 3 avisos (os mesmos da `main`).
 - **`reports/TESTS.md` regenerado** (banco 180 → 209) e as duas guardas do
   ADR-019 verdes.
+
+### PR-2 — o módulo `mail`
+
+- [x] `MailService.send({ to, template, data })` — grava `MailDelivery` e enfileira
+- [x] Adapter Resend por `fetch` (sem SDK), atrás da interface `MailProvider`
+- [x] Worker com 5 tentativas e backoff exponencial
+- [x] Dois templates: `license_key` e `license_revoked`
+- [x] Arch-spec de fronteira · 44 testes
+
+**Compartilhado, não do `licensing`.** Ele nasce nesta fatia porque a venda
+precisa dele, mas a assinatura é `send({ to, template, data })` — nada de
+licença aparece nela. O MVP3 vai mandar e-mail de briefing pelo mesmo caminho, e
+quando isso acontecer não haverá o que refatorar. O arch-spec prova: nenhum
+import de módulo-irmão, e nenhum tipo do domínio de licenciamento na superfície.
+
+**Enfileira, não envia — e é a garantia da fatia.** Se o `licensing` esperasse o
+Resend responder para concluir a emissão, um provedor fora do ar transformaria
+compra paga em licença não emitida, e a plataforma não reenvia o evento de
+compra por causa de um erro nosso. Emitir e enviar são coisas diferentes; só a
+primeira é inegociável.
+
+**A ordem `create` → `add` é decisão, não estilo.** Com o Redis fora, a linha
+`PENDING` fica no banco e aparece como pendência real no admin. Na ordem
+inversa, um job enfileirado sem linha seria um envio que ninguém consegue
+auditar — e o worker falharia procurando a `MailDelivery` que nunca existiu.
+
+**O corpo é renderizado no worker, nunca persistido.** A `MailDelivery` guarda
+`template` e `subject`; o `html` só existe entre o `render()` e o `fetch`.
+Guardar o corpo do `license_key` seria guardar a chave em claro por outro nome, e
+desfaria a garantia central da SPEC-036 — é exatamente por isso que **reenviar
+não reenvia a chave**, e a reemissão (PR-5) é ato distinto, com revogação da
+anterior. Há teste de arch-spec varrendo `data: { … html … }` e o schema.
+
+**`fetch` na REST API, sem SDK do Resend.** Mesma decisão do GitHub (CLAUDE.md:
+Octokit é ESM-only e conflita com o build CJS do Nest) — são ~40 linhas contra
+uma dependência nova num build que já pagou esse preço uma vez.
+
+#### Duas armadilhas achadas na documentação do Resend, não no código
+
+**O SDK não lança exceção**: `emails.send` devolve `{ data, error }`, e um
+`try/catch` sozinho trataria falha como sucesso — marcando `SENT` num e-mail que
+não saiu. Nosso adapter converte para `throw`, que é o que faz o BullMQ
+contabilizar a tentativa; o teste do worker fixa isso.
+
+**`User-Agent` é obrigatório e a falta dele não diz o que é**: requisições sem o
+header são bloqueadas **antes** de chegar à API, com `403` e código `1010`, e a
+mensagem não menciona o header. `curl` manda sozinho, `fetch` não. É a classe de
+erro que só aparece em produção e leva uma tarde para achar — há teste que
+falha se alguém removê-lo.
+
+#### Decisões menores, com motivo
+
+- **5 tentativas**, contra as 2–3 do resto da casa: os outros jobs releem uma
+  fonte que continua lá; um e-mail perdido não tem segunda via, porque a chave
+  que ele carrega não existe mais em lugar nenhum.
+- **`FAILED` gravado em toda passagem**, não só na última: o estado do banco
+  descreve o que aconteceu até agora, e `attempts` diz se ainda há tentativa
+  pela frente. Marcar só no fim deixaria a falha invisível por minutos.
+- **Entrega já `SENT` não reenvia.** O BullMQ pode reprocessar um job cujo
+  worker morreu *depois* do envio — e dois e-mails com chaves diferentes deixam
+  o comprador sem saber qual vale.
+- **`text` junto do `html`**: cliente que bloqueia HTML mostraria mensagem
+  vazia, e filtro de spam pontua pior mensagem só-HTML. Num e-mail que entrega o
+  que o cliente pagou, cair no spam é o pior desfecho.
+- **Estilo inline, não `<style>`**: o Gmail remove blocos `<style>` do `<head>`.
+  É a razão de todo e-mail transacional parecer HTML de 2005.
+- **Escapa HTML do nome do comprador**, que vem da plataforma de pagamento —
+  entrada externa.
+
+#### Documentação
+
+`docs/DEPLOY.md` §3.5 (novo) e `.env.example`: `RESEND_API_KEY` e `MAIL_FROM`.
+Registrada a pendência do **domínio do remetente** — subdomínio dedicado
+(decisão PI #4), concreto ainda indefinido, que bloqueia **só o primeiro envio
+real**. Com a armadilha anotada: sem SPF/DKIM o sintoma é o pior possível — o
+`MailDelivery` fica `SENT` (o Resend aceitou) e o comprador não recebe nada.
+
+#### Verificação
+
+- **1893 testes verdes na API** (1684 regras · 209 banco), **+44** nesta etapa.
+- `pnpm build` nos três apps · `pnpm lint` 0 erros / 3 avisos (os da `main`).
+- **Nenhuma dependência nova.**

@@ -110,6 +110,8 @@ Base em `.env.example`. **Nenhum secret entra no repo** — todos vivem nas
 | `GITHUB_WEBHOOK_SECRET` | secret do webhook (só quando a fatia de webhook existir) | GitHub App |
 | `LICENSING_SIGNING_KEY` | PEM da privada **Ed25519** em base64 (uma linha) — assina o license file (SPEC-036) | gerado (§3.4) |
 | `LICENSING_SIGNING_KID` | identificador da chave vigente, ex. `2026-07` | escolhido (§3.4) |
+| `RESEND_API_KEY` | chave da API do Resend — envio transacional (SPEC-038) | painel do Resend |
+| `MAIL_FROM` | remetente, em **subdomínio dedicado**: `nao-responda@mail.<domínio>` (§3.5) | escolhido (§3.5) |
 
 ### 3.4 Chave de assinatura do licenciamento (SPEC-036)
 
@@ -152,6 +154,40 @@ alguém emitir uma chave que não ativaria.
 
 Inverter os passos 2 e 3 emite arquivos que o cliente instalado não sabe
 verificar — e o produto para na máquina de quem pagou.
+
+### 3.5 E-mail transacional (SPEC-038)
+
+**Remetente em subdomínio dedicado** (decisão PI #4): `nao-responda@mail.<domínio>`.
+O ponto é isolar a reputação do transacional do domínio principal — se um
+disparo qualquer queimar a reputação de `mail.<domínio>`, o e-mail humano de
+`<domínio>` continua entregando. O inverso também vale, e é o que mais importa
+aqui: a chave que o comprador pagou não pode cair no spam por causa de outro
+envio.
+
+> **PENDENTE — o domínio concreto não foi definido.** Bloqueia **apenas o
+> primeiro envio real em produção**; implementação e testes usam fixtures e não
+> dependem dele. Decidir antes de ligar a integração com a plataforma de venda.
+
+Ao definir, na ordem:
+
+1. Verificar o domínio no painel do Resend (ele gera os registros).
+2. Publicar **SPF**, **DKIM** e **DMARC** no DNS (Hostinger).
+3. Só então preencher `MAIL_FROM` e `RESEND_API_KEY` no Railway.
+
+Sem SPF/DKIM, o Gmail marca como spam ou recusa — e o sintoma é o pior possível:
+o `MailDelivery` fica `SENT` (o Resend aceitou) e o comprador não recebe nada.
+A checagem é operacional daquele primeiro envio, não desta fatia.
+
+**Sem as duas variáveis, o envio falha antes da rede**, com o nome da variável
+na mensagem, e a entrega fica `FAILED` no admin com esse texto. **A licença
+permanece emitida** — falha de envio nunca desfaz o que já foi gravado. Isso é
+desenho, não tolerância: a plataforma de pagamento não reenvia o evento de
+compra por causa de um erro nosso, então perder a licença seria perder a venda.
+
+**O segredo do webhook não é variável de ambiente.** Ele vive em
+`LicSettings.webhookSecret`, por tenant — uma variável global não escala para o
+2º tenant, e é o que faz um evento assinado com o segredo do tenant A responder
+`401` na URL do tenant B.
 
 ### 3.2 Serviço `web`
 

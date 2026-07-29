@@ -21,6 +21,7 @@ import { ClientsModule } from './modules/clients/clients.module';
 import { ArtifactsModule } from './modules/artifacts/artifacts.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { LicensingModule } from './modules/licensing/licensing.module';
+import { MailModule } from './modules/mail/mail.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EstimatesModule } from './modules/estimates/estimates.module';
 import { BriefingModule } from './modules/briefing/briefing.module';
@@ -82,6 +83,10 @@ import { redisConnectionFromUrl } from './shared/redis-connection';
     // motivo das outras: quem chama é o binário na máquina do comprador, e o
     // tenant vem do hash da chave (ADR-020).
     LicensingModule,
+    // Envio transacional (SPEC-038) — compartilhado, não do `licensing`. Nasce
+    // com a venda por e-mail, mas a interface não menciona licença: o MVP3 usa
+    // o mesmo caminho quando precisar mandar e-mail de briefing.
+    MailModule,
   ],
   controllers: [HealthController],
 })
