@@ -3377,7 +3377,16 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 - [x] **PR-2 — perfil do prestador + templates versionados**
 - [x] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé)
 - [x] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar) *(este)*
-- [ ] **PR-5 — aceite + painel** (canal de lista fechada, move o card, tela no prestador)
+- [x] **PR-5 — registro do aceite** (canal de lista fechada, ator nunca nulo, move o card) *(este)*
+- [ ] **PR-6 — a tela do prestador** (perfil, editor de template, painel de contratos, link e aceite)
+
+> **A fatia virou 6 PRs, não 5.** O PR-5 do papel era *"aceite + painel"* — uma
+> regra de servidor com spec fechada, mais **4 superfícies de tela** (perfil,
+> editor de template, contratos, aceite). O `EstimatePanel` da fatia anterior
+> tem 616 linhas para **uma** superfície. Separar não foi preferência de
+> tamanho: o aceite não tem decisão de UI a tomar e podia entrar hoje; a tela
+> tem, e um PR que mistura os dois obriga a revisar regra de negócio e layout no
+> mesmo diff.
 - [x] Dogfooding do PR-3 no navegador *(pela API, com sessão real — a tela é do PR-5)*
 
 ### PR-1 — o que entrou
@@ -3777,6 +3786,63 @@ derrubando o teste.
 - **Auditoria conferida no banco**: 5 eventos, nenhum com IP, user agent ou
   token em claro; o acesso ao link revogado também auditado; token inexistente
   **não** gerou evento (não há tenant a descobrir)
+
+### PR-5 — o que entrou
+
+`POST /t/:tenant/contracts/:id/acceptance` — **o único ato da fatia que move o
+card**. Emitir não move (§2.6): emitir duas versões não pode mexer no funil duas
+vezes.
+
+**O ator é validado antes de tudo, e a barreira mora aqui de propósito.** O
+`ClientStatusTransition.actorUserId` é nullable por decisão anterior — transição
+disparada pelo próprio sistema (1º save do rascunho, submit do briefing) não tem
+usuário por trás. Então o schema **não** pode barrar ator nulo, e a garantia do
+§2.10 (*ator nunca nulo*) precisa de um lugar próprio. Um contrato "aceito por
+ninguém" é o fechamento frágil que este produto existe para detectar.
+
+**A checagem vem antes da leitura do contrato**, não depois: chegar até a
+escrita para só então descobrir que falta ator deixaria a porta aberta a um
+caminho futuro que esquecesse de passar o usuário.
+
+**Canal é lista fechada e a recusa nomeia os válidos.** Texto livre viraria
+`whatsapp`, `WhatsApp`, `zap` e `wpp` na mesma coluna, e *"por qual canal os
+contratos costumam ser aceitos?"* deixaria de ter resposta. O enum existe no
+banco desde o PR-1; a constante do TypeScript é o mesmo fato do outro lado.
+
+**Transição recusada não desfaz o aceite.** Mesmo desenho do
+`EstimatesService.approve` e do `ArtifactReviewService`: a máquina de estados
+pode recusar (card já adiante), e isso não pode apagar o ato que a pessoa
+pediu e que já está gravado. A resposta diz `cardMoved: false` em vez de mentir.
+
+**Aceitar duas vezes é idempotente, não erro.** Dois cliques no mesmo botão não
+são um problema a reportar — o que não pode é o segundo mover o card de novo ou
+sobrescrever a data e o ator do aceite que realmente aconteceu.
+
+**O link não é revogado ao aceitar** (§8.4) — o cliente relê o que aceitou, até
+o prazo acabar. Provado por ausência: nada no service toca `contractLink`.
+
+**A fronteira afrouxou de forma medida, e o arch-spec passou a separar dois
+verbos.** Antes ele afirmava que *nenhuma* transição saía do módulo. Agora:
+gravar `clientStatusTransition` direto continua **proibido** (escreveria a
+trilha por fora da máquina de estados, sem `canTransition` e sem a atomicidade
+que o `ClientsService` garante numa transação só), e `.transition(` é permitido
+em **exatamente um arquivo** — o do aceite. Se um segundo passar a mover o card,
+a lista cresce e o teste cai.
+
+### Verificação do PR-5
+
+- **1396 testes verdes** em `regras` (era 1368: +28); 124 em `banco`, 365 em `tela`
+- `tsc --noEmit` limpo, build OK, rota mapeada ao vivo sem `EADDRINUSE`
+- **Guarda provada reprovando**: um `.transition(` plantado no
+  `contract-issue.service.ts` derruba 2 testes do arch-spec — a fronteira barra
+  a emissão voltar a mover o card, não só documenta que ela não move
+- **Dogfooding pela API, com o contrato v1 do PR-3**: as 3 recusas na ordem
+  (canal fora da lista, canal ausente, contrato alheio), cada uma nomeando os
+  canais válidos; aceite movendo `CONTRACT_PENDING → CONTRACT_APPROVED`
+- **Provado no banco**: canal, nota e ator gravados; **8 transições** onde havia
+  7 — uma só, apesar dos **dois** POSTs (o segundo devolveu
+  `alreadyAccepted: true`); as versões v2 e v3 do contrato seguem sem aceite; o
+  link não foi revogado pelo aceite
 
 ---
 
