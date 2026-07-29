@@ -44,16 +44,26 @@ interface Ocorrencia {
   texto: string;
 }
 
+/**
+ * Tira o que é comentário de uma linha — a regra é sobre o que **executa**, e os
+ * arquivos deste módulo explicam a fronteira em prosa, incluindo os nomes que a
+ * varredura procura.
+ *
+ * O `\r?$` não é zelo: com checkout em CRLF (o padrão no Windows), `.*$` para
+ * **antes** do `\r` e a linha de comentário sobrevive ao filtro inteira. O
+ * sintoma é o teste reprovar o próprio comentário que descreve a regra — e só na
+ * máquina de quem tem `autocrlf` ligado, que é o pior tipo de teste instável.
+ */
+function semComentario(linha: string): string {
+  return linha.replace(/\/\/.*\r?$/, '').replace(/^\s*\*.*\r?$/, '');
+}
+
 function varrer(padrao: RegExp): Ocorrencia[] {
   const achados: Ocorrencia[] = [];
   for (const arquivo of arquivosDoModulo()) {
     const linhas = readFileSync(arquivo, 'utf8').split('\n');
     linhas.forEach((texto, i) => {
-      // Comentário não é código: a regra é sobre o que executa, e os arquivos
-      // deste módulo explicam a fronteira em prosa — incluindo os nomes que a
-      // varredura procura.
-      const semComentario = texto.replace(/\/\/.*$/, '').replace(/^\s*\*.*$/, '');
-      if (padrao.test(semComentario)) {
+      if (padrao.test(semComentario(texto))) {
         achados.push({ arquivo: arquivo.replace(RAIZ, ''), linha: i + 1, texto: texto.trim() });
       }
     });
@@ -122,7 +132,7 @@ describe('dashboard: a fronteira com os cinco módulos (ADR-001, §5)', () => {
     // reprovar o próprio arquivo que ela descreve.
     const codigo = readFileSync(join(RAIZ, 'application', 'dashboard.service.ts'), 'utf8')
       .split('\n')
-      .map((l) => l.replace(/\/\/.*$/, '').replace(/^\s*\*.*$/, ''))
+      .map(semComentario)
       .join('\n');
     expect(codigo).not.toMatch(/PrismaService/);
   });

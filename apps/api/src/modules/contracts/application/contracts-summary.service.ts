@@ -4,6 +4,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 export interface UnacceptedContract {
   contractId: string;
   clientProjectId: string;
+  /** Cliente dono — o drill-down do dashboard abre a gaveta dele (§7.3). */
+  clientId: string;
   title: string;
   version: number;
   since: string;
@@ -49,13 +51,14 @@ export class ContractsSummaryService {
         acceptedAt: null,
         clientProject: { deletedAt: null, client: { deletedAt: null } },
       },
-      include: { clientProject: { select: { title: true } } },
+      include: { clientProject: { select: { title: true, clientId: true } } },
       orderBy: { createdAt: 'asc' },
     });
 
     return linhas.map((c) => ({
       contractId: c.id,
       clientProjectId: c.clientProjectId,
+      clientId: c.clientProject.clientId,
       title: c.clientProject.title,
       version: c.version,
       since: c.createdAt.toISOString(),

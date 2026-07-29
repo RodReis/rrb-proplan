@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   createBriefingLink,
@@ -54,12 +54,31 @@ import {
   sortProjects,
 } from './clientDetailView';
 
+/**
+ * Painéis que o drill-down do dashboard sabe abrir (SPEC-035 §7.3).
+ *
+ * Lista fechada, e é ela que impede link morto: um `painel=` desconhecido na URL
+ * é **ignorado** e a gaveta abre normalmente, em vez de tentar abrir algo que
+ * não existe. O nome vem do servidor, no `target` do item pendente — a tela não
+ * remonta esse mapa a partir do tipo.
+ */
+const PAINEIS_ABRIVEIS = ['artefatos', 'estimativa', 'contratos'] as const;
+type PainelAbrivel = (typeof PAINEIS_ABRIVEIS)[number];
+
+function isPainelAbrivel(valor: string | null): valor is PainelAbrivel {
+  return valor !== null && (PAINEIS_ABRIVEIS as readonly string[]).includes(valor);
+}
+
 interface Props {
   client: Client;
   canWrite: boolean;
   onClose: () => void;
   /** Projeto criado/alterado ⇒ o funil e a lista atrás precisam recarregar. */
   onChanged: () => void;
+  /** Drill-down: projeto a abrir assim que a lista carregar (§7.3). */
+  openProjectId?: string | null;
+  /** Drill-down: painel desse projeto a abrir junto (§7.3). */
+  openPanel?: string | null;
 }
 
 type State =
@@ -87,7 +106,14 @@ function shortDate(value: string | null | undefined): string {
  * O critério de aceite da SPEC-029 é literal: *"os dois projetos listam no
  * detalhe do cliente; ambos nascem em `DRAFT`, coluna Novo/Link enviado"*.
  */
-export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Props) {
+export function ClientDetailPanel({
+  client,
+  canWrite,
+  onClose,
+  onChanged,
+  openProjectId,
+  openPanel,
+}: Props) {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [creating, setCreating] = useState(false);
   const [linkFor, setLinkFor] = useState<ClientProject | null>(null);
@@ -129,6 +155,35 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Drill-down do dashboard: abre o painel pedido na URL assim que os projetos
+   * carregam (SPEC-035 §7.3).
+   *
+   * **Roda uma vez por alvo**, e é isso que o `abertoPara` guarda: sem a trava,
+   * fechar o painel de artefatos o veria reabrir no próximo render, porque a URL
+   * ainda pede. A pessoa fecharia e o painel voltaria — pior que não abrir.
+   *
+   * **Projeto ou painel desconhecido não abre nada**, e a gaveta fica utilizável:
+   * link velho para projeto apagado é o caso real, e o §7.3 é sobre não ensinar
+   * ninguém a desconfiar dos links.
+   */
+  const abertoPara = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    if (!openProjectId || !isPainelAbrivel(openPanel ?? null)) return;
+
+    const alvo = `${openProjectId}:${openPanel}`;
+    if (abertoPara.current === alvo) return;
+
+    const projeto = state.detail.projects.find((p) => p.id === openProjectId);
+    if (!projeto) return;
+
+    abertoPara.current = alvo;
+    if (openPanel === 'artefatos') setArtifactsFor(projeto);
+    else if (openPanel === 'estimativa') setEstimateFor(projeto);
+    else setContractsFor(projeto);
+  }, [state, openProjectId, openPanel]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();

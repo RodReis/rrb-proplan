@@ -44,6 +44,13 @@ describe('withTenantPrefix: rotas escopadas por tenant', () => {
     ['/estimates/e-1', '/t/T/estimates/e-1'],
     ['/estimates/e-1/approve', '/t/T/estimates/e-1/approve'],
     ['/tenant-settings', '/t/T/tenant-settings'],
+    // SPEC-035 §6 — as três rotas do dashboard. O contador é o caso caro: sem
+    // prefixo ele sairia 404 e a tela mostraria **zero**, indistinguível de
+    // "nada esperando por você". Um contador que mente é pior que nenhum (§2.3).
+    ['/dashboard', '/t/T/dashboard'],
+    ['/dashboard?period=90', '/t/T/dashboard?period=90'],
+    ['/dashboard/pending-count', '/t/T/dashboard/pending-count'],
+    ['/dashboard/settings', '/t/T/dashboard/settings'],
   ])('%s recebe o prefixo', (path, esperado) => {
     setActiveTenant(TENANT);
     expect(withTenantPrefix(path)).toBe(esperado.replace('/t/T', `/t/${TENANT}`));

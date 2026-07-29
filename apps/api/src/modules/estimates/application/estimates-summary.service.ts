@@ -3,6 +3,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface PendingEstimate {
   clientProjectId: string;
+  /** Cliente dono — o drill-down do dashboard abre a gaveta dele (§7.3). */
+  clientId: string;
   title: string;
   /**
    * `missing` = briefing recebido e nenhuma estimativa gerada.
@@ -53,7 +55,7 @@ export class EstimatesSummaryService {
       select: {
         submittedAt: true,
         clientProjectId: true,
-        clientProject: { select: { title: true } },
+        clientProject: { select: { title: true, clientId: true } },
       },
       orderBy: { submittedAt: 'asc' },
     });
@@ -82,6 +84,7 @@ export class EstimatesSummaryService {
       jaListado.add(id);
       out.push({
         clientProjectId: id,
+        clientId: b.clientProject.clientId,
         title: b.clientProject.title,
         reason: temAlguma.has(id) ? 'unapproved' : 'missing',
         since: b.submittedAt.toISOString(),

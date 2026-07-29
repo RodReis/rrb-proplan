@@ -28,14 +28,36 @@ export function isPendingKind(valor: string): valor is PendingKind {
   return (PENDING_KINDS as readonly string[]).includes(valor);
 }
 
+/**
+ * O painel onde o item é resolvido — o destino do drill-down (§7.3).
+ *
+ * Resolvido **no servidor**, junto do item, e não montado pela tela a partir do
+ * `kind`: quem sabe que "artefato pendente" se resolve no painel de artefatos é
+ * quem produziu o item. A tela replicando esse mapa seria uma segunda cópia da
+ * regra, e as duas divergiriam no primeiro tipo novo.
+ *
+ * `null` é a resposta honesta para item **sem destino pronto**, e existe porque
+ * o §7.3 é explícito: *item cuja tela de destino não existe é texto, não link*.
+ * Um link que leva a 404 ensina a pessoa a desconfiar de todos os outros.
+ */
+export type PendingTarget = 'artefatos' | 'estimativa' | 'contratos' | null;
+
 /** Um item da lista, já normalizado — a tela não reimplementa a projeção. */
 export interface PendingItem {
   kind: PendingKind;
-  /** Projeto a que o item pertence — é o destino do drill-down. */
+  /**
+   * Cliente dono do projeto. Viaja junto porque a gaveta do drill-down é a do
+   * **cliente** (`/t/:tenant/clients?cliente=…`) — sem ele a tela teria de
+   * descobrir o dono com uma segunda chamada, por item.
+   */
+  clientId: string;
+  /** Projeto a que o item pertence. */
   clientProjectId: string;
   title: string;
   /** Texto curto do que exatamente espera. */
   detail: string;
+  /** Painel de destino, ou `null` se ainda não há tela para onde levar. */
+  target: PendingTarget;
   /** Desde quando espera — ISO. */
   since: string;
 }

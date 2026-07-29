@@ -115,33 +115,45 @@ export class DashboardService {
     const items: PendingItem[] = [
       ...artefatos.map((a) => ({
         kind: PENDING_KINDS[0],
+        clientId: a.clientId,
         clientProjectId: a.clientProjectId,
         title: a.title,
         detail: `Artefato ${a.kind} aguardando revisão`,
+        target: 'artefatos' as const,
         since: a.since,
       })),
       ...estimativas.map((e) => ({
         kind: PENDING_KINDS[1],
+        clientId: e.clientId,
         clientProjectId: e.clientProjectId,
         title: e.title,
         detail:
           e.reason === 'missing'
             ? 'Briefing recebido, estimativa não gerada'
             : 'Estimativa gerada, aguardando aprovação',
+        target: 'estimativa' as const,
         since: e.since,
       })),
       ...contratos.map((c) => ({
         kind: PENDING_KINDS[2],
+        clientId: c.clientId,
         clientProjectId: c.clientProjectId,
         title: c.title,
         detail: `Contrato v${c.version} emitido, sem aceite registrado`,
+        target: 'contratos' as const,
         since: c.since,
       })),
       ...parados.map((p) => ({
         kind: PENDING_KINDS[3],
+        clientId: p.clientId,
         clientProjectId: p.clientProjectId,
         title: p.title,
         detail: `Parado há mais de ${stalledDays} dias`,
+        // **Sem destino, de propósito** (§7.3). "Parado" não é um painel — o
+        // projeto pode estar travado em qualquer etapa, e escolher um painel
+        // aqui seria adivinhar. A gaveta do cliente ainda abre (`clientId`
+        // viaja), mas nenhum painel é pré-selecionado.
+        target: null,
         since: p.since,
       })),
     ];

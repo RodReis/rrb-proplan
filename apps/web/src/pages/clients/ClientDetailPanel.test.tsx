@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BriefingStatus, Client, ClientDetail } from '../../lib/api';
@@ -68,7 +68,24 @@ function briefingStatus(over: Partial<BriefingStatus> = {}): BriefingStatus {
   };
 }
 
-function renderPanel(canWrite = true) {
+/**
+ * Nenhum painel de PROJETO aberto por cima da gaveta.
+ *
+ * A gaveta do cliente é ela mesma `role="dialog"`, então `queryByRole('dialog')`
+ * sempre a encontra — o que se quer afirmar é que nada abriu **sobre** ela.
+ */
+function semPainelDeProjeto(): boolean {
+  const painéis = screen
+    .queryAllByRole('dialog')
+    .map((el) => el.getAttribute('aria-label') ?? '')
+    .filter((nome) => !nome.startsWith('Cliente '));
+  return painéis.length === 0 && screen.queryByRole('heading', { name: 'Estimativa' }) === null;
+}
+
+function renderPanel(
+  canWrite = true,
+  drill: { openProjectId?: string | null; openPanel?: string | null } = {},
+) {
   const onChanged = vi.fn();
   const onClose = vi.fn();
   render(
@@ -77,6 +94,8 @@ function renderPanel(canWrite = true) {
       canWrite={canWrite}
       onClose={onClose}
       onChanged={onChanged}
+      openProjectId={drill.openProjectId}
+      openPanel={drill.openPanel}
     />,
   );
   return { onChanged, onClose };
@@ -507,6 +526,91 @@ describe('ClientDetailPanel', () => {
       // O rótulo do servidor, nunca o código gravado.
       expect(screen.getByText('Comércio e varejo')).toBeInTheDocument();
       expect(screen.queryByText('G')).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Drill-down do dashboard (SPEC-035 §7.3): a URL diz qual projeto e qual
+   * painel, e a gaveta abre já no lugar certo — em vez de deixar a pessoa
+   * procurar dentro dela o item que ela acabou de clicar.
+   */
+  describe('abre o painel pedido na URL (SPEC-035 §7.3)', () => {
+    beforeEach(() => {
+      apiMock.getClient.mockResolvedValue(detail([project()]));
+      apiMock.getBriefingStatus.mockResolvedValue(briefingStatus());
+    });
+
+    it('`painel=artefatos` abre os artefatos do projeto sem ninguém clicar', async () => {
+      renderPanel(true, { openProjectId: 'p1', openPanel: 'artefatos' });
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Artefatos de Site institucional' }),
+      ).toBeInTheDocument();
+    });
+
+    it('`painel=contratos` abre os contratos', async () => {
+      renderPanel(true, { openProjectId: 'p1', openPanel: 'contratos' });
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Contratos de Site institucional' }),
+      ).toBeInTheDocument();
+    });
+
+    it('`painel=estimativa` abre a estimativa', async () => {
+      renderPanel(true, { openProjectId: 'p1', openPanel: 'estimativa' });
+
+      expect(
+        await screen.findByRole('heading', { name: 'Estimativa' }),
+      ).toBeInTheDocument();
+    });
+
+    it('painel desconhecido é IGNORADO — a gaveta abre normal, sem link morto', async () => {
+      // O §7.3 é sobre não ensinar ninguém a desconfiar dos links. Um valor que
+      // a tela não conhece não pode derrubar nada nem abrir a coisa errada.
+      renderPanel(true, { openProjectId: 'p1', openPanel: 'inventado' });
+
+      expect(await screen.findByText('Site institucional')).toBeInTheDocument();
+      // A gaveta do CLIENTE é ela mesma um `dialog` — o que não pode aparecer
+      // é um painel de projeto por cima.
+      expect(semPainelDeProjeto()).toBe(true);
+    });
+
+    it('projeto inexistente não abre nada — link velho para projeto apagado', async () => {
+      renderPanel(true, { openProjectId: 'nao-existe', openPanel: 'artefatos' });
+
+      expect(await screen.findByText('Site institucional')).toBeInTheDocument();
+      // A gaveta do CLIENTE é ela mesma um `dialog` — o que não pode aparecer
+      // é um painel de projeto por cima.
+      expect(semPainelDeProjeto()).toBe(true);
+    });
+
+    it('sem os parâmetros nada abre — o comportamento antigo não muda', async () => {
+      renderPanel();
+
+      expect(await screen.findByText('Site institucional')).toBeInTheDocument();
+      // A gaveta do CLIENTE é ela mesma um `dialog` — o que não pode aparecer
+      // é um painel de projeto por cima.
+      expect(semPainelDeProjeto()).toBe(true);
+    });
+
+    it('fechar o painel NÃO o reabre — a URL ainda pede, mas a trava segura', async () => {
+      // Sem a trava do `abertoPara`, fechar veria o efeito reabrir no render
+      // seguinte, porque o parâmetro continua na URL. A pessoa fecharia e o
+      // painel voltaria — pior que não abrir.
+      renderPanel(true, { openProjectId: 'p1', openPanel: 'artefatos' });
+
+      const painel = await screen.findByRole('dialog', {
+        name: 'Artefatos de Site institucional',
+      });
+      await userEvent.click(
+        within(painel).getByRole('button', { name: 'Fechar' }),
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Artefatos de Site institucional' }),
+        ).not.toBeInTheDocument(),
+      );
     });
   });
 });
