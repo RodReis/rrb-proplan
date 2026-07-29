@@ -5151,3 +5151,107 @@ banco de **dev**. O seed gravava em `proplan_test` e o service consultava
 erro (`NotFoundException` é resposta legítima da rota) e a inspeção pós-teste não
 ajuda, porque o `afterAll` limpa. Reapontar `DATABASE_URL` antes de instanciar
 resolveu, e o motivo está comentado no arquivo.
+
+---
+
+### PR-4 — tela mínima, arch-spec e dogfooding — `feito`
+
+A fatia fecha. Item **Licenças** no `GlobalNav` → `/t/:tenant/licencas`.
+
+**Rota de primeiro nível sob o tenant, não sob `/clients`** — decisão do PI, e
+ela tem razão estrutural: licenciamento é frente disjunta (ADR-023 vale aqui
+pelo mesmo princípio). Um produto licenciado não é um cliente, e o contrato de
+prestação não tem nada a ver com a licença de um binário.
+
+#### A tela é organizada por uma regra só
+
+**A chave em claro aparece uma vez e some.** Por isso ela **não vira linha da
+lista**: ocupa um bloco próprio, destacado, com o aviso explícito de que não
+volta — e some quando o admin confirma que copiou. Recarregar a página a perde
+para sempre, e o texto diz isso antes que alguém descubra do jeito caro.
+
+**O aviso mais importante da tela não é sobre licença nenhuma:**
+`signingConfigured: false` renderiza um alerta dizendo que as chaves emitidas
+**não vão ativar**. Sem ele, emitir funcionaria, a chave chegaria ao comprador,
+e o `503` apareceria na máquina dele — o pior lugar possível para descobrir uma
+variável de ambiente faltando.
+
+Outras decisões de tela, todas com teste:
+
+- **Um campo de busca, não dois.** Quem usa é o suporte, com a chave que o
+  comprador mandou ou com o e-mail dele. O `@` decide o modo — não há
+  ambiguidade real, e escolher o tipo antes de digitar é burocracia sobre a
+  informação que ele já tem na mão.
+- **Sem botão de remover produto ou edição.** O `ON DELETE RESTRICT` recusa
+  apagar edição com licença vendida; oferecer o botão para depois recusá-lo é
+  pior que não oferecer. A tela mostra o **número de licenças** da edição, que é
+  a explicação de por que ele não existe.
+- **Cadastro de produtos recolhido.** O caminho comum é emitir; cadastrar
+  produto acontece uma vez na vida do workspace, e deixá-lo aberto empurraria a
+  emissão para baixo da dobra todo dia.
+- **`updatesUntil` vencido diz "Updates encerrados", nunca "expirada".** A
+  perpétua continua válida (MVP4 decisão 3) — o que vence é o direito a versões
+  novas. "Expirada" faria o suporte acreditar que a licença morreu.
+- **Evento desconhecido cai no nome cru.** As fatias 27–28 acrescentam tipos; uma
+  lista que omite o que não reconhece mente por omissão (mesma regra da trilha
+  da Fatia 24).
+
+#### O arch-spec de fronteira
+
+Critério de aceite da fatia, e ele prova **três** coisas, não uma:
+
+1. **Frente disjunta:** nenhum import de módulo-irmão além do `identity`, nenhum
+   acesso a tabela da Frente Clientes, nenhuma transição de funil, nenhuma
+   escrita em `projects`, nenhum LLM.
+2. **A chave privada tem um dono só:** `process.env.LICENSING_SIGNING_KEY` é
+   lida em **um** arquivo, e a primitiva de assinatura mora em outro. É o que
+   torna verificável a afirmação de que a privada não sai do servidor.
+3. **A rota pública é separada da protegida:** o controller público **não** tem
+   `@UseGuards` (teria e toda ativação daria `401`), o admin tem os três, e a
+   escrita sem sessão passa por `runInTenantContext` — nunca por bypass.
+
+Duas correções durante a escrita dele, ambas sobre a varredura reprovar o que
+não devia: `.int-spec.ts` entrava na lista de arquivos "de produção" (o
+`contracts` não precisava do filtro porque não tem nenhum), e as regex pegavam
+**comentários** — os arquivos do módulo explicam as decisões em prosa, e essa
+prosa cita justamente os nomes proibidos.
+
+#### Dogfooding — o fluxo inteiro, contra a API e o banco reais
+
+Par Ed25519 gerado com `openssl`, API subida com o secret em base64:
+
+- **Emissão**: chave `WR-8ZC9-WQGG-UAXU-9LS4` no formato do produto; e-mail
+  normalizado para minúsculas; `updatesUntil` = emissão + 12 meses.
+- **A chave não está no banco**: `SELECT count(*) FROM licenses WHERE
+  licenses::text LIKE '%8ZC9%'` → **0**. Só o `key_hash`.
+- **Ativação com a chave em MINÚSCULAS** → `201` com license file completo. É o
+  modo de falhar mais caro da fatia, exercido de propósito.
+- **Idempotência**: reativar a mesma máquina → `201`, e o banco continua com
+  **2** ativações depois de 4 chamadas.
+- **Limite**: 3ª máquina → `409` **com a lista** (`desktop-rodrigo`, `notebook`).
+- **Trilha**: `issued`, `activated`, `reactivated`, `activated`.
+- **Revogação** → `410` na ativação seguinte.
+- **Rate limit**: 6ª tentativa da mesma chave → `429`; chave nova do mesmo IP
+  também `429` (o limite de IP havia estourado).
+- **Nenhuma leitura devolve a chave** — `grep` na listagem: 0 ocorrências.
+- **Assinatura verificada FORA do servidor**, com script próprio e a chave
+  pública: `true`. E os dois ataques recusados no mundo real — `updatesUntil`
+  adulterado → `false`; `fingerprint` de outra máquina → `false`.
+
+Dado de teste removido do banco de dev ao fim (`DELETE 7 / 3 / 2`).
+
+#### PR-4 — verificação
+
+- **2310 testes verdes** (1640 regras · 157 banco · 513 tela) — **+50** sobre o
+  PR-3: 21 da lógica de apresentação, 18 da página, 13 do arch-spec (menos 2 de
+  ajuste de contagem entre projetos).
+- `tsc --noEmit` limpo nos dois apps; `pnpm build` verde.
+- **Todos os critérios de aceite da SPEC-036 exercidos** — os de tela e os de
+  API, estes últimos contra Postgres real.
+
+**Uma armadilha de ambiente que custou tempo e vale registrar:** a API de
+produção lê `DEV_AUTH_BYPASS` como a string `true`, não `1`. Subir com `=1`
+deixa o guard ativo, e toda rota de admin responde `401` — que parece bug da
+fatia nova, e não é. Junto com isso, o `EADDRINUSE` silencioso da memória:
+a segunda instância morre sem mensagem visível e a primeira, com o ambiente
+**antigo**, continua respondendo.

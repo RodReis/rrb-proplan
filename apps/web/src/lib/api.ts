@@ -110,6 +110,11 @@ const TENANT_SCOPED_PREFIXES = [
   // contador do menu sairia sem tenant e mostraria zero em silêncio, que é
   // exatamente pior do que não existir (§2.3).
   '/dashboard',
+  // SPEC-036 §Contratos: o admin do licenciamento vive sob `/t/:tenant`. A
+  // rota PÚBLICA (`/licensing/v1/activate`) não entra aqui de propósito — ela
+  // roda sem sessão e não é chamada por esta web, e sim pelo binário na
+  // máquina do comprador.
+  '/licensing/',
 ];
 
 /**
@@ -1692,4 +1697,151 @@ export interface ReposBlock {
  */
 export function getDashboardRepos(): Promise<ReposBlock> {
   return request('/dashboard/repos');
+}
+
+// ===========================================================================
+// Licenciamento (SPEC-036, Fatia 25 — MVP4)
+//
+// Só o ADMIN vive aqui. A rota pública `/licensing/v1/activate` é chamada pelo
+// binário na máquina do comprador, nunca por esta web.
+// ===========================================================================
+
+export type LicBillingModel = 'PERPETUAL' | 'SUBSCRIPTION';
+export type LicenseStatus = 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+
+export interface LicEditionView {
+  id: string;
+  slug: string;
+  name: string;
+  billingModel: LicBillingModel;
+  maxMachines: number;
+  updatesMonths: number;
+  /** Quantas licenças já saíram desta edição — o que impede apagá-la. */
+  licenseCount: number;
+}
+
+export interface LicProductView {
+  id: string;
+  slug: string;
+  name: string;
+  keyPrefix: string;
+  editions: LicEditionView[];
+}
+
+export interface LicCatalogResponse {
+  products: LicProductView[];
+  /**
+   * `false` = servidor sem chave de assinatura. A tela avisa **antes** de
+   * alguém emitir e entregar uma chave que devolveria 503 na ativação.
+   */
+  signingConfigured: boolean;
+}
+
+export interface LicenseView {
+  id: string;
+  status: LicenseStatus;
+  customerEmail: string;
+  customerName: string | null;
+  editionSlug: string;
+  editionName: string;
+  productSlug: string;
+  issuedAt: string;
+  updatesUntil: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  activeMachines: number;
+  maxMachines: number;
+}
+
+/**
+ * O que a emissão devolve — o **único** tipo com a chave em claro. Ela existe
+ * nesta resposta e em nenhum outro lugar: o banco guarda só o hash, e nenhum
+ * `GET` a devolve. Perder significa emitir outra.
+ */
+export interface IssuedLicense extends LicenseView {
+  key: string;
+}
+
+export interface LicEventView {
+  id: string;
+  type: string;
+  payload: unknown;
+  createdAt: string;
+}
+
+export function getLicensingCatalog(): Promise<LicCatalogResponse> {
+  return request('/licensing/catalog');
+}
+
+export function createLicProduct(input: {
+  slug: string;
+  name: string;
+  keyPrefix: string;
+}): Promise<LicProductView> {
+  return request('/licensing/products', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function createLicEdition(
+  productId: string,
+  input: {
+    slug: string;
+    name: string;
+    billingModel?: LicBillingModel;
+    maxMachines?: number;
+    updatesMonths?: number;
+  },
+): Promise<LicEditionView> {
+  return request(`/licensing/products/${productId}/editions`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateLicEditionLimits(
+  editionId: string,
+  input: { maxMachines?: number; updatesMonths?: number },
+): Promise<LicEditionView> {
+  return request(`/licensing/editions/${editionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+/** `email` filtra; `key` busca pela chave (o servidor hasheia e procura). */
+export function listLicenses(filtro?: {
+  email?: string;
+  key?: string;
+}): Promise<LicenseView[]> {
+  const params = new URLSearchParams();
+  if (filtro?.email) params.set('email', filtro.email);
+  if (filtro?.key) params.set('key', filtro.key);
+  const query = params.toString();
+  return request(`/licensing/licenses${query ? `?${query}` : ''}`);
+}
+
+/** **A resposta contém a chave em claro — uma única vez.** */
+export function issueLicense(input: {
+  editionId: string;
+  customerEmail: string;
+  customerName?: string;
+}): Promise<IssuedLicense> {
+  return request('/licensing/licenses', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function revokeLicense(id: string, reason: string): Promise<LicenseView> {
+  return request(`/licensing/licenses/${id}/revoke`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function listLicenseEvents(id: string): Promise<LicEventView[]> {
+  return request(`/licensing/licenses/${id}/events`);
 }
