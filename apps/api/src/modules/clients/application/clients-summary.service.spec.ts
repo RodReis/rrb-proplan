@@ -95,17 +95,73 @@ describe('ClientsSummaryService (SPEC-035)', () => {
   });
 
   describe('cards parados (§2.3, item 4)', () => {
+    /** Projeto com a última transição em `quando` (ou nenhuma, se `null`). */
+    function projeto(id: string, quando: string | null, over: Record<string, unknown> = {}) {
+      return {
+        id,
+        title: 'Loja nova',
+        state: 'BRIEFING_STARTED',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+        client: { id: 'c1', name: 'Ana', company: 'Acme' },
+        transitions: quando ? [{ at: new Date(quando) }] : [],
+        ...over,
+      };
+    }
+
+    it('mede a última TRANSIÇÃO, não o `updatedAt` da linha (§6)', async () => {
+      // A fonte que o §6 nomeia é `client_projects` cuja última
+      // `client_status_transition` é anterior ao limite. `updatedAt` do Prisma
+      // muda a QUALQUER escrita na linha — corrigir uma vírgula no título
+      // tiraria da lista um projeto travado há 60 dias, sem que nada tivesse
+      // andado. "Parado" é sobre o funil, não sobre a linha.
+      const prisma = prismaFake();
+
+      await new ClientsSummaryService(prisma).stalledProjects(TENANT, 7, new Date());
+
+      const args = prisma.clientProject.findMany.mock.calls[0][0];
+      expect(args.where.updatedAt).toBeUndefined();
+      // A última transição vem junto, ordenada — o corte é feito sobre ela.
+      expect(args.include.transitions).toEqual({
+        orderBy: { at: 'desc' },
+        take: 1,
+        select: { at: true },
+      });
+    });
+
     it('usa o limite recebido, não um 7 literal', async () => {
       // O critério de aceite cobra isso por nome: "'parado' usa o limite
       // configurado, não `7` literal espalhado".
       const prisma = prismaFake();
       const agora = new Date('2026-08-15T15:00:00.000Z');
+      // 14 dias antes de 15/08 15:00Z = 01/08 15:00Z. Um de cada lado do corte.
+      prisma.clientProject.findMany.mockResolvedValue([
+        projeto('parado', '2026-07-20T00:00:00.000Z'),
+        projeto('recente', '2026-08-10T00:00:00.000Z'),
+      ]);
 
-      await new ClientsSummaryService(prisma).stalledProjects(TENANT, 14, agora);
+      const out = await new ClientsSummaryService(prisma).stalledProjects(
+        TENANT,
+        14,
+        agora,
+      );
 
-      const where = prisma.clientProject.findMany.mock.calls[0][0].where;
-      // 14 dias antes de 15/08 15:00Z = 01/08 15:00Z.
-      expect(where.updatedAt).toEqual({ lt: new Date('2026-08-01T15:00:00.000Z') });
+      expect(out.map((p) => p.clientProjectId)).toEqual(['parado']);
+    });
+
+    it('projeto SEM transição nenhuma conta desde a criação', async () => {
+      // Card criado e nunca movido é o caso mais parado que existe. Exigir uma
+      // transição para entrar na lista esconderia exatamente quem nunca andou.
+      const prisma = prismaFake();
+      prisma.clientProject.findMany.mockResolvedValue([projeto('cp1', null)]);
+
+      const out = await new ClientsSummaryService(prisma).stalledProjects(
+        TENANT,
+        7,
+        new Date('2026-08-15T15:00:00.000Z'),
+      );
+
+      expect(out).toHaveLength(1);
+      expect(out[0].since).toBe('2026-06-01T00:00:00.000Z');
     });
 
     it('não conta projeto arquivado nem entregue — parado ali é o fim normal', async () => {
@@ -120,30 +176,43 @@ describe('ClientsSummaryService (SPEC-035)', () => {
     it('devolve o card com título e cliente — a lista é clicável, não só um número', async () => {
       const prisma = prismaFake();
       prisma.clientProject.findMany.mockResolvedValue([
-        {
-          id: 'cp1',
-          title: 'Loja nova',
-          state: 'BRIEFING_STARTED',
-          updatedAt: new Date('2026-07-01T00:00:00.000Z'),
-          client: { id: 'c1', name: 'Ana', company: 'Acme' },
-        },
+        projeto('cp1', '2026-07-01T00:00:00.000Z'),
       ]);
 
       const out = await new ClientsSummaryService(prisma).stalledProjects(
         TENANT,
         7,
-        new Date(),
+        new Date('2026-08-15T15:00:00.000Z'),
       );
 
       expect(out).toEqual([
         {
           clientProjectId: 'cp1',
+          // O drill-down abre a gaveta do CLIENTE (§7.3), então o dono viaja
+          // junto — sem ele a tela precisaria de uma 2ª chamada por item.
+          clientId: 'c1',
           title: 'Loja nova',
           state: 'BRIEFING_STARTED',
           clientName: 'Ana',
           since: '2026-07-01T00:00:00.000Z',
         },
       ]);
+    });
+
+    it('ordena do mais parado para o menos — quem espera há mais tempo primeiro', async () => {
+      const prisma = prismaFake();
+      prisma.clientProject.findMany.mockResolvedValue([
+        projeto('meio', '2026-07-01T00:00:00.000Z'),
+        projeto('antigo', '2026-06-10T00:00:00.000Z'),
+      ]);
+
+      const out = await new ClientsSummaryService(prisma).stalledProjects(
+        TENANT,
+        7,
+        new Date('2026-08-15T15:00:00.000Z'),
+      );
+
+      expect(out.map((p) => p.clientProjectId)).toEqual(['antigo', 'meio']);
     });
   });
 

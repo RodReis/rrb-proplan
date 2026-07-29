@@ -4,6 +4,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 export interface PendingArtifact {
   artifactId: string;
   clientProjectId: string;
+  /** Cliente dono — o drill-down do dashboard abre a gaveta dele (§7.3). */
+  clientId: string;
   title: string;
   kind: string;
   since: string;
@@ -38,13 +40,14 @@ export class ArtifactsSummaryService {
         state: 'PENDING_REVIEW',
         clientProject: { deletedAt: null, client: { deletedAt: null } },
       },
-      include: { clientProject: { select: { title: true } } },
+      include: { clientProject: { select: { title: true, clientId: true } } },
       orderBy: { createdAt: 'asc' },
     });
 
     return linhas.map((a) => ({
       artifactId: a.id,
       clientProjectId: a.clientProjectId,
+      clientId: a.clientProject.clientId,
       title: a.clientProject.title,
       kind: a.kind,
       since: a.createdAt.toISOString(),

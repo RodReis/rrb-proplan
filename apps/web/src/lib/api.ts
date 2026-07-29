@@ -104,6 +104,12 @@ const TENANT_SCOPED_PREFIXES = [
   '/contracts/',
   '/contract-templates',
   '/provider-profile',
+  // SPEC-035 §6: o dashboard inteiro vive sob `/t/:tenant`. Uma linha só cobre
+  // as três rotas (`/dashboard`, `/dashboard/pending-count`,
+  // `/dashboard/settings`) porque todas partem do mesmo prefixo — e sem ela o
+  // contador do menu sairia sem tenant e mostraria zero em silêncio, que é
+  // exatamente pior do que não existir (§2.3).
+  '/dashboard',
 ];
 
 /**
@@ -1538,4 +1544,108 @@ export function acceptContract(
  */
 export function contractPublicUrl(token: string): string {
   return `${API_URL}/c/${token}`;
+}
+
+// ===========================================================================
+// Dashboard (SPEC-035, Fatia 24)
+// ===========================================================================
+
+/** Os 4 tipos da lista fechada de *Esperando você* (§2.3). */
+export type PendingKind =
+  | 'artifact_review'
+  | 'estimate'
+  | 'contract_acceptance'
+  | 'stalled';
+
+/**
+ * Painel de destino do drill-down, ou `null` quando não há tela para onde levar.
+ *
+ * **Vem do servidor** — a tela não remonta este mapa a partir do `kind`. O §7.3
+ * é a razão: *item cuja tela de destino não existe é texto, não link*, e quem
+ * sabe se existe destino é quem produziu o item.
+ */
+export type PendingTarget = 'artefatos' | 'estimativa' | 'contratos' | null;
+
+export interface PendingItem {
+  kind: PendingKind;
+  /** Cliente dono — a gaveta do drill-down é a dele. */
+  clientId: string;
+  clientProjectId: string;
+  title: string;
+  detail: string;
+  target: PendingTarget;
+  since: string;
+}
+
+export interface FunnelColumnCount {
+  column: 'novo' | 'briefing' | 'prompt_contrato' | 'producao_entrega';
+  count: number;
+}
+
+export interface DashboardContractCounts {
+  issued: number;
+  accepted: number;
+  /**
+   * Já emitiu algum contrato, em qualquer época.
+   *
+   * Separado de `issued` porque *"0 no período"* e *"você ainda não emitiu"* são
+   * estados diferentes e a tela os mostra diferente (§2.7) — `COUNT(*)` devolve
+   * `0` para os dois.
+   */
+  hasAny: boolean;
+}
+
+export interface DashboardActivityEntry {
+  kind: 'funnel' | 'audit' | 'sync';
+  at: string;
+  title: string;
+  detail: string;
+  clientProjectId: string | null;
+}
+
+export type DashboardPeriod = '7' | '30' | '90' | 'current_month';
+
+export interface DashboardView {
+  period: DashboardPeriod;
+  /** Tenant sem cliente nenhum — o item de menu some neste caso (§2.12). */
+  hasAnyClient: boolean;
+  activity: DashboardActivityEntry[];
+  pending: PendingItem[];
+  funnel: FunnelColumnCount[];
+  contracts: DashboardContractCounts;
+}
+
+/** Blocos locais do dashboard — tudo menos repos, numa chamada só (§6). */
+export function getDashboard(period?: DashboardPeriod): Promise<DashboardView> {
+  return request(`/dashboard${period ? `?period=${period}` : ''}`);
+}
+
+/**
+ * Só o contador, para o menu (§6).
+ *
+ * Rota separada porque é chamada a cada navegação e não deve arrastar o
+ * dashboard inteiro junto — mas o número é, no servidor, o tamanho exato da
+ * lista de `getDashboard().pending` (§2.3).
+ */
+export function getPendingCount(): Promise<{ count: number }> {
+  return request('/dashboard/pending-count');
+}
+
+export interface DashboardSettings {
+  stalledDays: number;
+  /** Resolvido no servidor: só o `owner` altera (ADR-026). */
+  canEdit: boolean;
+}
+
+export function getDashboardSettings(): Promise<DashboardSettings> {
+  return request('/dashboard/settings');
+}
+
+export function updateDashboardSettings(
+  stalledDays: number,
+): Promise<DashboardSettings> {
+  return request('/dashboard/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ stalledDays }),
+  });
 }

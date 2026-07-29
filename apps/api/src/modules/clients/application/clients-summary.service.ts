@@ -10,6 +10,8 @@ export interface FunnelColumnCount {
 
 export interface StalledProject {
   clientProjectId: string;
+  /** Cliente dono — o drill-down do dashboard abre a gaveta dele (§7.3). */
+  clientId: string;
   title: string;
   state: ClientProjectState;
   clientName: string;
@@ -98,6 +100,24 @@ export class ClientsSummaryService {
   /**
    * Projetos parados há mais que o limite — 4º item de *Esperando você* (§2.3).
    *
+   * ## "Parado" é medido pela última TRANSIÇÃO, não pelo `updatedAt` da linha
+   *
+   * A fonte que o §6 nomeia é *"`client_projects` cuja última
+   * `client_status_transition` é anterior ao limite"*, e a diferença não é
+   * detalhe: `updatedAt` do Prisma muda a **qualquer** escrita na linha —
+   * corrigir uma vírgula no título tiraria da lista um projeto travado há 60
+   * dias, sem que nada tivesse andado. *Parado* é uma afirmação sobre o
+   * **funil**, não sobre a linha do banco.
+   *
+   * **Projeto sem transição nenhuma conta desde a criação.** Card criado e
+   * nunca movido é o caso mais parado que existe; exigir uma transição para
+   * entrar na lista esconderia exatamente quem nunca andou.
+   *
+   * O corte acontece em memória porque depende da **última** transição de cada
+   * projeto — um `where` sobre a relação responderia *"tem alguma transição
+   * anterior ao limite"*, que é verdade para todo projeto antigo que andou
+   * ontem. O universo já vem estreitado por tenant e estado.
+   *
    * O limite chega por parâmetro, vindo de `TenantSettings`: o critério de
    * aceite cobra que *"parado"* use o valor configurado e não um `7` literal
    * espalhado pelo código.
@@ -117,19 +137,27 @@ export class ClientsSummaryService {
         deletedAt: null,
         client: { tenantId, deletedAt: null },
         state: { notIn: ['DELIVERED', 'ARCHIVED'] },
-        updatedAt: { lt: limite },
       },
-      include: { client: { select: { id: true, name: true, company: true } } },
-      orderBy: { updatedAt: 'asc' },
+      include: {
+        client: { select: { id: true, name: true, company: true } },
+        transitions: { orderBy: { at: 'desc' }, take: 1, select: { at: true } },
+      },
     });
 
-    return projetos.map((p) => ({
-      clientProjectId: p.id,
-      title: p.title,
-      state: p.state,
-      clientName: p.client.name,
-      since: p.updatedAt.toISOString(),
-    }));
+    return projetos
+      .map((p) => ({
+        clientProjectId: p.id,
+        clientId: p.client.id,
+        title: p.title,
+        state: p.state,
+        clientName: p.client.name,
+        // Sem transição, o relógio corre desde a criação.
+        since: (p.transitions[0]?.at ?? p.createdAt).toISOString(),
+      }))
+      .filter((p) => new Date(p.since) < limite)
+      // Mais parado primeiro: quem espera há mais tempo é quem a tela deve
+      // mostrar antes de a lista ser truncada por altura.
+      .sort((a, b) => a.since.localeCompare(b.since));
   }
 
   /**

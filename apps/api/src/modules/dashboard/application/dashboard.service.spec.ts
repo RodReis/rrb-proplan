@@ -144,6 +144,100 @@ describe('DashboardService (SPEC-035)', () => {
     });
   });
 
+  describe('o drill-down: destino resolvido no servidor (§7.3)', () => {
+    /** Um item de cada um dos 4 tipos, com clientId distinto. */
+    function comOsQuatro() {
+      return deps({
+        artifacts: {
+          pendingReview: jest.fn().mockResolvedValue([
+            {
+              artifactId: 'a1',
+              clientProjectId: 'cp1',
+              clientId: 'cl1',
+              title: 'X',
+              kind: 'SCOPE',
+              since: 'i',
+            },
+          ]),
+        },
+        estimates: {
+          pending: jest.fn().mockResolvedValue([
+            {
+              clientProjectId: 'cp2',
+              clientId: 'cl2',
+              title: 'Y',
+              reason: 'missing',
+              since: 'i',
+            },
+          ]),
+        },
+        contracts: {
+          unaccepted: jest.fn().mockResolvedValue([
+            {
+              contractId: 'ct1',
+              clientProjectId: 'cp3',
+              clientId: 'cl3',
+              title: 'Z',
+              version: 1,
+              since: 'i',
+            },
+          ]),
+          counts: jest.fn().mockResolvedValue({ issued: 1, accepted: 0, hasAny: true }),
+        },
+        clients: {
+          stalledProjects: jest.fn().mockResolvedValue([
+            {
+              clientProjectId: 'cp4',
+              clientId: 'cl4',
+              title: 'W',
+              state: 'DRAFT',
+              clientName: 'Ana',
+              since: 'i',
+            },
+          ]),
+        },
+      });
+    }
+
+    it('cada item carrega o cliente dono — a gaveta do drill-down é a dele', async () => {
+      // Sem `clientId` no item, a tela precisaria de uma 2ª chamada POR ITEM
+      // só para descobrir de quem é o projeto.
+      const { svc } = comOsQuatro();
+
+      const lista = await svc.pending(TENANT, AGORA);
+
+      expect(lista.map((i) => i.clientId)).toEqual(['cl1', 'cl2', 'cl3', 'cl4']);
+    });
+
+    it('o painel de destino sai do servidor, não do `kind` remontado na tela', async () => {
+      // Quem sabe que "artefato pendente" se resolve no painel de artefatos é
+      // quem produziu o item. A tela replicando esse mapa seria uma 2ª cópia da
+      // regra, e as duas divergiriam no primeiro tipo novo.
+      const { svc } = comOsQuatro();
+
+      const lista = await svc.pending(TENANT, AGORA);
+
+      expect(lista.map((i) => [i.kind, i.target])).toEqual([
+        ['artifact_review', 'artefatos'],
+        ['estimate', 'estimativa'],
+        ['contract_acceptance', 'contratos'],
+        ['stalled', null],
+      ]);
+    });
+
+    it('"parado" vem SEM destino — escolher um painel seria adivinhar', async () => {
+      // O projeto pode estar travado em qualquer etapa. O §7.3 manda que item
+      // sem destino pronto seja texto, não link: `null` é a resposta honesta, e
+      // a gaveta do cliente ainda abre porque `clientId` viaja.
+      const { svc } = comOsQuatro();
+
+      const parado = (await svc.pending(TENANT, AGORA)).find((i) => i.kind === 'stalled');
+
+      expect(parado?.target).toBeNull();
+      expect(parado?.clientId).toBe('cl4');
+    });
+  });
+
   describe('"Esperando você" é estado corrente, não janela (§2.8)', () => {
     it('o período NÃO chega nas fontes de pendência', async () => {
       // Algo que espera há 200 dias espera hoje. Escondê-lo por estar fora dos

@@ -4394,7 +4394,7 @@ Fatia grande — **4 PRs empilhados**, um branch por PR, todos com base `main`
 
 - [x] **PR-1 — o agregador**: superfície de resumo nos 5 módulos-fonte,
       `GET /t/:tenant/dashboard`, período com fuso, `stalled_days` e o arch test *(este)*
-- [ ] **PR-2 — *Esperando você* e o contador do menu** (`GET .../pending-count`)
+- [x] **PR-2 — *Esperando você*: a fonte do "parado", o drill-down e o contador** *(este)*
 - [ ] **PR-3 — o bloco de repos ao vivo** (`GET .../repos`) + as 4 salvaguardas do §2.11
 - [ ] **PR-4 — a tela React** + menu (acende o item, some sem cliente, contador ao navegar/foco)
 
@@ -4505,3 +4505,105 @@ literal espalhado.
   dia nos dois bancos (dev e teste).
 - **Dogfooding no navegador fica para o PR-4**, que é quando existe tela. O que
   este PR entrega é servidor, e a rota é exercitável por API.
+
+### PR-2 — o que entrou
+
+O PR-1 já tinha `pending()` e `pendingCount()`, então o PR-2 começou relendo a
+spec contra o que existia — e o que a releitura achou não foi "faltam rotas", foi
+**uma fonte errada e um destino inexistente**.
+
+**"Parado" media a coisa errada.** O §6 nomeia a fonte: *"`client_projects` cuja
+última `client_status_transition` é anterior ao limite"*. O PR-1 implementou com
+`clientProject.updatedAt`, e a diferença não é detalhe — `updatedAt` do Prisma
+muda a **qualquer** escrita na linha. Corrigir uma vírgula no título tiraria da
+lista um projeto travado há 60 dias, sem que nada tivesse andado. *Parado* é uma
+afirmação sobre o **funil**, não sobre a linha do banco.
+
+A correção lê a última transição de cada projeto e corta sobre ela. **Projeto sem
+transição nenhuma conta desde a criação**: card criado e nunca movido é o caso
+mais parado que existe, e exigir uma transição para entrar na lista esconderia
+exatamente quem nunca andou. O corte acontece em memória de propósito — um
+`where` sobre a relação responderia *"tem alguma transição anterior ao limite"*,
+que é verdade para todo projeto antigo que andou ontem.
+
+**O drill-down não tinha para onde apontar.** O §7.3 diz *"item cuja tela de
+destino não existe é texto, não link"*, e ao procurar o destino apareceu o
+problema: a gaveta do cliente abre em **estado local** (`useState` na
+`ClientsPage`), e cada painel de projeto (artefatos, estimativa, contratos) em
+outro estado local dentro dela. Não havia URL para lugar nenhum.
+
+**Decisão do PI: dar o destino em vez de aceitar o texto.** A URL passa a ser
+`/t/:tenant/clients?cliente=<id>&projeto=<id>&painel=<nome>`, e o item abre a
+gaveta já no painel certo. As duas telas são entregues e aceitas (Fatia 19 e
+SPEC-032/033/034), então a mudança foi desenhada para não alterar comportamento
+existente: **sem os parâmetros, nada muda** — há teste afirmando isso em ambas.
+
+Três guardas, todas com teste, e todas sobre a mesma regra do §7.3 — *não ensinar
+ninguém a desconfiar dos links*:
+
+- **Id que não está na lista não abre nada**, e a tela atrás continua utilizável.
+  Link velho para cliente ou projeto apagado é o caso real.
+- **`painel=` desconhecido é ignorado** (lista fechada `PAINEIS_ABRIVEIS`), e a
+  gaveta abre normal em vez de tentar abrir algo que não existe.
+- **Fechar não reabre.** Sem trava, fechar a gaveta a veria reabrir no render
+  seguinte, porque o parâmetro continua na URL — a pessoa fecharia e ela
+  voltaria, que é pior que não abrir. `ClientsPage` limpa os três parâmetros ao
+  fechar (`replace`, para não empilhar histórico) e o painel guarda um
+  `abertoPara` com o alvo já consumido.
+
+**O destino sai do servidor, não do `kind` remontado na tela.** Cada item traz
+`target: 'artefatos' | 'estimativa' | 'contratos' | null` e o `clientId` do dono.
+Quem sabe que "artefato pendente" se resolve no painel de artefatos é quem
+produziu o item; a tela replicando esse mapa seria uma segunda cópia da regra, e
+as duas divergiriam no primeiro tipo novo. O `clientId` viaja junto porque a
+gaveta é a do **cliente** — sem ele a tela precisaria de uma segunda chamada por
+item só para descobrir o dono.
+
+**"Parado" vem com `target: null`, de propósito.** O projeto pode estar travado
+em qualquer etapa, e escolher um painel seria adivinhar. A gaveta do cliente
+ainda abre (o `clientId` viaja), mas nenhum painel é pré-selecionado — que é
+exatamente a distinção que o §7.3 pede entre *levar ao lugar certo* e *fingir que
+sabe qual é*.
+
+**O contador do menu** (`usePendingCount`) atualiza **ao navegar e ao voltar o
+foco da aba**, sem polling — a decisão 4 do PI, e o §5 cobra a ausência de
+`setInterval` por nome. O teste prova por comportamento, não por varredura:
+adianta o relógio em 5 minutos e afirma que nenhuma request nova saiu.
+
+Duas escolhas dentro do hook merecem registro. **`visibilitychange` e não
+`focus`**: clicar de volta numa janela que nunca ficou oculta não é *voltar*, e
+dispararia request a cada alt-tab curto — que é o polling que a decisão evitou,
+com outro nome. E **falha vira `null`, nunca zero**: sem número o menu não mostra
+badge; zero seria a afirmação *"nada espera por você"*, a mais cara de errar aqui
+porque a pessoa deixa de olhar.
+
+**Uma linha em `TENANT_SCOPED_PREFIXES`** (`/dashboard`) cobre as três rotas. É
+literalmente o FIX #166: sem ela o contador sairia sem `/t/:tenant`, a API
+devolveria 404 e o menu mostraria **zero em silêncio** — indistinguível de "nada
+esperando". Nenhum teste de tela pegaria, porque todos mockam a camada de API,
+que é onde `withTenantPrefix` vive; por isso a prova está no
+`tenantPrefix.test.ts`, que a exercita direto.
+
+**Um teste de infraestrutura consertado, achado de raspão.** O
+`dashboard.arch.spec.ts` reprovou o próprio comentário que descreve a regra: o
+filtro de comentários usava `.*$`, que com checkout em **CRLF** para antes do
+`\r` e deixa a linha passar inteira. Passava no PR-1 (arquivo recém-escrito, LF)
+e quebrou depois do merge. O filtro virou `\r?$` e uma função nomeada — o sintoma
+é o pior tipo de teste instável, porque só aparece na máquina de quem tem
+`autocrlf` ligado.
+
+### PR-2 — verificação
+
+- **2032 testes verdes** (1601 regras · 124 banco · 431 tela) — **+26**: 6 no
+  servidor (fonte do "parado", `clientId`, `target`) e 20 no web (deep-link da
+  gaveta e do painel, contador, prefixo de tenant).
+- **A correção do "parado" tem os dois lados**: teste afirmando que `updatedAt`
+  **não** entra no `where`, e teste do projeto sem transição contando desde a
+  criação.
+- **As três guardas do §7.3 têm teste**: id inexistente, painel desconhecido e
+  fechar-não-reabre — nas duas telas.
+- **O contador não faz polling, provado por comportamento**: relógio adiantado em
+  5 min, contagem de chamadas inalterada.
+- `tsc --noEmit` limpo; `pnpm build` verde (API e web).
+- **Dogfooding no navegador fica para o PR-4**, quando existe a tela que produz
+  os links — o que este PR entrega é o destino deles.

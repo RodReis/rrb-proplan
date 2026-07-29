@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   createClient,
@@ -190,6 +190,7 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState<Client | null>(null);
   /** Cliente aberto no detalhe — a porta de entrada dos projetos (FIX #134). */
   const [openClient, setOpenClient] = useState<Client | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const load = useCallback(async (q: string) => {
     try {
@@ -207,6 +208,56 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
     const timer = setTimeout(() => void load(query), 250);
     return () => clearTimeout(timer);
   }, [query, load]);
+
+  /**
+   * Deep-link do drill-down do dashboard: `?cliente=<id>` abre a gaveta
+   * (SPEC-035 §7.3).
+   *
+   * Existe porque a gaveta abria **só por clique**, em estado local — não havia
+   * URL para onde apontar um item de *Esperando você*, e o §7.3 é explícito em
+   * que item sem destino deve ser **texto, não link**. Dar o destino é o que
+   * permite o link existir.
+   *
+   * **Id que não está na lista não abre nada**, e a lista atrás continua
+   * utilizável: link velho para cliente apagado é o caso real, e abrir uma
+   * gaveta vazia (ou derrubar a página) ensinaria a desconfiar de todo link.
+   *
+   * **Abre uma vez por id**, e é isso que o `abertoPara` guarda: sem a trava,
+   * fechar a gaveta a veria reabrir no render seguinte, porque `openClient`
+   * voltou a ser `null` enquanto o parâmetro ainda está na URL. A pessoa
+   * fecharia e a gaveta voltaria — pior que não abrir.
+   */
+  const clienteAlvo = searchParams.get('cliente');
+  const abertoPara = useRef<string | null>(null);
+  useEffect(() => {
+    if (!clienteAlvo || state.status !== 'ready') return;
+    if (abertoPara.current === clienteAlvo) return;
+    const achado = state.clients.find((c) => c.id === clienteAlvo);
+    if (!achado) return;
+    abertoPara.current = clienteAlvo;
+    setOpenClient(achado);
+  }, [clienteAlvo, state]);
+
+  /**
+   * Fecha a gaveta e **limpa o parâmetro**.
+   *
+   * Sem limpar, um F5 reabriria a gaveta que a pessoa acabou de fechar, e o
+   * botão de fechar pareceria não funcionar. `replace` para que fechar não
+   * empilhe uma entrada no histórico — voltar deve sair da tela, não reabrir.
+   */
+  const fecharDetalhe = useCallback(() => {
+    setOpenClient(null);
+    setSearchParams(
+      (atual) => {
+        const proximo = new URLSearchParams(atual);
+        proximo.delete('cliente');
+        proximo.delete('projeto');
+        proximo.delete('painel');
+        return proximo;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
 
   async function handleCreate(input: Partial<Client>) {
     try {
@@ -382,9 +433,13 @@ export function ClientsPage({ canWrite }: { canWrite: boolean }) {
         <ClientDetailPanel
           client={openClient}
           canWrite={canWrite}
-          onClose={() => setOpenClient(null)}
+          onClose={fecharDetalhe}
           // Projeto criado/link mexido ⇒ a lista atrás pode ter mudado.
           onChanged={() => void load(query)}
+          // Drill-down do dashboard (§7.3): abre já no painel do item que a
+          // pessoa clicou, em vez de deixá-la procurar dentro da gaveta.
+          openProjectId={searchParams.get('projeto')}
+          openPanel={searchParams.get('painel')}
         />
       )}
 

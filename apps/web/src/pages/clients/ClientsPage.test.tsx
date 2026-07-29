@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from '../../lib/api';
 import { ThemeProvider } from '../../theme';
@@ -38,10 +39,21 @@ const client: Client = {
   createdAt: '2026-07-25T00:00:00.000Z',
 };
 
-function renderPage(canWrite = true) {
+/** Reporta a query string corrente — o `MemoryRouter` não mexe em `window.location`. */
+function EspiaBusca({ onChange }: { onChange: (search: string) => void }) {
+  const { search } = useLocation();
+  // Chaves, não arrow direta: `onChange` devolve `void`, e retorná-lo faria o
+  // React tratar o retorno como função de cleanup.
+  useEffect(() => {
+    onChange(search);
+  }, [search, onChange]);
+  return null;
+}
+
+function renderPage(canWrite = true, entrada = '/t/rodreisb/clients') {
   return render(
     <ThemeProvider>
-      <MemoryRouter initialEntries={['/t/rodreisb/clients']}>
+      <MemoryRouter initialEntries={[entrada]}>
         <Routes>
           <Route path="/t/:tenant/clients" element={<ClientsPage canWrite={canWrite} />} />
         </Routes>
@@ -138,5 +150,68 @@ describe('ClientsPage', () => {
     expect(screen.queryByRole('button', { name: '+ Novo cliente' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remover' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Deep-link do drill-down do dashboard (SPEC-035 §7.3).
+   *
+   * Sem isto, os itens de *Esperando você* não teriam para onde apontar: a
+   * gaveta abria só por clique, em estado local. O §7.3 manda que item sem
+   * destino seja **texto, não link** — dar o destino é o que permite o link.
+   */
+  describe('abre a gaveta por `?cliente=` (SPEC-035 §7.3)', () => {
+    it('abre o cliente do parâmetro sem ninguém clicar', async () => {
+      renderPage(true, '/t/rodreisb/clients?cliente=c1');
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Cliente Rodrigo Reis Barros' }),
+      ).toBeInTheDocument();
+    });
+
+    it('id inexistente NÃO abre nada e não quebra a lista', async () => {
+      // Link velho para cliente apagado é o caso real. Abrir uma gaveta vazia
+      // ou derrubar a página ensinaria a desconfiar do link — a lista atrás
+      // continua utilizável, que é o comportamento honesto.
+      renderPage(true, '/t/rodreisb/clients?cliente=nao-existe');
+
+      expect(await screen.findByText('Rodrigo Reis Barros')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('sem o parâmetro, nada abre — o comportamento antigo não muda', async () => {
+      renderPage();
+
+      expect(await screen.findByText('Rodrigo Reis Barros')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('fechar a gaveta limpa o parâmetro — F5 não a reabre', async () => {
+      // Sem limpar, recarregar reabriria a gaveta que a pessoa acabou de
+      // fechar, e o botão de fechar pareceria não funcionar.
+      const user = userEvent.setup();
+      const visto: string[] = [];
+      render(
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/t/rodreisb/clients?cliente=c1']}>
+            <Routes>
+              <Route
+                path="/t/:tenant/clients"
+                element={
+                  <>
+                    <ClientsPage canWrite />
+                    <EspiaBusca onChange={(s) => visto.push(s)} />
+                  </>
+                }
+              />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>,
+      );
+
+      await user.click(await screen.findByRole('button', { name: 'Fechar detalhe do cliente' }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(visto.at(-1)).not.toContain('cliente=');
+    });
   });
 });
