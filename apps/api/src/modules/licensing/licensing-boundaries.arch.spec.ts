@@ -94,18 +94,33 @@ describe('licensing: a varredura enxerga o módulo', () => {
 });
 
 describe('licensing: frente disjunta das outras duas (MVP4 §3)', () => {
-  it('não importa módulo de domínio além do `identity`', () => {
-    // `identity` dá os guards. Qualquer outro import de módulo-irmão aqui seria
-    // o licenciamento passando a depender de uma frente que ele não conhece.
+  it('não importa módulo de domínio além do `identity` e do `mail`', () => {
+    // `identity` dá os guards. `mail` é a exceção da SPEC-038 — e ela é
+    // infraestrutura compartilhada, não uma frente: a assinatura é
+    // `send({ to, template, data })` e não menciona licença. O arch-spec do
+    // `mail` prova o outro lado (ele não conhece licenciamento), e o consumo
+    // aqui é pelo **service público**: escrever em `mail_deliveries` direto
+    // pularia a fila, e o arch-spec de lá barra isso.
+    //
+    // Qualquer OUTRO import de módulo-irmão seria o licenciamento passando a
+    // depender de uma frente que ele não conhece.
     //
     // A regex mira os IRMÃOS (`../<modulo>/` a partir de qualquer profundidade
     // dentro do módulo), não tudo que sobe um nível: `../../prisma/` e
     // `../../../shared/` são infraestrutura compartilhada, e proibi-los diria
     // que este módulo não pode falar com o banco.
     const imports = varrer(
-      /from '(?:\.\.\/)+modules\/(?!identity\/)[a-z-]+\/|from '\.\.\/\.\.\/(?!identity\/|prisma\/|shared\/)[a-z-]+\//,
+      /from '(?:\.\.\/)+modules\/(?!identity\/|mail\/)[a-z-]+\/|from '\.\.\/\.\.\/(?!identity\/|mail\/|prisma\/|shared\/)[a-z-]+\//,
     );
     expect(imports).toEqual([]);
+  });
+
+  it('usa o `mail` pelo service público, nunca escrevendo na tabela dele', () => {
+    // O critério de aceite da SPEC-038 em uma linha. `PrismaService` é global:
+    // nada impediria um `prisma.mailDelivery.create` aqui, que funcionaria hoje
+    // e pularia a fila — registro de envio sem job é um e-mail que nunca sai,
+    // com linha no banco dizendo que saiu.
+    expect(varrer(/prisma\.mailDelivery\b/)).toEqual([]);
   });
 
   it('não lê nem escreve nas tabelas da Frente Clientes', () => {
@@ -131,7 +146,34 @@ describe('licensing: frente disjunta das outras duas (MVP4 §3)', () => {
   it('nada de IA nesta fatia', () => {
     // Emitir e ativar licença é aritmética e criptografia. Um import de LLM
     // aqui seria o ADR-012 sendo furado por engano.
-    expect(varrer(/from '.*(llm|anthropic|openai).*'/i)).toEqual([]);
+    //
+    // **Decide por SEGMENTO do especificador, não por substring.** A versão
+    // anterior era `/(llm|anthropic|openai)/i` sobre a linha inteira, e
+    // `bu(llm)q` contém `llm`: quando a fila do webhook entrou (SPEC-038), ela
+    // reprovou 27 imports de `@nestjs/bullmq`. Um arch-spec que grita por
+    // engano é um arch-spec que alguém desliga — e aí ele para de proteger a
+    // regra de verdade.
+    //
+    // Cobre as três formas de importar IA: caminho relativo (`../llm`), pacote
+    // nu (`openai`) e escopo npm (`@anthropic-ai/sdk`). Não cobre — e não deve
+    // — arquivo cujo NOME contém o termo (`./llm-usage.recorder`), que é código
+    // do próprio módulo `llm` e não um import dele.
+    const proibidos = arquivosDoModulo().flatMap((arquivo) => {
+      const linhas = readFileSync(arquivo, 'utf8').split('\n');
+      return linhas.flatMap((texto, i) => {
+        const semComentario = texto.replace(/\/\/.*$/, '').replace(/^\s*\*.*$/, '');
+        const especificador = /from '([^']+)'/.exec(semComentario)?.[1];
+        if (!especificador) return [];
+        const suspeito = especificador
+          .toLowerCase()
+          .split('/')
+          .some((segmento) => /^@?(llm|anthropic|openai)(-ai)?$/.test(segmento));
+        return suspeito
+          ? [{ arquivo: arquivo.replace(RAIZ, '').replace(/\\/g, '/'), linha: i + 1 }]
+          : [];
+      });
+    });
+    expect(proibidos).toEqual([]);
   });
 });
 

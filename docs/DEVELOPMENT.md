@@ -5649,3 +5649,133 @@ real**. Com a armadilha anotada: sem SPF/DKIM o sintoma é o pior possível — 
 - **1893 testes verdes na API** (1684 regras · 209 banco), **+44** nesta etapa.
 - `pnpm build` nos três apps · `pnpm lint` 0 erros / 3 avisos (os da `main`).
 - **Nenhuma dependência nova.**
+
+### PR-3 — o webhook da Kiwify
+
+- [x] `POST /licensing/v1/webhooks/kiwify/:tenantSlug` — pública, sem sessão
+- [x] Assinatura HMAC-SHA1 validada contra o `webhookSecret` do tenant da URL
+- [x] `LicWebhookEvent` gravado bruto; processamento em job (fila `licensing`)
+- [x] Os cinco desfechos: emitir · revogar · renovar · atraso · cancelar
+- [x] Mapeamento oferta→edição, com `FAILED` retentável quando falta
+- [x] `rawBody: true` no `main.ts` · 84 testes
+
+#### A documentação da plataforma mudou três decisões
+
+Antes de codificar, li a **documentação oficial** (`kiwify.notion.site/Webhooks-pt-br`,
+consultada em 2026-07-29) e os prints do painel real que o PI mandou. Três coisas
+que eu teria errado por suposição:
+
+**1. O algoritmo é HMAC-SHA1, e só ele.** Eu havia escrito SHA1 **e** SHA256
+"para cobrir os dois". A doc é explícita: `signature = hmac_sha1(JSON.stringify(request.body), secretKey)`,
+com `signature` na **query string**. Aceitar mais algoritmos que a plataforma usa
+não é robustez — é ampliar a superfície: bastaria um algoritmo fraco na lista
+para a verificação valer o mais fraco. Há teste recusando SHA256 explicitamente.
+
+**2. O segredo é o Token que a Kiwify gera, não um que nós escolhemos.** No
+painel (*Apps → Webhooks → Criar webhook*) o campo **Token** vem preenchido com
+algo como `7ih5upe3rvb`. É esse valor que vai para `LicSettings.webhookSecret` —
+o seed sorteia um só para que a rota não aceite entrega assinada por quem leu o
+repositório antes de o admin colar o real.
+
+**3. A Kiwify assina o RE-STRINGIFY, não os bytes.** Os dois exemplos oficiais
+(JS e PHP) fazem `JSON.stringify(JSON.parse(body))` / `json_encode(json_decode($payload))`.
+Isso é frágil do lado deles — depende de dois serializadores concordarem em ordem
+de chaves e escapes — mas é o contrato publicado. **Verificamos as duas formas**:
+o re-stringify (que a Kiwify usa) e o `rawBody` (correto para qualquer plataforma
+que assine bytes, incluindo a Hotmart prevista em §Fora de escopo). Duas
+comparações de HMAC numa rota de poucas entregas por dia; o modo de falha que
+elas evitam é *"nenhuma venda vira licença, e o log diz apenas 401"*.
+
+O `rawBody: true` no `main.ts` fica de todo modo: ele não custa nada e é o que
+torna o segundo caminho possível.
+
+#### Não existe id de evento — a chave de idempotência é construída
+
+O payload traz `order_id` e `order_ref`; **`webhook_event_id` não existe**. E a
+Kiwify **reenvia até 5 vezes** o que não recebe `2xx` em 40 s, então a chave do
+`@@unique(platform, externalEventId)` tem de vir de algum lugar. A composição é a
+decisão, e cada parte fecha um bug:
+
+- **Compra**: `order_id` sozinho. Uma venda, uma licença.
+- **Evento de assinatura**: `subscription_id` + tipo + `order_id`. Sem o **tipo**,
+  o cancelamento de hoje seria descartado como duplicata da renovação de três
+  meses atrás — e o cliente manteria acesso depois de cancelar. Sem o
+  **`order_id`**, a renovação de agosto seria duplicata da de julho, `expiresAt`
+  congelaria, e **o acesso morreria com a assinatura em dia**.
+
+Os dois casos têm teste próprio, porque nenhum dos dois falha de forma visível:
+um deixa acesso aberto, o outro fecha acesso pago.
+
+#### Não existe `offer_id` — e o mapeamento continua certo
+
+O payload só traz `Product.product_id`. O `LicOfferMapping` do PR-1 continua como
+está: a coluna `externalOfferId` é nullable, e para a Kiwify o casamento é sempre
+na **linha curinga do produto**. Foi o índice parcial do PR-1 que salvou aqui —
+sem ele, dois curingas do mesmo produto conviveriam e a compra emitiria a licença
+de qualquer um dos dois.
+
+#### A renovação acha a licença pela trilha, não por coluna nova
+
+A cobrança de agosto traz `order_id` **novo**, que não casa com nenhum `saleRef`.
+O resgate é o `subscription_id`, gravado no payload do `LicEvent` `webhook_issued`
+na emissão — não numa coluna, porque criar uma mudaria o schema do PR-1 por um
+caminho que o `saleRef` já cobre no caso comum. Três tentativas, nesta ordem:
+`saleRef` → `subscriptionId` → e-mail (a licença mais recente, porque quem
+comprou duas vezes tem duas).
+
+#### O que a rota recusa, e o que ela aceita
+
+`401` para assinatura inválida/ausente, **tenant inexistente** e **tenant sem
+configuração** — os três iguais de propósito: distinguir diria a quem sonda quais
+slugs existem e quais já vendem.
+
+`200 { received: true }` para todo o resto, **inclusive** duplicado, tipo
+desconhecido e o que vai falhar no processamento. Um `4xx` para o que nenhum
+reenvio conserta (oferta sem mapeamento) faria a plataforma reenviar 5 vezes algo
+que só o admin resolve.
+
+**Fora do rate limit** das outras três rotas públicas: elas protegem contra
+varredura de chaves, e recusar entrega legítima por excesso de vendas numa
+promoção transformaria sucesso comercial em licença não emitida. A assinatura já
+é a barreira.
+
+#### O que cada desfecho faz, e a decisão do PI por trás
+
+| evento | efeito | decisão |
+|---|---|---|
+| `order_approved` | emite + e-mail com a chave; `sourceInviteAt` na edição `source` | — |
+| `order_refunded` / `chargeback` | `REVOKED` + e-mail; **limpa** `sourceInviteAt` | sem isso, quem pediu reembolso ganharia o código 8 dias depois |
+| `subscription_renewed` | estende `expiresAt` **e limpa `pastDueAt`** | #3 — o caminho de volta é obrigatório |
+| `subscription_late` | marca `pastDueAt`, **mantém `ACTIVE`** | #3 — cartão recusado é rotina; a plataforma retenta |
+| `subscription_canceled` | **preserva** `expiresAt` | #2 — quem cancelou pagou o ciclo corrente |
+| `billet_created`, `pix_created`, `order_rejected`, carrinho abandonado | `IGNORED` | intenção de compra e venda recusada **no ato** não são inadimplência de assinatura — marcar `pastDueAt` aí criaria atraso numa licença que nunca existiu |
+
+Três idempotências que não são a do recebimento: revogar de novo não reescreve a
+data nem manda 2º e-mail; atraso repetido **não reinicia** o relógio da tolerância
+(reiniciar a cada retry da plataforma faria a tolerância nunca vencer); e
+renovação **não ressuscita** licença revogada (reembolso é decisão de dinheiro).
+
+#### Um falso positivo de arch-spec, e por que ele importa
+
+A regra *"nada de IA nesta fatia"* era `/(llm|anthropic|openai)/i` sobre a linha
+inteira — e **`bu(llm)q` contém `llm`**. Quando a fila do webhook entrou, ela
+reprovou 27 imports de `@nestjs/bullmq`. Reescrita para decidir por **segmento do
+especificador**, cobrindo as três formas de importar IA (caminho relativo,
+pacote nu, escopo npm) e validada contra 11 casos antes de entrar. Um arch-spec
+que grita por engano é um arch-spec que alguém desliga — e aí ele para de
+proteger a regra de verdade.
+
+O arch-spec também ganhou a exceção do `mail` (a SPEC-038 a exige) **com** a
+contrapartida: `prisma.mailDelivery` continua proibido aqui, porque escrever
+direto pularia a fila.
+
+#### Verificação
+
+- **1977 testes verdes na API** (1768 regras · 209 banco), **+84** nesta etapa.
+- `pnpm build` nos três apps · `pnpm lint` 0 erros / 3 avisos (os da `main`).
+- **O CI não fala com a Kiwify nem depende de túnel**: as fixtures são decalcadas
+  do exemplo oficial.
+- **Pendente: dogfooding com túnel** — é onde o formato real da entrega se
+  confirma de ponta a ponta. O botão *Testar Webhook* do painel da Kiwify dispara
+  eventos de teste, e o menu *Ver logs* mostra requisição e resposta de cada
+  entrega, com reenvio manual.

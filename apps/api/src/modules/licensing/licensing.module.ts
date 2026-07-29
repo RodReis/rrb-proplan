@@ -1,9 +1,15 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
+import { MailModule } from '../mail/mail.module';
 import { LicCatalogService } from './application/lic-catalog.service';
 import { LicenseActivationService } from './application/license-activation.service';
 import { LicenseAdminService } from './application/license-admin.service';
 import { LicenseSigningService } from './application/license-signing.service';
+import { WebhookIntakeService } from './application/webhook-intake.service';
+import { WebhookProcessorService } from './application/webhook-processor.service';
+import { LicensingWorker } from './infrastructure/licensing.worker';
+import { LICENSING_QUEUE } from './licensing.constants';
 import { LicensingAdminController } from './presentation/licensing-admin.controller';
 import { LicensingPublicController } from './presentation/licensing-public.controller';
 
@@ -35,13 +41,25 @@ import { LicensingPublicController } from './presentation/licensing-public.contr
  * servidor; o arch-spec do PR-4 varre justamente isso.
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [
+    IdentityModule,
+    // **A única exceção à regra do bloco acima, e ela é o desenho da SPEC-038.**
+    // O `mail` não é uma frente: é infraestrutura compartilhada, com assinatura
+    // que não menciona licença (`send({ to, template, data })`). O `licensing`
+    // o consome pelo **service público**, exatamente como o arch-spec de lá
+    // exige — nunca escrevendo em `mail_deliveries`, que pularia a fila.
+    MailModule,
+    BullModule.registerQueue({ name: LICENSING_QUEUE }),
+  ],
   controllers: [LicensingAdminController, LicensingPublicController],
   providers: [
     LicCatalogService,
     LicenseAdminService,
     LicenseActivationService,
     LicenseSigningService,
+    WebhookIntakeService,
+    WebhookProcessorService,
+    LicensingWorker,
   ],
   exports: [LicenseAdminService, LicenseSigningService],
 })

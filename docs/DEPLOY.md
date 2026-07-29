@@ -189,6 +189,42 @@ compra por causa de um erro nosso, então perder a licença seria perder a venda
 2º tenant, e é o que faz um evento assinado com o segredo do tenant A responder
 `401` na URL do tenant B.
 
+### 3.6 Webhook da plataforma de venda (SPEC-038)
+
+**No painel da Kiwify** (*Apps → Webhooks → Criar webhook*):
+
+| campo | valor |
+|---|---|
+| **URL do Webhook** | `https://api.proplan.rrbtrading.com.br/licensing/v1/webhooks/kiwify/<tenantSlug>` |
+| **Token** | gerado pela Kiwify no próprio formulário — **copiar** |
+| **Produtos** | o produto licenciado (ou *Todos que sou produtor*) |
+| **Evento** | Compra aprovada · Reembolso · Chargeback · Assinatura cancelada · Assinatura atrasada · Assinatura renovada |
+
+Depois, colar o **Token** em `LicSettings.webhookSecret` daquele tenant (tela de
+configurações do licenciamento). É contra ele que a assinatura de cada entrega é
+validada — o valor sorteado pelo seed é um placeholder que recusa tudo até ser
+trocado, de propósito.
+
+**Não marque** *Boleto gerado*, *Pix gerado*, *Compra recusada* e *Carrinho
+abandonado*: os quatro são gravados como `IGNORED` e só geram ruído na lista de
+eventos. Nenhum deles é venda — e *Compra recusada* em especial é cartão negado
+**no ato**, não inadimplência de assinatura.
+
+**`tenantSlug` é o `accountLogin` do tenant** (o mesmo da URL do workspace). A
+rota é pública e sem sessão: é a URL que estabelece o contexto de tenant, e é por
+isso que uma venda de oferta não mapeada **continua tendo dono** e aparece nas
+pendências do admin.
+
+**Como a Kiwify valida** (documentação oficial, 2026-07-29):
+`signature = hmac_sha1(JSON.stringify(body), token)`, com `signature` na **query
+string**. Ela reenvia até **5 vezes** o que não receber `2xx` em 40 s — nossa rota
+responde `200` para tudo que tenha assinatura válida, inclusive o que vai falhar
+no processamento, porque reenvio não conserta oferta sem mapeamento.
+
+**Ferramentas do painel que valem conhecer no dogfooding:** o botão *Testar
+Webhook* dispara eventos de teste, e o menu de três pontos → *Ver logs* mostra
+requisição e resposta de cada entrega, com **reenvio manual** por log.
+
 ### 3.2 Serviço `web`
 
 | Variável | Valor | Nota |

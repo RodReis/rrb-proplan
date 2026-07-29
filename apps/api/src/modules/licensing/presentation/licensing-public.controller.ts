@@ -3,7 +3,9 @@ import {
   Controller,
   HttpException,
   HttpStatus,
+  Param,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -14,6 +16,7 @@ import {
   type DeactivateInput,
   type HeartbeatInput,
 } from '../application/license-activation.service';
+import { WebhookIntakeService } from '../application/webhook-intake.service';
 import { hashKey } from '../domain/license-key';
 
 /**
@@ -57,7 +60,10 @@ export class LicensingPublicController {
   private readonly keyLimiter = new SlidingWindowRateLimiter(KEY_LIMIT, RATE_WINDOW_MS);
   private readonly pruneTimer: NodeJS.Timeout;
 
-  constructor(private readonly activation: LicenseActivationService) {
+  constructor(
+    private readonly activation: LicenseActivationService,
+    private readonly webhook: WebhookIntakeService,
+  ) {
     this.pruneTimer = setInterval(() => {
       this.ipLimiter.prune();
       this.keyLimiter.prune();
@@ -104,6 +110,46 @@ export class LicensingPublicController {
   async deactivate(@Body() body: DeactivateInput, @Req() req: Request) {
     this.enforce(body, req);
     return this.activation.deactivate(body ?? {});
+  }
+
+  /**
+   * Webhook da plataforma de venda — **uma URL por tenant** (decisão PI #1).
+   *
+   * `200 { received: true }` sempre que a assinatura confere: inclusive para
+   * evento duplicado, de tipo desconhecido, ou que vai falhar no processamento.
+   * O resultado vive no registro, não na resposta — um `4xx` para o que nenhum
+   * reenvio conserta (oferta sem mapeamento) faria a plataforma reenviar
+   * indefinidamente algo que só o admin resolve.
+   *
+   * `401` para assinatura inválida/ausente, tenant inexistente e tenant sem
+   * configuração. Os três respondem igual de propósito: distinguir diria a quem
+   * sonda quais slugs existem e quais já vendem.
+   *
+   * **Fora do rate limit das outras três.** Elas protegem contra varredura de
+   * chaves; aqui, recusar entrega legítima da plataforma por excesso de vendas
+   * numa promoção seria transformar sucesso comercial em licença não emitida. A
+   * assinatura já é a barreira — quem não a tem não passa, e quem a tem é a
+   * plataforma.
+   */
+  @Post('webhooks/kiwify/:tenantSlug')
+  async kiwifyWebhook(
+    @Param('tenantSlug') tenantSlug: string,
+    @Body() body: unknown,
+    @Query('signature') signature: string | undefined,
+    @Req() req: Request & { rawBody?: Buffer },
+  ) {
+    return this.webhook.receive({
+      tenantSlug,
+      // O body CRU, não o objeto parseado: a assinatura cobre os bytes que a
+      // plataforma enviou, e `JSON.stringify` do objeto não os reproduz (ordem
+      // de chaves, espaços, escapes). O `main.ts` liga `rawBody: true` por
+      // isso; o fallback aqui só existe para não quebrar em teste que monta o
+      // request à mão.
+      rawBody: req.rawBody ?? Buffer.from(JSON.stringify(body ?? {})),
+      payload: body,
+      querySignature: signature,
+      headers: req.headers as Record<string, string | undefined>,
+    });
   }
 
   /**
