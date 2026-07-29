@@ -5344,9 +5344,9 @@ licença segue válida por 14 dias de graça, independentemente disso. O rótulo
 
 ### Verificação
 
-- **2348 testes verdes** (1820 API · 528 tela) — **+43** sobre a Fatia 25: 23 de
-  integração no ciclo de vida, 6 da apresentação, 6 da tela, e os demais
-  redistribuídos.
+- **2350 testes verdes** (1640 regras · 180 banco · 530 tela, pelo
+  `reports/TESTS.md`) — **+38** sobre a Fatia 25: 23 de integração no ciclo de
+  vida, 9 da apresentação, 6 da tela.
 - **Os 23 de banco existem porque a fatia inteira é sobre contagem de vagas** —
   e vaga é propriedade do *conjunto* de linhas, não de uma linha. Um mock conta
   o que o teste mandou contar; aqui contam o unique e o `deactivatedAt` de
