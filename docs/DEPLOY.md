@@ -108,6 +108,50 @@ Base em `.env.example`. **Nenhum secret entra no repo** — todos vivem nas
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `HERMES_API_KEY` | opcionais (provedor sem chave fica desabilitado — ADR-008) | provedor |
 | `LLM_MODEL_ANTHROPIC` etc. | modelos por provedor | fixo |
 | `GITHUB_WEBHOOK_SECRET` | secret do webhook (só quando a fatia de webhook existir) | GitHub App |
+| `LICENSING_SIGNING_KEY` | PEM da privada **Ed25519** em base64 (uma linha) — assina o license file (SPEC-036) | gerado (§3.4) |
+| `LICENSING_SIGNING_KID` | identificador da chave vigente, ex. `2026-07` | escolhido (§3.4) |
+
+### 3.4 Chave de assinatura do licenciamento (SPEC-036)
+
+O license file é validado **offline** pelo cliente, com a chave pública embutida
+no binário (MVP4 §1). Isso decide tudo o que segue: **a privada nunca sai do
+servidor**, e trocá-la invalida a verificação de todos os arquivos já emitidos
+que o cliente ainda não substituiu — daí o `kid`.
+
+**Gerar o par** (uma vez; o piloto usa um par só, decisão do PI):
+
+```bash
+# privada (PKCS#8) e pública (SPKI)
+openssl genpkey -algorithm ed25519 -out licensing-ed25519.pem
+openssl pkey -in licensing-ed25519.pem -pubout -out licensing-ed25519.pub
+
+# valor da LICENSING_SIGNING_KEY (base64 de uma linha, como o GITHUB_APP_PRIVATE_KEY)
+base64 -w0 licensing-ed25519.pem
+```
+
+- `LICENSING_SIGNING_KID` = o mês da geração, `2026-07`. É um rótulo, não um
+  segredo: viaja **dentro** do license file para o cliente saber com qual
+  pública verificar.
+- `licensing-ed25519.pub` vai para o repo do War Room (é pública por definição).
+  A privada **não entra em repositório nenhum** — só no secret do Railway.
+
+**Sem as duas variáveis, a emissão e o `/activate` respondem `503`.** É
+deliberado: um license file sem assinatura, ou assinado por chave gerada na
+hora, seria um arquivo que nenhum cliente valida — e o comprador descobriria
+isso ao abrir o produto, não no servidor. A tela de licenças avisa antes de
+alguém emitir uma chave que não ativaria.
+
+**Rotação** (quando for necessária):
+
+1. Gere o par novo com `kid` novo (ex.: `2027-01`).
+2. Publique a **pública nova** no cliente, mantendo a antiga — o cliente aceita
+   duas durante a transição (MVP4 §7); é o `kid` do arquivo que diz qual usar.
+3. Só depois de o cliente novo estar distribuído, troque
+   `LICENSING_SIGNING_KEY`/`KID` no Railway.
+4. Retire a pública antiga do cliente na versão seguinte.
+
+Inverter os passos 2 e 3 emite arquivos que o cliente instalado não sabe
+verificar — e o produto para na máquina de quem pagou.
 
 ### 3.2 Serviço `web`
 

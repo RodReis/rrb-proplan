@@ -4946,3 +4946,110 @@ o valor pago chegará no `LicEvent.payload` do webhook.
 - `prisma migrate diff` sem drift novo (só o `tenant_id` nullable pré-existente
   da Fatia 8, já documentado no schema).
 - `tsc --noEmit` limpo; `pnpm build` verde (API e web).
+
+---
+
+### PR-2 — domínio da chave, assinatura Ed25519 e admin — `feito`
+
+O que o PR-1 deixou como forma vira comportamento: gerar chave, assinar license
+file, emitir, revogar e ler a trilha. Ainda **sem rota pública** — o `/activate`
+é o PR-3.
+
+**O módulo `licensing` nasce disjunto das outras duas frentes, e isso é
+estrutural.** Ele não lê `Client`, não lê `Contract`, não move card de funil. O
+único import de domínio é o `IdentityModule` (que dá os guards). A costura com o
+catálogo existe como `LicProduct.projectId?` — uma **coluna**, não uma
+dependência de módulo. O arch-spec que torna isso verificável vem no PR-4.
+
+#### A chave: o alfabeto é a decisão
+
+`WR-XXXX-XXXX-XXXX-XXXX`, 16 símbolos de um alfabeto de 32 = **80 bits**. O que
+decide o alfabeto não é a entropia — é que **a chave é digitada por gente**: fora
+`0/O` e `1/I`, os pares que ninguém distingue num e-mail de confirmação ou numa
+fonte de terminal. Um comprador que lê `O` onde havia `0` recebe `404` numa
+licença que existe e abre chamado de suporte.
+
+Pelo mesmo motivo existe `normalizeKey` (trim + maiúsculas) **antes** do hash:
+sem ela, `wr-...` e `WR-...` teriam hashes diferentes e a segunda diria "não
+encontrada" — o modo de falhar mais caro da fatia, porque parece erro do
+comprador. O que ela **não** faz: remover hífen. Aceitar `WRAB23...` daria à
+chave mais de uma forma válida, e a normalização viraria parte do formato em vez
+da higiene dele.
+
+**A garantia central tem três testes, um por caminho de fuga:** a chave não
+aparece no que é gravado, não aparece no `LicEvent.payload` (o lugar mais fácil
+de vazá-la "só para referência" — e que tem tela), e não aparece em nenhuma
+leitura. O tipo `LicenseView` **não tem o campo** — é o tipo, e não a disciplina
+de quem escreve a próxima query, que impede a regressão.
+
+#### A assinatura: `node:crypto`, sem dependência nova
+
+Ed25519 é nativo. Uma lib de JWT/JOSE traria negociação de algoritmo — superfície
+de ataque conhecida (`alg: none`, confusão HS256/RS256) — para um formato que
+**não negocia nada**: uma curva, uma chave, um `kid`.
+
+`serializePayload` monta o objeto **campo a campo, em ordem fixa**, e não
+`JSON.stringify` do que chegou. A ordem entra na assinatura: um payload montado
+noutra ordem produziria outros bytes e a verificação falharia num arquivo
+legítimo. Fixá-la é o que torna o formato reproduzível para quem implementa o
+cliente noutra linguagem — e o War Room é exatamente esse caso (MVP4 decisão 9).
+
+`verifyLicenseFile` existe no servidor mesmo sem o servidor usá-la: o critério de
+aceite pede conferência **fora** do servidor, e um contrato público sem
+verificador de referência obriga quem implementa o cliente a adivinhar os bytes
+cobertos. Os testes exercem os três ataques que ela precisa recusar: payload
+adulterado (estender `updatesUntil` de graça), fingerprint trocado (copiar o
+arquivo para outra máquina) e assinatura de outro par.
+
+**`LicenseSigningService` é o único ponto que toca `LICENSING_SIGNING_KEY`.**
+Concentrar ali é o que torna verificável a afirmação de que a privada não sai do
+servidor. Sem a chave, emissão e `/activate` respondem **`503`** — a alternativa
+(arquivo sem assinatura, ou assinado com par gerado na hora) produziria arquivos
+que nenhum cliente valida, e o comprador descobriria isso ao abrir o produto.
+
+**Formato do secret alinhado ao que a casa já usa:** base64 de uma linha, igual
+`GITHUB_APP_PRIVATE_KEY`. `\n` literal também é aceito, porque é o outro jeito
+comum de colar PEM numa linha e recusá-lo daria "indisponível" para uma chave que
+está lá. Chave ilegível → `503`, não erro cru de OpenSSL (que vazaria formato
+interno na resposta). Geração e **rotação** documentadas em `docs/DEPLOY.md` §3.4.
+
+#### Admin
+
+Emitir, listar, buscar por chave, revogar, ler trilha — e o CRUD mínimo de
+produto/edição (decisão 2 do PI). Três escolhas que merecem nota:
+
+- **Busca por chave filtra por tenant além do RLS.** O índice de `key_hash` é
+  único na tabela inteira, então sem o filtro explícito o RLS seria a *única*
+  coisa entre o admin de um tenant e a licença de outro. Duas barreiras para o
+  mesmo corte, de propósito.
+- **Revogar é `POST /licenses/:id/revoke`, nunca `DELETE`.** A licença não é
+  apagada: passa a existir revogada, com data e motivo — que é o que o
+  `/activate` lê para responder `410` e o que explica a decisão meses depois. É
+  idempotente: a 2ª revogação não reescreve a data original (senão o dia em que
+  a venda foi desfeita viraria hoje).
+- **Não há remoção de produto nem de edição.** O `ON DELETE RESTRICT` do PR-1 já
+  recusa apagar edição com licença vendida; oferecer o botão para depois recusá-lo
+  é pior que não oferecer. `slug` e `billingModel` também não são editáveis — o
+  primeiro viaja no license file já emitido, o segundo muda o significado de
+  `expiresAt` numa licença viva.
+
+`signingConfigured` viaja no `GET /catalog` para a tela avisar **antes** de
+alguém emitir e entregar uma chave que não ativaria.
+
+#### PR-2 — verificação
+
+- **2235 testes verdes** (1619 regras · 140 banco · 476 tela) — **+98** sobre o
+  PR-1, todos de regras: 27 da chave, 13 do license file, 11 da assinatura,
+  23 do catálogo, 24 do admin.
+- **A chave em claro tem teste em cada caminho de fuga**: gravação, trilha e
+  leitura.
+- **Os três ataques ao license file** recusados por teste: payload adulterado,
+  fingerprint de outra máquina, par de chaves alheio.
+- **Rotação provada**: assinar com o par novo produz `kid` novo, valida com a
+  pública nova e **não** valida com a antiga.
+- `tsc --noEmit` limpo; `pnpm build` verde.
+
+**A guarda do ADR-019 barrou o PR-1 e o aprendizado fica registrado:** regenerar
+o `reports/TESTS.md` não basta — a entrega precisa da **linha de carimbo**, e ela
+exige `REPORT_DATE` além de `REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`. Sem a data
+a linha entra com `—` e a guarda continua reprovando.
