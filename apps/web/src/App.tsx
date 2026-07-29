@@ -12,6 +12,7 @@ import { ClientsRoute } from './pages/clients/ClientsRoute';
 import { ClientsPage } from './pages/clients/ClientsPage';
 import { DashboardPage } from './pages/clients/DashboardPage';
 import { ContractSettingsPage } from './pages/clients/ContractSettingsPage';
+import { LicensesPage } from './pages/clients/LicensesPage';
 import { FunnelPage } from './pages/clients/FunnelPage';
 import { BriefingLinkPage } from './pages/briefing/BriefingLinkPage';
 
@@ -150,6 +151,17 @@ export default function App() {
             <ClientsRoute user={auth.user}>
               {() => <ContractSettingsPage />}
             </ClientsRoute>
+          }
+        />
+        {/* Licenças (SPEC-036, Fatia 25 — MVP4). Rota de primeiro nível sob o
+            tenant, e NÃO sob `/clients`: licenciamento é frente disjunta da
+            Frente Clientes (ADR-023 vale aqui pelo mesmo princípio) — um
+            produto licenciado não é um cliente, e pode nem ter repo no
+            catálogo. */}
+        <Route
+          path="/t/:tenant/licencas"
+          element={
+            <ClientsRoute user={auth.user}>{() => <LicensesPage />}</ClientsRoute>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -12,6 +12,9 @@ const ICONS: Record<string, string> = {
   clients: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 7a4 4 0 108 0 4 4 0 10-8 0M22 21v-2a4 4 0 00-3-3.87',
   contracts:
     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M9 13h6M9 17h4',
+  // Chave: o objeto que a fatia inteira produz.
+  licenses:
+    'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4',
   settings:
     'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z',
 };
@@ -63,6 +66,7 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
   const activeProPlan = normalized === 'proplan' || normalized === 'catálogo';
   const activeClients = normalized === 'clientes';
   const activeContracts = normalized === 'contratos';
+  const activeLicenses = normalized === 'licenças';
   const activeFunnel = normalized === 'funil' || normalized === 'kanban';
 
   const itemClass = (active: boolean) =>
@@ -170,6 +174,24 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
                 <NavIcon id="contracts" />
               </span>
               Contratos
+            </button>
+          </li>
+
+          <li>
+            {/* Licenças (SPEC-036, Fatia 25 — 1ª do MVP4). Item próprio, e não
+                sub-aba de Contratos: licenciamento é frente disjunta — um
+                produto licenciado não é um cliente, e o contrato de prestação
+                não tem nada a ver com a licença de um binário. */}
+            <button
+              onClick={() => navigate(`/t/${tenant}/licencas`)}
+              className={itemClass(activeLicenses)}
+              disabled={!tenant}
+            >
+              {activeLicenses && <ActiveBar />}
+              <span className={activeLicenses ? 'text-accent' : undefined}>
+                <NavIcon id="licenses" />
+              </span>
+              Licenças
             </button>
           </li>
 
