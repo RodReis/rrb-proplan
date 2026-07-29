@@ -97,6 +97,13 @@ const TENANT_SCOPED_PREFIXES = [
   // FIX #166, e o motivo de ele estar anotado logo acima.
   '/estimates/',
   '/tenant-settings',
+  // SPEC-034 §6: perfil, templates e contratos vivem sob `/t/:tenant`. Mesma
+  // armadilha das duas linhas acima — `/contracts/:id/link` e
+  // `/contracts/:id/acceptance` sairiam sem o prefixo e o aceite falharia mudo.
+  // `/client-projects` já cobre emitir e listar.
+  '/contracts/',
+  '/contract-templates',
+  '/provider-profile',
 ];
 
 /**
@@ -1310,4 +1317,225 @@ export function updateEstimateSettings(patch: {
  */
 export function briefingAttachmentUrl(fileId: string): string {
   return `${API_URL}${withTenantPrefix(`/files/${fileId}`)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Contratos (SPEC-034 §6)
+// ---------------------------------------------------------------------------
+
+export type ContractModality =
+  | 'desenvolvimento'
+  | 'desenvolvimento_manutencao'
+  | 'desenvolvimento_venda_codigo';
+
+export type AcceptanceChannel = 'email' | 'whatsapp' | 'presencial' | 'telefone';
+
+/** Perfil do prestador — um por tenant. `canEdit`/`exists` vêm do servidor. */
+export interface ProviderProfileView {
+  legalName: string;
+  documentType: 'cpf' | 'cnpj';
+  document: string;
+  zipCode: string | null;
+  street: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+  email: string | null;
+  phone: string | null;
+  canEdit: boolean;
+  /** `false` enquanto nunca foi preenchido — a emissão exige perfil. */
+  exists: boolean;
+}
+
+export interface ProviderProfileInput {
+  legalName: string;
+  documentType: 'cpf' | 'cnpj';
+  document: string;
+  zipCode?: string;
+  street?: string;
+  district?: string;
+  city?: string;
+  state?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface TemplateSummary {
+  modality: ContractModality;
+  /** `true` enquanto o texto é o semeado — a trava do §2.3 lê isto. */
+  isSeedExample: boolean;
+  currentVersion: number | null;
+  updatedAt: string;
+  /** Se emitir contrato desta modalidade seria recusado. */
+  readyToIssue: boolean;
+}
+
+export interface TemplateDetail extends TemplateSummary {
+  body: string;
+  canEdit: boolean;
+}
+
+export interface TemplateVersionView {
+  id: string;
+  version: number;
+  body: string;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** Valores monetários e horas são STRING — precisão preservada (§6). */
+export interface ContractSummary {
+  id: string;
+  version: number;
+  modality: ContractModality;
+  budgetBrl: string;
+  effortHours: string;
+  paymentTerms: string | null;
+  templateVersion: number;
+  estimateVersion: number;
+  acceptedAt: string | null;
+  createdAt: string;
+}
+
+export interface ContractSnapshotParty {
+  legalName?: string;
+  document?: string;
+  documentType?: string;
+  [campo: string]: unknown;
+}
+
+export interface ContractDetail extends ContractSummary {
+  renderedHtml: string;
+  providerSnapshot: ContractSnapshotParty;
+  clientSnapshot: ContractSnapshotParty;
+}
+
+/**
+ * Estado do link ativo. **Nunca traz o token** — ele só existe em claro na
+ * resposta de `createContractLink`, uma única vez.
+ */
+export type ContractLinkInfo =
+  | { active: false }
+  | {
+      active: true;
+      id: string;
+      expiresAt: string;
+      createdAt: string;
+      status: 'valid' | 'expired' | 'revoked' | 'invalid';
+    };
+
+export function getProviderProfile(): Promise<ProviderProfileView> {
+  return request<ProviderProfileView>('/provider-profile');
+}
+
+/** `PUT`: o perfil é substituído por inteiro, nunca remendado (§6). */
+export function saveProviderProfile(
+  input: ProviderProfileInput,
+): Promise<ProviderProfileView> {
+  return request('/provider-profile', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function listContractTemplates(): Promise<TemplateSummary[]> {
+  return request<TemplateSummary[]>('/contract-templates');
+}
+
+export function getContractTemplate(
+  modality: ContractModality,
+): Promise<TemplateDetail> {
+  return request<TemplateDetail>(`/contract-templates/${modality}`);
+}
+
+export function listContractTemplateVersions(
+  modality: ContractModality,
+): Promise<TemplateVersionView[]> {
+  return request<TemplateVersionView[]>(`/contract-templates/${modality}/versions`);
+}
+
+/**
+ * Salva uma versão nova. **Nunca `PATCH`** — editar cria versão, e é este ato
+ * que tira o `isSeedExample` e destrava a emissão da modalidade (§2.3).
+ */
+export function saveContractTemplateVersion(
+  modality: ContractModality,
+  body: string,
+): Promise<TemplateDetail> {
+  return request(`/contract-templates/${modality}/versions`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function listContracts(
+  projectId: string,
+): Promise<ContractSummary[]> {
+  return request<ContractSummary[]>(`/client-projects/${projectId}/contracts`);
+}
+
+export function getContract(id: string): Promise<ContractDetail> {
+  return request<ContractDetail>(`/contracts/${id}`);
+}
+
+/**
+ * Emite o snapshot. **Sempre cria versão nova** e **não move o card** (§2.6) —
+ * quem move é o aceite.
+ */
+export function issueContract(
+  projectId: string,
+  input: { modality: ContractModality; paymentTerms?: string },
+): Promise<ContractDetail> {
+  return request(`/client-projects/${projectId}/contracts`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getContractLink(contractId: string): Promise<ContractLinkInfo> {
+  return request<ContractLinkInfo>(`/contracts/${contractId}/link`);
+}
+
+/**
+ * Gera ou regenera. O `token` em claro vem **uma única vez** — regenerar revoga
+ * o anterior, e nem o painel consegue reler o antigo.
+ */
+export function createContractLink(
+  contractId: string,
+): Promise<{ id: string; token: string; expiresAt: string }> {
+  return request(`/contracts/${contractId}/link`, { method: 'POST' });
+}
+
+export function revokeContractLink(
+  contractId: string,
+): Promise<{ revoked: number }> {
+  return request(`/contracts/${contractId}/link`, { method: 'DELETE' });
+}
+
+/**
+ * Registra o aceite. **É o único ato da fatia que move o card**
+ * (`CONTRACT_PENDING → CONTRACT_APPROVED`).
+ */
+export function acceptContract(
+  contractId: string,
+  input: { channel: AcceptanceChannel; note?: string },
+): Promise<{ accepted: true; cardMoved: boolean; alreadyAccepted: boolean }> {
+  return request(`/contracts/${contractId}/acceptance`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * URL pública do contrato. Aponta para a **API**, não para o web.
+ *
+ * Diferente do briefing, cujo `/b/:token` é uma rota React: o contrato é
+ * servido pelo Nest (`@Controller('c')`), que devolve o HTML já renderizado com
+ * `no-store` e `noindex`. Montar esta URL sobre `window.location.origin`
+ * produziria um link que cai no `Navigate to="/"` do `App.tsx` e leva o cliente
+ * ao catálogo — que é o defeito simétrico ao que o `briefingUrl` documenta ter
+ * pago uma vez, com os papéis trocados.
+ */
+export function contractPublicUrl(token: string): string {
+  return `${API_URL}/c/${token}`;
 }
