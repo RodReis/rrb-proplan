@@ -110,6 +110,9 @@ export class GithubGitClient {
         : Buffer.from(body.content);
     // Postgres text não aceita byte NUL (0x00). Documentos com NUL embutido
     // (encoding errado / binário) quebravam o sync inteiro — removemos.
+    // O NUL é justamente o que estamos removendo; a regra existe para pegar
+    // control char acidental numa regex, e este é deliberado.
+    // eslint-disable-next-line no-control-regex
     const content = buf.toString('utf-8').replace(/\x00/g, '');
     return { content, byteSize: buf.byteLength };
   }

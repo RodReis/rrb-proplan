@@ -13,7 +13,7 @@ export interface ParsedFrontmatter {
  * gray-matter nunca lança em MD malformado — retorna data vazio.
  */
 export function parseFrontmatter(content: string): ParsedFrontmatter {
-  let data: Record<string, unknown> = {};
+  let data: Record<string, unknown>;
   try {
     data = matter(content).data as Record<string, unknown>;
   } catch {

@@ -7,7 +7,7 @@ export interface SkillEntry {
 }
 
 function parseEntry(doc: { path: string; content: string }, nameFromDir: boolean): SkillEntry {
-  let data: Record<string, unknown> = {};
+  let data: Record<string, unknown>;
   try {
     data = matter(doc.content).data as Record<string, unknown>;
   } catch {

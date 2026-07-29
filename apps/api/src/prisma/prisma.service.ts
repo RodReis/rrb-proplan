@@ -169,6 +169,10 @@ export class PrismaService
     // set_config de CADA operação de model isto basta. (O `$transaction` do
     // Proxy reforça o contexto de novo quando `tenantIdsStorage` está setado —
     // set_config repetido é idempotente e a fatia de resultados compensa.)
+    // Padrão do `$extends`: o callback de `$allOperations` tem `this` próprio,
+    // e o client base precisa vir de fora. A API do Prisma não oferece
+    // alternativa — daí o disable na linha, e não uma refatoração.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const base = this;
     const extended = this.$extends({
       query: {

@@ -15,7 +15,7 @@ import {
   CardProposal,
   parseCards,
 } from '../domain/cards-prompt';
-import { buildEdgesUser, EDGES_SYSTEM, InferredEdge, parseEdges } from '../domain/edges-prompt';
+import { buildEdgesUser, EDGES_SYSTEM, parseEdges } from '../domain/edges-prompt';
 import {
   buildClassifyUser,
   CLASSIFIABLE_ENTITIES,
@@ -30,7 +30,13 @@ import { computeInputHash } from '../domain/input-hash';
 /** Entidades com fallback inferido quando ausentes (eixo C, Fatia 7). */
 type FallbackEntity = 'architecture' | 'design';
 
-/** Kinds de insight regeneráveis pelo botão "Regenerar" (força IA — SPEC-011). */
+/**
+ * Kinds de insight regeneráveis pelo botão "Regenerar" (força IA — SPEC-011).
+ *
+ * O disable é o preço do padrão idiomático `as const` + `(typeof X)[number]`: a
+ * regra conta usos de VALOR, e esta const só é lida como TIPO na linha abaixo.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const REGENERABLE_KINDS = [
   'summary',
   'edges',

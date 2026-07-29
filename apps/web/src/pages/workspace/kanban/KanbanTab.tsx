@@ -55,7 +55,8 @@ export function KanbanTab({ projectId, syncNonce, role }: Props) {
   const toggleCollapse = useCallback((col: BoardColumn) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      next.has(col) ? next.delete(col) : next.add(col);
+      if (next.has(col)) next.delete(col);
+      else next.add(col);
       return next;
     });
   }, []);
@@ -439,7 +440,7 @@ function moveCardLocal(
   };
 }
 
-function Banner({ tone, children }: { tone: 'warning'; children: React.ReactNode }) {
+function Banner({ children }: { tone: 'warning'; children: React.ReactNode }) {
   return (
     <div className="m-8 rounded-md border border-warning/30 bg-warning/5 p-4 text-sm text-text">
       {children}

@@ -8,7 +8,6 @@ import { SettingsService } from '../../settings/application/settings.service';
 import { Handoff, HandoffBlock } from '../../handoff/domain/handoff';
 import { belowThreshold } from '../../canonical/domain/confidence';
 import {
-  Candidate,
   EvidenceItem,
   ToolResult,
   enforceEvidenceContract,

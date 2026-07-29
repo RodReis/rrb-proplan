@@ -5373,3 +5373,86 @@ licença segue válida por 14 dias de graça, independentemente disso. O rótulo
   porque é o comportamento correto sendo inconveniente, não um defeito.
 
 Dado de teste removido do banco de dev ao fim (`DELETE 7 / 3 / 1`).
+
+---
+
+## [INFRA] CI: build e lint no workflow de PR (#190) — `entregue`
+
+Issue **#190**, aberta pelo PI após auditoria do `ci.yml`. **Não é fatia** — não
+há comportamento de produto novo, só o processo de verificação.
+
+**O problema tinha nome:** o `CLAUDE.md` exige *"`dev`, `test`, `lint` verdes é
+o piso"*, e duas das três não rodavam. Como **o merge é do próprio Code com o CI
+verde** (o portão do PI é o aceite na issue, ADR-011), o CI é a **única trava
+antes da `main`** — e ele só rodava testes. Jest e Vitest transpilam sem
+type-check completo, então um PR com erro de tipo podia mergear verde.
+
+### O que o build pegou no primeiro dia
+
+**O `@proplan/mcp` não compilava — desde a Fatia 11 (PR #62), meses atrás.** Ele
+importa `@proplan/api/dist/mcp-bootstrap.js`, mas o `nest build` preserva a
+árvore de `src/` e gera em `dist/src/`. Ninguém percebeu porque **o CI nunca
+buildou** e o `mcp` não é deployado (foi removido do Railway na SPEC-027).
+
+É exatamente o tipo de coisa que a issue existia para encontrar, e apareceu
+antes mesmo de o workflow rodar uma vez.
+
+O `pnpm build` da raiz também **não incluía o `mcp`** — agora inclui, na ordem
+`api → mcp → web`, porque o `mcp` importa o `dist/` da api.
+
+**Build antes dos testes**, e a ordem é deliberada: falha em ~40 s contra os
+~8 min da suíte.
+
+### O lint: 168 → 3, e nenhum `warn` de fachada
+
+A issue previa que o volume pudesse exigir decisão do PI entre corrigir tudo ou
+começar com regras em `warn`. **Não foi preciso** — a medição mudou a resposta:
+
+| escopo | violações |
+|---|---|
+| medição inicial | 168 |
+| fora do código de aplicação (protótipos de `docs/design/`, hooks locais de `.claude/`/`.codex/`) | **140** |
+| **código de aplicação, real** | **28** |
+
+140 eram de arquivos que não são o produto: protótipo de tela que roda solto no
+navegador e o HUD local do dev, desversionado em #184. Ignorá-los não é
+mascarar — é não medir a qualidade de um rascunho.
+
+Os 28 restantes foram **corrigidos, não silenciados**: 8 imports/variáveis
+mortos removidos, 2 inicializadores redundantes, 1 ternário usado como statement
+(virou `if/else`), e 4 `eslint-disable` pontuais em código que está certo e a
+regra é que não entende — o `const base = this` do `$extends` do Prisma, o
+`/\x00/` que existe justamente para remover NUL, o `as const` + `(typeof
+X)[number]`, e o `useCallback` do `theme.tsx`.
+
+Sobram **3 avisos** (0 erros): 1 dica de `useMemo` no `BriefingForm` e 2 `any`
+em dobra de teste.
+
+**Duas escolhas de config que valem registro:**
+
+- **Sem `projectService` (type-aware).** As regras que exigem tipo
+  (`no-floating-promises`) são as mais valiosas — e as que fariam o lint levar
+  minutos repetindo o trabalho que o `pnpm build` já faz no step anterior. O
+  build cobre tipo; o lint cobre o que o compilador aceita e ninguém quer.
+- **`eslint-plugin-react-hooks` instalado porque o código já o esperava.**
+  `theme.tsx` e `OperationSteps.tsx` tinham `eslint-disable-next-line
+  react-hooks/exhaustive-deps` desde antes desta config — disables apontando
+  para um plugin que ninguém havia instalado. A intenção estava no código; a
+  verificação, não.
+
+### Uma armadilha do `eslint-disable-next-line`
+
+Ela pega **exatamente** a linha seguinte. Escrevi três disables com a explicação
+em duas linhas *entre* a diretiva e o código — e os três viraram
+*"unused disable directive"* com o erro original intacto ao lado. A explicação
+vai **antes** da diretiva, não depois.
+
+### Verificação
+
+- **`pnpm lint`**: 0 erros, 3 avisos, exit 0.
+- **`pnpm build`**: os **três** apps, incluindo o `mcp` que não compilava.
+- **2350 testes verdes** (1640 regras · 180 banco · 530 tela) — inalterados: as
+  remoções foram de código morto, e o arch-spec do `mcp` provou isso ao quebrar
+  quando removi um `f` que **era** usado (revertido).
+- `CLAUDE.md` atualizado: a ressalva *"`build` e `lint` ainda não rodam no CI"*
+  deixou de ser verdade.

@@ -14,7 +14,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 // Tudo vem do barrel da api (CJS) — instância única de @nestjs/*. Importar
 // @nestjs/core aqui carregaria uma segunda cópia e o DI quebra (ver bootstrap).
-import { createMcpContext, McpToolsService } from '@proplan/api/dist/mcp-bootstrap.js';
+// `dist/src/`, não `dist/`: o `nest build` preserva a árvore de `src/` dentro
+// de `dist/` (é de lá que o `start:prod` roda `dist/src/main.js`). O caminho
+// errado vivia aqui desde a Fatia 11 e nunca falhou porque o CI não buildava —
+// que é exatamente o furo que a issue #190 fechou.
+import { createMcpContext, McpToolsService } from '@proplan/api/dist/src/mcp-bootstrap.js';
 
 /** Views de resource (§5) → método do adaptador. Sem `kanban` (ADR-017). */
 const RESOURCE_VIEWS: Record<string, (t: McpToolsService, o: string, r: string) => Promise<unknown>> = {

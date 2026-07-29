@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import { LlmClient, LlmRequest, LlmResponse } from '../domain/llm-client';
 
 const TIMEOUT_MS = 120_000;

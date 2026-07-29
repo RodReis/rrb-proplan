@@ -91,7 +91,10 @@ export function readToken(name: string): string {
  */
 export function useToken(): (name: string) => string {
   const { theme } = useTheme();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `theme` é a dep real:
-  // o DOM já mudou quando ele muda, e é isso que precisa reexecutar a leitura.
+  // `theme` é a dep real, ainda que a regra a chame de desnecessária: ela olha
+  // o corpo do callback e não vê `theme` ali. Mas `readToken` lê o DOM, e o DOM
+  // já mudou quando o tema muda — é exatamente isso que precisa reexecutar a
+  // leitura. Tirar a dep congelaria o valor do tema anterior.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   return useCallback((name: string) => readToken(name), [theme]);
 }
