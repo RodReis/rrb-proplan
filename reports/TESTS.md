@@ -14,7 +14,7 @@ Totais da última execução (regenerado, não acumulado):
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
 | — | — | — | Regras de Negócio | 1396 | 1396 | 0 | 79.1 | — | — |
 | — | — | — | Banco | 124 | 124 | 0 | 70.6 | — | — |
-| — | — | — | Tela | 365 | 365 | 0 | 46.4 | — | — |
+| — | — | — | Tela | 411 | 411 | 0 | 49.5 | — | — |
 
 ## Histórico por entrega
 
@@ -184,3 +184,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #149 | SPEC-034 | Regras de Negócio | 1396 | 1396 | 0 | 79.1 | #177 | [#177](https://github.com/RodReis/rrb-proplan/pull/177) |
 | — | #149 | SPEC-034 | Banco | 124 | 124 | 0 | 70.6 | #177 | [#177](https://github.com/RodReis/rrb-proplan/pull/177) |
 | — | #149 | SPEC-034 | Tela | 365 | 365 | 0 | 46.4 | #177 | [#177](https://github.com/RodReis/rrb-proplan/pull/177) |
+| — | #149 | SPEC-034 | Regras de Negócio | 1396 | 1396 | 0 | 79.1 | #178 | [#178](https://github.com/RodReis/rrb-proplan/pull/178) |
+| — | #149 | SPEC-034 | Banco | 124 | 124 | 0 | 70.6 | #178 | [#178](https://github.com/RodReis/rrb-proplan/pull/178) |
+| — | #149 | SPEC-034 | Tela | 411 | 411 | 0 | 49.5 | #178 | [#178](https://github.com/RodReis/rrb-proplan/pull/178) |

@@ -10,6 +10,7 @@ import { ResolveRoute } from './pages/workspace/ResolveRoute';
 import { WorkspaceRoute } from './pages/workspace/WorkspaceRoute';
 import { ClientsRoute } from './pages/clients/ClientsRoute';
 import { ClientsPage } from './pages/clients/ClientsPage';
+import { ContractSettingsPage } from './pages/clients/ContractSettingsPage';
 import { FunnelPage } from './pages/clients/FunnelPage';
 import { BriefingLinkPage } from './pages/briefing/BriefingLinkPage';
 
@@ -124,6 +125,18 @@ export default function App() {
           element={
             <ClientsRoute user={auth.user}>
               {(canWrite) => <FunnelPage canWrite={canWrite} />}
+            </ClientsRoute>
+          }
+        />
+        {/* Perfil do prestador e modelos de contrato (SPEC-034 §2.1–§2.3): são
+            dados do TENANT, não do projeto — por isso página irmã de Clientes e
+            não gaveta do funil. Não recebe `canWrite`: quem decide quem escreve
+            é o servidor, que devolve `canEdit` em cada payload (só `owner`). */}
+        <Route
+          path="/t/:tenant/clients/contratos"
+          element={
+            <ClientsRoute user={auth.user}>
+              {() => <ContractSettingsPage />}
             </ClientsRoute>
           }
         />

@@ -3378,7 +3378,7 @@ Fatia grande — **5 PRs empilhados**, um branch por PR, todos com base `main`
 - [x] **PR-3 — emissão do snapshot** (render escapado, valores como `string`, disclaimer no rodapé)
 - [x] **PR-4 — link público `GET /c/:token`** (rate limit, `no-store`/`noindex`, aviso acima do contrato, revogar/regenerar) *(este)*
 - [x] **PR-5 — registro do aceite** (canal de lista fechada, ator nunca nulo, move o card) *(este)*
-- [ ] **PR-6 — a tela do prestador** (perfil, editor de template, painel de contratos, link e aceite)
+- [x] **PR-6 — a tela do prestador** (perfil, editor de template, painel de contratos, link e aceite) *(este)*
 
 > **A fatia virou 6 PRs, não 5.** O PR-5 do papel era *"aceite + painel"* — uma
 > regra de servidor com spec fechada, mais **4 superfícies de tela** (perfil,
@@ -3843,6 +3843,88 @@ a lista cresce e o teste cai.
   7 — uma só, apesar dos **dois** POSTs (o segundo devolveu
   `alreadyAccepted: true`); as versões v2 e v3 do contrato seguem sem aceite; o
   link não foi revogado pelo aceite
+
+### PR-6 — o que entrou
+
+As **4 superfícies** que o PR-5 deixou de fora, e a razão de terem virado PR
+próprio: aceite é regra de servidor com spec fechada, tela tem decisão de UI a
+tomar. Um diff que misturasse os dois obrigaria a revisar regra de negócio e
+layout no mesmo lugar.
+
+**Perfil e templates viraram página de workspace, não gaveta de projeto.** Os
+dois dados são **um por tenant**: abrir pelo projeto A e pelo projeto B editaria
+a mesma coisa, e a gaveta sugeriria uma configuração por projeto que não existe.
+Entraram como `/t/:tenant/clients/contratos`, irmã de Clientes e Funil, com item
+próprio no `GlobalNav`. Emissão, link e aceite ficaram na gaveta do projeto, ao
+lado de Artefatos e Estimativa — esses **são** por projeto.
+
+**A URL pública aponta para a API, não para o web** — e esta é a decisão que
+mais barato custou por ter sido pensada antes. O `/c/:token` é
+`@Controller('c')` no Nest, que devolve o HTML já renderizado; o `/b/:token` do
+briefing é rota React. Montada sobre `window.location.origin`, a URL do contrato
+cairia no `Navigate to="/"` do `App.tsx` e levaria o cliente ao **catálogo**. É o
+defeito que o `briefingUrl` documenta ter pago uma vez, com os papéis trocados —
+e o comentário dele foi o que fez a pergunta ser feita aqui.
+
+**O vocabulário do link não foi reimplementado.** `LinkState`,
+`LINK_STATE_LABEL`, `generateLabel`, `canRevoke` e `needsRegenerateConfirm` vêm
+do `clientDetailView.ts`: o link do contrato tem o mesmo ciclo de vida do de
+briefing, incluindo a regra de **confirmar só sobre link válido** (sobre link
+morto não há acesso a proteger, e confirmar ali ensina a clicar "sim" sem ler).
+
+**Três linhas novas em `TENANT_SCOPED_PREFIXES`** (`/contracts/`,
+`/contract-templates`, `/provider-profile`). É literalmente o FIX #166: sem elas
+o aceite e o link sairiam sem `/t/:tenant`, a API devolveria 404 e a tela falharia
+**muda** — porque todos os testes de tela mockam a camada de API, que é onde
+`withTenantPrefix` vive.
+
+**O painel não reescapa o `renderedHtml`.** Ele foi escapado na emissão e é
+imutável; reescapar transformaria `&amp;` em `&amp;amp;` e o painel mostraria um
+documento **diferente do que o cliente lê**. Mesmo desenho da página pública do
+PR-4, e há teste nos dois sentidos.
+
+**Regras de leitura em `contractsView.ts`, fora do React** — o padrão das duas
+fatias anteriores. O caso que justifica o arquivo: **`isAccepted` lê
+`acceptedAt`, nunca o estado do card**. O card pode estar em `CONTRACT_APPROVED`
+por causa da v1; carimbar "aceito" na v3 por isso afirmaria um fato que não
+aconteceu. Dentro de um componente, isso só se testaria renderizando.
+
+### Verificação do PR-6
+
+- **409 testes verdes** em `tela` (era 365: +44), sobre `main` já com o PR-5
+- Relatório regenerado (ADR-019): **1396 regras · 124 banco · 411 tela**
+- `tsc --noEmit` limpo, build de produção OK, e2e do Playwright passando
+- **Guarda provada reprovando**: `duration_days` plantado na lista de
+  placeholders da tela derruba 2 testes — a cópia da lista do servidor não pode
+  divergir em silêncio, e `web` e `api` são pacotes sem barrel compartilhado
+
+### PR-6 — dogfooding no navegador (2026-07-28)
+
+Com API e web de pé, sessão real, contra o **Projeto EPG2** e os contratos do PR-3:
+
+| o que | resultado |
+|---|---|
+| Item **Contratos** no menu global → `/t/RodReis/clients/contratos` | ✅ |
+| Salvar perfil (`PUT`), conferido no banco | ✅ e-mail e telefone gravados |
+| Placeholder inválido recusado **ao salvar**, com o nome na mensagem | ✅ `{{duration_days}}` recusado, **nenhuma versão gravada** |
+| Salvar template cria **versão nova**, a anterior segue legível | ✅ v1 e v2 no banco, `is_seed_example` → `f` |
+| Aviso "texto de exemplo" some depois da 1ª edição (trava §2.3) | ✅ e a 3ª modalidade segue `t`, intocada |
+| Botão **Contratos** na gaveta, junto de Artefatos e Estimativa | ✅ |
+| Selo "aceito" **por versão** | ✅ só a v1; v2 e v3 sem selo, com o card em `CONTRACT_APPROVED` |
+| Snapshot é cópia, não referência | ✅ o v3 mostra `NOME TROCADO DEPOIS DA EMISSAO` |
+| `<script>alert(1)</script>` no nome do cliente | ✅ texto na tela, não executa |
+| Link gerado abre o contrato de verdade | ✅ `localhost:3311/c/…`, os 4 headers, `<meta robots>`, aviso acima, expira 31/07 |
+| Aceite grava canal, nota e **ator não nulo** | ✅ `presencial` na v3 |
+| `cardMoved: false` **não** é erro | ✅ **8 transições** continuam 8 (card já adiante), tela diz "Aceite registrado" sem erro |
+| Link **não** é revogado pelo aceite (§8.4) | ✅ seguiu válido |
+| Revogar tem efeito na requisição seguinte | ✅ a página passou a dizer "revogado" |
+
+**Um defeito de acessibilidade achado por teste, corrigido na tela.** O selo da
+modalidade semeada saía como `"Desenvolvimento· exemplo"` no nome acessível: o
+`ml-1.5` dá espaço **visual**, não textual, e um leitor de tela leria as duas
+palavras coladas. A saída fácil era afrouxar o matcher do teste; a correção foi
+pôr o espaço no texto. É a mesma classe de defeito que o `artifactsView.ts` já
+anotou — o que erra sem aparecer em revisão visual.
 
 ---
 

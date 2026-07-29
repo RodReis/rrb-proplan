@@ -17,6 +17,8 @@ import {
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { STATE_LABELS } from './boardView';
 import { ArtifactsPanel } from './ArtifactsPanel';
+import { ContractsPanel } from './ContractsPanel';
+import { ESTADOS_COM_CONTRATO } from './contractsView';
 import { EstimatePanel } from './EstimatePanel';
 import { BriefingVersionPanel } from './BriefingVersionPanel';
 
@@ -94,6 +96,8 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
   const [artifactsFor, setArtifactsFor] = useState<ClientProject | null>(null);
   /** Estimativa: decomposição + cálculo (SPEC-033). */
   const [estimateFor, setEstimateFor] = useState<ClientProject | null>(null);
+  /** Contratos: emissão, link público e aceite (SPEC-034 §2.13). */
+  const [contractsFor, setContractsFor] = useState<ClientProject | null>(null);
   /** Estado do briefing por projeto (SPEC-031 §6). */
   const [briefings, setBriefings] = useState<Record<string, BriefingStatus>>({});
 
@@ -338,6 +342,20 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
                           Estimativa
                         </button>
                       )}
+                      {/* Contratos a partir de `CONTRACT_PENDING` (SPEC-034
+                          §2.6): é a aprovação da estimativa que põe o card
+                          nesse estado, e antes dele emitir seria recusado.
+                          Continua visível depois do aceite — o contrato
+                          precisa seguir consultável. */}
+                      {ESTADOS_COM_CONTRATO.includes(project.state) && (
+                        <button
+                          type="button"
+                          onClick={() => setContractsFor(project)}
+                          className="rounded-[8px] border border-accent-border px-3 py-1.5 text-xs font-semibold text-text2 transition-colors duration-150 hover:bg-accent-soft"
+                        >
+                          Contratos
+                        </button>
+                      )}
                     </div>
                   </div>
                 </li>
@@ -394,6 +412,20 @@ export function ClientDetailPanel({ client, canWrite, onClose, onChanged }: Prop
             void load();
           }}
           // Aprovar a estimativa move o card para `CONTRACT_PENDING` (§2.11).
+          onCardMoved={onChanged}
+        />
+      )}
+
+      {contractsFor && (
+        <ContractsPanel
+          projectId={contractsFor.id}
+          projectTitle={contractsFor.title}
+          onClose={() => {
+            setContractsFor(null);
+            void load();
+          }}
+          // Registrar o aceite move o card para `CONTRACT_APPROVED` (§2.10) —
+          // e é o ÚNICO ato desta fatia que mexe no funil.
           onCardMoved={onChanged}
         />
       )}

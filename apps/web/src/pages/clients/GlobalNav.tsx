@@ -9,6 +9,8 @@ const ICONS: Record<string, string> = {
   proplan: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   kanban: 'M4 4v16M10 4v10M16 4v16M4 4h16',
   clients: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 7a4 4 0 108 0 4 4 0 10-8 0M22 21v-2a4 4 0 00-3-3.87',
+  contracts:
+    'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M9 13h6M9 17h4',
   settings:
     'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z',
 };
@@ -54,6 +56,7 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
   const normalized = section.toLowerCase();
   const activeProPlan = normalized === 'proplan' || normalized === 'catálogo';
   const activeClients = normalized === 'clientes';
+  const activeContracts = normalized === 'contratos';
   const activeFunnel = normalized === 'funil' || normalized === 'kanban';
 
   const itemClass = (active: boolean) =>
@@ -126,6 +129,22 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
                 <NavIcon id="clients" />
               </span>
               Clientes
+            </button>
+          </li>
+
+          <li>
+            {/* Perfil do prestador + modelos (SPEC-034). Item próprio, e não
+                uma gaveta do projeto, porque os dois dados são um por tenant. */}
+            <button
+              onClick={() => navigate(`/t/${tenant}/clients/contratos`)}
+              className={itemClass(activeContracts)}
+              disabled={!tenant}
+            >
+              {activeContracts && <ActiveBar />}
+              <span className={activeContracts ? 'text-accent' : undefined}>
+                <NavIcon id="contracts" />
+              </span>
+              Contratos
             </button>
           </li>
 
