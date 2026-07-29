@@ -15,6 +15,7 @@ import {
 } from '../../identity/presentation/jwt-auth.guard';
 import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { TenantGuard } from '../../identity/presentation/tenant.guard';
+import { DashboardReposService } from '../application/dashboard-repos.service';
 import { DashboardSettingsService } from '../application/dashboard-settings.service';
 import { DashboardService } from '../application/dashboard.service';
 import { DEFAULT_PERIOD, PERIODS, isPeriod, type Period } from '../domain/period';
@@ -38,6 +39,7 @@ export class DashboardController {
   constructor(
     private readonly dashboard: DashboardService,
     private readonly settings: DashboardSettingsService,
+    private readonly reposService: DashboardReposService,
   ) {}
 
   /**
@@ -62,6 +64,21 @@ export class DashboardController {
   @Get('pending-count')
   async pendingCount(@Req() req: AuthenticatedRequest) {
     return this.dashboard.pendingCount(req.tenantId!, new Date());
+  }
+
+  /**
+   * O bloco de repos, lido **ao vivo** no GitHub (§2.6, ADR-017).
+   *
+   * **Rota isolada de propósito** (§6): a falha deste bloco não pode contaminar
+   * a resposta principal. Separar os caminhos torna a garantia estrutural, em
+   * vez de um `try/catch` que alguém pode remover sem perceber.
+   *
+   * Nunca falha por causa de um repo: erro, timeout e rate limit viram **estado
+   * do repo** dentro da resposta (§2.11), nomeando qual foi.
+   */
+  @Get('repos')
+  async repos(@Req() req: AuthenticatedRequest) {
+    return this.reposService.block(req.tenantId!);
   }
 
   /** O limite de "parado", em dias. */

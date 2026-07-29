@@ -1,7 +1,25 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { RateLimitError, ehRateLimit, lerRetryAt } from '../domain/rate-limit';
 
 const TIMEOUT_MS = 10_000;
 const MAX_PAGES = 20; // 2000 issues — acima disso, filtrar por since
+
+/**
+ * Rate limit vira erro **reconhecível**, não `Error` genérico (SPEC-035 §2.11).
+ *
+ * O bloco de repos do dashboard precisa dizer *"o limite do GitHub foi atingido
+ * e volta às HH:MM"* — a spec é literal em **nunca zero silencioso, que seria
+ * indistinguível de board vazio**. Com `Error('GitHub 403')` não há como
+ * distinguir limite de falha comum, e a tela cairia no texto genérico.
+ *
+ * Sobe de dentro do client porque é aqui que os headers existem: quem chama vê
+ * só o erro.
+ */
+function lancarSeRateLimit(res: Response): void {
+  if (ehRateLimit(res.status, res.headers)) {
+    throw new RateLimitError(lerRetryAt(res.headers, new Date()));
+  }
+}
 
 export interface GithubIssue {
   number: number;
@@ -80,6 +98,7 @@ export class GithubIssuesClient {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (res.status === 401) throw new UnauthorizedException('Token GitHub inválido');
+      lancarSeRateLimit(res);
       if (!res.ok) throw new Error(`GitHub issues ${res.status}`);
       const batch = (await res.json()) as GithubIssue[];
       all.push(...batch.filter((i) => !i.pull_request));
@@ -105,6 +124,11 @@ export class GithubIssuesClient {
       return await this.listIssuesGraphql(userToken, owner, repo);
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
+      // Rate limit **não** degrada para REST: a cota é a mesma, então o fallback
+      // falharia igual — gastando uma segunda chamada do que já acabou e
+      // trocando um erro que a tela sabe explicar ("volta às HH:MM") por um
+      // genérico. Sobe.
+      if (err instanceof RateLimitError) throw err;
       // Shape/feature indisponível: degrada para o board plano em vez de quebrar.
       return this.listIssues(userToken, owner, repo);
     }
@@ -146,6 +170,7 @@ export class GithubIssuesClient {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (res.status === 401) throw new UnauthorizedException('Token GitHub inválido');
+      lancarSeRateLimit(res);
       if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}`);
       const body = (await res.json()) as GraphqlIssuesResponse;
       if (body.errors?.length) throw new Error(`GitHub GraphQL: ${body.errors[0].message}`);

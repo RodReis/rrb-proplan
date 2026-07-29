@@ -119,8 +119,31 @@ describe('dashboard: a fronteira com os cinco módulos (ADR-001, §5)', () => {
     // import de `domain/` significaria o dashboard reimplementando regra que
     // pertence a outro módulo — a projeção estado→coluna, por exemplo, que já
     // acontece dentro do `clients`.
-    const proibidos = varrer(/from '\.\.\/\.\.\/[a-z]+\/(domain|infrastructure)\//);
+    //
+    // **Uma exceção nominal**, no padrão de `provider-profile` na SPEC-034 e da
+    // allowlist da SPEC-033: `board/domain/rate-limit`. A regra existe para
+    // impedir reimplementar regra alheia, e importar o **tipo do erro que o
+    // service público lança** é o oposto disso — é usar a interface dele. Sem
+    // ele, distinguir rate limit de falha comum viraria casar a mensagem por
+    // string, que quebra em silêncio na primeira vez que o texto mudar; e o
+    // §2.11 exige a distinção, porque zero silencioso é indistinguível de board
+    // vazio.
+    //
+    // Lista de NOMES, não padrão aberto: qualquer outro `domain/` derruba isto.
+    const EXCECOES = ['board/domain/rate-limit'];
+    const proibidos = varrer(/from '\.\.\/\.\.\/[a-z]+\/(domain|infrastructure)\//).filter(
+      (o) => !EXCECOES.some((e) => o.texto.includes(e)),
+    );
     expect(proibidos).toEqual([]);
+  });
+
+  it('a exceção do `rate-limit` é o que está escrito — e nada além', () => {
+    // Sem este teste, a lista acima poderia crescer sem ninguém notar: o outro
+    // teste ficaria verde justamente por causa do item novo.
+    const daBoard = varrer(/from '\.\.\/\.\.\/board\/domain\//).map((o) => o.texto);
+    for (const linha of daBoard) {
+      expect(linha).toContain('board/domain/rate-limit');
+    }
   });
 
   it('o agregador NÃO recebe PrismaService — sem cliente injetado, sem acidente', () => {

@@ -51,6 +51,10 @@ describe('withTenantPrefix: rotas escopadas por tenant', () => {
     ['/dashboard?period=90', '/t/T/dashboard?period=90'],
     ['/dashboard/pending-count', '/t/T/dashboard/pending-count'],
     ['/dashboard/settings', '/t/T/dashboard/settings'],
+    // O bloco ao vivo (§2.6). Sem prefixo, viria 404 e a tela mostraria o bloco
+    // vazio — indistinguível de "nenhum repo", que é a leitura que o §2.11
+    // existe para impedir.
+    ['/dashboard/repos', '/t/T/dashboard/repos'],
   ])('%s recebe o prefixo', (path, esperado) => {
     setActiveTenant(TENANT);
     expect(withTenantPrefix(path)).toBe(esperado.replace('/t/T', `/t/${TENANT}`));

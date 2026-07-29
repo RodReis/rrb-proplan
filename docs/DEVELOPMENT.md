@@ -4395,7 +4395,7 @@ Fatia grande — **4 PRs empilhados**, um branch por PR, todos com base `main`
 - [x] **PR-1 — o agregador**: superfície de resumo nos 5 módulos-fonte,
       `GET /t/:tenant/dashboard`, período com fuso, `stalled_days` e o arch test *(este)*
 - [x] **PR-2 — *Esperando você*: a fonte do "parado", o drill-down e o contador** *(este)*
-- [ ] **PR-3 — o bloco de repos ao vivo** (`GET .../repos`) + as 4 salvaguardas do §2.11
+- [x] **PR-3 — o bloco de repos ao vivo** (`GET .../repos`) + as 4 salvaguardas do §2.11 *(este)*
 - [ ] **PR-4 — a tela React** + menu (acende o item, some sem cliente, contador ao navegar/foco)
 
 > **O PR-1 entrega mais do que "o schema"**, ao contrário do 1º PR das fatias
@@ -4607,3 +4607,103 @@ e quebrou depois do merge. O filtro virou `\r?$` e uma função nomeada — o si
 - `tsc --noEmit` limpo; `pnpm build` verde (API e web).
 - **Dogfooding no navegador fica para o PR-4**, quando existe a tela que produz
   os links — o que este PR entrega é o destino deles.
+
+### PR-3 — o que entrou
+
+O bloco de repos ao vivo (§2.6) — **a decisão mais cara da tela**, nas palavras
+do §7.2 — e as quatro salvaguardas que a spec torna obrigatórias.
+
+**A leitura ao vivo não existia, e reusar o board teria sido errado.** O
+`BoardService.getBoard` lê o **cache** (`prisma.issue`), preenchido pelo
+`syncIssues`; a spec pede ao vivo, *"nada persistido"* (ADR-017). O
+`BoardSummaryService` é o caminho novo: vai ao GitHub, conta, e **não grava**.
+As duas leituras convivem por razão, não por descuido — o board do workspace é
+interativo, tem drag-and-drop e precisa responder rápido; o dashboard mostra a
+contagem do momento.
+
+**A regra de coluna não é reimplementada.** `columnOf` e `isEpic` vêm do
+`domain/` do próprio `board`. Recontar por conta própria produziria um dashboard
+que discorda do board **na mesma tela**, e quem estivesse olhando não teria como
+saber qual dos dois mente. Pelo mesmo motivo o caminho é
+`listIssuesWithHierarchy`, não `listIssues`: sem `hasSubIssues`, épico entraria
+como card e o número do dashboard ficaria maior que o do board.
+
+**As quatro salvaguardas do §2.11, cada uma com teste:**
+
+1. **Falha isolada.** Cada repo captura a própria falha antes do `Promise.all`,
+   então nenhuma rejeição escapa e o `all` nunca curto-circuita. Há teste do
+   caso extremo — **todos** os repos falhando ainda devolvem o bloco, em vez de
+   virar 500 e tirar o dashboard do ar por causa de um terceiro.
+2. **Timeout curto e paralelo.** 5 s por repo, contra os 10 s do client (que são
+   dimensionados para o sync): a tela abre **sem** o bloco, não depois dele. O
+   paralelismo é provado por comportamento — as N chamadas partem antes de a
+   primeira resolver.
+3. **Teto de 10 repos por carga** (decisão do PI). O excedente **não é
+   consultado**, e o número dele viaja para a tela: lista curta sem o número
+   leria como *"são só estes"*. A ordem é `lastCodeCommitAt desc`, com os `null`
+   por último — quando alguém cai sob *"ver todos"*, tem de ser o repo parado,
+   não o que teve commit ontem.
+4. **Rate limit explícito.** É a mais importante, e a que custou mais código.
+
+**O rate limit precisou virar erro reconhecível.** O client lançava
+`Error('GitHub issues 403')`, e com isso o bloco não teria como dizer *"o limite
+volta às 16h"* — cairia no texto genérico, e um bloco vazio leria como **board
+vazio**, que é exatamente a leitura que o §2.11 proíbe. Entrou
+`board/domain/rate-limit.ts` com `RateLimitError`, e três decisões dentro dele:
+
+- **`403` só é rate limit com `x-ratelimit-remaining: 0`.** `403` com cota
+  sobrando é **permissão**, e chamá-lo de limite mandaria a pessoa esperar por
+  algo que não passa sozinho com o tempo.
+- **`x-ratelimit-reset` ganha do `retry-after`** (absoluto vence relativo), e sem
+  nenhum dos dois o horário é `null`. A tela diz que o limite foi atingido **sem
+  inventar horário**: um horário falso é pior que a ausência dele, porque a
+  pessoa volta, falha de novo, e passa a desconfiar da mensagem inteira.
+- **Rate limit no GraphQL não degrada para o REST.** O fallback existente
+  cobria *"shape mudou / feature indisponível"*; com limite atingido a cota é a
+  mesma, então o REST falharia igual — gastando uma segunda chamada do que já
+  acabou e trocando um erro que a tela sabe explicar por um genérico. Há teste
+  dos dois lados: rate limit sobe com **uma** chamada, falha comum ainda degrada
+  com duas.
+
+**Uma exceção nominal no arch test, e ela foi discutida antes de ser aberta.** O
+`dashboard.arch.spec.ts` proíbe importar `domain/` de outro módulo, e pegou o
+import de `board/domain/rate-limit` — corretamente, porque a regra existe para
+impedir reimplementar regra alheia. Mas o que atravessa aqui é o **tipo do erro
+que o service público lança**, que é o oposto: é usar a interface dele. A
+alternativa seria casar a mensagem por string, que quebra em silêncio na
+primeira vez que o texto mudar.
+
+A exceção é **lista de nomes**, no padrão de `provider-profile` (SPEC-034) e da
+allowlist (SPEC-033), com um **segundo teste** afirmando que nada mais de
+`board/domain/` entra. Sem esse segundo teste, a lista poderia crescer sem
+ninguém notar — o primeiro ficaria verde justamente por causa do item novo.
+
+**A rota é isolada** (`GET /t/:tenant/dashboard/repos`), e a separação é a
+garantia: a falha do bloco não pode contaminar a resposta principal. Há teste nos
+dois sentidos — o `/repos` não chama o dashboard, e o dashboard não chama o
+`/repos`. Isso é estrutural, em vez de um `try/catch` que alguém pode remover sem
+perceber.
+
+**O que permanece, e está registrado** (§7.2): N chamadas ao GitHub por carga, no
+mesmo rate limit do catálogo e do sync, com a tela dependendo de um terceiro no
+caminho de abertura. As salvaguardas **contêm** o dano; não eliminam a
+dependência. O gatilho de revisão é rate limit recorrente ou abertura degradando
+— e a saída **não** é cache silencioso, que colidiria com o ADR-017, e sim voltar
+ao PI com *"ao vivo sob clique"*, que já estava na mesa.
+
+### PR-3 — verificação
+
+- **2077 testes verdes** (1645 regras · 124 banco · 432 tela) — **+43**: 14 do
+  domínio das salvaguardas, 14 do orquestrador, 9 do `BoardSummaryService`, 6 do
+  rate limit atravessando o client.
+- **As 4 salvaguardas têm teste, uma a uma**, incluindo os casos extremos: todos
+  os repos falhando, tenant sem repo nenhum, e rate limit sem horário informado.
+- **Paralelismo provado por comportamento** (chamadas simultâneas contadas), não
+  por leitura do código.
+- **Nada persistido**, provado por ausência nos dois níveis: o
+  `DashboardReposService` não tem `prisma`, e o `BoardSummaryService` tem teste
+  afirmando que nenhuma escrita em `prisma.issue` acontece na leitura ao vivo.
+- `tsc --noEmit` limpo; `pnpm build` verde (API e web).
+- **Dogfooding no navegador fica para o PR-4**, quando existe tela. As
+  salvaguardas 1, 2 e 4 pedem falha real do GitHub para serem vistas — o plano é
+  exercitá-las com repo inexistente e token sem escopo.

@@ -12,9 +12,16 @@ function make(over: Record<string, any> = {}) {
     get: jest.fn().mockResolvedValue({ stalledDays: 7, canEdit: false }),
     update: jest.fn().mockResolvedValue({ stalledDays: 14, canEdit: true }),
   };
+  const repos: any = { block: jest.fn().mockResolvedValue({ repos: [], notLoaded: 0 }) };
   Object.assign(dashboard, over.dashboard);
   Object.assign(settings, over.settings);
-  return { ctrl: new DashboardController(dashboard, settings), dashboard, settings };
+  Object.assign(repos, over.repos);
+  return {
+    ctrl: new DashboardController(dashboard, settings, repos),
+    dashboard,
+    settings,
+    repos,
+  };
 }
 
 const req = (role?: string): any => ({ tenantId: TENANT, role, userId: 'u1' });
@@ -58,6 +65,37 @@ describe('DashboardController (SPEC-035 §6)', () => {
 
       expect(dashboard.pendingCount).toHaveBeenCalledWith(TENANT, expect.any(Date));
       expect(dashboard.view).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('o bloco de repos é rota ISOLADA (§6, §2.11)', () => {
+    it('não passa pelo caminho do dashboard principal', async () => {
+      // A separação é a garantia: a falha do bloco ao vivo não pode contaminar
+      // a resposta principal. Rotas distintas tornam isso estrutural, em vez de
+      // um `try/catch` que alguém pode remover sem perceber.
+      const { ctrl, repos, dashboard } = make();
+
+      await ctrl.repos(req());
+
+      expect(repos.block).toHaveBeenCalledWith(TENANT);
+      expect(dashboard.view).not.toHaveBeenCalled();
+    });
+
+    it('o dashboard principal NÃO chama o bloco de repos', async () => {
+      const { ctrl, repos } = make();
+
+      await ctrl.view(req(), '30');
+
+      expect(repos.block).not.toHaveBeenCalled();
+    });
+
+    it('não recebe período — a contagem do GitHub é do momento, não de janela', async () => {
+      const { ctrl, repos } = make();
+
+      await ctrl.repos(req());
+
+      expect(repos.block).toHaveBeenCalledWith(TENANT);
+      expect(repos.block.mock.calls[0]).toHaveLength(1);
     });
   });
 

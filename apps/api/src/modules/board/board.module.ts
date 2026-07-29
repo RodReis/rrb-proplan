@@ -6,6 +6,7 @@ import { InsightModule } from '../insight/insight.module';
 import { ActivityModule } from '../activity/activity.module';
 import { SharedModule } from '../../shared/shared.module';
 import { BoardService } from './application/board.service';
+import { BoardSummaryService } from './application/board-summary.service';
 import { BoardMutationService } from './application/board-mutation.service';
 import { BoardImportService } from './application/board-import.service';
 import { MappingService } from './application/mapping.service';
@@ -31,6 +32,7 @@ import { TabsController } from './presentation/tabs.controller';
   controllers: [BoardController, TabsController],
   providers: [
     BoardService,
+    BoardSummaryService,
     BoardMutationService,
     BoardImportService,
     MutationApplierService,
@@ -41,6 +43,10 @@ import { TabsController } from './presentation/tabs.controller';
     BoardWorker,
     BoardSyncListener,
   ],
-  exports: [BoardService],
+  // `BoardSummaryService` serve o dashboard (SPEC-035 §2.6): o `getBoard` lê o
+  // CACHE (`prisma.issue`), e a spec pede AO VIVO, nada persistido (ADR-017).
+  // Duas leituras, dois caminhos — o board do workspace é interativo e precisa
+  // responder rápido; o dashboard mostra a contagem do momento.
+  exports: [BoardService, BoardSummaryService],
 })
 export class BoardModule {}
