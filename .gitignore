@@ -27,3 +27,4 @@ apps/web/playwright-report.json
 .codex/hooks/war-room.cjs
 .codex/hooks.json
 .vscode/tasks.json
+.war-room-runtime/
