@@ -4594,7 +4594,7 @@ e quebrou depois do merge. O filtro virou `\r?$` e uma função nomeada — o si
 
 ### PR-2 — verificação
 
-- **2032 testes verdes** (1601 regras · 124 banco · 431 tela) — **+26**: 6 no
+- **2034 testes verdes** (1477 regras · 124 banco · 433 tela) — **+28** sobre os 2006 do PR-1: 6 no
   servidor (fonte do "parado", `clientId`, `target`) e 20 no web (deep-link da
   gaveta e do painel, contador, prefixo de tenant).
 - **A correção do "parado" tem os dois lados**: teste afirmando que `updatedAt`
