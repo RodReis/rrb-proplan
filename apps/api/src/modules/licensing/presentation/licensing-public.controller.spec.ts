@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import type { LicenseActivationService } from '../application/license-activation.service';
+import type { WebhookIntakeService } from '../application/webhook-intake.service';
 import { LicensingPublicController } from './licensing-public.controller';
 
 const CHAVE = 'WR-AB23-CD45-EF67-GH89';
@@ -16,7 +17,15 @@ function montar() {
     })),
   } as unknown as LicenseActivationService;
 
-  return { controller: new LicensingPublicController(activation), activation };
+  const webhook = {
+    receive: jest.fn(async () => ({ received: true as const })),
+  } as unknown as WebhookIntakeService;
+
+  return {
+    controller: new LicensingPublicController(activation, webhook),
+    activation,
+    webhook,
+  };
 }
 
 describe('SPEC-036: rota pública /licensing/v1/activate', () => {
@@ -135,6 +144,62 @@ describe('SPEC-036: rota pública /licensing/v1/activate', () => {
 
     await expect(
       controller.activate({ key: CHAVE, fingerprint: 'f' }, semIp),
+    ).resolves.toBeDefined();
+  });
+});
+
+describe('SPEC-038: rota pública do webhook da Kiwify', () => {
+  const corpo = { order_id: 'ord_1', webhook_event_type: 'order_approved' };
+
+  /** Request como o Express o entrega, com `rawBody` ligado no `main.ts`. */
+  const requisicao = (rawBody?: Buffer) =>
+    ({
+      ip: '10.0.0.1',
+      socket: { remoteAddress: '10.0.0.1' },
+      headers: { 'content-type': 'application/json' },
+      rawBody,
+    }) as unknown as Request & { rawBody?: Buffer };
+
+  it('passa o `rawBody`, o payload e a assinatura da query ao service', async () => {
+    const { controller, webhook } = montar();
+    const cru = Buffer.from(JSON.stringify(corpo));
+
+    await controller.kiwifyWebhook('rodreis', corpo, 'abc123', requisicao(cru));
+
+    expect(webhook.receive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantSlug: 'rodreis',
+        rawBody: cru,
+        payload: corpo,
+        querySignature: 'abc123',
+      }),
+    );
+  });
+
+  it('reconstrói o corpo quando `rawBody` não vem', async () => {
+    // O fallback existe para teste que monta o request à mão. Em produção o
+    // `main.ts` liga `rawBody: true` — e a Kiwify assina o re-stringify de todo
+    // modo, então este caminho continua verificável.
+    const { controller, webhook } = montar();
+
+    await controller.kiwifyWebhook('rodreis', corpo, 'abc', requisicao(undefined));
+
+    const passado = (webhook.receive as jest.Mock).mock.calls[0][0];
+    expect(passado.rawBody.toString()).toBe(JSON.stringify(corpo));
+  });
+
+  it('não consome o rate limit das rotas de ativação', async () => {
+    // Recusar entrega legítima da plataforma por excesso de vendas numa
+    // promoção seria transformar sucesso comercial em licença não emitida. A
+    // assinatura já é a barreira: quem não a tem não passa.
+    const { controller } = montar();
+
+    for (let i = 0; i < 30; i++) {
+      await controller.kiwifyWebhook('rodreis', corpo, 'abc', requisicao());
+    }
+
+    await expect(
+      controller.activate({ key: CHAVE, fingerprint: 'f' }, pedido('10.0.9.1')),
     ).resolves.toBeDefined();
   });
 });
