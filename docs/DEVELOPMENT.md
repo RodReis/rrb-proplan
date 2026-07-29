@@ -5456,3 +5456,114 @@ vai **antes** da diretiva, não depois.
   quando removi um `f` que **era** usado (revertido).
 - `CLAUDE.md` atualizado: a ressalva *"`build` e `lint` ainda não rodam no CI"*
   deixou de ser verdade.
+
+## Fatia 27 (SPEC-038) — Licensing: módulo `mail`, webhook da Kiwify e ciclo da assinatura — `em andamento`
+
+Issue **#191** (spec `aprovada-pi` 2026-07-29). **3ª fatia do MVP4.** É a fatia
+em que `billingModel: SUBSCRIPTION` deixa de ser coluna e vira comportamento: a
+compra na Kiwify emite a chave e a manda por e-mail, reembolso e chargeback
+revogam, renovação estende a assinatura, e inadimplência é registrada **sem
+derrubar quem só teve o cartão recusado**.
+
+**Cinco PRs empilhados**, todos com base `main` (PR empilhado com base ≠ `main`
+fica sem check nenhum, silenciosamente):
+
+1. **PR-1 — schema** (este): as quatro tabelas, o `pastDueAt` e a função de
+   leitura sem sessão. Sem módulo, sem rota, sem job.
+2. **PR-2 — módulo `mail`**: `MailService` + adapter Resend + fila BullMQ.
+3. **PR-3 — webhook**: rota pública por tenant, assinatura, job processador,
+   mapeamento oferta→edição.
+4. **PR-4 — ciclo da assinatura**: tolerância na validação, renovação,
+   cancelamento, `sourceInviteAt`.
+5. **PR-5 — admin mínimo**: pendências, reprocessar, CRUD do mapeamento,
+   entregas, settings, reemissão.
+
+### PR-1 — o schema, e as decisões que ele congela
+
+- [x] `LicWebhookEvent`, `LicOfferMapping`, `MailDelivery`, `LicSettings`
+- [x] `License.pastDueAt`
+- [x] RLS (`ENABLE` + `FORCE`) nas quatro + `resolve_past_due_tolerance`
+- [x] Seed do `LicSettings` com segredo sorteado
+- [x] 29 testes de banco contra Postgres real
+
+**A idempotência é do recebimento, não do processador.** A rota grava o evento
+bruto e responde `200`; quem entende o evento é um job. Plataforma de pagamento
+tem timeout curto e reenvia o que demora — processar dentro da request
+transformaria lentidão em enxurrada de duplicatas. O `UNIQUE (platform,
+external_event_id)` está no **banco** e não num `if`: duas entregas simultâneas
+passariam as duas por um `if`.
+
+**O `tenant_id` está fora dessa chave de propósito**, e o teste prova a
+ausência. Um id de evento da Kiwify é único na Kiwify; incluir o tenant deixaria
+a MESMA entrega ser gravada duas vezes se ela chegasse em duas URLs — e duas
+licenças seriam emitidas. Ausência não se prova lendo o schema, se prova
+tentando: há um caso que insere o mesmo `externalEventId` em dois tenants e
+espera a recusa.
+
+**Ele é NOT NULL, apesar de a spec escrevê-lo opcional.** O tenant sai da
+própria URL (`/:tenantSlug`), então existe antes de qualquer leitura —
+inclusive para o evento cuja oferta não está mapeada, que é justamente o item
+que mais precisa aparecer no admin de alguém. Um evento órfão de tenant seria
+invisível para todos.
+
+**Dois uniques no mapeamento de oferta, porque um não basta.** Em Postgres,
+NULL não colide com NULL: o unique de quatro colunas deixaria dois curingas do
+mesmo produto (`external_offer_id IS NULL`) conviverem apontando para edições
+diferentes, e a compra emitiria a licença de qualquer uma das duas. O índice
+**parcial** fecha esse caso. O teste distingue os dois pela chave citada no
+erro — asserção sobre as colunas, não sobre "deu erro de unique", porque um
+índice sobre o par errado também rejeitaria e o teste passaria dizendo que a
+garantia existe onde ela não está.
+
+**Três CHECKs de coerência de estado**, todos sobre coisas que passariam por
+NOT NULL sem falhar nada: `PROCESSED` sem `processed_at` (e `PENDING` **com**),
+`FAILED` sem motivo legível, `SENT` sem `sent_at`. O de `FAILED` é o que mais
+importa: item na lista de pendências sem motivo é item que ninguém sabe como
+resolver — e a lista existe para ser resolvida.
+
+**`resolve_past_due_tolerance`, e o que ela NÃO devolve.** `/activate` e
+`/heartbeat` não têm sessão e rodam sem `app.tenant_ids`; sem a função, o RLS
+fail-closed leria a tolerância como "não configurada" em toda validação e o
+corte por inadimplência **nunca aconteceria, silenciosamente**. A saída é uma
+coluna só: o `webhookSecret` **não sai daqui**, porque uma função com privilégio
+de owner que o devolvesse daria a qualquer chamador o poder de forjar entrega
+assinada. Há teste lendo o `pg_get_functiondef` para provar isso.
+
+**Ambiguidade conhecida e aceita**: `NULL` responde tanto "tenant sem
+configuração" quanto "corte desligado". Os dois levam ao mesmo comportamento —
+não cortar por atraso — e é o lado certo de errar: tratar ausência como 15 dias
+cortaria o acesso de um tenant que nunca configurou nada.
+
+**A tolerância recusa `0` e negativo.** Zero cortaria no mesmo instante do
+atraso, que é exatamente o comportamento recusado pela decisão #3 do PI; quem
+quer isso deixa a plataforma revogar, e isso é `null`, não `0`.
+
+**O segredo do seed é sorteado, não fixo.** Um valor igual em toda instalação
+seria um segredo público — e é ele que separa "a Kiwify mandou" de "qualquer um
+mandou". O seed **nunca sobrescreve**: reseed depois que o admin colou o segredo
+real derrubaria a integração em silêncio, e a primeira notícia seria uma venda
+que não virou licença.
+
+**`SetNull` nos dois vínculos com a licença.** Apagar uma licença não pode
+apagar a prova de que a venda dela chegou nem de que o e-mail saiu — são fatos
+sobre o passado, e o suporte precisa deles justamente quando a licença não
+existe mais.
+
+#### Desvio da spec, deliberado
+
+`MailDelivery` ganhou **`licenseId` (nullable)**, que o modelo da spec não tem.
+O painel da SPEC-040 responde *"o que aconteceu com este cliente"*, e sem o
+vínculo a resposta pararia no envio sem dizer de qual licença ele era. Nullable
+porque o módulo `mail` é compartilhado — o MVP3 vai mandar e-mail sem licença
+nenhuma por trás. Coluna nullable, custo zero de migração.
+
+#### Verificação
+
+- **`prisma migrate diff` limpo**: a migration escrita à mão bate exatamente com
+  o schema Prisma. As duas linhas remanescentes do diff (`projects`/`settings`
+  com `tenant_id` nullable) são divergência **pré-existente**, confirmada contra
+  a `main` num shadow database limpo.
+- **1849 testes verdes na API** (1640 regras · 209 banco), `pnpm build` nos três
+  apps, `pnpm lint` 0 erros / 3 avisos (os mesmos da `main`).
+- **`reports/TESTS.md` regenerado** (banco 180 → 209) e as duas guardas do
+  ADR-019 verdes.

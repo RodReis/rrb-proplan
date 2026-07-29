@@ -115,6 +115,13 @@ model Tenant {
   licenses          License[]
   licActivations    Activation[]
   licEvents         LicEvent[]
+  // Venda automatizada (SPEC-038): o que chega da plataforma, o que sai por
+  // e-mail e o que configura os dois. `LicSettings` é 1:1 — um tenant tem um
+  // segredo de webhook e uma política de inadimplência, não uma lista.
+  licWebhookEvents  LicWebhookEvent[]
+  licOfferMappings  LicOfferMapping[]
+  licSettings       LicSettings?
+  mailDeliveries    MailDelivery[]
 
   @@map("tenants")
 }
@@ -1527,6 +1534,8 @@ model LicEdition {
   updatedAt    DateTime        @updatedAt @map("updated_at")
   product      LicProduct      @relation(fields: [productId], references: [id], onDelete: Cascade)
   licenses     License[]
+  // Ofertas da plataforma que emitem nesta edição (SPEC-038).
+  offerMappings LicOfferMapping[]
 
   @@unique([productId, slug])
   @@map("lic_editions")
@@ -1557,6 +1566,11 @@ model License {
   expiresAt     DateTime?     @map("expires_at")
   revokedAt     DateTime?     @map("revoked_at")
   revokedReason String?       @map("revoked_reason")
+  // Inadimplência registrada SEM mudar `status` (SPEC-038 §Ciclo da assinatura):
+  // cartão recusado é rotina e a plataforma retenta. O corte, quando vem, sai da
+  // comparação `pastDueAt + LicSettings.pastDueToleranceDays < now` feita na
+  // VALIDAÇÃO — nunca de um job, que atrasado concederia acesso.
+  pastDueAt     DateTime?     @map("past_due_at")
   // Convite do repo privado na edição source (SPEC-039, dia 8). Nascem aqui
   // para que o job daquela fatia não precise de migração de dados.
   sourceInviteAt DateTime?    @map("source_invite_at")
@@ -1569,6 +1583,11 @@ model License {
   edition       LicEdition    @relation(fields: [editionId], references: [id], onDelete: Restrict)
   activations   Activation[]
   events        LicEvent[]
+  // O que a plataforma mandou sobre esta licença (SPEC-038). Nullable do outro
+  // lado: o evento nasce antes de existir licença, e há evento que nunca terá
+  // uma (oferta sem mapeamento, tipo desconhecido).
+  webhookEvents LicWebhookEvent[]
+  mailDeliveries MailDelivery[]
 
   // A busca do admin é por e-mail do comprador (§Contratos), dentro do tenant.
   @@index([tenantId, customerEmail])
@@ -1626,4 +1645,175 @@ model LicEvent {
   // A leitura é sempre "a trilha desta licença, mais recente primeiro".
   @@index([licenseId, createdAt])
   @@map("lic_events")
+}
+
+// ===========================================================================
+// SPEC-038 — a venda vira licença sem ninguém no meio.
+// ===========================================================================
+
+enum LicWebhookStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+// O que a plataforma de venda mandou, gravado ANTES de ser entendido.
+//
+// **Receber ≠ processar** (§Notas técnicas). A rota grava esta linha e responde
+// `200`; o processamento acontece num job. Plataforma de pagamento tem timeout
+// curto e reenvia o que demora — processar dentro da request transformaria
+// lentidão em enxurrada de duplicatas.
+//
+// Raiz de tenancy, e o `tenant_id` é NOT NULL apesar de a spec escrevê-lo
+// opcional: o tenant sai da própria URL (`/:tenantSlug`), então ele existe
+// antes de qualquer leitura — inclusive para o evento cuja oferta não está
+// mapeada, que é justamente o que mais precisa aparecer no admin de alguém.
+model LicWebhookEvent {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  /// `kiwify` hoje. TEXT e não enum: a fronteira do adapter é o que abre
+  /// Hotmart/Lemon sem migration (§Fora de escopo).
+  platform String
+  /// Id do evento NA PLATAFORMA. É a metade que importa do unique abaixo.
+  externalEventId String @map("external_event_id")
+  eventType String @map("event_type")
+  /// Payload bruto, como chegou. É o que torna o reprocessamento possível sem
+  /// pedir reenvio — e o que guarda o preço, que não vira coluna (MVP4 §4).
+  payload  Json
+  receivedAt DateTime @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+  status   LicWebhookStatus @default(PENDING)
+  /// Motivo legível da falha: "oferta X sem mapeamento", "licença não
+  /// encontrada". É o que o admin lê antes de decidir reprocessar.
+  error    String?
+  /// Preenchido quando o processamento resolve a licença. Nulo enquanto
+  /// PENDING, e nulo para sempre em IGNORED/FAILED sem licença.
+  licenseId String? @map("license_id")
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// SetNull e não Cascade: apagar uma licença não pode apagar a prova de que
+  /// a venda dela chegou.
+  license  License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+
+  // **A idempotência é do RECEBIMENTO, não do processador** (§Notas técnicas).
+  // Retry da plataforma é normal; é este índice que o torna inofensivo, e não
+  // um `if` no código — duas entregas simultâneas passariam as duas por ele.
+  //
+  // Sem `tenantId` na chave, de propósito: um id de evento da Kiwify é único na
+  // Kiwify. Incluir o tenant deixaria a MESMA entrega ser gravada duas vezes se
+  // ela chegasse em duas URLs.
+  @@unique([platform, externalEventId])
+  // A lista do admin: pendências primeiro, mais recentes no topo.
+  @@index([tenantId, status, receivedAt])
+  @@map("lic_webhook_events")
+}
+
+// Oferta da plataforma → edição do produto. Raiz de tenancy.
+//
+// Sem esta linha a compra NÃO emite licença: vira evento `FAILED` com o
+// identificador da oferta na mensagem (§Escopo). Adivinhar a edição a partir do
+// nome do produto emitiria a licença errada em silêncio — e licença errada
+// entregue por e-mail não se recolhe.
+model LicOfferMapping {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  platform  String
+  externalProductId String @map("external_product_id")
+  /// Nulo = mapeamento do produto inteiro, qualquer oferta. Preenchido = só
+  /// aquela oferta. É como um produto com "anual" e "mensal" aponta para
+  /// edições diferentes.
+  externalOfferId String? @map("external_offer_id")
+  editionId String @map("edition_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// Restrict: apagar a edição deixaria o mapeamento apontando para o nada, e a
+  /// próxima venda falharia sem que ninguém tivesse mudado o mapeamento.
+  edition   LicEdition @relation(fields: [editionId], references: [id], onDelete: Restrict)
+
+  // Duas linhas para a mesma oferta seriam duas edições candidatas para a mesma
+  // compra — e a escolha ficaria com o `orderBy` de quem escreveu a query.
+  @@unique([tenantId, platform, externalProductId, externalOfferId])
+  @@map("lic_offer_mappings")
+}
+
+enum MailDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// Registro de um e-mail transacional. Raiz de tenancy.
+//
+// Existe para que **falha de envio seja visível no admin, não só no log**
+// (§Escopo). O envio é assíncrono e pode falhar depois que a licença já foi
+// emitida — sem esta tabela, "o cliente não recebeu a chave" seria uma pergunta
+// sem resposta no banco.
+//
+// **Não guarda o corpo do e-mail.** A chave em claro passa por aqui a caminho do
+// Resend e não fica: persistir o corpo seria persistir a chave por outro nome,
+// desfazendo a garantia central da SPEC-036. Por isso reenviar não reenvia a
+// chave — reemitir é o caminho, e ele revoga a anterior.
+model MailDelivery {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  to       String
+  /// Nome do template (`license_key`, `license_revoked`), não o conteúdo.
+  template String
+  subject  String
+  status   MailDeliveryStatus @default(PENDING)
+  /// Tentativas do BullMQ até aqui. Distingue "falhou uma vez e o retry
+  /// resolve" de "falhou cinco vezes e alguém precisa olhar".
+  attempts Int @default(0)
+  error    String?
+  /// Id do provedor, para rastrear no painel do Resend quando o cliente diz que
+  /// não recebeu e o nosso status diz SENT.
+  providerMessageId String? @map("provider_message_id")
+  /// A licença que originou o envio. **Não está na spec** — acrescentado porque
+  /// o admin da SPEC-040 responde "o que aconteceu com este cliente", e sem o
+  /// vínculo a resposta pararia no envio sem dizer de qual licença ele era.
+  /// Nullable: o módulo `mail` é compartilhado e o MVP3 vai mandar e-mail que
+  /// não tem licença nenhuma por trás.
+  licenseId String? @map("license_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  sentAt   DateTime? @map("sent_at")
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// SetNull pelo mesmo motivo do webhook: apagar a licença não apaga a prova
+  /// de que o e-mail saiu.
+  license  License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+
+  // A lista do admin filtra por status (§Admin) e lê a mais recente primeiro.
+  @@index([tenantId, status, createdAt])
+  @@map("mail_deliveries")
+}
+
+// Configuração de venda do tenant. 1:1 com `Tenant`.
+//
+// **O segredo do webhook não é env var** (§Notas técnicas): ele vive aqui,
+// por tenant. Uma variável global de ambiente não escala para o 2º tenant — e o
+// que a torna insuficiente não é conforto, é a decisão #1 do PI: evento
+// assinado com o segredo do tenant A, enviado para a URL do tenant B, tem de
+// responder `401`.
+model LicSettings {
+  id       String @id @default(uuid())
+  tenantId String @unique @map("tenant_id")
+  /// Segredo compartilhado com a plataforma, usado para validar a assinatura de
+  /// cada entrega.
+  webhookSecret String @map("webhook_secret")
+  /// Dias de tolerância entre `pastDueAt` e o corte de acesso (decisão PI #3).
+  ///
+  /// **Não é `graceDays`** — aquele já existe no license file da SPEC-036 e
+  /// significa tolerância de heartbeat OFFLINE. Semânticas diferentes, nomes
+  /// diferentes: dois "grace" na mesma fatia seria erro de leitura garantido.
+  ///
+  /// `null` desliga o corte: o ProPlan nunca corta por atraso e quem revoga é
+  /// sempre a plataforma. É a mitigação sem deploy do risco aceito nas Notas
+  /// técnicas — com 15 como padrão, todo tenant herda um segundo julgamento
+  /// sobre "está pago".
+  pastDueToleranceDays Int? @default(15) @map("past_due_tolerance_days")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("lic_settings")
 }
