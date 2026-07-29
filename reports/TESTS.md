@@ -12,9 +12,9 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 1477 | 1477 | 0 | 79.8 | — | — |
+| — | — | — | Regras de Negócio | 1521 | 1521 | 0 | 80.1 | — | — |
 | — | — | — | Banco | 124 | 124 | 0 | 70.6 | — | — |
-| — | — | — | Tela | 433 | 433 | 0 | 50.5 | — | — |
+| — | — | — | Tela | 434 | 434 | 0 | 50.5 | — | — |
 
 ## Histórico por entrega
 
@@ -193,3 +193,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | 2026-07-29 | #150 | SPEC-035 | Regras de Negócio | 1477 | 1477 | 0 | 79.8 | #180 | [#180](https://github.com/RodReis/rrb-proplan/pull/180) |
 | 2026-07-29 | #150 | SPEC-035 | Banco | 124 | 124 | 0 | 70.6 | #180 | [#180](https://github.com/RodReis/rrb-proplan/pull/180) |
 | 2026-07-29 | #150 | SPEC-035 | Tela | 433 | 433 | 0 | 50.5 | #180 | [#180](https://github.com/RodReis/rrb-proplan/pull/180) |
+| 2026-07-29 | #150 | SPEC-035 | Regras de Negócio | 1521 | 1521 | 0 | 80.1 | #181 | [#181](https://github.com/RodReis/rrb-proplan/pull/181) |
+| 2026-07-29 | #150 | SPEC-035 | Banco | 124 | 124 | 0 | 70.6 | #181 | [#181](https://github.com/RodReis/rrb-proplan/pull/181) |
+| 2026-07-29 | #150 | SPEC-035 | Tela | 434 | 434 | 0 | 50.5 | #181 | [#181](https://github.com/RodReis/rrb-proplan/pull/181) |

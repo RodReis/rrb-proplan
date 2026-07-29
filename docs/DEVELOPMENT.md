@@ -4693,7 +4693,7 @@ ao PI com *"ao vivo sob clique"*, que já estava na mesa.
 
 ### PR-3 — verificação
 
-- **2077 testes verdes** (1645 regras · 124 banco · 432 tela) — **+43**: 14 do
+- **2079 testes verdes** (1521 regras · 124 banco · 434 tela) — **+45** sobre os 2034 do PR-2: 14 do
   domínio das salvaguardas, 14 do orquestrador, 9 do `BoardSummaryService`, 6 do
   rate limit atravessando o client.
 - **As 4 salvaguardas têm teste, uma a uma**, incluindo os casos extremos: todos
