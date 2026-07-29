@@ -13,6 +13,9 @@ const apiMock = vi.hoisted(() => ({
   listLicenseEvents: vi.fn(),
   createLicProduct: vi.fn(),
   createLicEdition: vi.fn(),
+  // SPEC-037
+  getLicenseDetail: vi.fn(),
+  deactivateActivation: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -64,6 +67,16 @@ const LICENCA: LicenseView = {
   maxMachines: 2,
 };
 
+const MAQUINA = {
+  id: 'act-1',
+  fingerprint: 'fp-abcdef0123456789',
+  hostname: 'desktop',
+  appVersion: '1.0.0',
+  activatedAt: '2026-07-29T12:00:00Z',
+  lastSeenAt: '2026-07-29T13:00:00Z',
+  deactivatedAt: null as string | null,
+};
+
 function montar() {
   return render(
     <ThemeProvider>
@@ -81,6 +94,13 @@ describe('SPEC-036: tela de Licenças', () => {
     vi.clearAllMocks();
     apiMock.getLicensingCatalog.mockResolvedValue(CATALOGO);
     apiMock.listLicenses.mockResolvedValue([LICENCA]);
+    apiMock.listLicenseEvents.mockResolvedValue([]);
+    apiMock.getLicenseDetail.mockResolvedValue({
+      ...LICENCA,
+      swapCount: 0,
+      swapWindowDays: 30,
+      activations: [MAQUINA],
+    });
   });
 
   it('lista as licenças do workspace', async () => {
@@ -225,7 +245,7 @@ describe('SPEC-036: tela de Licenças', () => {
     });
   });
 
-  describe('trilha', () => {
+  describe('gaveta: máquinas e trilha (SPEC-037)', () => {
     it('abre sob demanda e traduz os eventos', async () => {
       apiMock.listLicenseEvents.mockResolvedValue([
         { id: 'e1', type: 'issued', payload: null, createdAt: '2026-07-29T12:00:00Z' },
@@ -234,10 +254,129 @@ describe('SPEC-036: tela de Licenças', () => {
       montar();
 
       await screen.findByText('Comprador');
-      await userEvent.click(screen.getByRole('button', { name: 'Trilha' }));
+      await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
 
       expect(await screen.findByText(/Licença emitida/)).toBeInTheDocument();
       expect(screen.getByText(/Máquina ativada/)).toBeInTheDocument();
+    });
+
+    it('lista as máquinas, com a desativada riscada e datada', async () => {
+      // A diferença que o suporte precisa: "esta máquina existiu e saiu em tal
+      // data" é o que uma lista só das vivas não responde.
+      apiMock.getLicenseDetail.mockResolvedValue({
+        ...LICENCA,
+        swapCount: 1,
+        swapWindowDays: 30,
+        activations: [
+          { ...MAQUINA, hostname: 'desktop' },
+          {
+            ...MAQUINA,
+            id: 'act-2',
+            hostname: 'notebook-velho',
+            deactivatedAt: '2026-07-28T10:00:00Z',
+          },
+        ],
+      });
+      montar();
+
+      await screen.findByText('Comprador');
+      await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
+
+      expect(await screen.findByText(/desktop/)).toBeInTheDocument();
+      expect(screen.getByText(/notebook-velho/)).toBeInTheDocument();
+      expect(screen.getByText(/desativada em/)).toBeInTheDocument();
+    });
+
+    it('só a máquina ativa tem botão de desativar', async () => {
+      apiMock.getLicenseDetail.mockResolvedValue({
+        ...LICENCA,
+        swapCount: 0,
+        swapWindowDays: 30,
+        activations: [
+          { ...MAQUINA, hostname: 'viva' },
+          { ...MAQUINA, id: 'act-2', hostname: 'morta', deactivatedAt: '2026-07-28T10:00:00Z' },
+        ],
+      });
+      montar();
+
+      await screen.findByText('Comprador');
+      await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
+
+      expect(await screen.findAllByRole('button', { name: 'Desativar' })).toHaveLength(1);
+    });
+
+    it('desativar chama a API e recarrega o detalhe', async () => {
+      apiMock.getLicenseDetail.mockResolvedValue({
+        ...LICENCA,
+        swapCount: 0,
+        swapWindowDays: 30,
+        activations: [MAQUINA],
+      });
+      apiMock.deactivateActivation.mockResolvedValue({
+        ...MAQUINA,
+        deactivatedAt: '2026-07-29T14:00:00Z',
+      });
+      montar();
+
+      await screen.findByText('Comprador');
+      await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Desativar' }));
+
+      await waitFor(() =>
+        expect(apiMock.deactivateActivation).toHaveBeenCalledWith('lic-1', 'act-1'),
+      );
+      // Duas chamadas: a de abrir e a de recarregar depois da ação.
+      expect(apiMock.getLicenseDetail).toHaveBeenCalledTimes(2);
+    });
+
+    it('sem máquina nenhuma, diz isso em vez de lista em branco', async () => {
+      apiMock.getLicenseDetail.mockResolvedValue({
+        ...LICENCA,
+        swapCount: 0,
+        swapWindowDays: 30,
+        activations: [],
+      });
+      montar();
+
+      await screen.findByText('Comprador');
+      await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
+
+      expect(await screen.findByText(/Nenhuma máquina ativou/)).toBeInTheDocument();
+    });
+
+    describe('o sinal de troca', () => {
+      it('não aparece em uso normal', async () => {
+        // 2 trocas em 30 dias é vida normal — formatar o PC, trocar de
+        // notebook. Um número em toda licença treinaria o olho a ignorá-lo.
+        apiMock.getLicenseDetail.mockResolvedValue({
+          ...LICENCA,
+          swapCount: 2,
+          swapWindowDays: 30,
+          activations: [MAQUINA],
+        });
+        montar();
+
+        await screen.findByText('Comprador');
+        await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
+        await screen.findByText(/Máquinas/);
+
+        expect(screen.queryByText(/trocas em 30 dias/)).not.toBeInTheDocument();
+      });
+
+      it('aparece quando há o que sinalizar', async () => {
+        apiMock.getLicenseDetail.mockResolvedValue({
+          ...LICENCA,
+          swapCount: 9,
+          swapWindowDays: 30,
+          activations: [MAQUINA],
+        });
+        montar();
+
+        await screen.findByText('Comprador');
+        await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
+
+        expect(await screen.findByText(/9 trocas em 30 dias/)).toBeInTheDocument();
+      });
     });
   });
 

@@ -89,6 +89,10 @@ const EVENTOS: Record<string, string> = {
   activated: 'Máquina ativada',
   reactivated: 'Máquina reativada',
   revoked: 'Licença revogada',
+  // SPEC-037
+  heartbeat: 'Sinal da máquina',
+  deactivated: 'Máquina desativada',
+  deactivated_by_admin: 'Máquina desativada pelo suporte',
 };
 
 export function eventLabel(type: string): string {
@@ -108,4 +112,42 @@ export function searchMode(texto: string): { email?: string; key?: string } | nu
   const t = texto.trim();
   if (!t) return null;
   return t.includes('@') ? { email: t } : { key: t };
+}
+
+/**
+ * Rótulo de uma máquina na lista do admin (SPEC-037).
+ *
+ * `hostname` é opcional e vem da máquina do comprador; sem ele, o fingerprint
+ * abreviado é o que resta para distinguir uma da outra. Mostrar o fingerprint
+ * inteiro seria ruído — ele é um hash, e ninguém o lê por extenso.
+ */
+export function machineLabel(a: { hostname: string | null; fingerprint: string }): string {
+  return a.hostname ?? `máquina ${a.fingerprint.slice(0, 8)}…`;
+}
+
+/**
+ * Estado da máquina, em texto.
+ *
+ * **`lastSeenAt` não vira "online/offline".** O heartbeat é diário (24 h ± 2 h);
+ * chamar de "offline" quem bateu há 25 h afirmaria uma queda que não houve — e
+ * a licença continua válida por 14 dias de graça, independentemente disso.
+ */
+export function machineStatus(a: { deactivatedAt: string | null }): 'ativa' | 'desativada' {
+  return a.deactivatedAt ? 'desativada' : 'ativa';
+}
+
+/**
+ * O contador de trocas, quando vale a pena dizer algo.
+ *
+ * `null` abaixo do piso: **duas trocas em 30 dias é vida normal** — formatar o
+ * PC, trocar de notebook. Mostrar um número em toda licença treinaria o olho a
+ * ignorá-lo, que é o oposto do que um sinal serve para fazer (decisão 1 do PI:
+ * é sinal, não limite).
+ */
+export function swapSignal(
+  detalhe: { swapCount: number; swapWindowDays: number },
+  piso = 4,
+): string | null {
+  if (detalhe.swapCount < piso) return null;
+  return `${detalhe.swapCount} trocas em ${detalhe.swapWindowDays} dias`;
 }

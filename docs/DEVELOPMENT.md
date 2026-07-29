@@ -5255,3 +5255,121 @@ deixa o guard ativo, e toda rota de admin responde `401` — que parece bug da
 fatia nova, e não é. Junto com isso, o `EADDRINUSE` silencioso da memória:
 a segunda instância morre sem mensagem visível e a primeira, com o ambiente
 **antigo**, continua respondendo.
+
+---
+
+## Fatia 26 (SPEC-037) — Licensing: heartbeat, desativação e troca de máquina — `entregue`
+
+Issue **#188** (spec `aprovada-pi` 2026-07-29). **2ª fatia do MVP4.** Fecha o
+ciclo de vida da ativação **sem intervenção do dono**: a máquina renova sozinha
+a janela offline, e quem trocou de computador libera a vaga antiga sem abrir
+suporte.
+
+**Um PR só, e a decisão é de tamanho.** Não há schema novo (o `deactivatedAt` e
+o `LicEvent.type` livre nasceram na Fatia 25 justamente para isto), não há tela
+nova — a de Licenças ganha uma gaveta. Fatiar em 4 como na 25 seria cerimônia
+sobre ~600 linhas.
+
+### Duas rotas públicas, e o que cada uma recusa
+
+**`POST /licensing/v1/heartbeat`** — atualiza `lastSeenAt`, `appVersion` e
+**reassina** o license file. O que ele renova é o `signedAt`, e é sobre ele que
+o cliente mede a graça de 14 dias: **não é o servidor que desliga o produto — é
+o arquivo que envelhece**.
+
+**Ele não reativa em silêncio, e essa é a decisão de desenho da fatia.** Se o
+fingerprint não está ativo, houve desativação deliberada (troca) ou máquina nova
+reusando a chave. Reativar sozinho aqui tornaria o `maxMachines` decorativo —
+bastaria pular o `/activate`. O `409` devolve a lista e quem decide é o cliente.
+
+**`POST /licensing/v1/deactivate`** — libera vaga por `fingerprint` (a própria
+máquina) **ou** `activationId` (outra, pelo id da lista do `409`). A segunda
+forma é o que faz a troca funcionar quando o computador antigo **não está mais
+acessível** — o caso comum de quem trocou de máquina.
+
+Três recusas deliberadas:
+
+- **Ambos os campos → `400`.** Aceitar os dois exigiria decidir qual vence
+  quando apontam para máquinas diferentes, e qualquer escolha desativaria em
+  silêncio uma que o cliente não pediu.
+- **`activationId` de outra licença → `404`**, igual a inexistente. Não
+  confirmar a existência é o que impede enumerar ativações alheias com ids
+  adivinhados.
+- **Expirada NÃO é bloqueada** (só revogada). Quem deixou a assinatura vencer
+  ainda pode querer liberar a máquina antes de renovar.
+
+### O furo que a fatia fechou no `/activate`
+
+A SPEC-036 reativava qualquer linha existente pelo ramo "já existe" — inclusive
+uma **desativada** — sem passar pela contagem de vagas. Desativar e reativar em
+ciclo teria tornado o `maxMachines` decorativo.
+
+Agora só a linha **viva** é reativação gratuita; a desativada disputa vaga como
+máquina nova. Continua sendo `update` e não `create` — o unique
+`(license_id, fingerprint)` recusaria a segunda linha, e a trilha da máquina
+fica inteira.
+
+### Soft delete, e por quê
+
+`deactivatedAt` preenchido, linha preservada. Apagar esconderia a troca do
+suporte e zeraria o contador — que é justamente o sinal de abuso do §Escopo.
+
+**Idempotente sem evento novo na repetição:** um `deactivated` a mais por retry
+de rede inflaria o contador e faria o sinal disparar sozinho.
+
+### O contador de trocas é sinal, não limite
+
+Decisão 1 do PI: nada bloqueia. Teto errado bloquearia o cliente honesto que
+formatou o PC duas vezes, e o volume do piloto permite olhar caso a caso.
+
+**Derivado de `LicEvent`, sem coluna nova.** Uma coluna de contador precisaria
+ser alimentada em todo caminho que desativa, e a que alguém esquecesse de
+incrementar mentiria em silêncio — o mesmo problema do `LlmUsage.tenant_id`
+registrado no `STATUS.md`.
+
+Na tela, **ele só aparece a partir de 4 trocas**: 2 em 30 dias é vida normal, e
+um número em toda licença treinaria o olho a ignorá-lo — o oposto do que um
+sinal serve para fazer.
+
+### Tela
+
+A gaveta da trilha vira **máquinas + trilha**, numa chamada só: as duas
+respondem à mesma pergunta do suporte (*"o que aconteceu com esta licença?"*), e
+separá-las em dois cliques faria o atendente abrir as duas sempre.
+
+**`lastSeenAt` não vira "online/offline".** O heartbeat é diário (24 h ± 2 h);
+chamar de offline quem bateu há 25 h afirmaria uma queda que não houve — e a
+licença segue válida por 14 dias de graça, independentemente disso. O rótulo é
+*"último sinal"*.
+
+### Verificação
+
+- **2348 testes verdes** (1820 API · 528 tela) — **+43** sobre a Fatia 25: 23 de
+  integração no ciclo de vida, 6 da apresentação, 6 da tela, e os demais
+  redistribuídos.
+- **Os 23 de banco existem porque a fatia inteira é sobre contagem de vagas** —
+  e vaga é propriedade do *conjunto* de linhas, não de uma linha. Um mock conta
+  o que o teste mandou contar; aqui contam o unique e o `deactivatedAt` de
+  verdade.
+- **Tenant B não desativa máquina do tenant A**, provado com RLS real.
+- `tsc --noEmit` limpo nos dois apps; `pnpm build` verde.
+
+### Dogfooding — o ciclo inteiro contra API e banco reais
+
+- **Heartbeat reassinou**: `signedAt` da ativação `17:50:46.092Z` → do heartbeat
+  `17:50:46.598Z`. `appVersion 1.2.0` persistiu no banco.
+- **Heartbeat de máquina não ativada** → `409` com a lista das duas vivas, e
+  **nenhuma linha criada**.
+- **Ciclo completo**: 2 vagas cheias → 3ª dá `409` → desativar o desktop
+  (`remainingSlots: 1`) → a 3ª entra → **o desktop de volta dá `409`**, porque
+  voltar não é retorno gratuito.
+- **Idempotência**: desativar de novo devolveu `200` e o `swapCount` continuou
+  **1** — o evento não duplicou.
+- **Admin desativou o notebook** com evento próprio; trilha final: `issued`,
+  `activated`, `activated`, `heartbeat`, `deactivated`, `activated`,
+  `deactivated_by_admin`.
+- **Rate limit disparou no meio do teste** (5/min por chave) e barrou a
+  sequência — proteção funcionando, com o custo de esperar a janela. Registrado
+  porque é o comportamento correto sendo inconveniente, não um defeito.
+
+Dado de teste removido do banco de dev ao fim (`DELETE 7 / 3 / 1`).

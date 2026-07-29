@@ -1845,3 +1845,38 @@ export function revokeLicense(id: string, reason: string): Promise<LicenseView> 
 export function listLicenseEvents(id: string): Promise<LicEventView[]> {
   return request(`/licensing/licenses/${id}/events`);
 }
+
+/** Uma máquina ativada, como o admin a vê (SPEC-037). */
+export interface ActivationView {
+  id: string;
+  fingerprint: string;
+  hostname: string | null;
+  appVersion: string | null;
+  activatedAt: string;
+  lastSeenAt: string;
+  /** Preenchido = fora da contagem de vagas, mas ainda legível aqui. */
+  deactivatedAt: string | null;
+}
+
+/** Detalhe da licença: as máquinas e o sinal de troca (SPEC-037). */
+export interface LicenseDetail extends LicenseView {
+  activations: ActivationView[];
+  /** Desativações + reativações na janela. **Sinal, não limite** — nada bloqueia. */
+  swapCount: number;
+  swapWindowDays: number;
+}
+
+export function getLicenseDetail(id: string): Promise<LicenseDetail> {
+  return request(`/licensing/licenses/${id}`);
+}
+
+/** Suporte manual: libera a vaga quando o self-service do cliente não resolve. */
+export function deactivateActivation(
+  licenseId: string,
+  activationId: string,
+): Promise<ActivationView> {
+  return request(
+    `/licensing/licenses/${licenseId}/activations/${activationId}/deactivate`,
+    { method: 'POST' },
+  );
+}
