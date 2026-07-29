@@ -5053,3 +5053,101 @@ alguém emitir e entregar uma chave que não ativaria.
 o `reports/TESTS.md` não basta — a entrega precisa da **linha de carimbo**, e ela
 exige `REPORT_DATE` além de `REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`. Sem a data
 a linha entra com `—` e a guarda continua reprovando.
+
+---
+
+### PR-3 — `POST /licensing/v1/activate` — `feito`
+
+A rota que o cliente do War Room chama. **A terceira rota pública do produto**,
+depois do briefing (`/b/:token`) e do contrato (`/c/:token`) — e a primeira que
+**escreve** sem sessão.
+
+**`/licensing/v1` é versionado, e nenhuma outra rota da casa é.** O motivo não é
+simetria: o cliente é implementado noutro repo, contra este contrato (MVP4
+decisão 9). Mudança depois do piloto = `/v2`, nunca quebra do `/v1`.
+
+#### O tenant vem do recurso
+
+Sem sessão, sem `app.tenant_ids`, e o RLS é fail-closed: um `SELECT` direto
+voltaria vazio para **toda** chave — inclusive as válidas —, e cada ativação
+legítima responderia `404` sem erro no log. A `resolve_license` (SECURITY
+DEFINER) responde *"esta chave existe, e de qual tenant é?"*; com o tenant em
+mãos, o resto roda dentro de `runInTenantContext`, e o RLS volta a ser quem
+protege — em vez de um bypass genérico, proibido pelo ADR-020.
+
+#### Uma emenda ao PR-1
+
+A `resolve_license` nasceu com as colunas que decidem **se** a ativação é
+permitida e faltou a que o license file precisa **carregar**: `issued_at` é um
+dos 10 campos do contrato público. Sem ela, montar o payload exigiria repetir
+outro campo no lugar — produzindo um arquivo assinado que diz uma data que não é
+a da emissão.
+
+A correção custou uma migração própria, e o custo tem nome: `CREATE OR REPLACE`
+recusa mudança no tipo de retorno (`42P13`), então foi `DROP` + `CREATE` — **e o
+DROP leva os privilégios junto**. O `GRANT` no fim daquele arquivo não é
+cerimônia: sem ele a role da aplicação fica sem `EXECUTE` e toda ativação passa
+a falhar. O int-spec roda com `proplan_app` justamente para que esquecê-lo
+quebre o teste, não a produção.
+
+#### Os quatro códigos, e por que cada um
+
+- **`404`** chave inexistente — e é o **mesmo corpo** que uma chave malformada
+  ou de outro produto recebe. Distinguir os casos diria a quem sonda quando ele
+  acertou o formato.
+- **`410`** revogada **e** expirada. Os dois são "existiu e não vale mais", que
+  é o que 410 significa; o cliente trata igual. O 410 acontece **antes de
+  qualquer escrita** — uma linha gravada ali seria ativação de licença morta,
+  visível no painel.
+- **`409`** limite de máquinas, **com a lista de ativações**. Sem ela o comprador
+  vê "limite atingido" e não tem como saber qual desativar. A troca self-service
+  é a SPEC-037, mas a informação que a torna possível nasce aqui.
+- **`429`** rate limit.
+
+#### Rate limit em duas chaves, não uma
+
+Só por IP deixaria a chave vazada livre para ser ativada de mil endereços; só
+por chave deixaria a varredura livre a partir de um IP. **10/min por IP** (a
+ativação legítima é rara e o retry é idempotente) e **5/min por chave** (uma
+chave legítima ativa 2 máquinas — o `maxMachines` do piloto).
+
+**A chave entra no limitador hasheada.** O mapa vive em memória e aparece em
+heap dump; guardá-la em claro ali desfaria, num despejo de memória, a decisão de
+nunca persistí-la. E ela é normalizada antes — senão alternar a caixa dobraria a
+cota da mesma chave sem esforço.
+
+#### A corrida que fica registrada, não escondida
+
+A contagem de vagas não tem lock. Duas ativações simultâneas de máquinas
+**diferentes** podem contar antes de qualquer uma gravar e passar as duas. O
+unique `(license_id, fingerprint)` fecha o caso da **mesma** máquina (retry,
+dois cliques), que é o comum; o de máquinas distintas exigiria `SELECT … FOR
+UPDATE`.
+
+Ficou anotado como `ponytail:` no código, com o gatilho: o prejuízo teto é uma
+máquina a mais numa licença de duas, num modelo cuja premissa declarada é que *a
+proteção atrasa, não impede* (MVP4 §1). Se aparecer nas métricas de ativação
+anômala (MVP4 §8), promove.
+
+#### PR-3 — verificação
+
+- **2260 testes verdes** (1627 regras · 157 banco · 476 tela) — **+25** sobre o
+  PR-2: 17 de integração no `/activate`, 8 do rate limit.
+- **Os 17 são contra Postgres real, e três deles só existem por isso:** que a
+  ativação **grava a linha** (sem `runInTenantContext` o `create` não erra —
+  grava zero linhas, e a rota devolveria `200` com license file válido para uma
+  ativação que não existe); que a `resolve_license` tem `EXECUTE`; e que a
+  3ª máquina é barrada pela contagem real.
+- **O license file confere com a chave pública** — o critério de aceite,
+  verificado fora do servidor.
+- `issuedAt` ≠ `updatesUntil` no payload, provado contra as colunas do banco.
+- `tsc --noEmit` limpo.
+
+**Um erro meu que vale registrar, porque custou meia hora:** o int-spec instancia
+`PrismaService` direto (é dele que vem o `runInTenantContext`), e o `super()`
+dele não recebe `datasources` — lê `DATABASE_URL` do ambiente, que aponta para o
+banco de **dev**. O seed gravava em `proplan_test` e o service consultava
+`proplan`: todo teste dava `404` numa chave que existia. A causa é invisível no
+erro (`NotFoundException` é resposta legítima da rota) e a inspeção pós-teste não
+ajuda, porque o `afterAll` limpa. Reapontar `DATABASE_URL` antes de instanciar
+resolveu, e o motivo está comentado no arquivo.
