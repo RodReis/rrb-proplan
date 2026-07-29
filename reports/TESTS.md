@@ -12,7 +12,7 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 1640 | 1640 | 0 | 79.3 | — | — |
+| — | — | — | Regras de Negócio | 1684 | 1684 | 0 | 79.6 | — | — |
 | — | — | — | Banco | 209 | 209 | 0 | 70.0 | — | — |
 | — | — | — | Tela | 530 | 530 | 0 | 53.8 | — | — |
 
@@ -220,3 +220,9 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #191 | SPEC-038 | Regras de Negócio | 1640 | 1640 | 0 | 79.3 | #200 | [#200](https://github.com/RodReis/rrb-proplan/pull/200) |
 | — | #191 | SPEC-038 | Banco | 209 | 209 | 0 | 70.0 | #200 | [#200](https://github.com/RodReis/rrb-proplan/pull/200) |
 | — | #191 | SPEC-038 | Tela | 530 | 530 | 0 | 53.8 | #200 | [#200](https://github.com/RodReis/rrb-proplan/pull/200) |
+| — | #191 | SPEC-038 | Regras de Negócio | 1684 | 1684 | 0 | 79.6 | — | — |
+| — | #191 | SPEC-038 | Banco | 209 | 209 | 0 | 70.0 | — | — |
+| — | #191 | SPEC-038 | Tela | 530 | 530 | 0 | 53.8 | — | — |
+| — | #191 | SPEC-038 | Regras de Negócio | 1684 | 1684 | 0 | 79.6 | #201 | [#201](https://github.com/RodReis/rrb-proplan/pull/201) |
+| — | #191 | SPEC-038 | Banco | 209 | 209 | 0 | 70.0 | #201 | [#201](https://github.com/RodReis/rrb-proplan/pull/201) |
+| — | #191 | SPEC-038 | Tela | 530 | 530 | 0 | 53.8 | #201 | [#201](https://github.com/RodReis/rrb-proplan/pull/201) |
