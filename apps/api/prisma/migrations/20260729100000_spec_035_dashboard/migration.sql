@@ -1,0 +1,32 @@
+-- SPEC-035 (Fatia 24) — Dashboard: retomada, funil de clientes e Kanban de repos.
+--
+-- **Nenhuma tabela nova**, e o critério de aceite cobra isso por nome: o
+-- dashboard LÊ, não guarda (§2, §3). O que entra aqui é uma coluna de
+-- configuração e dois índices que servem consultas por tenant que passam a
+-- existir.
+
+-- 1. O limite de "parado" (§2.3, item 4; §6).
+--
+-- Entra em `tenant_settings`, e não numa 3ª tabela de configuração, pelo mesmo
+-- motivo dos parâmetros de estimativa da SPEC-033: a tabela já é por tenant e
+-- já só o `owner` escreve (ADR-026) — que são exatamente as duas regras que
+-- esta configuração pede.
+--
+-- Coluna, e não constante no código, porque o §2.3 diz "configurável" e o
+-- critério de aceite exige que "parado" use o valor configurado, não um `7`
+-- literal espalhado. O DEFAULT reproduz a decisão do PI de 2026-07-27, então a
+-- migração não muda comportamento de ninguém: quem não configurar continua com
+-- 7 dias.
+ALTER TABLE "tenant_settings" ADD COLUMN "stalled_days" INTEGER NOT NULL DEFAULT 7;
+
+-- 2. Nenhum índice novo — os que o dashboard precisa já existem.
+--
+-- As duas consultas novas sobre `contracts` filtram por TENANT (contagem no
+-- período e a lista dos sem aceite), e o §2.1 manda resolver latência com
+-- índice. Ao conferir, `contracts_tenant_id_created_at_idx` já existia — criado
+-- pela migração da SPEC-034 e declarado no `schema.prisma`. O mesmo vale para
+-- `artifacts` (`[tenant_id, created_at]`).
+--
+-- Registrado aqui porque "não precisou de índice" é uma afirmação que alguém vai
+-- querer conferir depois, e a ausência de `CREATE INDEX` sozinha não distingue
+-- "conferi e já havia" de "esqueci de olhar".

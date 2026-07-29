@@ -80,6 +80,10 @@ Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb
 - **GitHub → API**: webhook `push` (filtrado por paths de docs) dispara sync incremental. Fallback: polling agendado (repos sem webhook configurado).
 - **Interno**: chamadas de módulo via services públicos. Eventos de domínio in-process (`@nestjs/event-emitter`) para desacoplar (ex.: `DocsSynced` → invalidar cache + enfileirar insight-job se `docs_tree_sha` mudou).
 
+  **Quem lê muitos módulos expõe superfície própria em cada um** (regra de 2026-07-29, nascida do `dashboard`/SPEC-035). Um módulo que compõe — um dashboard, um relatório — quase sempre faz uma pergunta que os outros não respondem: os services costumam ser *por projeto* (`byClientProject`, `list(tenantId, projectId)`), e a composição pergunta *por tenant*. A saída barata é consultar as tabelas alheias direto, e ela **desmancha a fronteira em silêncio**, porque o `PrismaService` é global e o `exports` do `@Module` resolve **injeção**, não import de TypeScript (ADR-027).
+
+  A regra: **o módulo dono ganha um `*-summary.service.ts`** (ou equivalente) e o exporta; o compositor **só chama service público** e **não recebe `PrismaService`**. Não receber é o mecanismo, não o estilo — sem o cliente injetado, não existe caminho para a tabela alheia nem por acidente. Quem compõe **N** módulos acrescenta um arch-spec de varredura, como `dashboard.arch.spec.ts` e `estimates-boundaries.arch.spec.ts`: a fronteira deixa de depender de alguém lembrar dela.
+
 ## Resiliência
 
 - **GitHub rate limit**: cache condicional com ETag; backoff exponencial em 403/429; orçamento de requests por sync.

@@ -3350,7 +3350,19 @@ Depois do FIX #166, com API e web de pé:
 
 ---
 
-## Fatia 23 (SPEC-034) — Contratos: perfil, templates versionados, snapshot imutável e link público — `em andamento`
+## Fatia 23 (SPEC-034) — Contratos: perfil, templates versionados, snapshot imutável e link público — `aceita`
+
+> **Aceita pelo PI em 2026-07-29** — #149 fechada com `proplan:finalizado`, os 6
+> PRs mergeados. É este aceite que libera a Fatia 24 a ler `Contract` sem
+> emenda: o §4.3 da SPEC-035 condicionava dois dos seus blocos a uma tabela que,
+> quando aquela spec foi carimbada, ainda não existia em código.
+>
+> **A verificação que o §4.3 pedia foi feita, e o papel bateu com o código**: o
+> modelo tem `acceptedAt`, `tenantId`, `clientProjectId`, `version` e
+> `createdAt` — os cinco campos que a tabela de fontes do §6 da SPEC-035 usa.
+> **Nenhuma emenda datada foi necessária.** O palpite do §9 daquela spec ("se
+> houver retrabalho de spec no MVP3, começa aqui") não se confirmou.
+
 
 Issue **#149** (spec `aprovada-pi` 2026-07-28). Congela escopo (SPEC-032) e valor
 (SPEC-033) num **contrato-snapshot imutável**, gerado de um template versionado e
@@ -4349,3 +4361,147 @@ está provado, só não pelo caminho do clique sintético.
   painel.
 - Build do web OK, `tsc --noEmit` limpo.
 - Relatório regenerado: **1643 testes** (1189 regras · 89 banco · 365 tela).
+
+---
+
+## Fatia 24 (SPEC-035) — Dashboard: retomada, funil de clientes e Kanban de repos — `em andamento`
+
+Issue **#150** (spec `aprovada-pi` 2026-07-28). **6ª e última fatia do MVP3.**
+Acende o item `Dashboard` que a Fatia 19 deixou desabilitado com
+`title="Disponível na Fatia 24"` em `GlobalNav.tsx`.
+
+**Não é um resumo do funil — é uma tela de retomada** (decisão do PI): *o que
+andou por aqui*, *o que espera por você*, o funil de clientes e o Kanban de
+repos, lado a lado, **sem nenhum número somando os dois domínios** (ADR-023).
+
+**O risco desta fatia não é técnico, é de honestidade.** Dashboard é a tela mais
+fácil de encher com número bonito, e o MVP3 §9 proíbe exatamente isso: ou o
+número tem origem rastreável em linhas do banco, ou não existe. Cada card
+precisa responder *"de qual `SELECT` você saiu?"*.
+
+**A dependência do §4.3 foi verificada e não gerou emenda.** A SPEC-035 foi
+carimbada com a `Contract` ainda inexistente em código, e o §9 registrou o
+palpite de que o retrabalho de spec do MVP3, se houvesse, começaria aqui. A
+Fatia 23 foi aceita em 2026-07-29 e o modelo real tem os cinco campos que a
+tabela de fontes usa (`acceptedAt`, `tenantId`, `clientProjectId`, `version`,
+`createdAt`). **Papel e código bateram** — os três pontos que o cabeçalho da
+spec mandava reler continuam válidos como escritos.
+
+Fatia grande — **4 PRs empilhados**, um branch por PR, todos com base `main`
+(senão o PR fica sem check nenhum).
+
+### Passos
+
+- [x] **PR-1 — o agregador**: superfície de resumo nos 5 módulos-fonte,
+      `GET /t/:tenant/dashboard`, período com fuso, `stalled_days` e o arch test *(este)*
+- [ ] **PR-2 — *Esperando você* e o contador do menu** (`GET .../pending-count`)
+- [ ] **PR-3 — o bloco de repos ao vivo** (`GET .../repos`) + as 4 salvaguardas do §2.11
+- [ ] **PR-4 — a tela React** + menu (acende o item, some sem cliente, contador ao navegar/foco)
+
+> **O PR-1 entrega mais do que "o schema"**, ao contrário do 1º PR das fatias
+> anteriores. A razão é a fronteira: esta fatia quase não tem schema (uma coluna
+> de configuração), e o que ela tem de caro é a **composição** — cinco módulos
+> passando a expor um resumo por tenant. Separar "as superfícies" de "o
+> agregador que as usa" produziria um PR inteiro de código sem chamador, que não
+> dá para revisar: não se vê se o formato serve antes de alguém consumi-lo.
+
+### PR-1 — o que entrou
+
+**Cinco services de resumo, um por módulo-fonte, e um agregador que só compõe.**
+
+A descoberta que organizou o PR: **nenhum módulo expunha contagem por tenant**.
+Tudo o que `clients`, `artifacts`, `estimates` e `contracts` oferecem é *por
+projeto* — `getBoard`, `byClientProject`, `list(tenantId, clientProjectId)`. O
+dashboard faz uma pergunta diferente (*"o que no tenant inteiro espera por
+alguém"*), e ela não tinha superfície.
+
+Havia duas saídas. A barata era o agregador consultar `client_projects`,
+`artifacts` e `contracts` direto — e é **exatamente** o que o §5 manda o
+`dashboard.arch.spec.ts` quebrar o build para impedir. A escolhida foi a que a
+spec descreve no §2.1: cada módulo ganha um `*-summary.service.ts`, exportado
+pelo `@Module`, e o agregador **só chama service público**.
+
+| service | módulo | o que responde |
+|---|---|---|
+| `ClientsSummaryService` | `clients` | funil por coluna · cards parados · `hasAnyClient` · trilha de transições |
+| `ArtifactsSummaryService` | `artifacts` | artefatos em `PENDING_REVIEW` |
+| `EstimatesSummaryService` | `estimates` | briefing sem estimativa **ou** estimativa sem aprovação |
+| `ContractsSummaryService` | `contracts` | contratos sem aceite · contagem no período · `hasAny` |
+| `ActivitySummaryService` | `activity` | auditoria e syncs do tenant |
+
+**O agregador não recebe `PrismaService`, e isso é o mecanismo — não o estilo.**
+Sem o cliente injetado, não existe caminho para consultar tabela de outro módulo
+nem por acidente. O arch test prova por varredura (o `PrismaService` é global e
+o `exports` do Nest resolve *injeção*, não import de TypeScript — ADR-027), e há
+um teste comparando o construtor. Duas provas porque o risco aqui é maior que no
+`estimates`: são **cinco** módulos lidos, e cada bloco da tela é uma tentação de
+"só um `count` rapidinho".
+
+**Zero é resultado; ausência é outra coisa** (§2.7). `COUNT(*)` devolve `0` para
+*"usei e deu zero"* e para *"nunca usei"*, e colapsá-los faz o segundo parecer o
+primeiro — o §5 chama isso de o defeito mais provável desta tela. Por isso
+`hasAnyClient` e `ContractCounts.hasAny` viajam na resposta, **fora do recorte de
+período**: a pergunta que eles respondem é *"esta funcionalidade já foi usada
+alguma vez"*, e uma janela de 30 dias responderia outra coisa.
+
+**O contador é o tamanho da lista, por construção.** `pendingCount` chama
+`pending` e conta — não reimplementa a soma. É o que torna impossível o número
+do menu divergir da lista da tela: um contador que somasse por conta própria
+divergiria na primeira regra que mudasse só de um lado, e aí o contador vira
+enfeite (§2.3). A rota é separada porque é chamada a cada navegação; o **caminho
+de dado é o mesmo**.
+
+**O período recusa valor fora da lista, nunca corrige em silêncio** (§6).
+Corrigir caladamente faria um erro de front virar dado errado em tela: a
+contagem apareceria plausível, de uma janela que ninguém pediu.
+
+**A virada de mês acontece em `America/Sao_Paulo`, não em UTC** (§2.9). Linha
+criada às 22 h de 31/07 BRT é 01 h de 01/08 em UTC; cortar o mês em UTC jogaria
+essa linha para agosto e julho perderia o próprio último dia. Erro que só
+aparece ao fechar o mês, quando ninguém está mais olhando o código que o causou
+— e por isso o teste cobre a virada de mês e a de ano explicitamente.
+
+**"O que andou por aqui", e não "onde eu parei"** (§7.1). Confirmado no schema
+durante a implementação: `AuditEvent` e `SyncRun` **não têm coluna de ator** —
+só `client_status_transitions` tem. O bloco é rotulado por **tenant**, e o ator
+não entra na projeção. Projetá-lo só na trilha que o tem produziria uma lista em
+que um terço das linhas tem nome e o resto não, que é pior que nenhuma ter. Há
+teste afirmando o `select` sem ator, para que a promessa não volte por descuido.
+
+**Nenhum índice novo — e a verificação disso custou duas tentativas.** As
+consultas por tenant sobre `contracts` e `artifacts` pediam índice (§2.1), e a
+primeira versão do PR criou um. A migração falhou com `42P07`
+(*relation already exists*): `contracts_tenant_id_created_at_idx` **já existia**,
+criado pela SPEC-034.
+
+O diagnóstico inicial dessa falha foi **errado** — concluí que o índice existia
+no banco mas não no `schema.prisma`, e "corrigi" o schema, que na verdade já o
+declarava. O resultado foi um `@@index` duplicado, e quem o pegou foi o **CI**:
+`prisma generate` recusa nome de constraint repetido (`P1012`), então o build
+quebrou antes de qualquer teste rodar.
+
+O registro fica porque o erro é instrutivo: `42P07` diz *"esse índice já
+existe"*, e a leitura apressada foi tratá-lo como *"existe no banco, falta no
+schema"*. A pergunta que faltou fazer é a mais barata das duas —
+`grep` no schema antes de editá-lo.
+
+**Uma coluna, nenhuma tabela** (§5). `tenant_settings.stalled_days`, com
+`DEFAULT 7` — o valor da decisão do PI de 2026-07-27, então a migração não muda
+o comportamento de ninguém. Entra nessa tabela, e não numa terceira de
+configuração, pelo mesmo motivo dos parâmetros da SPEC-033: ela já é por tenant
+e já só o `owner` escreve (ADR-026). Coluna e não constante porque o §2.3 diz
+"configurável" e o §5 cobra que *"parado"* use o valor configurado, não um `7`
+literal espalhado.
+
+### PR-1 — verificação
+
+- **2006 testes verdes** (1471 regras · 124 banco · 411 tela), 171 suítes.
+  Relatório regenerado (ADR-019).
+- **45 testes novos** cobrindo o PR: 8 do período (incluindo virada de mês e de
+  ano), 10 do resumo de clientes, 16 dos outros três resumos, e os do agregador,
+  do arch test, das settings e do controller.
+- `tsc --noEmit` limpo; `pnpm build` verde (API e web).
+- **Migração aplicada e sem drift** — `prisma migrate status` reporta o schema em
+  dia nos dois bancos (dev e teste).
+- **Dogfooding no navegador fica para o PR-4**, que é quando existe tela. O que
+  este PR entrega é servidor, e a rota é exercitável por API.

@@ -20,6 +20,7 @@ import { McpModule } from './modules/mcp/mcp.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ArtifactsModule } from './modules/artifacts/artifacts.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EstimatesModule } from './modules/estimates/estimates.module';
 import { BriefingModule } from './modules/briefing/briefing.module';
 import { redisConnectionFromUrl } from './shared/redis-connection';
@@ -69,6 +70,11 @@ import { redisConnectionFromUrl } from './shared/redis-connection';
     // da frente (`/c/:token`, PR-4) — e, como a do briefing, fora dos guards de
     // tenant por design: o tenant vem do hash do token (ADR-020).
     ContractsModule,
+    // Dashboard (SPEC-035) — última do MVP3. Só compõe: lê os cinco módulos
+    // acima por service público e não tem tabela nem `PrismaService` próprio
+    // para os números da tela. Entra por último de propósito: consome todos os
+    // outros e nenhum o consome.
+    DashboardModule,
   ],
   controllers: [HealthController],
 })

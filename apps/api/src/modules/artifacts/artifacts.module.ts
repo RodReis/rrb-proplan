@@ -4,6 +4,7 @@ import { ClientsModule } from '../clients/clients.module';
 import { IdentityModule } from '../identity/identity.module';
 import { LlmModule } from '../llm';
 import { ArtifactReadService } from './application/artifact-read.service';
+import { ArtifactsSummaryService } from './application/artifacts-summary.service';
 import { ArtifactReviewService } from './application/artifact-review.service';
 import { ArtifactsService } from './application/artifacts.service';
 import { ARTIFACTS_QUEUE } from './artifacts.constants';
@@ -45,7 +46,11 @@ import { ArtifactsController } from './presentation/artifacts.controller';
     ArtifactReadService,
     ArtifactsEventListener,
     ArtifactsWorker,
+    ArtifactsSummaryService,
   ],
-  exports: [ArtifactsService, ArtifactReadService],
+  // `ArtifactsSummaryService` serve o dashboard (SPEC-035 §6): o
+  // `ArtifactReadService` responde "como está o projeto X"; a tela pergunta "o
+  // que no tenant inteiro espera revisão".
+  exports: [ArtifactsService, ArtifactReadService, ArtifactsSummaryService],
 })
 export class ArtifactsModule {}
