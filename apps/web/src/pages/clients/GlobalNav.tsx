@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useDashboardNav } from './useDashboardNav';
 
 /**
  * Ícones do menu global (mesmo traço do `TabIcon` do workspace: 24×24, stroke
@@ -42,18 +43,23 @@ function NavIcon({ id }: { id: string }) {
  * inalcançável com o GitHub desconectado — que é justamente o estado em que ela
  * deve funcionar (ADR-024).
  *
- * **Escopo desta fatia** (decisão do PI): só `Clientes` e `Funil` são telas
- * novas. `ProPlan` leva ao catálogo, `Kanban` ao board de repos e `Configuração`
- * às settings — tudo rota que já existia. **`Dashboard` fica de fora**: é a
- * Fatia 24 (SPEC-034) e depende de estimativa e contratos que ainda não
- * existem; renderizá-lo agora exigiria números inventados, o que o MVP3 §9
- * proíbe. Por isso ele aparece desabilitado, com o motivo no `title` — some ≠
- * mentir sobre o que existe.
+ * **`Dashboard` acendeu na Fatia 24** (SPEC-035). Ele nasceu desabilitado na
+ * Fatia 19, com o motivo no `title`, porque depender de estimativa e contratos
+ * que não existiam obrigaria a inventar números — o que o MVP3 §9 proíbe.
+ * Agora as fontes existem, e a regra mudou de forma: o item **some** quando o
+ * tenant não tem cliente nenhum (§2.12, decisão do PI). Some ≠ aparecer vazio,
+ * pelo mesmo princípio de antes — uma tela de retomada sem nada a retomar não é
+ * informação, é ruído no menu.
  */
 export function GlobalNav({ tenant, section }: { tenant: string; section: string }) {
   const navigate = useNavigate();
+  // O item some sem cliente (§2.12) e o contador atualiza ao navegar e ao voltar
+  // o foco, sem polling (§2.10) — as duas coisas vêm do mesmo hook, porque as
+  // duas dependem do mesmo estado do servidor.
+  const { hasClients, pendingCount } = useDashboardNav(Boolean(tenant));
 
   const normalized = section.toLowerCase();
+  const activeDashboard = normalized === 'dashboard';
   const activeProPlan = normalized === 'proplan' || normalized === 'catálogo';
   const activeClients = normalized === 'clientes';
   const activeContracts = normalized === 'contratos';
@@ -81,18 +87,37 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 max-[720px]:overflow-x-auto max-[720px]:pb-3">
         <ul className="flex flex-col gap-0.5 max-[720px]:w-max max-[720px]:flex-row">
-          <li>
-            {/* Fatia 24 (SPEC-034): sem estimativa nem contratos, os cards do
-                Dashboard não teriam fonte de dado real. */}
-            <button
-              disabled
-              title="Disponível na Fatia 24"
-              className="flex w-full cursor-not-allowed items-center gap-2.5 rounded-[9px] py-2 pl-3 pr-2.5 text-left text-[12.5px] text-dimmer"
-            >
-              <NavIcon id="dashboard" />
-              Dashboard
-            </button>
-          </li>
+          {/* Dashboard (SPEC-035, Fatia 24) — acesa nesta fatia.
+              **Some quando o tenant não tem cliente nenhum** (decisão do PI,
+              §2.12), que é diferente de aparecer vazia: uma tela de retomada sem
+              nada a retomar não é informação, é ruído no menu. */}
+          {hasClients && (
+            <li>
+              <button
+                onClick={() => navigate(`/t/${tenant}/dashboard`)}
+                className={itemClass(activeDashboard)}
+                disabled={!tenant}
+              >
+                {activeDashboard && <ActiveBar />}
+                <span className={activeDashboard ? 'text-accent' : undefined}>
+                  <NavIcon id="dashboard" />
+                </span>
+                Dashboard
+                {/* O contador é EXATAMENTE o tamanho da lista de *Esperando
+                    você* (§2.3) — os dois saem do mesmo caminho de dado no
+                    servidor. `null` (falha) não vira zero: sem badge é honesto,
+                    zero afirmaria que nada espera. */}
+                {pendingCount !== null && pendingCount > 0 && (
+                  <span
+                    aria-label={`${pendingCount} esperando você`}
+                    className="ml-auto rounded-full border border-accentBorder bg-accentSoft px-1.5 py-px font-mono text-[10px] text-text2"
+                  >
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+            </li>
+          )}
 
           <li>
             <button onClick={() => navigate('/')} className={itemClass(activeProPlan)}>

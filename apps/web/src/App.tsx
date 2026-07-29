@@ -10,6 +10,7 @@ import { ResolveRoute } from './pages/workspace/ResolveRoute';
 import { WorkspaceRoute } from './pages/workspace/WorkspaceRoute';
 import { ClientsRoute } from './pages/clients/ClientsRoute';
 import { ClientsPage } from './pages/clients/ClientsPage';
+import { DashboardPage } from './pages/clients/DashboardPage';
 import { ContractSettingsPage } from './pages/clients/ContractSettingsPage';
 import { FunnelPage } from './pages/clients/FunnelPage';
 import { BriefingLinkPage } from './pages/briefing/BriefingLinkPage';
@@ -112,6 +113,17 @@ export default function App() {
             do workspace de repo — não uma aba dele. Um cliente não tem
             repositório, então não haveria `:project` para pôr no path (decisão
             do PI, 2026-07-25). */}
+        {/* Dashboard (SPEC-035, Fatia 24) — a tela de retomada, última do MVP3.
+            Não recebe `canWrite`: é só leitura, e o único ponto de escrita da
+            fatia (o limite de "parado") tem a guarda de `owner` no servidor. */}
+        <Route
+          path="/t/:tenant/dashboard"
+          element={
+            <ClientsRoute user={auth.user}>
+              {() => <DashboardPage />}
+            </ClientsRoute>
+          }
+        />
         <Route
           path="/t/:tenant/clients"
           element={

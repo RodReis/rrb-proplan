@@ -2132,7 +2132,7 @@ O **rollback do funil** (arrastar pulando etapa) segue sendo o único critério 
 aceite da SPEC-029 nunca exercitado na tela — atravessou a Fatia 19, o FIX #134 e
 este. Tem teste (`boardView.test.ts`); nunca teve dogfooding.
 
-## Fatia 20 (SPEC-031) — Briefing público: 9 etapas, rascunho e versão imutável — `em andamento`
+## Fatia 20 (SPEC-031) — Briefing público: 9 etapas, rascunho e versão imutável — `finalizado` (#138 fechada com `proplan:finalizado` em 2026-07-27; cabeçalho corrigido em 2026-07-29 — estava `em andamento` por engano, divergindo da Issue)
 
 Issue **#138** (`aprovada-pi` 2026-07-26). Entrega o formulário que a página
 `/b/:token` hoje só promete. Fatia grande — vai em **PRs empilhados**, um branch
@@ -4396,7 +4396,8 @@ Fatia grande — **4 PRs empilhados**, um branch por PR, todos com base `main`
       `GET /t/:tenant/dashboard`, período com fuso, `stalled_days` e o arch test *(este)*
 - [x] **PR-2 — *Esperando você*: a fonte do "parado", o drill-down e o contador** *(este)*
 - [x] **PR-3 — o bloco de repos ao vivo** (`GET .../repos`) + as 4 salvaguardas do §2.11 *(este)*
-- [ ] **PR-4 — a tela React** + menu (acende o item, some sem cliente, contador ao navegar/foco)
+- [x] **PR-4 — a tela React** + menu (acende o item, some sem cliente, contador ao navegar/foco) *(este)*
+- [x] Dogfooding do PR-4 no navegador — a fatia inteira, com sessão real e falha real do GitHub
 
 > **O PR-1 entrega mais do que "o schema"**, ao contrário do 1º PR das fatias
 > anteriores. A razão é a fronteira: esta fatia quase não tem schema (uma coluna
@@ -4707,3 +4708,98 @@ ao PI com *"ao vivo sob clique"*, que já estava na mesa.
 - **Dogfooding no navegador fica para o PR-4**, quando existe tela. As
   salvaguardas 1, 2 e 4 pedem falha real do GitHub para serem vistas — o plano é
   exercitá-las com repo inexistente e token sem escopo.
+
+### PR-4 — o que entrou
+
+A tela, o menu, e o **dogfooding que só existe aqui** — as salvaguardas do §2.11
+pedem falha real do GitHub para serem vistas, e os três PRs anteriores não
+tinham onde exercê-las.
+
+**O item `Dashboard` acendeu.** Nasceu desabilitado na Fatia 19, com
+`title="Disponível na Fatia 24"`, porque depender de estimativa e contratos
+inexistentes obrigaria a inventar números. Agora ele **some quando o tenant não
+tem cliente nenhum** (§2.12) — some ≠ aparecer vazio, pelo mesmo princípio de
+antes: uma tela de retomada sem nada a retomar é ruído no menu, não informação.
+
+**O contador do menu virou um hook só com o `hasClients`.** O PR-2 tinha
+entregue `usePendingCount`; ele foi substituído por `useDashboardNav`, porque as
+duas informações dependem do mesmo estado do servidor e buscá-las em hooks
+separados dobraria as chamadas a cada navegação. Os testes do §2.10 vieram
+junto, inteiros — **sem cliente, o contador nem é buscado** (não há item para
+exibi-lo), e **falha de rede não esconde o item já exibido** (falha não é
+evidência de que os clientes sumiram).
+
+**Quatro blocos, e nenhum número cruzando os domínios** (ADR-023). O bloco de
+repos nem viaja na mesma resposta que o funil — a ausência de um total agregado
+é auditável, que é como o §5 pede.
+
+**`never` e `zero` renderizam diferente, em pixels** (§2.7): *"Você ainda não
+emitiu contrato"* sai em itálico e `--faint`; *"Nenhum contrato emitido no
+período"* sai em `--body`. Não é decoração — são frases diferentes porque são
+fatos diferentes, e o §5 cobra as duas com teste.
+
+**O drill-down é `<Link>` quando há destino e `<div>` quando não há** (§7.3).
+Não `<a>` sem `href`: um link que não navega promete o que não cumpre. *"Card
+parado"* vem com `target: null` do servidor e por isso é texto — o projeto pode
+estar travado em qualquer etapa, e escolher um painel seria adivinhar.
+
+### PR-4 — dogfooding no navegador (2026-07-29)
+
+Com API e web de pé, sessão real (`@RodReis`, 7 repos), contra os dados que as
+fatias 19–23 produziram.
+
+**Os números batem com o banco, conferidos um a um** — que é o critério do §5,
+*"todo número tem origem rastreável em linhas do banco"*:
+
+| tela | `SELECT` | bate |
+|---|---|---|
+| *Esperando você* = 1 | `contracts where accepted_at is null` → 1 | ✅ |
+| "3 emitidos · 2 com aceite" | `contracts` → 3 | ✅ |
+| Nenhum artefato pendente | `artifacts where state='PENDING_REVIEW'` → 0 | ✅ |
+| 4 repos no bloco | `projects where installation_status='active'` → 4 | ✅ |
+
+**O contador do menu e a lista concordaram na tela**: badge `1`, um item na
+lista. É o §2.3 provado em pixels, não só no teste.
+
+**A ordem dos repos saiu como projetada**: `rrb-proplan`, `rrb-jarvisOS`,
+`rrb-adv`, `rrb-organize` — exatamente `lastCodeCommitAt desc`. E os **3 repos
+`missing` ficaram de fora**, sem ocupar vaga do teto.
+
+**O drill-down foi exercido ponta a ponta.** Clicar no item levou a
+`/t/RodReis/clients?cliente=…&projeto=…&painel=contratos`, e os **dois** diálogos
+abriram: `Cliente Rafaela M M Barros` e `Contratos de Projeto EPG2`. O painel
+certo, do projeto certo.
+
+**A salvaguarda 1 foi provada com falha real do GitHub**, não com mock:
+renomeei um repo no banco para `repo-que-nao-existe-xyz`, recarreguei, e o bloco
+mostrou o repo **nomeado** com *"Não foi possível carregar"* — enquanto os
+outros três renderizaram suas contagens normalmente. Nenhum zero silencioso. O
+banco foi restaurado em seguida.
+
+**Um defeito de UX que teste nenhum pegaria, achado e corrigido aqui.** A trilha
+mostrava `contract_link.accessed: 2d638f14-eeb9-4a2d-80f4-35c59770e35a`,
+repetido quatro vezes. Nada ali é legível para quem abre um bloco chamado *"O
+que andou por aqui"*: o nome do evento é o fato, e o UUID é o id da linha, que
+não ajuda ninguém a lembrar o que estava fazendo. Os 12 tipos de `AuditEvent`
+ganharam rótulo em português e o `subject` saiu.
+
+A tradução **não esconde o que não conhece**: tipo novo (fatia futura, evento
+que ninguém mapeou) cai no próprio nome cru, em vez de sumir da lista. Sumir
+seria pior — uma trilha que omite o que não reconhece mente por omissão.
+
+**Um ajuste de layout, também do olho e não do teste.** A trilha é a lista mais
+longa da tela e empurrava o funil para longe da dobra; ganhou altura máxima com
+rolagem própria, e o Kanban de repos subiu. Conferido nos **dois temas**.
+
+### PR-4 — verificação
+
+- **2121 testes verdes** (1521 regras · 124 banco · 476 tela) — **+42** sobre os
+  2079 do PR-3, todos na tela: 21 da lógica de apresentação, 21 da página e do hook.
+- **Os critérios de tela do §5, todos com teste**: `never` × `zero` renderizando
+  diferente, item sem destino como texto, estado vazio com texto em vez de lista
+  em branco, e o bloco de repos com as 4 salvaguardas visíveis.
+- **O contador não faz polling**, provado por comportamento (relógio adiantado
+  5 min, contagem de chamadas inalterada).
+- `tsc --noEmit` limpo; `pnpm build` verde (API e web).
+- **Dogfooding com sessão real e falha real do GitHub** — números conferidos
+  contra o banco, drill-down exercido, salvaguarda 1 provada, dois temas.
