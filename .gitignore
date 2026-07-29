@@ -20,3 +20,11 @@ apps/web/playwright-report.json
 # CONTINUAM versionados; só o registro deles é por máquina.
 .claude/settings.json
 .claude/settings.local.json
+
+# HUD local do dev (visualizador de eventos): ferramenta pessoal, não é
+# do produto. Nada a ver com o "War Room" piloto do licenciamento (MVP4).
+.claude/hooks/war-room.cjs
+.codex/hooks/war-room.cjs
+.codex/hooks.json
+.vscode/tasks.json
+.war-room-runtime/
