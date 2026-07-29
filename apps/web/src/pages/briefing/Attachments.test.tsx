@@ -23,7 +23,6 @@ function json(body: unknown, status = 200) {
 function setup(list: unknown[] = []) {
   const onLinkGone = vi.fn();
   const fetchMock = vi.spyOn(global, 'fetch').mockImplementation((input, init) => {
-    const url = String(input);
     if (!init?.method || init.method === 'GET') return Promise.resolve(json(list));
     return Promise.resolve(json({}));
   });

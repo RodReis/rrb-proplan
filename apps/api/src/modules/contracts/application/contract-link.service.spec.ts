@@ -100,9 +100,18 @@ describe('ContractLinkService: gerar o link (§2.8)', () => {
     await service.createOrRegenerate('t-1', 'ctr-1');
 
     const ttl = links[0].expiresAt.getTime() - antes;
-    // Folga de 5 s para o tempo de execução do teste.
+    // Folga de 5 s dos DOIS lados, e o lado de cima é o que importa aqui.
+    //
+    // `antes` é lido ANTES da chamada, e o `defaultExpiration` lê o relógio de
+    // novo lá dentro: se ele avançar 1 ms entre as duas leituras, o `ttl` passa
+    // de 48 h por essa fração. Com `toBeLessThanOrEqual(48h)` cravado, o teste
+    // falhava quando a máquina cruzava a borda do milissegundo no meio — flaky
+    // que só apareceu no CI (`172800001` vs `<= 172800000`), nunca localmente.
+    //
+    // A folga não afrouxa o que o teste afirma: 5 s de tolerância sobre 48 h
+    // continua provando "nasce com prazo de 48 h, nunca sem prazo".
     expect(ttl).toBeGreaterThan(48 * 60 * 60 * 1000 - 5_000);
-    expect(ttl).toBeLessThanOrEqual(48 * 60 * 60 * 1000);
+    expect(ttl).toBeLessThanOrEqual(48 * 60 * 60 * 1000 + 5_000);
   });
 
   /**

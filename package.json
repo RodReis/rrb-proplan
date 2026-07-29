@@ -10,12 +10,20 @@
     "infra:up": "docker compose up -d --wait postgres redis",
     "dev:api": "pnpm --filter @proplan/api start:dev",
     "dev:web": "pnpm --filter @proplan/web dev",
-    "build": "pnpm --filter @proplan/api build && pnpm --filter @proplan/web build",
+    "build": "pnpm --filter @proplan/api build && pnpm --filter @proplan/mcp build && pnpm --filter @proplan/web build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "prisma:migrate": "pnpm --filter @proplan/api prisma:migrate",
     "prisma:seed": "pnpm --filter @proplan/api prisma:seed",
     "bootstrap:role": "node scripts/bootstrap-app-role.mjs",
     "test:report": "node scripts/test-report.mjs",
     "test:report:check": "node scripts/test-report.mjs --check",
     "test:report:selfcheck": "node scripts/test-report.mjs --selfcheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "typescript-eslint": "^8.65.0"
   }
 }

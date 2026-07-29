@@ -4,7 +4,6 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { transactionMock } from '../../../../test/prisma-transaction-mock';
 import {
   BRIEFING_SUBMITTED,
   BriefingSubmitService,

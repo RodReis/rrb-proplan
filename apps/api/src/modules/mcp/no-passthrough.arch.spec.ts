@@ -49,7 +49,7 @@ describe('arquitetura SPEC-016: MCP não faz pass-through (ADR-017)', () => {
   });
 
   it('o único acesso a prisma é project.findFirst (resolver owner/repo)', () => {
-    for (const { f, src } of sources) {
+    for (const { src } of sources) {
       const prismaCalls = src.match(/prisma\.\w+\.\w+/g) ?? [];
       for (const call of prismaCalls) {
         expect(call).toBe('prisma.project.findFirst');
