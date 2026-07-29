@@ -105,6 +105,23 @@ jobs:
       - name: Gerar Prisma client
         run: pnpm --filter @proplan/api prisma:generate
 
+      # BUILD ANTES DOS TESTES, e a ordem é a decisão (issue #190).
+      #
+      # O merge é do próprio Code com o CI verde (CLAUDE.md, ciclo da fatia
+      # passo 3) — o portão do PI é o aceite na issue, não o merge. Então o CI
+      # é a ÚNICA trava antes da `main`, e até aqui ele não checava tipos:
+      # Jest/Vitest transpilam sem type-check completo, então um PR com erro de
+      # tipo podia mergear verde. `nest build` (api), `tsc -b && vite build`
+      # (web) e `tsc -p` (mcp) cobrem os três.
+      #
+      # Antes dos testes porque falha em ~40 s contra os ~8 min da suíte: erro
+      # de tipo aparece rápido em vez de no fim de um job longo.
+      - name: Build (checagem de tipos dos três apps)
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
       - name: Instalar navegador do Playwright
         run: pnpm --filter @proplan/web exec playwright install --with-deps chromium
 
