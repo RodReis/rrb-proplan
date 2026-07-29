@@ -145,3 +145,96 @@ describe('GithubIssuesClient.ensureLabel', () => {
     ).rejects.toThrow('GitHub create label 500');
   });
 });
+
+/**
+ * O rate limit precisa chegar ao chamador **reconhecível** (SPEC-035 §2.11).
+ * Com `Error('GitHub issues 403')` genérico, o bloco de repos do dashboard não
+ * teria como dizer "o limite volta às HH:MM" e cairia no texto de falha comum —
+ * e um bloco vazio leria como **board vazio**, que é a leitura errada mais cara
+ * daquela tela.
+ */
+describe('GithubIssuesClient: rate limit vira erro reconhecível', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('403 com cota zerada vira RateLimitError, com o horário de reposição', async () => {
+    const epoch = Math.floor(new Date('2026-08-15T16:00:00.000Z').getTime() / 1000);
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response('rate limited', {
+        status: 403,
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(epoch) },
+      }),
+    );
+
+    await expect(
+      new GithubIssuesClient().listIssues('tok', 'o', 'r'),
+    ).rejects.toMatchObject({
+      name: 'RateLimitError',
+      retryAt: '2026-08-15T16:00:00.000Z',
+    });
+  });
+
+  it('429 (secundário) também vira RateLimitError', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('slow down', { status: 429, headers: { 'retry-after': '30' } }));
+
+    await expect(
+      new GithubIssuesClient().listIssues('tok', 'o', 'r'),
+    ).rejects.toMatchObject({ name: 'RateLimitError' });
+  });
+
+  it('403 com cota SOBRANDO continua erro comum — é permissão, não limite', async () => {
+    // Tratá-lo como rate limit mandaria a pessoa esperar por algo que não passa
+    // sozinho com o tempo.
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response('forbidden', {
+        status: 403,
+        headers: { 'x-ratelimit-remaining': '4999' },
+      }),
+    );
+
+    await expect(new GithubIssuesClient().listIssues('tok', 'o', 'r')).rejects.toThrow(
+      'GitHub issues 403',
+    );
+  });
+
+  it('rate limit no GraphQL NÃO degrada para o REST — a cota é a mesma', async () => {
+    // O fallback gastaria uma 2ª chamada do que já acabou e trocaria um erro que
+    // a tela sabe explicar por um genérico.
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response('rate limited', {
+          status: 403,
+          headers: { 'x-ratelimit-remaining': '0' },
+        }),
+      );
+
+    await expect(
+      new GithubIssuesClient().listIssuesWithHierarchy('tok', 'o', 'r'),
+    ).rejects.toMatchObject({ name: 'RateLimitError' });
+    // Uma chamada só: a do GraphQL. Sem fallback.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha comum do GraphQL AINDA degrada para o REST — o board volta plano', async () => {
+    // A degradação continua valendo para o caso que ela existe para cobrir:
+    // shape mudou ou feature indisponível.
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('boom', { status: 500 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            { number: 1, title: 'A', state: 'open', labels: [], assignees: [], html_url: 'u', closed_at: null, updated_at: 't' },
+          ]),
+          { status: 200 },
+        ),
+      );
+
+    const issues = await new GithubIssuesClient().listIssuesWithHierarchy('tok', 'o', 'r');
+
+    expect(issues.map((i) => i.number)).toEqual([1]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

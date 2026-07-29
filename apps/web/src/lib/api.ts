@@ -1649,3 +1649,47 @@ export function updateDashboardSettings(
     body: JSON.stringify({ stalledDays }),
   });
 }
+
+/**
+ * Por que um repo não pôde ser lido (SPEC-035 §2.11).
+ *
+ * As três pedem **texto diferente** na tela. `rate_limit` em especial: o bloco
+ * diz que o limite do GitHub foi atingido e quando volta — **nunca zero
+ * silencioso**, que seria indistinguível de board vazio.
+ */
+export type RepoFailureKind = 'rate_limit' | 'timeout' | 'error';
+
+export interface RepoBoardOk {
+  status: 'ok';
+  projectId: string;
+  repo: string;
+  columns: { column: string; count: number }[];
+}
+
+export interface RepoBoardFailed {
+  status: 'failed';
+  projectId: string;
+  repo: string;
+  reason: RepoFailureKind;
+  /** Quando o limite volta — ISO. Só em `rate_limit`, e pode ser `null`. */
+  retryAt: string | null;
+}
+
+export type RepoBoardResult = RepoBoardOk | RepoBoardFailed;
+
+export interface ReposBlock {
+  repos: RepoBoardResult[];
+  /** Repos que existem mas não foram consultados por causa do teto (§2.11). */
+  notLoaded: number;
+}
+
+/**
+ * O bloco de repos, lido ao vivo no GitHub (§2.6).
+ *
+ * **Chamada separada de `getDashboard`, de propósito** (§6): a falha deste
+ * bloco não pode contaminar a resposta principal, e a tela renderiza o resto
+ * enquanto este carrega — ou falha.
+ */
+export function getDashboardRepos(): Promise<ReposBlock> {
+  return request('/dashboard/repos');
+}

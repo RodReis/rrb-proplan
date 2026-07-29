@@ -5,6 +5,8 @@ import { ClientsModule } from '../clients/clients.module';
 import { ContractsModule } from '../contracts/contracts.module';
 import { EstimatesModule } from '../estimates/estimates.module';
 import { IdentityModule } from '../identity/identity.module';
+import { BoardModule } from '../board/board.module';
+import { DashboardReposService } from './application/dashboard-repos.service';
 import { DashboardSettingsService } from './application/dashboard-settings.service';
 import { DashboardService } from './application/dashboard.service';
 import { DashboardController } from './presentation/dashboard.controller';
@@ -37,9 +39,13 @@ import { DashboardController } from './presentation/dashboard.controller';
     ContractsModule,
     // As outras duas trilhas de "O que andou por aqui": auditoria e sync.
     ActivityModule,
+    // O bloco de repos ao vivo (§2.6). É o único import que traz uma dependência
+    // de TERCEIRO para o caminho de abertura da tela — daí a rota isolada e as 4
+    // salvaguardas do §2.11.
+    BoardModule,
     IdentityModule,
   ],
   controllers: [DashboardController],
-  providers: [DashboardService, DashboardSettingsService],
+  providers: [DashboardService, DashboardSettingsService, DashboardReposService],
 })
 export class DashboardModule {}
