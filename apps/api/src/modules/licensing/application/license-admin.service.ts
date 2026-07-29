@@ -58,6 +58,32 @@ export interface LicenseView {
   maxMachines: number;
 }
 
+/** Uma máquina, como o admin a vê (SPEC-037 §Contratos → Admin). */
+export interface ActivationView {
+  id: string;
+  fingerprint: string;
+  hostname: string | null;
+  appVersion: string | null;
+  activatedAt: string;
+  lastSeenAt: string;
+  /** Preenchido = fora da contagem de vagas, mas ainda legível aqui. */
+  deactivatedAt: string | null;
+}
+
+/** Detalhe da licença: a `LicenseView` + as máquinas + o sinal de troca. */
+export interface LicenseDetail extends LicenseView {
+  activations: ActivationView[];
+  /**
+   * Desativações + reativações na janela (SPEC-037 §Escopo). É **sinal, não
+   * limite**: nada bloqueia (decisão 1 do PI). Teto errado bloquearia o cliente
+   * honesto que formatou o PC duas vezes, e o volume do piloto permite olhar
+   * caso a caso.
+   */
+  swapCount: number;
+  /** Dias da janela do contador — para a tela dizer "trocas em N dias". */
+  swapWindowDays: number;
+}
+
 export interface LicEventView {
   id: string;
   type: string;
@@ -79,6 +105,17 @@ export interface IssueLicenseInput {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const MAX_MOTIVO = 500;
+
+/**
+ * Janela do contador de trocas (SPEC-037 §Escopo). 30 dias: curto o bastante
+ * para que um pico recente apareça, longo o bastante para não zerar entre duas
+ * trocas legítimas do mesmo mês.
+ *
+ * ponytail: janela fixa, não configurável. Vira parâmetro quando houver um
+ * segundo produto com padrão de uso diferente — o gatilho é o mesmo do
+ * `graceDays` (decisão 2 do PI).
+ */
+const SWAP_WINDOW_DAYS = 30;
 
 @Injectable()
 export class LicenseAdminService {
@@ -260,6 +297,114 @@ export class LicenseAdminService {
 
     this.logger.log(`Licença ${licenseId} revogada: ${motivo}`);
     return this.toView(atualizada, atualizada.activations.length);
+  }
+
+  /**
+   * Detalhe da licença: as máquinas (inclusive as desativadas) e o contador de
+   * trocas da janela (SPEC-037 §Contratos → Admin).
+   *
+   * **As desativadas aparecem aqui e não na contagem de vagas.** É a diferença
+   * que o suporte precisa: "esta máquina existiu e saiu em tal data" responde
+   * a pergunta que uma lista só das vivas não responde.
+   */
+  async detail(tenantId: string, licenseId: string): Promise<LicenseDetail> {
+    const licenca = await this.prisma.license.findFirst({
+      where: { id: licenseId, tenantId },
+      include: {
+        edition: { include: { product: true } },
+        activations: { orderBy: { activatedAt: 'asc' } },
+      },
+    });
+    if (!licenca) throw new NotFoundException('Licença não encontrada');
+
+    const vivas = licenca.activations.filter((a) => a.deactivatedAt === null);
+
+    return {
+      ...this.toView(licenca, vivas.length),
+      activations: licenca.activations.map((a) => ({
+        id: a.id,
+        fingerprint: a.fingerprint,
+        hostname: a.hostname,
+        appVersion: a.appVersion,
+        activatedAt: a.activatedAt.toISOString(),
+        lastSeenAt: a.lastSeenAt.toISOString(),
+        deactivatedAt: a.deactivatedAt ? a.deactivatedAt.toISOString() : null,
+      })),
+      swapCount: await this.swapCount(licenseId),
+      swapWindowDays: SWAP_WINDOW_DAYS,
+    };
+  }
+
+  /**
+   * Trocas na janela: `deactivated` + `reactivated` da trilha.
+   *
+   * **Derivado de `LicEvent`, sem coluna nova** (§Notas técnicas). Uma coluna
+   * de contador precisaria ser alimentada em todo caminho que desativa — e a
+   * que alguém esquecesse de incrementar mentiria em silêncio, que é o mesmo
+   * problema do `LlmUsage.tenant_id` registrado no `STATUS.md`.
+   */
+  private async swapCount(licenseId: string): Promise<number> {
+    const desde = new Date(Date.now() - SWAP_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    return this.prisma.licEvent.count({
+      where: {
+        licenseId,
+        type: { in: ['deactivated', 'reactivated', 'deactivated_by_admin'] },
+        createdAt: { gte: desde },
+      },
+    });
+  }
+
+  /**
+   * Desativa uma máquina pelo admin — o suporte manual de quando o
+   * self-service não resolve (§Escopo).
+   *
+   * Mesma semântica do `/deactivate` público, com evento próprio
+   * (`deactivated_by_admin`): a trilha precisa distinguir "o cliente trocou de
+   * máquina" de "o suporte interveio", porque as duas contam a mesma história
+   * para o contador e histórias diferentes para quem lê.
+   */
+  async deactivateActivation(
+    tenantId: string,
+    licenseId: string,
+    activationId: string,
+  ): Promise<ActivationView> {
+    const ativacao = await this.prisma.activation.findFirst({
+      // `licenseId` e `tenantId` juntos: ativação de outra licença responde o
+      // mesmo que inexistente, como no público.
+      where: { id: activationId, licenseId, tenantId },
+    });
+    if (!ativacao) throw new NotFoundException('Ativação não encontrada');
+
+    // Idempotente, e sem evento novo na repetição — evento duplicado inflaria o
+    // contador de trocas e faria o sinal de abuso disparar por clique repetido.
+    if (ativacao.deactivatedAt === null) {
+      await this.prisma.activation.update({
+        where: { id: activationId },
+        data: { deactivatedAt: new Date() },
+      });
+      await this.prisma.licEvent.create({
+        data: {
+          tenantId,
+          licenseId,
+          type: 'deactivated_by_admin',
+          payload: { fingerprint: ativacao.fingerprint },
+        },
+      });
+      this.logger.log(`Ativação ${activationId} desativada pelo admin`);
+    }
+
+    const atual = await this.prisma.activation.findUniqueOrThrow({
+      where: { id: activationId },
+    });
+    return {
+      id: atual.id,
+      fingerprint: atual.fingerprint,
+      hostname: atual.hostname,
+      appVersion: atual.appVersion,
+      activatedAt: atual.activatedAt.toISOString(),
+      lastSeenAt: atual.lastSeenAt.toISOString(),
+      deactivatedAt: atual.deactivatedAt ? atual.deactivatedAt.toISOString() : null,
+    };
   }
 
   /** Trilha da licença, mais recente primeiro (§Escopo). */

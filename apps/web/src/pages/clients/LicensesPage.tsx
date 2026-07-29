@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import {
   createLicEdition,
   createLicProduct,
+  deactivateActivation,
+  getLicenseDetail,
   getLicensingCatalog,
   issueLicense,
   listLicenseEvents,
@@ -12,18 +14,22 @@ import {
   type IssuedLicense,
   type LicCatalogResponse,
   type LicEventView,
+  type LicenseDetail,
   type LicenseView,
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
 import {
   eventLabel,
   isAtMachineLimit,
+  machineLabel,
+  machineStatus,
   machinesLabel,
   searchMode,
   shortDate,
   shortDateTime,
   statusLabel,
   statusTone,
+  swapSignal,
   updatesLabel,
 } from './licensingView';
 
@@ -63,10 +69,11 @@ export function LicensesPage() {
   /** A chave recém-emitida. Existe só aqui, e só até o admin fechar. */
   const [emitida, setEmitida] = useState<IssuedLicense | null>(null);
 
-  // Busca e trilha
+  // Busca e gaveta (máquinas + trilha)
   const [busca, setBusca] = useState('');
-  const [trilhaDe, setTrilhaDe] = useState<string | null>(null);
+  const [abertaDe, setAbertaDe] = useState<string | null>(null);
   const [trilha, setTrilha] = useState<LicEventView[]>([]);
+  const [detalhe, setDetalhe] = useState<LicenseDetail | null>(null);
 
   // Cadastro de produto/edição (recolhido por padrão: o caminho comum é emitir)
   const [abrirCadastro, setAbrirCadastro] = useState(false);
@@ -146,16 +153,49 @@ export function LicensesPage() {
     }
   }
 
-  async function verTrilha(id: string) {
-    if (trilhaDe === id) {
-      setTrilhaDe(null);
+  /**
+   * Abre a gaveta: máquinas **e** trilha juntas.
+   *
+   * As duas numa chamada só porque respondem à mesma pergunta do suporte —
+   * *"o que aconteceu com esta licença?"*. Separá-las em dois cliques faria o
+   * atendente abrir as duas sempre.
+   */
+  async function abrirGaveta(id: string) {
+    if (abertaDe === id) {
+      setAbertaDe(null);
       return;
     }
     try {
-      setTrilha(await listLicenseEvents(id));
-      setTrilhaDe(id);
+      const [d, eventos] = await Promise.all([
+        getLicenseDetail(id),
+        listLicenseEvents(id),
+      ]);
+      setDetalhe(d);
+      setTrilha(eventos);
+      setAbertaDe(id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'falha ao ler a trilha');
+      toast.error(err instanceof Error ? err.message : 'falha ao abrir a licença');
+    }
+  }
+
+  /** Suporte manual: libera a vaga quando o self-service do cliente não resolve. */
+  async function desativarMaquina(licenseId: string, activationId: string) {
+    setOcupado(true);
+    try {
+      await deactivateActivation(licenseId, activationId);
+      // Recarrega as duas: a vaga mudou (detalhe) e a ação virou evento (trilha).
+      const [d, eventos] = await Promise.all([
+        getLicenseDetail(licenseId),
+        listLicenseEvents(licenseId),
+      ]);
+      setDetalhe(d);
+      setTrilha(eventos);
+      setLicencas(await listLicenses());
+      toast.success('Máquina desativada — a vaga foi liberada');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível desativar');
+    } finally {
+      setOcupado(false);
     }
   }
 
@@ -361,10 +401,10 @@ export function LicensesPage() {
 
                       <div className="flex shrink-0 gap-1.5">
                         <button
-                          onClick={() => void verTrilha(l.id)}
+                          onClick={() => void abrirGaveta(l.id)}
                           className="rounded-[9px] border border-border2 px-2.5 py-1 text-[11.5px] text-body transition-colors hover:bg-panel hover:text-text"
                         >
-                          {trilhaDe === l.id ? 'Ocultar trilha' : 'Trilha'}
+                          {abertaDe === l.id ? 'Ocultar' : 'Máquinas e trilha'}
                         </button>
                         {l.status === 'ACTIVE' && (
                           <button
@@ -378,20 +418,94 @@ export function LicensesPage() {
                       </div>
                     </div>
 
-                    {trilhaDe === l.id && (
-                      <ul className="mt-2.5 grid list-none gap-1 border-t border-border2 p-0 pt-2.5">
-                        {trilha.length === 0 && (
-                          <li className="text-[11.5px] text-body2">Sem eventos.</li>
-                        )}
-                        {trilha.map((e) => (
-                          <li key={e.id} className="text-[11.5px] text-body">
-                            <span className="font-mono text-[10.5px] text-dim">
-                              {shortDateTime(e.createdAt)}
-                            </span>{' '}
-                            {eventLabel(e.type)}
-                          </li>
-                        ))}
-                      </ul>
+                    {abertaDe === l.id && (
+                      <div className="mt-2.5 grid gap-3 border-t border-border2 pt-2.5">
+                        <div>
+                          <p className="m-0 mb-1.5 text-[11.5px] font-semibold text-text2">
+                            Máquinas
+                            {/* O sinal de troca só aparece quando há o que
+                                sinalizar: 2 trocas em 30 dias é vida normal, e
+                                um número em toda licença treinaria o olho a
+                                ignorá-lo. É sinal, não limite — nada bloqueia. */}
+                            {detalhe && swapSignal(detalhe) && (
+                              <span className="ml-2 rounded-full border border-danger px-2 py-px font-mono text-[10px] font-normal text-danger">
+                                {swapSignal(detalhe)}
+                              </span>
+                            )}
+                          </p>
+
+                          {detalhe?.activations.length === 0 && (
+                            <p className="m-0 text-[11.5px] text-body2">
+                              Nenhuma máquina ativou esta licença ainda.
+                            </p>
+                          )}
+
+                          <ul className="grid list-none gap-1 p-0">
+                            {detalhe?.activations.map((a) => (
+                              <li
+                                key={a.id}
+                                className="flex flex-wrap items-center justify-between gap-2 text-[11.5px]"
+                              >
+                                <span
+                                  className={
+                                    machineStatus(a) === 'desativada'
+                                      ? 'text-body2 line-through'
+                                      : 'text-body'
+                                  }
+                                >
+                                  {machineLabel(a)}
+                                  {a.appVersion && (
+                                    <span className="ml-1.5 font-mono text-[10.5px] text-dim">
+                                      v{a.appVersion}
+                                    </span>
+                                  )}
+                                  <span className="ml-1.5 text-dim">
+                                    {/* `lastSeenAt` NÃO vira "online/offline": o
+                                        heartbeat é diário, e chamar de offline
+                                        quem bateu há 25 h afirmaria uma queda
+                                        que não houve. */}
+                                    último sinal {shortDateTime(a.lastSeenAt)}
+                                  </span>
+                                  {a.deactivatedAt && (
+                                    <span className="ml-1.5 text-body2">
+                                      · desativada em {shortDate(a.deactivatedAt)}
+                                    </span>
+                                  )}
+                                </span>
+
+                                {!a.deactivatedAt && l.status === 'ACTIVE' && (
+                                  <button
+                                    onClick={() => void desativarMaquina(l.id, a.id)}
+                                    disabled={ocupado}
+                                    className="rounded-[9px] border border-border2 px-2 py-0.5 text-[11px] text-body transition-colors hover:bg-panel hover:text-text disabled:opacity-40"
+                                  >
+                                    Desativar
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div>
+                          <p className="m-0 mb-1.5 text-[11.5px] font-semibold text-text2">
+                            Trilha
+                          </p>
+                          <ul className="grid list-none gap-1 p-0">
+                            {trilha.length === 0 && (
+                              <li className="text-[11.5px] text-body2">Sem eventos.</li>
+                            )}
+                            {trilha.map((e) => (
+                              <li key={e.id} className="text-[11.5px] text-body">
+                                <span className="font-mono text-[10.5px] text-dim">
+                                  {shortDateTime(e.createdAt)}
+                                </span>{' '}
+                                {eventLabel(e.type)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
                     )}
                   </li>
                 ))}

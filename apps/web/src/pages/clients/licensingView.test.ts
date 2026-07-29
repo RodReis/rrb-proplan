@@ -3,12 +3,15 @@ import type { LicenseView } from '../../lib/api';
 import {
   eventLabel,
   isAtMachineLimit,
+  machineLabel,
+  machineStatus,
   machinesLabel,
   searchMode,
   shortDate,
   shortDateTime,
   statusLabel,
   statusTone,
+  swapSignal,
   updatesLabel,
 } from './licensingView';
 
@@ -139,6 +142,49 @@ describe('SPEC-036: apresentação da tela de licenças', () => {
     it('texto vazio não busca nada', () => {
       expect(searchMode('')).toBeNull();
       expect(searchMode('   ')).toBeNull();
+    });
+  });
+
+  describe('máquinas (SPEC-037)', () => {
+    it('usa o hostname quando existe', () => {
+      expect(machineLabel({ hostname: 'desktop', fingerprint: 'fp-abc123456' })).toBe(
+        'desktop',
+      );
+    });
+
+    it('sem hostname, abrevia o fingerprint', () => {
+      // Ele é um hash: mostrar por extenso é ruído, e ninguém o lê inteiro.
+      expect(machineLabel({ hostname: null, fingerprint: 'fp-abcdef0123456789' })).toBe(
+        'máquina fp-abcde…',
+      );
+    });
+
+    it('estado é ativa ou desativada, nunca online/offline', () => {
+      // O heartbeat é diário: chamar de "offline" quem bateu há 25 h afirmaria
+      // uma queda que não houve — e a licença segue válida por 14 dias de graça.
+      expect(machineStatus({ deactivatedAt: null })).toBe('ativa');
+      expect(machineStatus({ deactivatedAt: '2026-07-28T10:00:00Z' })).toBe('desativada');
+    });
+  });
+
+  describe('sinal de troca (SPEC-037)', () => {
+    it.each([0, 1, 2, 3])('%i trocas não sinaliza nada', (n) => {
+      // 2 trocas em 30 dias é vida normal. Um número em toda licença treinaria
+      // o olho a ignorá-lo — o oposto do que um sinal serve para fazer.
+      expect(swapSignal({ swapCount: n, swapWindowDays: 30 })).toBeNull();
+    });
+
+    it('a partir do piso, diz o número e a janela', () => {
+      expect(swapSignal({ swapCount: 9, swapWindowDays: 30 })).toBe(
+        '9 trocas em 30 dias',
+      );
+    });
+
+    it('o piso é ajustável — é sinal, não limite', () => {
+      // Decisão 1 do PI: nada bloqueia. Quem lê decide o que é muito.
+      expect(swapSignal({ swapCount: 2, swapWindowDays: 30 }, 2)).toBe(
+        '2 trocas em 30 dias',
+      );
     });
   });
 });

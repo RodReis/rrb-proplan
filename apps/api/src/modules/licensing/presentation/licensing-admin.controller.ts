@@ -154,7 +154,33 @@ export class LicensingAdminController {
     );
   }
 
-  /** Trilha da licença — `issued`, `activated`, `reactivated`, `revoked`. */
+  /**
+   * Detalhe: as máquinas (inclusive desativadas, com a data) e o contador de
+   * trocas da janela (SPEC-037).
+   */
+  @Get('licenses/:id')
+  detail(@Req() req: AuthenticatedRequest, @Param('id') licenseId: string) {
+    return this.licenses.detail(req.tenantId!, licenseId);
+  }
+
+  /**
+   * Desativa uma máquina — o suporte manual de quando o self-service do
+   * cliente não resolve (SPEC-037 §Escopo).
+   *
+   * `POST` numa sub-rota e não `DELETE` na ativação: a linha **não é apagada**
+   * — ela passa a existir desativada, com data, porque é isso que mantém a
+   * troca visível para quem for investigar depois.
+   */
+  @Post('licenses/:id/activations/:activationId/deactivate')
+  deactivateActivation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') licenseId: string,
+    @Param('activationId') activationId: string,
+  ) {
+    return this.licenses.deactivateActivation(req.tenantId!, licenseId, activationId);
+  }
+
+  /** Trilha da licença — `issued`, `activated`, `heartbeat`, `deactivated`, … */
   @Get('licenses/:id/events')
   events(@Req() req: AuthenticatedRequest, @Param('id') licenseId: string) {
     return this.licenses.events(req.tenantId!, licenseId);
