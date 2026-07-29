@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { ActivityService } from './application/activity.service';
+import { ActivitySummaryService } from './application/activity-summary.service';
 import { ActivityController } from './presentation/activity.controller';
 import { ActivityFeedController } from './presentation/activity-feed.controller';
 
@@ -13,7 +14,10 @@ import { ActivityFeedController } from './presentation/activity-feed.controller'
 @Module({
   imports: [IdentityModule],
   controllers: [ActivityController, ActivityFeedController],
-  providers: [ActivityService],
-  exports: [ActivityService],
+  providers: [ActivityService, ActivitySummaryService],
+  // `ActivitySummaryService` serve o dashboard (SPEC-035 §2.2): o `feed` do
+  // painel é por projeto e exige o usuário dono; a retomada pergunta pelo
+  // tenant inteiro. Duas perguntas, dois métodos.
+  exports: [ActivityService, ActivitySummaryService],
 })
 export class ActivityModule {}

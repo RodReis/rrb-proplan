@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { ClientsService } from './application/clients.service';
+import { ClientsSummaryService } from './application/clients-summary.service';
 import {
   ClientProjectsController,
   ClientsController,
@@ -20,7 +21,11 @@ import {
 @Module({
   imports: [IdentityModule],
   controllers: [ClientsController, ClientProjectsController],
-  providers: [ClientsService],
-  exports: [ClientsService],
+  providers: [ClientsService, ClientsSummaryService],
+  // `ClientsSummaryService` é a superfície que o `dashboard` consome (SPEC-035
+  // §2.1): os métodos do `ClientsService` são todos por PROJETO, e o dashboard
+  // pergunta por TENANT. Exportar aqui é o que permite ao agregador compor sem
+  // tocar `client_projects` direto (ADR-001).
+  exports: [ClientsService, ClientsSummaryService],
 })
 export class ClientsModule {}

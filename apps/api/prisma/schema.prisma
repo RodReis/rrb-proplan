@@ -151,6 +151,16 @@ model TenantSettings {
   exchangeRateUsdBrl   Decimal? @map("exchange_rate_usd_brl") @db.Decimal(12, 6)
   exchangeRateAt       DateTime? @map("exchange_rate_at")
 
+  // --- Dashboard (SPEC-035 §6) ----------------------------------------------
+  // Limite de "parado" do 4º item de *Esperando você*. Entra AQUI, e não numa
+  // 3ª tabela de configuração, pelo mesmo motivo dos parâmetros de estimativa:
+  // já é por tenant e já só o `owner` escreve (ADR-026).
+  //
+  // Coluna e não constante porque o §2.3 diz "configurável" e o critério de
+  // aceite cobra que "parado" use o valor configurado, não um `7` literal
+  // espalhado. O default reproduz a decisão do PI de 2026-07-27.
+  stalledDays          Int      @default(7) @map("stalled_days")
+
   updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@map("tenant_settings")
@@ -1393,6 +1403,10 @@ model Contract {
 
   @@unique([clientProjectId, version])
   @@index([clientProjectId, createdAt])
+  // O dashboard pergunta por TENANT, não por projeto (SPEC-035 §6): contagem no
+  // período e a lista dos sem aceite. O §2.1 é explícito em resolver latência
+  // com índice, nunca furando a fronteira do ADR-001.
+  @@index([tenantId, createdAt])
   @@index([tenantId, createdAt])
   @@map("contracts")
 }

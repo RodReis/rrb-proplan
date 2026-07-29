@@ -7,6 +7,7 @@ import { LlmModule } from '../llm';
 import { EffortBreakdownService } from './application/effort-breakdown.service';
 import { EstimateSettingsService } from './application/estimate-settings.service';
 import { EstimatesService } from './application/estimates.service';
+import { EstimatesSummaryService } from './application/estimates-summary.service';
 import { ESTIMATES_QUEUE } from './estimates.constants';
 import { EstimatesWorker } from './infrastructure/estimates.worker';
 import { EstimatesController } from './presentation/estimates.controller';
@@ -44,7 +45,10 @@ import { EstimatesController } from './presentation/estimates.controller';
     EstimatesService,
     EstimateSettingsService,
     EstimatesWorker,
+    EstimatesSummaryService,
   ],
-  exports: [EffortBreakdownService, EstimatesService],
+  // `EstimatesSummaryService` serve o dashboard (SPEC-035 §2.3, item 2):
+  // briefing sem estimativa ou estimativa sem aprovação, por tenant.
+  exports: [EffortBreakdownService, EstimatesService, EstimatesSummaryService],
 })
 export class EstimatesModule {}

@@ -5,6 +5,7 @@ import { ContractAcceptanceService } from './application/contract-acceptance.ser
 import { ContractIssueService } from './application/contract-issue.service';
 import { ContractLinkService } from './application/contract-link.service';
 import { ContractTemplateService } from './application/contract-template.service';
+import { ContractsSummaryService } from './application/contracts-summary.service';
 import { ProviderProfileService } from './application/provider-profile.service';
 import { ContractPublicController } from './presentation/contract-public.controller';
 import { ContractsController } from './presentation/contracts.controller';
@@ -48,6 +49,7 @@ import { ContractsController } from './presentation/contracts.controller';
     ContractIssueService,
     ContractLinkService,
     ContractAcceptanceService,
+    ContractsSummaryService,
   ],
   exports: [
     ProviderProfileService,
@@ -55,6 +57,9 @@ import { ContractsController } from './presentation/contracts.controller';
     ContractIssueService,
     ContractLinkService,
     ContractAcceptanceService,
+    // Serve o dashboard (SPEC-035 §6): o `list` do `ContractIssueService` é por
+    // projeto; a tela pergunta por tenant — sem aceite, e contagem no período.
+    ContractsSummaryService,
   ],
 })
 export class ContractsModule {}
