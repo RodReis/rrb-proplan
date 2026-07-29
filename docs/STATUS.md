@@ -57,6 +57,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 22 | SPEC-033 | `SPEC-033-estimativa.md` | Estimativa: decomposição por IA + cálculo determinístico (3 cenários, contingência, custos diretos e de IA, MVPs) — 4ª fatia do MVP3; issue #148 (spec `aprovada-pi` 2026-07-28). **Emenda de 2026-07-28**: sai a duração em dias — os cenários entregam horas e dinheiro, e o divisor de horas produtivas/dia não é implementado em fatia nenhuma (§3) |
 | 23 | SPEC-034 | `SPEC-034-contratos.md` | Contratos: perfil do prestador, templates versionados, snapshot imutável e link público de leitura — 5ª fatia do MVP3; issue #149 (spec `aprovada-pi` 2026-07-28) |
 | 24 | SPEC-035 | `SPEC-035-dashboard-funil.md` | Dashboard: tela de retomada — o que andou por aqui, esperando você, funil de clientes e Kanban de repos, sem número cruzando os dois domínios (ADR-023) — 6ª e última fatia do MVP3; issue #150 (spec `aprovada-pi` 2026-07-28). **Carimbada com a `Contract` ainda inexistente em código** — ver §4.3 |
+| 25 | SPEC-036 | `SPEC-036-licensing-emissao-ativacao.md` | Licensing: schema+RLS, emissão manual no admin, `POST /activate`, license file assinado (Ed25519) — 1ª fatia do MVP4 (`docs/specs/MVP4.md`, frente Licenciamento; piloto War Room); spec em `rascunho` 2026-07-29 |
 
 ## Backlog
 
