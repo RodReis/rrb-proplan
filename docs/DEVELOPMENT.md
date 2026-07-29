@@ -2945,6 +2945,11 @@ de uma refatoração pura seria escopo que ninguém pediu. **Apontado no PR, o
 Cowork corrigiu o ADR no mesmo dia**: o mecanismo virou detalhe de
 implementação, a checagem automática continua obrigatória.
 
+> **Nota posterior (#190/#197):** o repo **passou a ter ESLint**, com config na
+> raiz e step no CI. A decisão acima segue de pé — os `*.arch.spec.ts` são o
+> mecanismo da casa para regra de arquitetura e continuam sendo a verificação
+> dessas três; a linha só registra que a premissa *"não há lint"* caducou.
+
 **A guarda foi provada reprovando**: com um import profundo reintroduzido de
 propósito no `fake-recorder.ts`, o teste falha e **nomeia o arquivo infrator**.
 Teste de arquitetura que nunca reprova não protege nada.
@@ -5376,10 +5381,12 @@ Dado de teste removido do banco de dev ao fim (`DELETE 7 / 3 / 1`).
 
 ---
 
-## [INFRA] CI: build e lint no workflow de PR (#190) — `entregue`
+## [INFRA] CI: build e lint no workflow de PR (#190 + #197) — `entregue`
 
 Issue **#190**, aberta pelo PI após auditoria do `ci.yml`. **Não é fatia** — não
-há comportamento de produto novo, só o processo de verificação.
+há comportamento de produto novo, só o processo de verificação. Entregue em duas
+partes: **#190** (PR #194) e **#197** (PR #198), separadas por um bloqueio de
+escopo de token — ver *Parte 2*, no fim desta seção.
 
 **O problema tinha nome:** o `CLAUDE.md` exige *"`dev`, `test`, `lint` verdes é
 o piso"*, e duas das três não rodavam. Como **o merge é do próprio Code com o CI
@@ -5455,4 +5462,37 @@ vai **antes** da diretiva, não depois.
   remoções foram de código morto, e o arch-spec do `mcp` provou isso ao quebrar
   quando removi um `f` que **era** usado (revertido).
 - `CLAUDE.md` atualizado: a ressalva *"`build` e `lint` ainda não rodam no CI"*
-  deixou de ser verdade.
+  saiu — mas **adiantada**: só virou verdade com a parte 2, abaixo.
+
+### Parte 2 — o step do `ci.yml` (#197, PR #198)
+
+A parte 1 entregou config, scripts e correções, mas **não o step do CI** — o
+token do Code não tinha escopo `workflow` e o GitHub recusa push em
+`.github/workflows/`:
+
+```
+! [remote rejected] (refusing to allow an OAuth App to create or update
+  workflow `.github/workflows/ci.yml` without `workflow` scope)
+```
+
+A #190 foi fechada e aceita pelo PI **antes** desta parte entrar, então o
+trabalho restante virou card novo: **#197**, um `[FIX]` — não havia o que
+decidir, o `CLAUDE.md` já afirmava o comportamento correto que o `ci.yml` não
+cumpria. O PI concedeu o escopo (`gh auth refresh -s workflow`) e o push passou.
+
+**Dois steps, 17 linhas**, entre *Gerar Prisma client* e *Instalar navegador do
+Playwright*: `pnpm build` e `pnpm lint`.
+
+**Antes dos testes, e a ordem é a decisão.** Falha em ~40 s contra os ~8 min da
+suíte — erro de tipo aparece cedo em vez de no fim de um job longo.
+
+**A verificação que importa não é o check verde.** Check verde não prova que os
+steps rodaram: um `if` mal escrito os pularia em silêncio e o CI seguiria verde.
+Conferi a lista de steps do job pela API — `10. Build → success`,
+`11. Lint → success`, na posição projetada. O step 17 (carimbo do ADR-019) saiu
+`skipped`, correto: o PR não toca em arquivo de teste.
+
+Este PR foi o primeiro a rodar sob a guarda que ele mesmo introduz.
+
+**Só agora** o `CLAUDE.md` → passo 3 é verdadeiro: o CI verifica build, lint,
+testes e as guardas de evidência.
