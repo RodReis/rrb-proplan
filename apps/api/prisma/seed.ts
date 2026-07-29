@@ -20,6 +20,31 @@ const prisma = new PrismaClient();
 
 const EPOCH = new Date('2026-01-01T00:00:00Z'); // effectiveFrom fixo (idempotência)
 
+/**
+ * Produto do piloto do MVP4 (SPEC-036, critério 1). `keyPrefix` é o `WR` de
+ * `WR-XXXX-XXXX-XXXX-XXXX` — mora no produto e não em constante do código
+ * (MVP4 §4), senão o segundo produto emitiria chave com o prefixo do primeiro.
+ */
+const PRODUTO = { slug: 'warroom', name: 'War Room', keyPrefix: 'WR' };
+
+/** As duas edições decididas pelo PI (§Perguntas 1). */
+const EDICOES = [
+  {
+    slug: 'closed',
+    name: 'Sem código-fonte',
+    billingModel: 'PERPETUAL' as const,
+    maxMachines: 2,
+    updatesMonths: 12,
+  },
+  {
+    slug: 'source',
+    name: 'Com código-fonte',
+    billingModel: 'PERPETUAL' as const,
+    maxMachines: 2,
+    updatesMonths: 12,
+  },
+];
+
 const PRICES = [
   {
     provider: 'anthropic',
@@ -220,6 +245,55 @@ async function seedContractTemplates() {
   );
 }
 
+/**
+ * Produto e edições do piloto (SPEC-036, critério 1): `warroom` com `closed`
+ * ("Sem código-fonte") e `source` ("Com código-fonte") — ambas PERPETUAL,
+ * 2 máquinas, 12 meses de updates.
+ *
+ * Idempotente pelos uniques `(tenant_id, slug)` e `(product_id, slug)`: reseed
+ * não duplica. E **nunca sobrescreve** — o admin pode ter ajustado
+ * `maxMachines` ou `updatesMonths` de uma edição pela tela (§Perguntas 1 diz
+ * que é ajustável), e reescrever aqui desfaria essa escolha em silêncio na
+ * próxima vez que alguém rodasse o seed.
+ */
+async function seedLicensing() {
+  const tenants = await prisma.tenant.findMany({ select: { id: true } });
+  let created = 0;
+
+  for (const tenant of tenants) {
+    // RLS com FORCE: sem `app.tenant_ids` a policy barra até o OWNER. Mesma
+    // mecânica do `PrismaService.withTenant`.
+    created += await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_ids', ${`{${tenant.id}}`}, true)`;
+
+      const existente = await tx.licProduct.findUnique({
+        where: { tenantId_slug: { tenantId: tenant.id, slug: PRODUTO.slug } },
+        select: { id: true },
+      });
+      if (existente) return 0;
+
+      // Produto e edições na MESMA transação: um produto sem edição é um
+      // registro que a tela lista e a emissão não consegue usar.
+      const produto = await tx.licProduct.create({
+        data: {
+          tenantId: tenant.id,
+          slug: PRODUTO.slug,
+          name: PRODUTO.name,
+          keyPrefix: PRODUTO.keyPrefix,
+        },
+      });
+      await tx.licEdition.createMany({
+        data: EDICOES.map((e) => ({ ...e, productId: produto.id })),
+      });
+      return 1;
+    });
+  }
+
+  console.log(
+    `LicProduct seed: ${created} produto(s) novo(s) em ${tenants.length} tenant(s)`,
+  );
+}
+
 async function seedSegments() {
   for (const s of SEGMENTS) {
     await prisma.segment.upsert({
@@ -236,6 +310,7 @@ async function main() {
   await seedSegments();
   await seedServiceCatalog();
   await seedContractTemplates();
+  await seedLicensing();
 
   for (const p of PRICES) {
     await prisma.modelPrice.upsert({

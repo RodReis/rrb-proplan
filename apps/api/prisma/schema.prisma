@@ -108,6 +108,13 @@ model Tenant {
   providerProfile   ProviderProfile?
   contractTemplates ContractTemplate[]
   contracts         Contract[]
+  // Licenciamento (SPEC-036, MVP4 decisão 2): as quatro são raízes de tenancy
+  // com `tenant_id` próprio. `LicEdition` fica de fora de propósito — ela corta
+  // por JOIN no produto dono, porque nada a busca direto por id.
+  licProducts       LicProduct[]
+  licenses          License[]
+  licActivations    Activation[]
+  licEvents         LicEvent[]
 
   @@map("tenants")
 }
@@ -253,6 +260,9 @@ model Project {
   insightRuns    InsightRun[]
   canonicalFields CanonicalField[]
   assertions     Assertion[]
+  // Costura do MVP4 §4: produto licenciado ↔ repo. Opcional dos dois lados — o
+  // War Room é licenciado sem que o repo dele esteja no catálogo do ProPlan.
+  licProducts    LicProduct[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
@@ -1429,4 +1439,191 @@ model ContractLink {
 
   @@index([contractId])
   @@map("contract_links")
+}
+
+// ===========================================================================
+// Licenciamento (SPEC-036, Fatia 25 — 1ª do MVP4). Piloto: War Room.
+//
+// PR-1 da fatia: só a forma dos dados. Sem módulo, sem rota, sem assinatura —
+// mesmo recorte do PR-1 da SPEC-034, e pelo mesmo motivo: o schema é a decisão
+// mais cara de desfazer.
+//
+// A regra que organiza o bloco inteiro: **a chave em claro não existe aqui.**
+// Ela é devolvida uma única vez na resposta da emissão e some; o que persiste é
+// o `keyHash`. Não há coluna que a guarde, então não há caminho de leitura que
+// a revele — nem para o admin, nem para quem tiver acesso ao banco.
+// ===========================================================================
+
+// PERPETUAL: produto nunca expira, `updatesUntil` limita a janela de updates.
+// SUBSCRIPTION: `expiresAt` renovado a cada pagamento (webhook, SPEC-038).
+//
+// Os dois nascem juntos (MVP4 decisão 3) mesmo com o piloto usando só o
+// primeiro: a alternativa era um schema que só sabe perpétua e uma migração de
+// dados quando a primeira assinatura chegar.
+enum LicBillingModel {
+  PERPETUAL
+  SUBSCRIPTION
+}
+
+// REVOKED é ato do admin (reembolso, chargeback); EXPIRED é consequência do
+// relógio sobre `expiresAt` — separados porque respondem perguntas diferentes
+// no suporte ("foi cancelada?" ≠ "venceu?"). Sem `TRIAL`: decisão 4 do MVP4
+// tirou trial do produto.
+enum LicenseStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+// Produto licenciável do tenant. Raiz de tenancy.
+//
+// `keyPrefix` é o `WR` de `WR-XXXX-XXXX-XXXX-XXXX` — vem daqui e não de
+// constante no código (MVP4 §4), senão o segundo produto do tenant emitiria
+// chave com o prefixo do primeiro.
+model LicProduct {
+  id        String       @id @default(uuid())
+  tenantId  String       @map("tenant_id")
+  slug      String
+  name      String
+  keyPrefix String       @map("key_prefix")
+  // Costura futura com o catálogo (MVP4 §4): o produto licenciado APONTA para
+  // o repo quando ele existe no ProPlan. Opcional porque o War Room é vendido
+  // sem que seu repo esteja no catálogo — exigir o vínculo tornaria o
+  // licenciamento refém da ingestão.
+  projectId String?      @map("project_id")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // SetNull e não Cascade: desconectar o repo do catálogo não pode apagar o
+  // produto — junto iriam as licenças já vendidas dele.
+  project   Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  editions  LicEdition[]
+
+  // Slug único POR TENANT, não global: dois tenants podem vender um `warroom`
+  // cada um, e nada relaciona os dois.
+  @@unique([tenantId, slug])
+  @@map("lic_products")
+}
+
+// Edição do produto — o que muda entre "com" e "sem código-fonte" (§Perguntas 1).
+//
+// Sem `tenant_id`: corta por JOIN no produto dono. É a única tabela `Lic*` que
+// não é raiz, porque nada a busca direto por id — sempre se chega nela pelo
+// produto ou pela licença.
+model LicEdition {
+  id           String          @id @default(uuid())
+  productId    String          @map("product_id")
+  slug         String
+  name         String
+  billingModel LicBillingModel @default(PERPETUAL) @map("billing_model")
+  // 2 máquinas por licença (decisão do PI): desktop + notebook do mesmo
+  // comprador. Ajustável por edição pelo admin.
+  maxMachines  Int             @default(2) @map("max_machines")
+  // Janela de updates da licença perpétua. Vira `updatesUntil` na emissão —
+  // COPIADO, não lido por FK: mudar a política meses depois não pode encurtar
+  // a janela de quem já comprou.
+  updatesMonths Int            @default(12) @map("updates_months")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  product      LicProduct      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  licenses     License[]
+
+  @@unique([productId, slug])
+  @@map("lic_editions")
+}
+
+// A licença. Raiz de tenancy.
+//
+// `keyHash` é `@unique` e é o ÚNICO caminho de busca pela chave: o `/activate`
+// hasheia o que recebe e procura por igualdade. Um índice único aqui é o que
+// torna esse lookup uma operação e não uma varredura.
+model License {
+  id            String        @id @default(uuid())
+  tenantId      String        @map("tenant_id")
+  editionId     String        @map("edition_id")
+  // SHA-256 da chave em claro. A chave NUNCA é persistida (§Contratos).
+  keyHash       String        @unique @map("key_hash")
+  status        LicenseStatus @default(ACTIVE)
+  customerEmail String        @map("customer_email")
+  customerName  String?       @map("customer_name")
+  // Id da venda na plataforma (Kiwify etc). @unique é a idempotência do webhook
+  // da SPEC-038: reentrega do mesmo evento não emite a segunda licença. Nulo
+  // nesta fatia — a emissão é manual, não tem venda associada.
+  saleRef       String?       @unique @map("sale_ref")
+  issuedAt      DateTime      @default(now()) @map("issued_at")
+  // Emissão + `updatesMonths` da edição, congelado na linha (ver LicEdition).
+  updatesUntil  DateTime      @map("updates_until")
+  // Nulo em PERPETUAL. Usado pela SPEC-038 em SUBSCRIPTION.
+  expiresAt     DateTime?     @map("expires_at")
+  revokedAt     DateTime?     @map("revoked_at")
+  revokedReason String?       @map("revoked_reason")
+  // Convite do repo privado na edição source (SPEC-039, dia 8). Nascem aqui
+  // para que o job daquela fatia não precise de migração de dados.
+  sourceInviteAt DateTime?    @map("source_invite_at")
+  sourceInvited Boolean       @default(false) @map("source_invited")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Restrict: apagar uma edição levaria junto as licenças vendidas nela, e com
+  // elas a resposta a "o que este cliente comprou?".
+  edition       LicEdition    @relation(fields: [editionId], references: [id], onDelete: Restrict)
+  activations   Activation[]
+  events        LicEvent[]
+
+  // A busca do admin é por e-mail do comprador (§Contratos), dentro do tenant.
+  @@index([tenantId, customerEmail])
+  @@index([tenantId, issuedAt])
+  @@map("licenses")
+}
+
+// Máquina ativada. Raiz de tenancy — o admin da SPEC-040 lista ativações por
+// tenant sem passar pela licença.
+//
+// `fingerprint` é OPACO para o servidor: hash calculado no cliente, comparado
+// só por igualdade (§Notas técnicas). O servidor nunca recebe MAC em claro.
+model Activation {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  licenseId     String    @map("license_id")
+  fingerprint   String
+  // Só para exibição no suporte ("qual das duas máquinas é essa?"). Opcional.
+  hostname      String?
+  appVersion    String?   @map("app_version")
+  activatedAt   DateTime  @default(now()) @map("activated_at")
+  lastSeenAt    DateTime  @default(now()) @map("last_seen_at")
+  // Preenchido pelo `/deactivate` da SPEC-037. Linha some da contagem de vagas
+  // sem sumir da trilha — apagar esconderia a troca de máquina do suporte.
+  deactivatedAt DateTime? @map("deactivated_at")
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  license       License   @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  // A idempotência do `/activate`: mesma chave + mesma máquina reativa a linha
+  // existente em vez de consumir a segunda vaga. É o índice que garante isso,
+  // não o código — duas requisições simultâneas passariam por um `if`.
+  @@unique([licenseId, fingerprint])
+  @@index([tenantId, lastSeenAt])
+  @@map("lic_activations")
+}
+
+// Trilha do que aconteceu com a licença. Raiz de tenancy, append-only.
+//
+// `type` é TEXT e não enum de propósito: as fatias 27–28 acrescentam
+// `webhook_renewed`, `webhook_overdue`, `webhook_canceled`, `source_invited`
+// (MVP4 §4). Um enum forçaria migração de schema a cada evento novo, e o custo
+// não se paga — nada no banco decide comportamento a partir deste valor.
+model LicEvent {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  licenseId String   @map("license_id")
+  type      String
+  // Contexto do evento: IP da ativação, motivo da revogação, valor pago que
+  // chega do webhook (MVP4 decisão 4 — preço NÃO vira coluna).
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  license   License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  // A leitura é sempre "a trilha desta licença, mais recente primeiro".
+  @@index([licenseId, createdAt])
+  @@map("lic_events")
 }

@@ -4818,3 +4818,131 @@ rolagem própria, e o Kanban de repos subiu. Conferido nos **dois temas**.
 - `tsc --noEmit` limpo; `pnpm build` verde (API e web).
 - **Dogfooding com sessão real e falha real do GitHub** — números conferidos
   contra o banco, drill-down exercido, salvaguarda 1 provada, dois temas.
+
+---
+
+## Fatia 25 (SPEC-036) — Licensing: emissão manual e ativação com license file assinado — `em andamento`
+
+Issue **#183** (spec `aprovada-pi` 2026-07-29, perguntas resolvidas com o PI).
+**1ª fatia do MVP4 — Frente Licenciamento.** Piloto: War Room.
+
+**A frente inteira existe para administrar o pós-venda** dos produtos de
+software do tenant: licenças, ativações por máquina, revogação. Modelo
+Keygen.sh, self-hosted no monolito (MVP4 decisão 1).
+
+**A decisão central de desenho é validação por assinatura, não por segredo**
+(MVP4 §1): o servidor assina um license file com chave privada Ed25519; o
+cliente valida com a pública embutida no binário. Offline funciona pela
+validade do arquivo assinado, não por confiança no relógio do servidor.
+
+**Premissa herdada, e vale repetir porque muda o que é "sucesso" aqui: a
+proteção atrasa, não impede.** O mecanismo real é contrato + conveniência de
+updates. Nenhuma fatia desta frente deve ser avaliada por "quão difícil é
+burlar" — os riscos aceitos estão no MVP4 §8, sem mitigação técnica.
+
+### Decisões do PI nesta fatia (2026-07-29)
+
+Três pontos que a spec não fechava e mudavam o código:
+
+1. **Nav** — item próprio **"Licenças"** no `GlobalNav` (`/t/:tenant/licencas`),
+   mesmo tratamento de "Contratos". Licenciamento é frente própria, não sub-aba
+   de outra coisa.
+2. **Produto/edição** — **seed + CRUD mínimo na tela**. O critério de aceite
+   admitia "via seed ou tela"; o PI pediu os dois, porque um tenant novo precisa
+   conseguir cadastrar o próprio produto sem esperar a SPEC-040.
+3. **Fatiamento** — **4 PRs empilhados**.
+
+### Os 4 PRs
+
+| PR | entrega |
+|---|---|
+| **PR-1** | schema + RLS + migração + `resolve_license` + seed do piloto |
+| **PR-2** | domínio (geração de chave, Ed25519, license file) + admin: emitir, revogar, listar, trilha |
+| **PR-3** | `POST /licensing/v1/activate` público + rate limit + contexto de tenant por recurso |
+| **PR-4** | tela mínima (emissão + lista + revogar + CRUD de produto/edição) + arch-spec de fronteira + dogfooding |
+
+---
+
+### PR-1 — schema, RLS e seed — `feito`
+
+Só a forma dos dados. Sem módulo, sem rota, sem assinatura — mesmo recorte do
+PR-1 da SPEC-034, e pelo mesmo motivo: o schema é a decisão mais cara de
+desfazer.
+
+**A regra que organiza o PR inteiro: a chave em claro não existe no banco.**
+Ela é devolvida uma única vez na resposta da emissão (PR-2) e some; o que
+persiste é o `key_hash`. Não há coluna que a guarde, então não há caminho de
+leitura que a revele — nem para o admin, nem para quem tiver acesso ao banco.
+
+**5 tabelas.** `lic_products`, `licenses`, `lic_activations` e `lic_events` são
+raízes de tenancy com `tenant_id` próprio e policy `= ANY(app.tenant_ids)`.
+`lic_editions` é a única sem `tenant_id`: corta por JOIN no produto dono, porque
+nada a busca direto por id. Foi testada explicitamente por ser o modo mais fácil
+de escrever uma policy que não protege nada.
+
+**`resolve_license`, `SECURITY DEFINER`.** O `/activate` (PR-3) não tem sessão,
+então roda sem `app.tenant_ids`, e o RLS fail-closed devolveria vazio para
+**toda** chave — inclusive as válidas. Mesmo padrão da `resolve_contract_link`
+(SPEC-034) e da `resolve_briefing_link` (SPEC-029).
+
+**A saída da função é deliberadamente estreita, e isso é uma decisão de
+segurança, não de economia:** ela devolve o que a licença é (status, limites,
+janelas) e de que tenant vem. **Nada do comprador sai dali** — nome e e-mail não
+são necessários para decidir uma ativação, e uma função com privilégio de owner
+não deve devolver dado pessoal a uma rota sem sessão. Há teste afirmando a
+ausência, porque aqui a ausência é a proteção.
+
+**Quatro CHECKs que fecham erros silenciosos**, não erros que já falham sozinhos:
+
+- `licenses_revoked_coherent` — `status = REVOKED` ⟺ `revoked_at` preenchido. O
+  caso perigoso é o inverso: revogada por reembolso mas com status ACTIVE, que
+  faria o `/activate` responder `200` em vez de `410`.
+- `lic_editions_limits_positive` — zero máquinas emitiria licença que não ativa
+  em lugar nenhum; zero meses emitiria licença vencida no dia da compra.
+- `lic_products_identity_present` / `lic_editions_identity_present` — barram a
+  string vazia, que é o que passa por `NOT NULL` sem dizer nada.
+
+**Dois uniques que são garantia de comportamento, não de higiene:**
+
+- `(license_id, fingerprint)` — é a idempotência do `/activate`. Sem ele, duas
+  requisições simultâneas da **mesma** máquina passariam as duas por um `if` no
+  código e consumiriam as duas vagas do comprador.
+- `licenses.key_hash` — o único caminho de busca do `/activate`. Dois hashes
+  iguais fariam o lookup devolver "uma das duas", e nada diria qual licença o
+  license file assinado estaria descrevendo.
+
+**`ON DELETE` escolhido campo a campo:** `Restrict` na edição (apagá-la levaria
+junto as licenças vendidas nela, e com elas a resposta a *"o que este cliente
+comprou?"*); `SetNull` no `project_id` (desconectar o repo do catálogo não pode
+apagar o produto licenciado — o vínculo é enriquecimento, não raiz).
+
+**Campos que nascem sem uso, de propósito:** `expires_at` e `billing_model =
+SUBSCRIPTION` (SPEC-038), `source_invite_at`/`source_invited` (SPEC-039),
+`sale_ref` (idempotência do webhook). A alternativa era migração de dados quando
+a primeira assinatura ou o primeiro convite chegasse. `LicEvent.type` é TEXT e
+não enum pelo mesmo motivo, invertido: as fatias 27–28 acrescentam tipos, e nada
+no banco decide comportamento a partir desse valor.
+
+**Preço não entra no schema** (MVP4 decisão 4): a plataforma de venda é a fonte;
+o valor pago chegará no `LicEvent.payload` do webhook.
+
+#### PR-1 — verificação
+
+- **2137 testes verdes** (1521 regras · **140 banco** · 476 tela) — **+16**
+  sobre os 2121 do PR-4 da Fatia 24, todos no banco.
+- **Os 16 são de integração contra Postgres real**, não mock: esta tabela decide
+  quem pode rodar um produto pago, e os quatro modos de errar que ela tem são
+  silenciosos (fail-closed devolvendo zero linhas, segunda máquina virando
+  terceira, revogada que continua ativando, função privilegiada vazando o
+  comprador). Nenhum levanta exceção no caminho feliz.
+- **Fail-closed provado nas 5 tabelas**, uma a uma — incluindo a `lic_editions`,
+  que corta por JOIN.
+- **Isolamento entre tenants**: A não vê licença nem edição de B, e pedir a
+  linha do outro tenant devolve **o mesmo** que pedir um id inexistente
+  (distinguir os dois já é vazamento).
+- Seed **idempotente**, conferido rodando duas vezes: `1 produto novo` na
+  primeira, `0` na segunda. Nunca sobrescreve — o admin pode ter ajustado
+  `maxMachines` pela tela, e o reseed desfaria a escolha em silêncio.
+- `prisma migrate diff` sem drift novo (só o `tenant_id` nullable pré-existente
+  da Fatia 8, já documentado no schema).
+- `tsc --noEmit` limpo; `pnpm build` verde (API e web).
