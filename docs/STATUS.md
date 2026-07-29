@@ -60,6 +60,7 @@ Roadmap em fatias verticais — cada fatia entrega valor usável sozinha. Ordem 
 | 25 | SPEC-036 | `SPEC-036-licensing-emissao-ativacao.md` | Licensing: schema+RLS, emissão manual no admin (tela mínima), `POST /activate`, license file assinado (Ed25519) — 1ª fatia do MVP4 (`docs/specs/MVP4.md`, frente Licenciamento; piloto War Room); issue #183 (spec `aprovada-pi` 2026-07-29) |
 | 26 | SPEC-037 | `SPEC-037-licensing-heartbeat-troca-maquina.md` | Licensing: `heartbeat` (reassina o license file), `deactivate` por fingerprint ou activationId, troca de máquina self-service, contador de trocas como sinal — 2ª fatia do MVP4; issue #188 (spec `aprovada-pi` 2026-07-29) |
 | 27 | SPEC-038 | `SPEC-038-licensing-mail-webhook-kiwify.md` | Licensing: módulo `mail` (Resend + BullMQ), webhook da Kiwify por tenant com recebimento idempotente, e ciclo da assinatura (renovação, reembolso, chargeback, inadimplência com tolerância configurável) — 3ª fatia do MVP4; issue #191 (spec `aprovada-pi` 2026-07-29) |
+| 28 | SPEC-039 | `SPEC-039-licensing-convite-source-github.md` | Licensing: convite ao repo source no 8º dia (PAT fine-grained por tenant), coleta do username por link de uso único com confirmação por avatar, e revogação que distingue convite pendente de colaborador aceito — 4ª fatia do MVP4; issue #195 (spec `aprovada-pi` 2026-07-29) |
 
 ## Backlog
 
