@@ -5457,7 +5457,7 @@ vai **antes** da diretiva, não depois.
 - `CLAUDE.md` atualizado: a ressalva *"`build` e `lint` ainda não rodam no CI"*
   deixou de ser verdade.
 
-## Fatia 27 (SPEC-038) — Licensing: módulo `mail`, webhook da Kiwify e ciclo da assinatura — `em andamento`
+## Fatia 27 (SPEC-038) — Licensing: módulo `mail`, webhook da Kiwify e ciclo da assinatura — `finalizada`
 
 Issue **#191** (spec `aprovada-pi` 2026-07-29). **3ª fatia do MVP4.** É a fatia
 em que `billingModel: SUBSCRIPTION` deixa de ser coluna e vira comportamento: a
@@ -5931,3 +5931,115 @@ mínima do §Fora de escopo — e a SPEC-040 absorve as telas mínimas das fatia
 **Suíte**: regras **1804** (+22), banco 219, tela **562** (+32). Build nos três
 apps, lint 0 erros, guarda do ADR-019 aprovando. **Pendente: dogfooding com
 túnel** — a fatia inteira (PR-3 a PR-5) nunca viu uma entrega real da Kiwify.
+
+## Fatia 28 (SPEC-039) — Licensing: convite ao repo source, coleta do username e revogação de colaborador — `em andamento`
+
+Issue **#195** (spec `aprovada-pi` 2026-07-29). **4ª fatia do MVP4.** A venda da
+edição **com código-fonte** vira acesso ao repositório privado sem ninguém no
+meio — e o acesso acaba quando o dinheiro volta.
+
+O que esta fatia **não** entrega, e está escrito antes de qualquer tela sugerir o
+contrário: remover o colaborador **não recupera o que já foi clonado**. O que a
+remoção entrega é o fim dos *updates* — o mecanismo real do produto é contratual
+(§8 do MVP4).
+
+**Cinco PRs empilhados**, todos com base `main` (PR empilhado com base ≠ `main`
+fica sem check nenhum, silenciosamente):
+
+1. **PR-1 — schema** (este): o enum de estado, o link de coleta, o PAT por
+   tenant e a função de leitura sem sessão. Sem rota, sem job, sem cliente do
+   GitHub.
+2. **PR-2 — coleta do username**: `GET|POST /s/:token`, página pública React,
+   validação na GitHub API com confirmação por avatar, template do e-mail.
+3. **PR-3 — job do convite**: reconciliação diária, `PENDING → INVITED → ACTIVE`,
+   cliente GitHub com PAT (separado do cliente do GitHub App).
+4. **PR-4 — revogação**: cancela *invitation* **ou** remove colaborador, conforme
+   o estado; `FAILED` retentável.
+5. **PR-5 — admin mínimo**: pendências de source, corrigir username, reemitir,
+   remover acesso, PAT write-only com teste de conexão.
+
+### PR-1 — o schema, e o booleano que precisou morrer
+
+- [x] `LicSourceAccess` (`NONE|PENDING|INVITED|ACTIVE|REMOVED|FAILED`)
+- [x] `License.sourceAccess`, `githubUsername`, `githubInvitationId`,
+      `sourceAccessError` — e **`sourceInvited` removido**
+- [x] `LicSourceLink` (só `tokenHash`, `usedAt` sem prazo fixo)
+- [x] `LicProduct.sourceRepo`, `LicEdition.grantsSourceAccess`,
+      `LicSettings.githubPat`
+- [x] RLS (`ENABLE` + `FORCE`) + `resolve_source_link` (`SECURITY DEFINER`)
+- [x] 13 testes de banco contra Postgres real
+
+**O booleano da SPEC-036 não expressava a diferença que a revogação precisa.**
+`sourceInvited: Boolean` não distingue *"convidado, ainda não aceito"* de
+*"aceito"* — e os dois estados se desfazem por chamadas **diferentes** na API do
+GitHub: convite pendente por `DELETE /repos/:owner/:repo/invitations/:id`,
+colaborador aceito por `DELETE /repos/:owner/:repo/collaborators/:username`.
+**Chamar a errada é no-op silencioso**: a API responde sem erro, nada aparece em
+log, e o comprador reembolsado continua com acesso ao código-fonte. O campo foi
+carimbado na SPEC-036 antes desta fatia existir; agora que ela é real, o tipo não
+serve. Há teste afirmando que a coluna **não existe mais** — se ela sobreviver,
+algum caminho volta a escrever nela.
+
+**A tradução do dado vem antes do `DROP`, e nessa ordem.** `true` só pode virar
+`INVITED`, nunca `ACTIVE`: o booleano registrava que o convite **saiu**, e nada
+nele dizia se foi aceito — marcar `ACTIVE` afirmaria aceitação que ninguém
+verificou. Quem promove a `ACTIVE` é a primeira reconciliação, que é o caminho
+honesto. O banco local está vazio (verificado antes de escrever a migration), mas
+o `UPDATE` fica: produção é o ambiente em que ele importa, e migration que só
+funciona onde não há dado não é migration.
+
+**`resolve_source_link` existe pela 6ª ocorrência da mesma armadilha.**
+`GET /s/:token` **não tem sessão**: roda sem `app.tenant_ids`, e o RLS
+fail-closed devolveria zero linhas para **todo** token — inclusive os válidos. O
+sintoma seria *"todo comprador vê link inválido"*, sem erro em lugar nenhum. Mesmo
+desenho da `resolve_briefing_link` (SPEC-029) e da `resolve_contract_link`
+(SPEC-034): um argumento, sem filtro livre, sem listagem, sem paginação — não há
+como enumerar.
+
+**Nenhum dado pessoal sai da função privilegiada**, e isso é prova por ausência.
+A página é **pública**: se a função devolvesse `customer_email`, o link vazado
+deixaria de ser só acesso indevido e passaria a ser vazamento de dado pessoal.
+O teste lista as colunas e afirma que `customer_email`, `customer_name`,
+`github_username`, `github_pat`, `webhook_secret` e `token_hash` **não estão
+lá** — mesmo desenho das provas de ausência de receita da SPEC-034/035.
+Acrescentar uma dessas colunas um dia seria uma linha inocente no SQL e um
+vazamento na rota.
+
+**A função não filtra link usado, de propósito.** Se filtrasse, *"usado"* e
+*"inexistente"* chegariam à rota como a mesma coisa — e o critério de aceite
+exige que reabrir o link mostre **"já utilizado"**, nunca o formulário de novo.
+Quem decide isso é a rota, com o `usedAt` que a função devolve.
+
+**`grantsSourceAccess` existe para não casar a edição pelo slug `source`.**
+Hardcode de slug funciona no piloto e quebra em silêncio no primeiro produto que
+chame a edição de outra coisa: a compra emitiria a licença sem agendar convite, e
+o comprador da edição mais cara do catálogo nunca receberia o código.
+
+**O PAT não é o token do GitHub App** (ADR-015). São credenciais de propósitos
+diferentes: aqui basta `administration:write` no repo do produto (decisão #8 do
+MVP4), sem expandir as permissões do App nem exigir re-consent das instalações.
+Por tenant e não em env var (decisão PI #2) — mesmo argumento aceito para o
+`webhookSecret`. A arch-spec cobra a separação no código a partir do PR-3;
+misturá-las reabriria o ADR por acidente.
+
+**`usedAt` é a morte do link, não um relógio** (decisão PI #3). Prazo curto
+trocaria um risco raro (link vazado) por um problema frequente: o comprador que
+responde no dia 10 e encontra link morto, na venda mais cara do catálogo, já pago
+e sem o que comprou.
+
+### PR-1 — verificação
+
+**Prova contra o bug, não só verde.** Derrubei a `resolve_source_link` no banco de
+teste e rodei a suíte: **5 dos 13 testes falham** com
+`function resolve_source_link(unknown) does not exist`. É a medida de que a
+função carrega peso — sem essa prova, um teste que consultasse a tabela direto
+(sob contexto) passaria com a função ausente e a rota pública quebraria em
+produção.
+
+`migrate diff` entre o schema Prisma e o banco: **zero divergência** nas tabelas
+desta fatia — o SQL escrito à mão casa com o modelo (as duas linhas de
+`projects`/`settings` no diff são drift pré-existente, fora deste PR).
+
+**Suíte**: regras 1804, banco **232** (+13), tela 562 — **2036 verdes** na API.
+Build nos três apps, lint 0 erros (3 warnings pré-existentes), `reports/TESTS.md`
+regenerado para a guarda do ADR-019.
