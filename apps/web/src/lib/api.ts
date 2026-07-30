@@ -1963,6 +1963,7 @@ export function getLicensingSummary(
   return request(`/licensing/summary${period ? `?period=${period}` : ''}`);
 }
 
+
 /**
  * Exclusão a pedido (LGPD, SPEC-040 §Exclusão a pedido).
  *

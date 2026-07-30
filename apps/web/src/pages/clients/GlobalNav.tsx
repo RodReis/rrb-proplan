@@ -181,7 +181,21 @@ export function GlobalNav({ tenant, section }: { tenant: string; section: string
             {/* Licenças (SPEC-036, Fatia 25 — 1ª do MVP4). Item próprio, e não
                 sub-aba de Contratos: licenciamento é frente disjunta — um
                 produto licenciado não é um cliente, e o contrato de prestação
-                não tem nada a ver com a licença de um binário. */}
+                não tem nada a ver com a licença de um binário.
+
+                **O item NÃO some sem produto**, ao contrário do Dashboard — e a
+                SPEC-040 §A área pede que suma. A decisão do PI (2026-07-30) veio
+                de um impasse que a spec não previu: o menu é o único caminho
+                para a área, e é *dentro* dela que se cadastra o primeiro
+                produto. Escondê-lo deixaria o licenciamento inalcançável em
+                todo tenant novo — nem `/settings` serve de porta, porque ela é
+                global e não tem tenant.
+
+                O que a regra do "some" queria evitar — ruído no menu de quem não
+                vende software — é resolvido pela própria área: sem produto, ela
+                explica o que é licenciamento e diz para ignorar se não for o
+                caso. `hasLicensing` continua vindo do hook, sem uso aqui: quando
+                houver uma porta alternativa, é ele que volta a esconder o item. */}
             <button
               onClick={() => navigate(`/t/${tenant}/licencas`)}
               className={itemClass(activeLicenses)}
