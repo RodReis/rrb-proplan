@@ -369,6 +369,49 @@ Ordem por serviço:
 > ainda usada pela versão anterior derruba a app durante a janela. Migrations
 > destrutivas seguem o padrão *expand → migrate → contract* em PRs separados.
 
+### 7.1 Deploy preso em `QUEUED` — e o redeploy que sobe o commit errado (2026-07-30)
+
+**O que aconteceu.** O merge do PR #217 enfileirou o deploy `d6ea21ac`, que ficou
+**20 minutos em `QUEUED` sem entrar em `BUILDING`**. Os cinco deploys anteriores
+do mesmo dia começaram a construir em segundos.
+
+**A causa era externa:** incidente da própria Railway
+([`status.railway.com/incident/OA5Z6SQY`](https://status.railway.com/incident/OA5Z6SQY),
+30/07 16:32 UTC) — *"delays in builds and deployments"*, todas as regiões, Hobby e
+Pro. Nada no repositório, no `railway.json` ou no Dockerfile.
+
+**O sintoma que confunde:** `snapshotId: null` no deploy travado. É tentador ler
+isso como causa (*"o Railway não capturou o código"*), mas é **consequência**: o
+snapshot nasce quando o build começa, e o build nunca começou. O efeito prático,
+porém, é real — sem snapshot, o `redeploy` recusa com *"Cannot redeploy without a
+snapshot"*, e o menu `⋮` daquele deploy oferece só *View logs*.
+
+**A armadilha que custou tempo, e essa é a lição que sobrevive ao incidente:** um
+`redeploy` do serviço nesse estado reimplanta o **último deploy bem-sucedido**,
+não o commit travado. No caso, subiu de volta o commit anterior (`1f2f9c9`)
+enquanto a `main` (`1e9ce1e`) continuava fora do ar — com o painel exibindo
+`ACTIVE` e *"Deployment successful"*.
+
+> **O verde do Railway não é prova de que a `main` está em produção.** Conferir o
+> **commit** que está `ACTIVE`, nunca o status.
+
+**Diagnóstico rápido** (nesta ordem):
+
+1. Qual commit está `ACTIVE`? Compare com `git rev-parse main`. Divergiu ⇒ o
+   deploy do merge não chegou, e o resto da investigação faz sentido.
+2. **Há incidente aberto em `status.railway.com`?** É a primeira pergunta a fazer
+   quando *nenhum* deploy anda — antes de procurar defeito no repo.
+3. O deploy do commit esperado tem `snapshotId`? Nulo ⇒ nunca buildou.
+
+**Remédio.** Não há seletor de commit no painel nem na API (o Railway deploya o
+*head* da branch conectada), e o `redeploy` só repete o último bem-sucedido. O
+caminho é **gerar um push novo em `main`** — na prática, mergear o próximo PR. Um
+PR que já tinha razão de existir serve; evita commit vazio e mantém o fluxo de
+entrega (o Code entrega por PR).
+
+**Não** confundir com falha de build: ali há log e o healthcheck segura a versão
+anterior. Aqui não há log nenhum, porque não houve build.
+
 ---
 
 ## 8. Supabase — reservado, sem função ativa
@@ -418,6 +461,8 @@ integração que não existe.
 | Deploy da api falhou | Logs do release command — quase sempre `prisma migrate deploy` (`DIRECT_URL` errada ou migração destrutiva). |
 | **Deploy verde mas migration não aplicada** | O `preDeployCommand`/`buildCommand` gravado nas *settings do serviço* **vence o `railway.json` do repo** — se estiver `null` lá, o release command **não roda** e o deploy passa mesmo assim. Conferir em Settings → Deploy do serviço, não só no repo. Aconteceu na própria SPEC-027 (§11). |
 | Build da api com centenas de `TS2339: Property 'x' does not exist on type 'PrismaService'` | O build rodou sem `prisma generate` antes — o client nasce sem models. Sinal de que o Railway **não** está usando `apps/api/Dockerfile` (checar `dockerfilePath` e se há `buildCommand` sobrescrevendo). |
+| **Deploy `ACTIVE` e verde, mas o merge não está no ar** | O deploy do commit ficou preso em `QUEUED` e foi removido; um `redeploy` reimplanta o *último bem-sucedido*, que é o commit **anterior**. O painel diz *"Deployment successful"* sobre código velho. Conferir o **commit** que está `ACTIVE` contra `git rev-parse main` — não o status. Remédio em §7.1. |
+| **Nenhum deploy sai de `QUEUED`** | Antes de investigar o repo, checar [`status.railway.com`](https://status.railway.com) — em 2026-07-30 um incidente de plataforma parou builds em todas as regiões por ~20 min. `snapshotId: null` é *sintoma* (não buildou), não causa. §7.1. |
 | App sobe mas login não persiste | Cookie `Secure` ausente em HTTPS, ou `FRONTEND_URL`/CORS divergente do host real. |
 | Queries multi-tenant "vendo tudo" | Runtime conectou como **owner/superuser** em vez de `proplan_app` — RLS virou no-op. Conferir a `DATABASE_URL`. |
 | Sync/insight não processam | Redis fora do ar ou `REDIS_URL` não resolvida (reference variable). |
