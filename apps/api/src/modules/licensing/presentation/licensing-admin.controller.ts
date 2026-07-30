@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -26,6 +28,11 @@ import {
   type CreateProductInput,
 } from '../application/lic-catalog.service';
 import { LicenseSigningService } from '../application/license-signing.service';
+import {
+  LicensingOpsService,
+  type OfferMappingInput,
+  type UpdateSettingsInput,
+} from '../application/licensing-ops.service';
 
 interface RevokeBody {
   reason?: unknown;
@@ -57,6 +64,7 @@ export class LicensingAdminController {
     private readonly licenses: LicenseAdminService,
     private readonly catalog: LicCatalogService,
     private readonly signing: LicenseSigningService,
+    private readonly ops: LicensingOpsService,
   ) {}
 
   /**
@@ -184,5 +192,85 @@ export class LicensingAdminController {
   @Get('licenses/:id/events')
   events(@Req() req: AuthenticatedRequest, @Param('id') licenseId: string) {
     return this.licenses.events(req.tenantId!, licenseId);
+  }
+
+  // =========================================================================
+  // Operação do webhook (SPEC-038, PR-5) — as rotas que tiram a venda parada
+  // do beco. O PR-3 grava oferta não mapeada como `FAILED` de propósito; sem
+  // estas rotas, esse estado é informação no banco que ninguém alcança.
+  // =========================================================================
+
+  /**
+   * Entregas recebidas da plataforma, com filtro por status.
+   *
+   * `PENDING`/`FAILED` é o que o dono precisa ver — o resto é histórico. Sem o
+   * `payload`: é corpo bruto com dado do comprador, e esta lista carrega
+   * sempre. Quem precisa dele abre o item.
+   */
+  @Get('webhook-events')
+  webhookEvents(@Query('status') status?: string, @Query('take') take?: string) {
+    return this.ops.listWebhookEvents(status, take ? Number(take) : undefined);
+  }
+
+  /** Uma entrega, com o payload bruto — o que a plataforma realmente mandou. */
+  @Get('webhook-events/:id')
+  webhookEvent(@Param('id') id: string) {
+    return this.ops.webhookEvent(id);
+  }
+
+  /**
+   * Reenfileira a entrega. É o segundo passo do critério de aceite da fatia:
+   * *"cadastrar o mapeamento e reprocessar o evento pendente emite a licença —
+   * sem precisar da plataforma reenviar"*.
+   */
+  @Post('webhook-events/:id/reprocess')
+  reprocess(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.ops.reprocess(id, req.tenantId!);
+  }
+
+  /**
+   * Configuração do tenant.
+   *
+   * **O `webhookSecret` não sai daqui** — só `webhookSecretSet`. O segredo é o
+   * Token que a Kiwify gera (achado do PR-3), então a origem dele é o painel
+   * dela: ninguém precisa lê-lo de volta, e uma tela que o exibisse seria
+   * superfície de vazamento sem nada em troca.
+   */
+  @Get('settings')
+  settings(@Req() req: AuthenticatedRequest) {
+    return this.ops.settings(req.tenantId!);
+  }
+
+  /**
+   * Grava segredo e/ou tolerância. Campo ausente não é tocado.
+   *
+   * `pastDueToleranceDays: null` é a mitigação sem deploy do risco aceito
+   * (decisão PI #3) — desliga o corte por atraso. É por isso que `null` e
+   * ausente têm de ser distinguíveis aqui.
+   */
+  @Put('settings')
+  updateSettings(@Req() req: AuthenticatedRequest, @Body() body: UpdateSettingsInput) {
+    return this.ops.updateSettings(req.tenantId!, body);
+  }
+
+  /** Mapeamentos oferta→edição: o de-para que resolve a compra em edição. */
+  @Get('offer-mappings')
+  offerMappings(@Req() req: AuthenticatedRequest) {
+    return this.ops.listOfferMappings(req.tenantId!);
+  }
+
+  /** Cadastra o mapeamento — o ato que destrava a venda parada em `FAILED`. */
+  @Post('offer-mappings')
+  createOfferMapping(@Req() req: AuthenticatedRequest, @Body() body: OfferMappingInput) {
+    return this.ops.createOfferMapping(req.tenantId!, body);
+  }
+
+  /**
+   * Remove um mapeamento. **Não** toca licença já emitida: o mapeamento resolve
+   * a compra no momento em que ela chega, e apagá-lo depois não desfaz nada.
+   */
+  @Delete('offer-mappings/:id')
+  deleteOfferMapping(@Param('id') id: string) {
+    return this.ops.deleteOfferMapping(id);
   }
 }

@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { MailService } from '../../mail/application/mail.service';
 import { generateKey, hashKey, updatesUntil } from '../domain/license-key';
 import { parseKiwifyEvent, type ParsedEvent } from '../domain/kiwify-event';
+import { PLATFORM_KIWIFY } from '../licensing.constants';
 
 /**
  * O que o evento recebido significa para a licença (SPEC-038 §Escopo).
@@ -441,7 +442,7 @@ export class WebhookProcessorService {
     const mapeamento = await this.prisma.licOfferMapping.findFirst({
       where: {
         tenantId,
-        platform: 'kiwify',
+        platform: PLATFORM_KIWIFY,
         externalProductId: evento.externalProductId,
         // A oferta específica vence o curinga: `orderBy` põe a linha com
         // `externalOfferId` preenchido primeiro. É o que faz "anual" e "mensal"

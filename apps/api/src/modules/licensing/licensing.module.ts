@@ -7,6 +7,7 @@ import { LicenseActivationService } from './application/license-activation.servi
 import { LicenseAdminService } from './application/license-admin.service';
 import { LicenseExpirySweepService } from './application/license-expiry-sweep.service';
 import { LicenseSigningService } from './application/license-signing.service';
+import { LicensingOpsService } from './application/licensing-ops.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
 import { LicensingWorker } from './infrastructure/licensing.worker';
@@ -63,6 +64,7 @@ import { LicensingPublicController } from './presentation/licensing-public.contr
     LicenseActivationService,
     LicenseExpirySweepService,
     LicenseSigningService,
+    LicensingOpsService,
     WebhookIntakeService,
     WebhookProcessorService,
     LicensingWorker,

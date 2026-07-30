@@ -16,6 +16,12 @@ const apiMock = vi.hoisted(() => ({
   // SPEC-037
   getLicenseDetail: vi.fn(),
   deactivateActivation: vi.fn(),
+  // SPEC-038 PR-5 — o `WebhookOpsPanel` é filho desta página e carrega no
+  // mount. Sem estes mocks as três chamadas cairiam no `request` real: sem
+  // erro visível no teste, mas fazendo rede em suíte unitária.
+  listWebhookEvents: vi.fn(),
+  listOfferMappings: vi.fn(),
+  getLicensingSettings: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -94,6 +100,14 @@ describe('SPEC-036: tela de Licenças', () => {
     vi.clearAllMocks();
     apiMock.getLicensingCatalog.mockResolvedValue(CATALOGO);
     apiMock.listLicenses.mockResolvedValue([LICENCA]);
+    // O painel do PR-5 carrega junto: vazio é o estado neutro para os testes
+    // desta página, que são sobre licenças.
+    apiMock.listWebhookEvents.mockResolvedValue([]);
+    apiMock.listOfferMappings.mockResolvedValue([]);
+    apiMock.getLicensingSettings.mockResolvedValue({
+      webhookSecretSet: true,
+      pastDueToleranceDays: 15,
+    });
     apiMock.listLicenseEvents.mockResolvedValue([]);
     apiMock.getLicenseDetail.mockResolvedValue({
       ...LICENCA,
