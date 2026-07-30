@@ -10,6 +10,7 @@ const EDICAO = {
   billingModel: 'PERPETUAL' as const,
   maxMachines: 2,
   updatesMonths: 12,
+  grantsSourceAccess: false,
 };
 
 /** Erro que o Prisma levanta quando um unique é violado. */
@@ -37,7 +38,7 @@ function montar(
     name: 'War Room',
     keyPrefix: 'WR',
     sourceRepo: opcoes.sourceRepoAtual ?? null,
-    editions: [],
+    editions: [{ ...EDICAO, _count: { licenses: 0 } }],
   };
 
   const prisma = {
@@ -178,6 +179,9 @@ describe('SPEC-036: catálogo de produtos e edições', () => {
       expect((prisma.licEdition.update as jest.Mock).mock.calls[0][0].data).toEqual({
         maxMachines: 3,
         updatesMonths: 12,
+        // Preservado, não sobrescrito (FIX #214): ajustar máquinas não pode apagar
+        // em silêncio o acesso ao código-fonte da edição.
+        grantsSourceAccess: false,
       });
     });
 
@@ -222,6 +226,107 @@ describe('SPEC-036: catálogo de produtos e edições', () => {
    * sem ela preenchida o convite não tem destino, e o operador só descobriria isso
    * no teste de conexão — depois de já ter cadastrado o PAT.
    */
+  /**
+   * `grantsSourceAccess` (SPEC-039), exposto no FIX #214.
+   *
+   * **É o que o `webhook-processor` lê para agendar o convite na compra.** A
+   * coluna nasceu no PR-1 daquela fatia, é lida pelo webhook, e **nada a
+   * escrevia**: uma edição criada pela tela nascia com `false` e não havia como
+   * mudar sem SQL. O modo de errar é mudo — a venda chega, a licença sai sem
+   * agendamento, e o comprador da edição mais cara nunca recebe o convite.
+   */
+  describe('grantsSourceAccess', () => {
+    it('nasce `false` quando não pedido — ninguém concede source por acidente', async () => {
+      const { service, prisma } = montar();
+
+      await service.createEdition('t-1', 'prod-1', { slug: 'closed', name: 'Sem fonte' });
+
+      expect(
+        (prisma.licEdition.create as jest.Mock).mock.calls[0][0].data.grantsSourceAccess,
+      ).toBe(false);
+    });
+
+    it.each([[undefined], [null], ['true'], [1], ['sim']])(
+      'valor não-booleano (%p) NÃO concede',
+      async (valor) => {
+        const { service, prisma } = montar();
+
+        await service.createEdition('t-1', 'prod-1', {
+          slug: 'x',
+          name: 'X',
+          grantsSourceAccess: valor,
+        });
+
+        // Só `true` literal concede. Uma string `'false'` é truthy em JS, e
+        // aceitar coerção aqui faria um formulário mal ligado dar código-fonte a
+        // quem comprou a edição fechada.
+        expect(
+          (prisma.licEdition.create as jest.Mock).mock.calls[0][0].data.grantsSourceAccess,
+        ).toBe(false);
+      },
+    );
+
+    it('`true` explícito concede', async () => {
+      const { service, prisma } = montar();
+
+      await service.createEdition('t-1', 'prod-1', {
+        slug: 'completa',
+        name: 'Completa',
+        grantsSourceAccess: true,
+      });
+
+      expect(
+        (prisma.licEdition.create as jest.Mock).mock.calls[0][0].data.grantsSourceAccess,
+      ).toBe(true);
+    });
+
+    it('o update liga o acesso numa edição existente', async () => {
+      const { service, prisma } = montar();
+
+      await service.updateEditionLimits('t-1', 'ed-1', { grantsSourceAccess: true });
+
+      expect(
+        (prisma.licEdition.update as jest.Mock).mock.calls[0][0].data.grantsSourceAccess,
+      ).toBe(true);
+    });
+
+    it('`false` explícito DESLIGA — não é tratado como "não mexer"', async () => {
+      const { service, prisma } = montar({
+        edicao: { ...EDICAO, grantsSourceAccess: true },
+      });
+
+      await service.updateEditionLimits('t-1', 'ed-1', { grantsSourceAccess: false });
+
+      // Confundir `false` com ausente tornaria impossível desmarcar pela tela — e
+      // o produto continuaria vendendo código-fonte depois de decidir parar.
+      expect(
+        (prisma.licEdition.update as jest.Mock).mock.calls[0][0].data.grantsSourceAccess,
+      ).toBe(false);
+    });
+
+    it('campo ausente preserva o valor atual', async () => {
+      const { service, prisma } = montar({
+        edicao: { ...EDICAO, grantsSourceAccess: true },
+      });
+
+      await service.updateEditionLimits('t-1', 'ed-1', { maxMachines: 5 });
+
+      // Mesma regra dos limites: mexer só no que foi pedido. Sem isto, ajustar o
+      // número de máquinas apagaria silenciosamente o acesso ao código-fonte.
+      expect(
+        (prisma.licEdition.update as jest.Mock).mock.calls[0][0].data.grantsSourceAccess,
+      ).toBe(true);
+    });
+
+    it('sai na listagem — sem ver o valor não há como corrigi-lo', async () => {
+      const { service } = montar();
+
+      const produtos = await service.listProducts('t-1');
+
+      expect(produtos[0].editions[0]).toHaveProperty('grantsSourceAccess');
+    });
+  });
+
   describe('updateProductSourceRepo', () => {
     it('grava `owner/name`', async () => {
       const { service, prisma } = montar({ sourceRepoAtual: 'RodReis/war-room' });

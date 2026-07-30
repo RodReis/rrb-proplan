@@ -29,6 +29,17 @@ export interface EditionView {
   billingModel: LicBillingModel;
   maxMachines: number;
   updatesMonths: number;
+  /**
+   * Esta edição dá acesso ao repositório de código-fonte? (SPEC-039.)
+   *
+   * **É o que o `webhook-processor` lê para agendar o convite na compra** — e o
+   * que substituiu o hardcode `slug === 'source'`, que quebraria em silêncio no
+   * 1º produto que chamasse a edição de outra coisa. Sai na listagem porque sem
+   * ver o valor atual não há como corrigi-lo, e o modo de errar é mudo: a venda
+   * chega, a licença é emitida sem agendamento, e o comprador da edição mais cara
+   * nunca recebe o convite.
+   */
+  grantsSourceAccess: boolean;
   /** Quantas licenças já saíram desta edição — o que impede apagá-la. */
   licenseCount: number;
 }
@@ -61,6 +72,8 @@ export interface CreateEditionInput {
   billingModel?: unknown;
   maxMachines?: unknown;
   updatesMonths?: unknown;
+  /** Ausente = `false`. Ver `EditionView.grantsSourceAccess`. */
+  grantsSourceAccess?: unknown;
 }
 
 /**
@@ -120,6 +133,7 @@ export class LicCatalogService {
         billingModel: e.billingModel,
         maxMachines: e.maxMachines,
         updatesMonths: e.updatesMonths,
+        grantsSourceAccess: e.grantsSourceAccess,
         licenseCount: e._count.licenses,
       })),
     }));
@@ -196,9 +210,21 @@ export class LicCatalogService {
       'meses de updates',
     );
 
+    // Ausente = `false`, o default do schema. **Nenhuma edição passa a conceder
+    // código-fonte por acidente**: é preciso pedir explicitamente.
+    const grantsSourceAccess = input.grantsSourceAccess === true;
+
     try {
       const edicao = await this.prisma.licEdition.create({
-        data: { productId, slug, name, billingModel, maxMachines, updatesMonths },
+        data: {
+          productId,
+          slug,
+          name,
+          billingModel,
+          maxMachines,
+          updatesMonths,
+          grantsSourceAccess,
+        },
       });
       return { ...edicao, licenseCount: 0 };
     } catch (erro) {
@@ -279,10 +305,27 @@ export class LicCatalogService {
     return atualizados.find((p) => p.id === productId)!;
   }
 
+  /**
+   * Limites da edição e o acesso ao código-fonte (FIX #214).
+   *
+   * **`grantsSourceAccess` é alterável, ao contrário de `slug` e `billingModel`.**
+   * Aqueles dois viajam no license file já emitido ou mudam o significado de
+   * `expiresAt` numa licença viva; este só decide o que acontece nas compras
+   * **futuras** — o `webhook-processor` o lê no momento da venda, e licença já
+   * emitida carrega o próprio `sourceInviteAt`.
+   *
+   * Sem esta rota a coluna era inalcançável: nasceu no PR-1 da SPEC-039, é lida
+   * pelo webhook, e nada a escrevia. O sintoma era mudo — a venda chega, a licença
+   * sai sem agendamento, e o comprador da edição mais cara nunca recebe o convite.
+   */
   async updateEditionLimits(
     tenantId: string,
     editionId: string,
-    input: { maxMachines?: unknown; updatesMonths?: unknown },
+    input: {
+      maxMachines?: unknown;
+      updatesMonths?: unknown;
+      grantsSourceAccess?: unknown;
+    },
   ): Promise<EditionView> {
     const edicao = await this.prisma.licEdition.findFirst({
       where: { id: editionId, product: { tenantId } },
@@ -303,9 +346,18 @@ export class LicCatalogService {
             'meses de updates',
           );
 
+    // Ausente não é tocado — mesma regra dos limites. `Boolean(...)` e não
+    // `=== true` porque aqui o campo **existe** no input: quem manda `false`
+    // quer desligar, e tratar isso como "não mexer" tornaria impossível desfazer
+    // a marcação pela tela.
+    const grantsSourceAccess =
+      input.grantsSourceAccess === undefined
+        ? edicao.grantsSourceAccess
+        : input.grantsSourceAccess === true;
+
     const atualizada = await this.prisma.licEdition.update({
       where: { id: editionId },
-      data: { maxMachines, updatesMonths },
+      data: { maxMachines, updatesMonths, grantsSourceAccess },
       include: { _count: { select: { licenses: true } } },
     });
 
@@ -316,6 +368,7 @@ export class LicCatalogService {
       billingModel: atualizada.billingModel,
       maxMachines: atualizada.maxMachines,
       updatesMonths: atualizada.updatesMonths,
+      grantsSourceAccess: atualizada.grantsSourceAccess,
       licenseCount: atualizada._count.licenses,
     };
   }

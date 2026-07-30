@@ -299,6 +299,33 @@ describe('PAT write-only e teste de conexão', () => {
     expect(await screen.findByText(/administra RodReis\/war-room/)).toBeInTheDocument();
   });
 
+  it('teste bem-sucedido RECARREGA as settings — FIX #214', async () => {
+    const user = userEvent.setup();
+    // Estado do bug: o painel montou antes de o repo ser salvo no bloco de
+    // produtos, então `sourceRepo` está `null` em memória.
+    apiMock.getSourceSettings.mockResolvedValue({ githubPatSet: true, sourceRepo: null });
+    apiMock.testSourceConnection.mockResolvedValue({ ok: true, repo: 'RodReis/war-room' });
+
+    render(<SourceOpsPanel />);
+    await screen.findByRole('button', { name: /testar conexão/i });
+    // Depois do teste, o servidor já sabe do repo.
+    apiMock.getSourceSettings.mockResolvedValue({
+      githubPatSet: true,
+      sourceRepo: 'RodReis/war-room',
+    });
+
+    await user.click(screen.getByRole('button', { name: /testar conexão/i }));
+
+    // **O bug**: a frase dizia "nenhum produto tem repositório configurado" ao
+    // lado de um teste que acabara de administrar aquele repositório. Das duas
+    // afirmações contraditórias, a assustadora era a falsa — e é assim que uma
+    // tela ensina a ser ignorada.
+    await waitFor(() =>
+      expect(screen.queryByText(/nenhum produto tem repositório/i)).not.toBeInTheDocument(),
+    );
+    expect(apiMock.getSourceSettings).toHaveBeenCalledTimes(2);
+  });
+
   it('testar fica desabilitado sem PAT configurado', async () => {
     apiMock.getSourceSettings.mockResolvedValue({ githubPatSet: false, sourceRepo: null });
 

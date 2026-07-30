@@ -317,6 +317,13 @@ function PatBloco({
       if (r.ok) {
         setTeste(`Conexão OK — o PAT administra ${r.repo}.`);
         toast.success('Conexão OK');
+        // **Recarrega as settings — FIX #214.** O repositório é salvo no bloco de
+        // produtos, que recarrega o catálogo; este painel não ficava sabendo, e a
+        // frase acima continuava dizendo "nenhum produto tem repositório
+        // configurado" **ao lado** de um teste que acabara de administrar aquele
+        // repositório. Das duas afirmações contraditórias, a assustadora era a
+        // falsa — e é assim que uma tela ensina a ser ignorada.
+        onMudou();
       } else {
         setTeste(`Falhou: ${r.reason}`);
         toast.error(`Teste falhou: ${r.reason}`);
