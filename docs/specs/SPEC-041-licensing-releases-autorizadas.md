@@ -3,7 +3,7 @@ proplan: v1
 spec: SPEC-041
 fatia: 30
 status: aprovada-pi
-updated: 2026-07-29
+updated: 2026-07-30
 ---
 # SPEC-041 — Licensing: releases autorizadas por licença (`war-room update`)
 
