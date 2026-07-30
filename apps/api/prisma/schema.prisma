@@ -122,6 +122,8 @@ model Tenant {
   licOfferMappings  LicOfferMapping[]
   licSettings       LicSettings?
   mailDeliveries    MailDelivery[]
+  // Coleta de username para o convite ao repo source (SPEC-039).
+  licSourceLinks    LicSourceLink[]
 
   @@map("tenants")
 }
@@ -1482,6 +1484,31 @@ enum LicenseStatus {
   EXPIRED
 }
 
+// Estado do acesso ao repo privado da edição source (SPEC-039 §Estado do acesso).
+//
+// **Substitui o `sourceInvited: Boolean` da SPEC-036**, que não distinguia
+// "convidado, ainda não aceito" de "aceito" — e a revogação depende exatamente
+// dessa diferença: convite pendente se cancela por
+// `DELETE /repos/:owner/:repo/invitations/:id`; colaborador aceito se remove por
+// `DELETE /repos/:owner/:repo/collaborators/:username`. **Chamar a errada é
+// no-op silencioso**: a API do GitHub responde sem erro e o comprador
+// reembolsado continua com acesso.
+//
+// - `NONE`    — edição não dá source, ou revogação anterior ao agendamento.
+// - `PENDING` — tem direito, o convite ainda não saiu (com ou sem username).
+// - `INVITED` — convite emitido, `githubInvitationId` preenchido, não aceito.
+// - `ACTIVE`  — colaborador do repo. Descoberto por reconciliação, não webhook.
+// - `REMOVED` — convite cancelado ou colaborador removido.
+// - `FAILED`  — a chamada ao GitHub falhou; `sourceAccessError` diz o quê.
+enum LicSourceAccess {
+  NONE
+  PENDING
+  INVITED
+  ACTIVE
+  REMOVED
+  FAILED
+}
+
 // Produto licenciável do tenant. Raiz de tenancy.
 //
 // `keyPrefix` é o `WR` de `WR-XXXX-XXXX-XXXX-XXXX` — vem daqui e não de
@@ -1498,6 +1525,11 @@ model LicProduct {
   // sem que seu repo esteja no catálogo — exigir o vínculo tornaria o
   // licenciamento refém da ingestão.
   projectId String?      @map("project_id")
+  // `owner/name` do repositório privado com o código-fonte do produto (SPEC-039).
+  // **Destino de convite, não repo ingerido**: não entra no catálogo, não é
+  // sincronizado, não vira card — por isso é texto aqui e não FK para `Project`,
+  // que é o vínculo do `projectId` acima.
+  sourceRepo String?     @map("source_repo")
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
   tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1530,6 +1562,13 @@ model LicEdition {
   // COPIADO, não lido por FK: mudar a política meses depois não pode encurtar
   // a janela de quem já comprou.
   updatesMonths Int            @default(12) @map("updates_months")
+  // Esta edição dá acesso ao repo privado? (SPEC-039 §Configuração por tenant.)
+  //
+  // **Existe para não casar a edição por slug `source`.** Hardcode de slug
+  // funciona no piloto e quebra em silêncio no primeiro produto que chame a
+  // edição de outra coisa: a compra emitiria licença sem agendar convite, e o
+  // comprador da edição mais cara do catálogo nunca receberia o código.
+  grantsSourceAccess Boolean   @default(false) @map("grants_source_access")
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
   product      LicProduct      @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1571,10 +1610,24 @@ model License {
   // comparação `pastDueAt + LicSettings.pastDueToleranceDays < now` feita na
   // VALIDAÇÃO — nunca de um job, que atrasado concederia acesso.
   pastDueAt     DateTime?     @map("past_due_at")
-  // Convite do repo privado na edição source (SPEC-039, dia 8). Nascem aqui
-  // para que o job daquela fatia não precise de migração de dados.
+  // Convite do repo privado na edição source (SPEC-039, dia 8). A data nasceu na
+  // SPEC-036 e é gravada na compra pelo webhook da SPEC-038; o convite em si é
+  // desta fatia.
   sourceInviteAt DateTime?    @map("source_invite_at")
-  sourceInvited Boolean       @default(false) @map("source_invited")
+  // O ESTADO do acesso (SPEC-039). Substitui o `sourceInvited: Boolean` — ver o
+  // enum para o no-op silencioso que o booleano produzia na revogação.
+  sourceAccess  LicSourceAccess @default(NONE) @map("source_access")
+  // Login do GitHub informado pelo comprador em `/s/:token`. **Dado pessoal**
+  // (LGPD, §Notas técnicas): a exclusão a pedido da SPEC-040 remove este campo.
+  githubUsername String?      @map("github_username")
+  // Id da *invitation* devolvido pelo GitHub na emissão do convite. É o que
+  // permite cancelar o convite PENDENTE pela chamada certa — sem ele, a
+  // revogação só saberia remover colaborador, que é no-op em convite não aceito.
+  githubInvitationId String?  @map("github_invitation_id")
+  // Motivo legível da última falha (403 do PAT, 404 do repo, rede). Aparece na
+  // lista de pendências do admin: reembolsado que continua colaborador é a falha
+  // que custa dinheiro, e ela não pode viver só no log.
+  sourceAccessError String?    @map("source_access_error")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
   tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1588,10 +1641,17 @@ model License {
   // uma (oferta sem mapeamento, tipo desconhecido).
   webhookEvents LicWebhookEvent[]
   mailDeliveries MailDelivery[]
+  // Links de coleta de username (SPEC-039). Plural: corrigir o username pelo
+  // admin invalida o link antigo e emite outro, e a trilha de ambos fica.
+  sourceLinks   LicSourceLink[]
 
   // A busca do admin é por e-mail do comprador (§Contratos), dentro do tenant.
   @@index([tenantId, customerEmail])
   @@index([tenantId, issuedAt])
+  // A varredura do job de reconciliação (SPEC-039): quem tem direito a source,
+  // já passou do `sourceInviteAt` e ainda não foi convidado. Sem este índice a
+  // seleção é varredura na tabela de licenças a cada rodada.
+  @@index([tenantId, sourceAccess, sourceInviteAt])
   @@map("licenses")
 }
 
@@ -1811,9 +1871,56 @@ model LicSettings {
   /// técnicas — com 15 como padrão, todo tenant herda um segundo julgamento
   /// sobre "está pago".
   pastDueToleranceDays Int? @default(15) @map("past_due_tolerance_days")
+  /// PAT fine-grained do tenant para convidar ao repo source (SPEC-039,
+  /// decisão PI #2). **Criptografado** com o `TOKEN_ENCRYPTION_KEY` já existente
+  /// — mesmo mecanismo e mesmo argumento do `webhookSecret`: env var global não
+  /// escala para o 2º tenant.
+  ///
+  /// **Não é o token do GitHub App** (ADR-015). São credenciais de propósitos
+  /// diferentes: `administration:write` só no repo do produto (decisão #8 do
+  /// MVP4), sem expandir as permissões do App nem exigir re-consent das
+  /// instalações. A arch-spec cobra a separação — misturá-las reabre o ADR por
+  /// acidente.
+  ///
+  /// **Write-only no admin**: nunca reexibido. PAT fine-grained EXPIRA (limite do
+  /// GitHub), e expiração silenciosa pararia os convites sem erro visível — o que
+  /// a torna visível é o par teste de conexão + pendência `FAILED`.
+  githubPat String? @map("github_pat")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("lic_settings")
+}
+
+// Link de uso único para o comprador informar o username do GitHub (SPEC-039).
+//
+// Raiz de tenancy pelo `tenantId`, mas o caminho que importa é o OUTRO: a rota
+// pública `GET /s/:token` **não tem sessão**, então roda sem `app.tenant_ids` e o
+// RLS fail-closed devolveria zero linhas para TODO token — inclusive os válidos,
+// e o sintoma seria "todo comprador vê link inválido". É por isso que existe a
+// `resolve_source_link` (SECURITY DEFINER) na migration, mesmo desenho da
+// `resolve_briefing_link` (SPEC-029) e da `resolve_contract_link` (SPEC-034).
+//
+// **Só o hash é persistido.** O token em claro existe no e-mail do comprador e
+// em nenhum outro lugar: não entra em log, em `LicEvent.payload` nem em mensagem
+// de erro (§Critérios de aceite). E este token vale mais que o do briefing —
+// quem o tiver grava o próprio username e é convidado a um repositório privado.
+//
+// **`usedAt` é a morte do link, não um relógio** (decisão PI #3): sem prazo
+// fixo. Prazo curto trocaria um risco raro (link vazado) por um problema
+// frequente — o comprador que responde no dia 10 e encontra link morto, na venda
+// mais cara do catálogo, com o cliente já pago e sem o que comprou.
+model LicSourceLink {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  licenseId String    @map("license_id")
+  tokenHash String    @unique @map("token_hash")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  license   License   @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  @@index([licenseId])
+  @@map("lic_source_links")
 }
