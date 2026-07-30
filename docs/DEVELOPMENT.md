@@ -5932,7 +5932,7 @@ mínima do §Fora de escopo — e a SPEC-040 absorve as telas mínimas das fatia
 apps, lint 0 erros, guarda do ADR-019 aprovando. **Pendente: dogfooding com
 túnel** — a fatia inteira (PR-3 a PR-5) nunca viu uma entrega real da Kiwify.
 
-## Fatia 28 (SPEC-039) — Licensing: convite ao repo source, coleta do username e revogação de colaborador — `em andamento`
+## Fatia 28 (SPEC-039) — Licensing: convite ao repo source, coleta do username e revogação de colaborador — `código entregue · dogfooding pendente`
 
 Issue **#195** (spec `aprovada-pi` 2026-07-29). **4ª fatia do MVP4.** A venda da
 edição **com código-fonte** vira acesso ao repositório privado sem ninguém no
@@ -5955,8 +5955,8 @@ fica sem check nenhum, silenciosamente):
    cliente GitHub com PAT (separado do cliente do GitHub App).
 4. **PR-4 — revogação** (`feito`): cancela *invitation* **ou** remove colaborador,
    conforme o estado; `FAILED` retentável.
-5. **PR-5 — admin mínimo**: pendências de source, corrigir username, reemitir,
-   remover acesso, PAT write-only com teste de conexão.
+5. **PR-5 — admin mínimo** (`feito`): pendências de source, corrigir username,
+   reemitir, remover acesso, PAT write-only com teste de conexão.
 
 ### PR-1 — o schema, e o booleano que precisou morrer
 
@@ -6343,3 +6343,122 @@ não paga o acoplamento: os dois tratam a ausência de PAT de formas **opostas**
 **Pendente**: a revogação real nunca rodou contra o GitHub — exige PAT
 fine-grained configurado, que é o PR-5, junto da lista de pendências e do botão de
 retentar.
+
+---
+
+### PR-5 — o admin, e os três estados que pedem gente
+
+- [x] `SourceAdminService`: `pending`, `setUsername`, `reinvite`, `removeAccess`,
+      `settings`, `setPat`, `testConnection`
+- [x] 7 rotas no `LicensingAdminController` (`source-pending`,
+      `licenses/:id/github-username`, `licenses/:id/source-invite`,
+      `licenses/:id/source-access`, `source-settings`, `source-settings/pat`,
+      `source-settings/test`)
+- [x] `SourceOpsPanel` + `sourceOpsView` na tela de licenças
+- [x] +34 testes de regra · +39 de tela
+
+**Os PRs 3 e 4 gravam três estados que não se resolvem sozinhos**, e sem esta tela
+os três são informação no banco que ninguém alcança — o mesmo beco que o
+`LicensingOpsService` tirou do webhook na SPEC-038. Aqui é mais caro: a edição com
+código-fonte é a mais cara do catálogo, e *"comprou e não recebeu"* vira ticket com
+o cliente já pago.
+
+| estado | o que houve | o que o admin faz |
+|---|---|---|
+| `PENDING` sem username, prazo vencido | o comprador não respondeu ao e-mail | grava o username por ele |
+| `INVITED` parado | o convite saiu e não foi aceito | nada, a menos que o username esteja errado |
+| `FAILED` | o GitHub recusou (PAT expirado, 403, rede) | conserta a causa e reemite |
+
+**`PENDING` no prazo fica FORA da lista, de propósito.** Quem comprou hoje está no
+prazo legal de arrependimento — não é pendência, é o processo andando. Incluí-lo
+encheria a lista de linhas sem o que fazer, e ela perderia o significado de *"aqui
+há trabalho"*.
+
+**Quem classifica o motivo é o servidor, não a tela.** O `reason`
+(`awaiting_username` / `invited_not_accepted` / `failed`) vem pronto da API. Uma
+tela que o deduzisse do enum duplicaria a regra, e as duas divergiriam na primeira
+mudança.
+
+**Trocar o username cancela o acesso anterior — e a ordem importa.** Se a licença
+está `INVITED`/`ACTIVE`, o `SourceRevokeService` roda **antes** da gravação. Sem
+isso o convite antigo continuaria de pé: o username errado seguiria podendo
+aceitar, e o certo nunca receberia convite — os dois erros ao mesmo tempo, nenhum
+visível.
+
+**E se a remoção falhar, o username novo NÃO é gravado.** O acesso antigo continua
+de pé, e sobrescrever o `githubUsername` perderia a informação de **quem** ainda
+tem acesso — é justamente esse campo que a remoção usa. Gravar assim mesmo deixaria
+um colaborador no repositório privado sem registro de quem é. O admin vê a falha na
+pendência, conserta a causa e repete.
+
+**Reemitir roda a reconciliação do tenant, não uma chamada avulsa.** É o mesmo
+caminho do job: mesmas guardas, mesma idempotência, mesma trilha. Duplicar a lógica
+de convite aqui criaria um segundo lugar que precisa acertar o estado, e o modo de
+errar é o silencioso — dois convites, ou `INVITED` com id nulo. O efeito colateral
+é deliberado e **dito na tela**: o toast resume a rodada inteira (*"2 convidado(s) ·
+1 falha"*), porque prometer "convite reemitido" esconderia que outras licenças
+também foram tocadas.
+
+**`FAILED` volta a `PENDING` antes da rodada.** Sem essa linha o botão rodaria a
+reconciliação e a licença em `FAILED` seria ignorada (o job busca `PENDING`) — o
+sintoma seria *"cliquei em reemitir e nada aconteceu"*.
+
+**Botão que não faz nada não aparece.** `Reemitir` só em `failed` **com** username
+(sem username o servidor recusa com `422`, e um botão que sempre falha ensina a
+ignorar erro) e **não** em `invited_not_accepted` (o convite já está de pé; a rodada
+não acharia a licença). `Remover acesso` só em `INVITED`/`ACTIVE` — oferecê-lo sem
+convite emitido sugeriria que existe acesso, e quem clicasse sairia com a impressão
+de ter revogado algo.
+
+**A tela não promete o que a remoção não faz.** O §Objetivo da spec é explícito:
+*"painel que sugira 'acesso revogado = código recuperado' mente para o operador"*.
+O texto de sucesso nomeia a chamada feita e diz, com estas palavras, que *"o que já
+foi clonado continua com ele — o mecanismo é contratual"*. E `outcome: 'failed'`
+usa **toast de erro**, dizendo que o acesso **CONTINUA de pé**: é sucesso HTTP com
+fracasso real, e um toast verde ali seria o fechamento frágil que este produto
+existe para detectar.
+
+**O PAT é cifrado; o `webhookSecret` não é — e não é inconsistência.** O segredo do
+webhook é comparado por HMAC a cada entrega, precisa estar legível no caminho da
+request. O PAT **concede escrita num repositório privado**: cifrá-lo com o
+`TOKEN_ENCRYPTION_KEY` que já existe (decisão PI #2) faz um dump do banco não virar
+acesso ao código-fonte.
+
+**"Configurado" não é "funciona", e a tela nunca afirma que está tudo bem.** PAT
+fine-grained **expira** — limite do GitHub, não escolha nossa. Uma expiração
+silenciosa pararia os convites sem nenhum erro visível: o job roda, falha em cada
+licença, e o comprador espera. O par que resolve é *teste de conexão* (antecipa) +
+*pendência `FAILED`* (acusa). Por isso o texto do estado configurado aponta para o
+teste em vez de dar um "ok" verde.
+
+**O teste pergunta pela PERMISSÃO, não só pela existência do repo.** Um PAT
+só-leitura enxerga o repositório e não convida ninguém; sem checar
+`permissions.admin`, o teste passaria e o convite falharia — o pior desfecho,
+porque o operador teria uma confirmação verde. E ele **nunca lança**: `ok: false`
+com motivo legível é o resultado, não uma exceção. Um `500` diria *"o ProPlan
+quebrou"* sobre um teste cuja resposta é *"seu token está errado"*.
+
+**Salvar o PAT exige a linha de settings já criada.** Criá-la aqui deixaria
+`webhookSecret: ''`, e **toda** entrega da plataforma passaria a falhar com `401` —
+um efeito colateral que ninguém ligaria a *"salvei o PAT"*.
+
+### PR-5 — verificação
+
+- **2866 testes verdes** (2008 regras · 240 banco · 618 tela) — **+73** sobre os
+  2793 do PR-4 (+34 regras, +39 tela).
+- **O PAT não vaza em nenhuma superfície**: não sai no `GET` (só `githubPatSet`),
+  não vai para o log ao ser salvo, e a mensagem do teste de conexão é **fixa** —
+  a de um `fetch` pode arrastar o header `Authorization`, e essa resposta é
+  exibida na tela.
+- Sintaxe do username validada **antes** da rede, com os mesmos cinco casos de
+  path traversal do PR-2 (`../../admin` seria interpolado em `GET /users/:username`).
+- Os textos da tela têm teste próprio (`sourceOpsView.test.ts`), incluindo o que a
+  spec proíbe afirmar: há teste exigindo que o sucesso da remoção contenha
+  *"já foi clonado continua"* e *"contratual"*.
+- `build` nos três apps, `lint` **0 erros** (3 warnings pré-existentes),
+  `test:report:check` OK.
+
+**Pendente: dogfooding.** Nem convite nem revogação rodaram contra o GitHub real —
+agora é possível (o PAT tem onde ser cadastrado), mas exige um PAT fine-grained
+emitido pelo PI e um repositório de produto configurado. É o último passo da fatia,
+e ele é do PI: o token dá `administration:write` num repositório privado dele.

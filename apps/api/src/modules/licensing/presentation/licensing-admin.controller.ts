@@ -33,6 +33,7 @@ import {
   type OfferMappingInput,
   type UpdateSettingsInput,
 } from '../application/licensing-ops.service';
+import { SourceAdminService } from '../application/source-admin.service';
 
 interface RevokeBody {
   reason?: unknown;
@@ -41,6 +42,14 @@ interface RevokeBody {
 interface EditionLimitsBody {
   maxMachines?: unknown;
   updatesMonths?: unknown;
+}
+
+interface GithubUsernameBody {
+  username?: unknown;
+}
+
+interface PatBody {
+  githubPat?: unknown;
 }
 
 /**
@@ -65,6 +74,7 @@ export class LicensingAdminController {
     private readonly catalog: LicCatalogService,
     private readonly signing: LicenseSigningService,
     private readonly ops: LicensingOpsService,
+    private readonly source: SourceAdminService,
   ) {}
 
   /**
@@ -272,5 +282,94 @@ export class LicensingAdminController {
   @Delete('offer-mappings/:id')
   deleteOfferMapping(@Param('id') id: string) {
     return this.ops.deleteOfferMapping(id);
+  }
+
+  // =========================================================================
+  // Acesso ao repo source (SPEC-039, PR-5) — as rotas que tiram do beco as três
+  // pendências que os PRs 3 e 4 gravam: sem username, convite não aceito e
+  // `FAILED`. Nenhuma se resolve sozinha, e a edição com código-fonte é a mais
+  // cara do catálogo.
+  // =========================================================================
+
+  /**
+   * Licenças que pedem ação. **Quem classifica o motivo é o servidor** — uma tela
+   * que o deduzisse do enum duplicaria a regra, e as duas divergiriam na primeira
+   * mudança.
+   */
+  @Get('source-pending')
+  sourcePending(@Req() req: AuthenticatedRequest) {
+    return this.source.pending(req.tenantId!);
+  }
+
+  /**
+   * Grava ou substitui o username (decisão PI #4: **só pelo admin** — nenhum
+   * caminho self-service reabre token que dá acesso a código-fonte).
+   *
+   * Valida o login no GitHub antes de gravar e cancela o convite pendente, se
+   * houver: sem isso o username errado seguiria podendo aceitar o convite antigo
+   * e o certo nunca receberia o novo.
+   */
+  @Put('licenses/:id/github-username')
+  setGithubUsername(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') licenseId: string,
+    @Body() body: GithubUsernameBody,
+  ) {
+    return this.source.setUsername(req.tenantId!, licenseId, body?.username);
+  }
+
+  /**
+   * Reemite o convite rodando a **reconciliação do tenant** — o mesmo caminho do
+   * job, com as mesmas guardas. Por isso a resposta é o resultado da rodada
+   * inteira: chamar de "reemitir a licença X" mentiria sobre o escopo.
+   */
+  @Post('licenses/:id/source-invite')
+  reinvite(@Req() req: AuthenticatedRequest, @Param('id') licenseId: string) {
+    return this.source.reinvite(req.tenantId!, licenseId);
+  }
+
+  /**
+   * Revogação manual do acesso ao repo (§Revogação → gatilhos: reembolso,
+   * chargeback e **manual**).
+   *
+   * `DELETE` aqui, e não `POST` numa sub-rota como o `revoke` da licença: o que se
+   * apaga é o **acesso ao repositório**, que de fato deixa de existir — diferente
+   * da licença, que passa a existir revogada, com data e motivo, porque é isso que
+   * o `/activate` lê.
+   *
+   * **Não toca o `status` da licença**: remover do repo e revogar a licença são
+   * atos diferentes.
+   */
+  @Delete('licenses/:id/source-access')
+  removeSourceAccess(@Req() req: AuthenticatedRequest, @Param('id') licenseId: string) {
+    return this.source.removeAccess(req.tenantId!, licenseId);
+  }
+
+  /** Configuração de source. O PAT **não** sai daqui — só `githubPatSet`. */
+  @Get('source-settings')
+  sourceSettings(@Req() req: AuthenticatedRequest) {
+    return this.source.settings(req.tenantId!);
+  }
+
+  /** Grava o PAT, cifrado com o `TOKEN_ENCRYPTION_KEY` (decisão PI #2). */
+  @Put('source-settings/pat')
+  setPat(@Req() req: AuthenticatedRequest, @Body() body: PatBody) {
+    return this.source.setPat(req.tenantId!, body?.githubPat);
+  }
+
+  /**
+   * Teste de conexão — a metade que **antecipa** a falha do PAT.
+   *
+   * **PAT fine-grained expira** (limite do GitHub), e uma expiração silenciosa
+   * pararia os convites sem nenhum erro visível. Este é o par da pendência
+   * `FAILED`: um antecipa, o outro acusa.
+   *
+   * Nunca devolve erro HTTP por token ruim: o resultado *é* `{ ok: false, reason }`
+   * — um `500` diria "o ProPlan quebrou" sobre um teste cuja resposta é "seu token
+   * está errado".
+   */
+  @Post('source-settings/test')
+  testSourceConnection(@Req() req: AuthenticatedRequest) {
+    return this.source.testConnection(req.tenantId!);
   }
 }

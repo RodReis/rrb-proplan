@@ -18,6 +18,7 @@ import {
   type LicenseView,
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
+import { SourceOpsPanel } from './SourceOpsPanel';
 import { WebhookOpsPanel } from './WebhookOpsPanel';
 import {
   eventLabel,
@@ -526,6 +527,12 @@ export function LicensesPage() {
               raro, e resolver venda travada é excepcional (mas urgente quando
               acontece — daí o contador de falhas no próprio título). */}
           <WebhookOpsPanel catalogo={catalogo} />
+
+          {/* Acesso ao repo source (SPEC-039, PR-5) — por último porque é a
+              operação mais rara das três, e a que mais depende de gente de fora
+              (o comprador informar o username, aceitar o convite). O contador no
+              título é o que a traz para cima quando há trabalho. */}
+          <SourceOpsPanel />
         </>
       )}
     </ClientsShell>
