@@ -100,18 +100,18 @@ export function eventLabel(type: string): string {
 }
 
 /**
- * O que a busca deve fazer com o texto digitado.
+ * O termo digitado, pronto para o `?q=` — ou `null` quando não há busca.
  *
- * A tela tem **um** campo, não dois: quem usa é o suporte com a chave que o
- * comprador mandou, ou com o e-mail dele. Exigir que escolha o tipo antes de
- * digitar seria burocracia sobre a informação que ele já tem na mão.
+ * **A heurística do `@` morreu na SPEC-040.** Ela decidia *aqui* se o texto era
+ * e-mail ou chave, e mandava só um dos dois campos: quem digitasse o nome do
+ * comprador ou o `saleRef` caía no ramo "chave", o hash não casava, e a
+ * resposta era lista vazia — indistinguível de "esse cliente não existe".
  *
- * `@` decide. Não há ambiguidade real: chave não tem arroba, e-mail sempre tem.
+ * Agora quem decide é o servidor, que casa as cinco colunas de uma vez. A tela
+ * só apara o texto: escolher a coluna nunca foi trabalho dela.
  */
-export function searchMode(texto: string): { email?: string; key?: string } | null {
-  const t = texto.trim();
-  if (!t) return null;
-  return t.includes('@') ? { email: t } : { key: t };
+export function searchTerm(texto: string): string | null {
+  return texto.trim() || null;
 }
 
 /**

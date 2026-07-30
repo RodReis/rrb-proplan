@@ -70,9 +70,49 @@ export interface ActivationView {
   deactivatedAt: string | null;
 }
 
+/** Uma entrega de e-mail, como o detalhe a mostra (SPEC-040 §Busca e detalhe). */
+export interface MailDeliveryView {
+  id: string;
+  to: string;
+  template: string;
+  subject: string;
+  status: string;
+  attempts: number;
+  error: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
 /** Detalhe da licença: a `LicenseView` + as máquinas + o sinal de troca. */
 export interface LicenseDetail extends LicenseView {
   activations: ActivationView[];
+  /**
+   * Estado do acesso ao repo privado (SPEC-039). Vem para o detalhe porque a
+   * pergunta *"o que aconteceu com este cliente"* inclui "ele recebeu o
+   * código-fonte?", e hoje essa resposta só existe na lista de pendências —
+   * que só mostra quem está travado.
+   */
+  sourceAccess: string;
+  githubUsername: string | null;
+  sourceAccessError: string | null;
+  sourceInviteAt: string | null;
+  /** Id da venda na plataforma. É por ele que se confere o dinheiro lá fora. */
+  saleRef: string | null;
+  /** Inadimplência registrada sem mudar `status` (SPEC-038). */
+  pastDueAt: string | null;
+  /**
+   * E-mails que saíram por causa desta licença. **O que o suporte pergunta
+   * primeiro** quando o cliente diz que não recebeu a chave — e sem isto a
+   * resposta exigia abrir a seção de entregas e filtrar na mão.
+   */
+  mailDeliveries: MailDeliveryView[];
+  /**
+   * A trilha completa, na mesma resposta. O `GET /licenses/:id/events` continua
+   * existindo (SPEC-036) e não muda de caminho — mas o detalhe que exige duas
+   * requisições para responder uma pergunta é o que a spec chama de *"responde
+   * numa tela só"* não cumprido.
+   */
+  events: LicEventView[];
   /**
    * Desativações + reativações na janela (SPEC-037 §Escopo). É **sinal, não
    * limite**: nada bloqueia (decisão 1 do PI). Teto errado bloquearia o cliente
@@ -193,13 +233,46 @@ export class LicenseAdminService {
     return { ...this.toView(licenca, 0), key };
   }
 
-  /** Licenças do tenant, mais recentes primeiro. Nunca devolve a chave. */
-  async list(tenantId: string, email?: string): Promise<LicenseView[]> {
-    const filtro = texto(email).toLowerCase();
+  /**
+   * Licenças do tenant, mais recentes primeiro. Nunca devolve a chave.
+   *
+   * **A busca é um campo só, casando cinco colunas** (SPEC-040 §Busca e
+   * detalhe): e-mail, nome, `saleRef`, username do GitHub e a chave. O operador
+   * cola o que o cliente mandou — e o que ele mandou varia com o canal por onde
+   * reclamou, não com a coluna que o banco tem.
+   *
+   * **A chave entra por hash exato, as outras quatro por `contains`.** Não é
+   * inconsistência: hash não tem prefixo em comum com nada, então `contains`
+   * sobre `keyHash` só acharia por acidente. O `hashKey` do termo é somado ao
+   * `OR` de propósito — uma busca que não fosse a chave produz um hash que não
+   * casa com linha nenhuma, e o custo é uma comparação de índice.
+   *
+   * `status` filtra por cima da busca, não no lugar dela.
+   */
+  async list(
+    tenantId: string,
+    q?: string,
+    status?: LicenseStatus,
+  ): Promise<LicenseView[]> {
+    const termo = texto(q);
     const licencas = await this.prisma.license.findMany({
       where: {
         tenantId,
-        ...(filtro ? { customerEmail: { contains: filtro } } : {}),
+        ...(status ? { status } : {}),
+        ...(termo
+          ? {
+              OR: [
+                { customerEmail: { contains: termo.toLowerCase() } },
+                // `insensitive`: o nome é digitado pelo comprador com as
+                // maiúsculas que ele quis, e buscar "silva" não pode falhar
+                // porque a linha diz "Silva".
+                { customerName: { contains: termo, mode: 'insensitive' as const } },
+                { saleRef: { contains: termo } },
+                { githubUsername: { contains: termo, mode: 'insensitive' as const } },
+                { keyHash: hashKey(termo) },
+              ],
+            }
+          : {}),
       },
       include: {
         edition: { include: { product: true } },
@@ -313,6 +386,10 @@ export class LicenseAdminService {
       include: {
         edition: { include: { product: true } },
         activations: { orderBy: { activatedAt: 'asc' } },
+        // Os dois `include` novos (SPEC-040): sem eles a tela precisaria de
+        // três requisições para responder uma pergunta só.
+        mailDeliveries: { orderBy: { createdAt: 'desc' }, take: 50 },
+        events: { orderBy: { createdAt: 'desc' }, take: 100 },
       },
     });
     if (!licenca) throw new NotFoundException('Licença não encontrada');
@@ -329,6 +406,31 @@ export class LicenseAdminService {
         activatedAt: a.activatedAt.toISOString(),
         lastSeenAt: a.lastSeenAt.toISOString(),
         deactivatedAt: a.deactivatedAt ? a.deactivatedAt.toISOString() : null,
+      })),
+      sourceAccess: licenca.sourceAccess,
+      githubUsername: licenca.githubUsername,
+      sourceAccessError: licenca.sourceAccessError,
+      sourceInviteAt: licenca.sourceInviteAt
+        ? licenca.sourceInviteAt.toISOString()
+        : null,
+      saleRef: licenca.saleRef,
+      pastDueAt: licenca.pastDueAt ? licenca.pastDueAt.toISOString() : null,
+      mailDeliveries: licenca.mailDeliveries.map((m) => ({
+        id: m.id,
+        to: m.to,
+        template: m.template,
+        subject: m.subject,
+        status: m.status,
+        attempts: m.attempts,
+        error: m.error,
+        createdAt: m.createdAt.toISOString(),
+        sentAt: m.sentAt ? m.sentAt.toISOString() : null,
+      })),
+      events: licenca.events.map((e) => ({
+        id: e.id,
+        type: e.type,
+        payload: e.payload,
+        createdAt: e.createdAt.toISOString(),
       })),
       swapCount: await this.swapCount(licenseId),
       swapWindowDays: SWAP_WINDOW_DAYS,

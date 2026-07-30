@@ -30,7 +30,7 @@ import {
   machineLabel,
   machineStatus,
   machinesLabel,
-  searchMode,
+  searchTerm,
   shortDate,
   shortDateTime,
   statusLabel,
@@ -148,10 +148,10 @@ export function LicensesPage() {
   }
 
   async function buscar() {
-    const filtro = searchMode(busca);
+    const termo = searchTerm(busca);
     setOcupado(true);
     try {
-      setLicencas(await listLicenses(filtro ?? undefined));
+      setLicencas(await listLicenses(termo ? { q: termo } : undefined));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'falha na busca');
     } finally {

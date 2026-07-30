@@ -9,9 +9,11 @@ import {
   Put,
   Query,
   Req,
+  UnprocessableEntityException,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { LicenseStatus } from '@prisma/client';
 import {
   AuthenticatedRequest,
   JwtAuthGuard,
@@ -34,6 +36,18 @@ import {
   type UpdateSettingsInput,
 } from '../application/licensing-ops.service';
 import { SourceAdminService } from '../application/source-admin.service';
+
+/**
+ * Os três estados de licença (`LicenseStatus` do schema). Escritos aqui e não
+ * importados do `@prisma/client` como valor porque o enum do Prisma é um objeto
+ * em runtime, e a rota precisa validar uma **string de query** contra ele — o
+ * teste abaixo prende os dois lados: se o enum ganhar um estado, ele falha.
+ */
+const LICENSE_STATUSES: readonly LicenseStatus[] = ['ACTIVE', 'REVOKED', 'EXPIRED'];
+
+function isLicenseStatus(valor: string): valor is LicenseStatus {
+  return (LICENSE_STATUSES as readonly string[]).includes(valor);
+}
 
 interface RevokeBody {
   reason?: unknown;
@@ -155,23 +169,32 @@ export class LicensingAdminController {
   }
 
   /**
-   * Licenças do tenant. `?email=` filtra; `?key=` busca pela chave (hasheia e
-   * procura por `keyHash`) — o caminho do suporte, em que o comprador manda a
-   * chave e o admin confere sem que o servidor jamais a tenha guardado.
+   * Licenças do tenant. **`?q=` é um campo só, casando cinco colunas**
+   * (SPEC-040): e-mail, nome, `saleRef`, username do GitHub e a chave — esta
+   * por hash, o caminho do suporte em que o comprador manda a chave e o admin
+   * confere sem que o servidor jamais a tenha guardado. `?status=` filtra por
+   * cima.
+   *
+   * **`?email=` e `?key=` deixaram de existir**, e nada os substitui em
+   * separado: eram dois campos na tela para uma pergunta só — *"acha a licença
+   * deste cliente"* —, e o operador tinha de saber de antemão em qual deles
+   * colar o que o cliente mandou. Errar o campo devolvia lista vazia, que é
+   * indistinguível de "não existe".
+   *
+   * `status` inválido é **recusado**, nunca ignorado em silêncio: ignorar faria
+   * uma lista completa passar por lista filtrada, e o operador concluiria que
+   * não há revogadas quando só errou o valor.
    */
   @Get('licenses')
   async list(
     @Req() req: AuthenticatedRequest,
-    @Query('email') email?: string,
-    @Query('key') key?: string,
+    @Query('q') q?: string,
+    @Query('status') status?: string,
   ) {
-    if (key) {
-      const achada = await this.licenses.findByKey(req.tenantId!, key);
-      // Lista de 0 ou 1, não 404: a tela consome uma lista nos dois casos, e
-      // "não achei" é resposta legítima de uma busca, não erro.
-      return achada ? [achada] : [];
+    if (status && !isLicenseStatus(status)) {
+      throw new UnprocessableEntityException(`Status inválido: ${status}`);
     }
-    return this.licenses.list(req.tenantId!, email);
+    return this.licenses.list(req.tenantId!, q, status as LicenseStatus | undefined);
   }
 
   /**
