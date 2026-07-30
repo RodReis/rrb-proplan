@@ -11,11 +11,13 @@ import {
   listLicenseEvents,
   listLicenses,
   revokeLicense,
+  updateProductSourceRepo,
   type IssuedLicense,
   type LicCatalogResponse,
   type LicEventView,
   type LicenseDetail,
   type LicenseView,
+  type LicProductView,
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
 import { SourceOpsPanel } from './SourceOpsPanel';
@@ -550,6 +552,61 @@ export function LicensesPage() {
  * `ON DELETE RESTRICT` recusa apagar edição com licença vendida, e oferecer um
  * botão para depois recusá-lo é pior que não oferecer.
  */
+/**
+ * O repositório de código-fonte do produto (FIX #212).
+ *
+ * **Só faz sentido para quem vende código-fonte**, e é por isso que o campo não
+ * grita: fica junto do produto, com rótulo que diz o efeito de deixá-lo vazio.
+ * Um produto sem edição `grantsSourceAccess` nunca precisa dele.
+ */
+function SourceRepoCampo({
+  produto,
+  onMudou,
+}: {
+  produto: LicProductView;
+  onMudou: () => void;
+}) {
+  const [valor, setValor] = useState(produto.sourceRepo ?? '');
+  const [ocupado, setOcupado] = useState(false);
+
+  async function salvar() {
+    setOcupado(true);
+    try {
+      await updateProductSourceRepo(produto.id, valor.trim());
+      onMudou();
+      toast.success(
+        valor.trim()
+          ? `Repositório de código-fonte: ${valor.trim()}`
+          : 'Repositório de código-fonte removido — nenhum convite sairá para este produto',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível salvar');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 grid gap-2 min-[720px]:grid-cols-[1fr_auto]">
+      <input
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        placeholder="repositório do código-fonte (dono/nome) — vazio se não vende source"
+        aria-label={`Repositório de código-fonte de ${produto.name}`}
+        disabled={ocupado}
+        className="rounded-[9px] border border-border2 bg-bg px-3 py-2 font-mono text-[12px] text-text"
+      />
+      <button
+        onClick={salvar}
+        disabled={ocupado || valor.trim() === (produto.sourceRepo ?? '')}
+        className="rounded-[9px] border border-border2 px-3 py-2 text-[12px] text-text2 disabled:opacity-40"
+      >
+        Salvar repo
+      </button>
+    </div>
+  );
+}
+
 function CadastroProdutos({
   catalogo,
   aberto,
@@ -645,6 +702,11 @@ function CadastroProdutos({
                     </li>
                   ))}
                 </ul>
+                {/* O repositório de código-fonte (SPEC-039, exposto no FIX #212).
+                    Sem ele preenchido o convite não tem destino, e o operador só
+                    descobriria isso no teste de conexão — depois de já ter
+                    cadastrado o PAT. */}
+                <SourceRepoCampo produto={p} onMudou={onMudou} />
               </li>
             ))}
           </ul>

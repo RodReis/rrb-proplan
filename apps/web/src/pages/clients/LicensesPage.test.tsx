@@ -22,6 +22,11 @@ const apiMock = vi.hoisted(() => ({
   listWebhookEvents: vi.fn(),
   listOfferMappings: vi.fn(),
   getLicensingSettings: vi.fn(),
+  // SPEC-039 PR-5 — o `SourceOpsPanel` também é filho e carrega no mount.
+  listSourcePending: vi.fn(),
+  getSourceSettings: vi.fn(),
+  // FIX #212
+  updateProductSourceRepo: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -41,6 +46,9 @@ const CATALOGO: LicCatalogResponse = {
       slug: 'warroom',
       name: 'War Room',
       keyPrefix: 'WR',
+      // `null` é o estado que bloqueava o dogfooding: sem repo, o convite não tem
+      // destino (FIX #212).
+      sourceRepo: null,
       editions: [
         {
           id: 'ed-1',
@@ -108,6 +116,9 @@ describe('SPEC-036: tela de Licenças', () => {
       webhookSecretSet: true,
       pastDueToleranceDays: 15,
     });
+    // O painel de source (SPEC-039 PR-5) também carrega no mount.
+    apiMock.listSourcePending.mockResolvedValue([]);
+    apiMock.getSourceSettings.mockResolvedValue({ githubPatSet: false, sourceRepo: null });
     apiMock.listLicenseEvents.mockResolvedValue([]);
     apiMock.getLicenseDetail.mockResolvedValue({
       ...LICENCA,
@@ -446,6 +457,58 @@ describe('SPEC-036: tela de Licenças', () => {
         await screen.findByRole('button', { name: /Produtos e edições/ }),
       );
       expect(screen.queryByRole('button', { name: /Remover|Excluir|Apagar/ })).toBeNull();
+    });
+
+    /**
+     * O repositório de código-fonte (SPEC-039), exposto no FIX #212.
+     *
+     * A coluna existia desde o PR-1 daquela fatia e **não tinha caminho pela
+     * interface**: sem ela preenchida o convite não tem destino, e o operador só
+     * descobriria isso no teste de conexão — depois de já ter cadastrado o PAT.
+     */
+    describe('repositório de código-fonte', () => {
+      async function abrir() {
+        montar();
+        await userEvent.click(
+          await screen.findByRole('button', { name: /Produtos e edições/ }),
+        );
+      }
+
+      it('mostra o campo por produto, vazio quando não configurado', async () => {
+        await abrir();
+
+        const campo = screen.getByLabelText(/Repositório de código-fonte de War Room/i);
+        expect(campo).toHaveValue('');
+      });
+
+      it('salva `owner/name`', async () => {
+        apiMock.updateProductSourceRepo.mockResolvedValue({
+          ...CATALOGO.products[0],
+          sourceRepo: 'RodReis/war-room',
+        });
+        await abrir();
+
+        await userEvent.type(
+          screen.getByLabelText(/Repositório de código-fonte de War Room/i),
+          'RodReis/war-room',
+        );
+        await userEvent.click(screen.getByRole('button', { name: /Salvar repo/i }));
+
+        await waitFor(() =>
+          expect(apiMock.updateProductSourceRepo).toHaveBeenCalledWith(
+            'prod-1',
+            'RodReis/war-room',
+          ),
+        );
+      });
+
+      it('o botão fica inerte enquanto o valor não muda', async () => {
+        await abrir();
+
+        // Sem isto, clicar sem alterar nada dispararia um PATCH que não muda nada
+        // — e o toast de sucesso ensinaria que "salvou" é barato.
+        expect(screen.getByRole('button', { name: /Salvar repo/i })).toBeDisabled();
+      });
     });
   });
 });

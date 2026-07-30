@@ -124,6 +124,22 @@ describe('WebhookIntakeService', () => {
       expect(createEvento).not.toHaveBeenCalled();
     });
 
+    it.each([[null], ['']])(
+      'linha existe mas o segredo é %p — mesmo 401 (FIX #212)',
+      async (segredo) => {
+        // **A linha passou a poder existir SEM segredo**: desde o FIX #212 ela
+        // nasce ao salvar só o PAT do source, e `webhook_secret` é `String?`.
+        //
+        // Sem `!settings?.webhookSecret` na guarda, este caso cairia direto no
+        // `verifySignature` com `null` — e o desfecho seria decidido lá dentro,
+        // não por uma regra explícita. O `401` é o mesmo de sempre, pelo mesmo
+        // motivo: quem não configurou webhook não tem entrega legítima.
+        findUniqueSettings.mockResolvedValue({ webhookSecret: segredo });
+        await expect(service.receive(entrada())).rejects.toThrow(UnauthorizedException);
+        expect(createEvento).not.toHaveBeenCalled();
+      },
+    );
+
     it('payload sem identificador de venda', async () => {
       // Sem chave de idempotência, a segunda entrega viraria outra licença.
       const semId = { webhook_event_type: 'order_approved' };

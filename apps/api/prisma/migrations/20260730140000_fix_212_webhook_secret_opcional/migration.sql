@@ -1,0 +1,33 @@
+-- FIX #212 — `lic_settings.webhook_secret` deixa de ser obrigatório.
+--
+-- ## Por que
+--
+-- A coluna nasceu `NOT NULL` na SPEC-038, quando o webhook era a única coisa
+-- nesta tabela. A SPEC-039 acrescentou o `github_pat`, e a obrigatoriedade passou
+-- a IMPEDIR que um tenant configurasse o acesso ao repo source sem antes
+-- cadastrar um webhook que talvez nem use — são propósitos independentes: uma
+-- credencial convida ao repositório privado, a outra recebe vendas da
+-- plataforma.
+--
+-- O sintoma era `422 "Configure o segredo do webhook antes do PAT do GitHub"`
+-- num tenant com `lic_settings` vazia — sem caminho pela interface para o que a
+-- SPEC-039 §Configuração por tenant define como configurável no admin.
+--
+-- ## O que NÃO muda: a segurança do webhook
+--
+-- Ausente continua significando "não configurou webhook", e toda entrega para
+-- esse tenant é recusada com `401` no intake — exatamente o mesmo desfecho de
+-- antes, quando o que faltava era a linha inteira. O que mudou é apenas *quando
+-- a linha pode nascer*.
+--
+-- `updateSettings` segue recusando string vazia: gravar `''` num tenant que JÁ
+-- recebe entregas faria todas passarem a falhar, com sintoma indistinguível de
+-- ataque.
+--
+-- ## Sem migração de dados
+--
+-- `DROP NOT NULL` é ampliação de domínio: toda linha existente continua válida
+-- (nenhuma tem `NULL` hoje, e as que têm segredo seguem tendo). Não há
+-- reinterpretação de valor — `''` continua `''`, e continua sendo recusado na
+-- verificação de assinatura como sempre foi.
+ALTER TABLE "lic_settings" ALTER COLUMN "webhook_secret" DROP NOT NULL;

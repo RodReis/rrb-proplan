@@ -166,7 +166,11 @@ export class LicensingOpsService {
     if (!linha) return { webhookSecretSet: false, pastDueToleranceDays: 15 };
 
     return {
-      webhookSecretSet: linha.webhookSecret.length > 0,
+      // `?? ''` porque a coluna é `String?` desde o FIX #212: a linha pode nascer
+      // só com o PAT do source, sem webhook nenhum. Nulo e vazio significam a
+      // mesma coisa para esta view — *não configurado* — e é o que o intake já
+      // tratava como `401`.
+      webhookSecretSet: (linha.webhookSecret ?? '').length > 0,
       pastDueToleranceDays: linha.pastDueToleranceDays,
     };
   }
@@ -208,27 +212,25 @@ export class LicensingOpsService {
       throw new UnprocessableEntityException('Nada a atualizar');
     }
 
-    // `upsert`: o tenant pode nunca ter tido linha de settings. No `create` o
-    // segredo é obrigatório — gravar tolerância sem segredo deixaria a linha
-    // inválida para o webhook.
-    if (dados.webhookSecret === undefined) {
-      const existe = await this.prisma.licSettings.findUnique({
-        where: { tenantId },
-        select: { id: true },
-      });
-      if (!existe) {
-        throw new UnprocessableEntityException(
-          'Configure o segredo do webhook antes da tolerância',
-        );
-      }
-    }
-
+    // `upsert`: o tenant pode nunca ter tido linha de settings.
+    //
+    // **A guarda de "segredo antes da tolerância" caiu no FIX #212.** Ela existia
+    // porque o `create` precisava de um `webhookSecret`, e gravar `''` deixaria a
+    // linha inválida para o webhook. Agora a coluna é `String?`: a linha nasce sem
+    // segredo, e ausente já significa *não configurado* — o mesmo `401` no intake
+    // de quando não havia linha nenhuma.
+    //
+    // O que **não** mudou: string vazia explícita continua recusada acima. Gravar
+    // `''` num tenant que já recebe entregas faria todas passarem a falhar, com
+    // sintoma indistinguível de ataque.
     await this.prisma.licSettings.upsert({
       where: { tenantId },
       update: dados,
       create: {
         tenantId,
-        webhookSecret: dados.webhookSecret ?? '',
+        ...(dados.webhookSecret === undefined
+          ? {}
+          : { webhookSecret: dados.webhookSecret }),
         pastDueToleranceDays: dados.pastDueToleranceDays ?? 15,
       },
     });

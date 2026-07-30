@@ -6438,9 +6438,62 @@ porque o operador teria uma confirmação verde. E ele **nunca lança**: `ok: fa
 com motivo legível é o resultado, não uma exceção. Um `500` diria *"o ProPlan
 quebrou"* sobre um teste cuja resposta é *"seu token está errado"*.
 
-**Salvar o PAT exige a linha de settings já criada.** Criá-la aqui deixaria
-`webhookSecret: ''`, e **toda** entrega da plataforma passaria a falhar com `401` —
-um efeito colateral que ninguém ligaria a *"salvei o PAT"*.
+**~~Salvar o PAT exige a linha de settings já criada.~~ Revertido no FIX #212** —
+ver abaixo. O raciocínio (não gravar `webhookSecret: ''`) estava certo; a conclusão
+(exigir o webhook antes) estava errada.
+
+### FIX #212 — a guarda que bloqueava o próprio dogfooding
+
+**Achado ao tentar salvar o PAT pela primeira vez**, num tenant com `lic_settings`
+vazia: `422 "Configure o segredo do webhook antes do PAT do GitHub"`. Não havia
+caminho pela interface para o que a SPEC-039 §Configuração por tenant define como
+configurável no admin.
+
+**A guarda foi copiada do `updateSettings` da SPEC-038 sem eu checar se a razão se
+aplicava.** Lá ela é correta: gravar *tolerância* sem segredo deixaria a linha
+inválida para o webhook. Aqui não — o PAT do source e o segredo da Kiwify são
+**configurações independentes**: uma convida ao repositório privado, a outra recebe
+vendas. Amarrá-las obriga quem quer só o source a cadastrar um webhook que talvez
+nem use.
+
+`LicSettings.webhookSecret` virou `String?` (decisão PI, 2026-07-30) e o `setPat`
+faz `upsert` sem tocá-lo.
+
+**A segurança do webhook não mudou, e essa é a parte que importa conferir.**
+Ausente continua significando *"não configurou webhook"*, com toda entrega recusada
+por `401` no intake — exatamente o desfecho de quando faltava a linha inteira. O
+que mudou é só *quando a linha pode nascer*. Duas consequências foram tratadas:
+
+- **A guarda do intake virou `!settings?.webhookSecret`.** Sem essa metade, um
+  tenant com linha e sem segredo verificaria a assinatura contra `null`, e o
+  desfecho seria decidido dentro do `verifySignature` em vez de por regra
+  explícita. Há teste para `null` e para `''`.
+- **`updateSettings` segue recusando string vazia.** Opcional no schema ≠ apagável
+  pela tela: gravar `''` num tenant que já recebe entregas faria todas passarem a
+  falhar, com sintoma indistinguível de ataque.
+
+**O segundo bloqueio veio no mesmo caminho: `sourceRepo` não tinha tela.** A coluna
+nasceu no PR-1 desta fatia; o cadastro de produtos é da SPEC-036 e não a conhecia.
+Mesmo com o PAT salvo, o teste de conexão responderia *"nenhum produto tem
+repositório de código-fonte configurado"* — e o operador descobriria isso só depois
+de cadastrar o token.
+
+Agora há `PATCH /products/:id/source-repo` e um campo por produto. **O formato é
+validado no servidor** (`owner/name`, recusando URL colada inteira e barra a mais):
+um valor torto produziria `404` no momento do convite, que a lista de pendências
+mostraria como *"repositório não encontrado"* — mandando o operador procurar
+problema de permissão num erro de digitação. **String vazia limpa**, porque
+desconfigurar é ação legítima (o produto deixou de vender código-fonte) e não pode
+exigir SQL.
+
+**A migration é `DROP NOT NULL`, sem migração de dados** — ampliação de domínio:
+toda linha existente continua válida, nenhuma tem `NULL` hoje, e `''` continua
+sendo recusado na verificação de assinatura como sempre foi.
+
+**Verificação**: +11 regras · +3 tela (regras 2019 · banco 240 · tela 621 —
+**2880 verdes**); `INSERT` sem `webhook_secret` confirmado direto no Postgres (o
+CHECK `length(btrim(webhook_secret)) > 0` não barra `NULL`, e eu conferi em vez de
+supor); build e lint verdes.
 
 ### PR-5 — verificação
 

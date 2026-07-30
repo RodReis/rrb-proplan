@@ -44,6 +44,11 @@ interface EditionLimitsBody {
   updatesMonths?: unknown;
 }
 
+interface SourceRepoBody {
+  /** `owner/name`, ou string vazia para limpar. */
+  sourceRepo?: unknown;
+}
+
 interface GithubUsernameBody {
   username?: unknown;
 }
@@ -108,6 +113,25 @@ export class LicensingAdminController {
     @Body() body: CreateEditionInput,
   ) {
     return this.catalog.createEdition(req.tenantId!, productId, body ?? {});
+  }
+
+  /**
+   * Define ou limpa o repositório de código-fonte do produto (FIX #212).
+   *
+   * A coluna nasceu no PR-1 da SPEC-039 e não tinha caminho pela interface: sem
+   * ela preenchida o convite não tem destino, e o operador só descobria isso no
+   * teste de conexão — depois de já ter cadastrado o PAT.
+   *
+   * `PATCH` pelo mesmo motivo do de edição: é um campo de um recurso existente,
+   * não a substituição do produto.
+   */
+  @Patch('products/:id/source-repo')
+  updateProductSourceRepo(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') productId: string,
+    @Body() body: SourceRepoBody,
+  ) {
+    return this.catalog.updateProductSourceRepo(req.tenantId!, productId, body?.sourceRepo);
   }
 
   /**

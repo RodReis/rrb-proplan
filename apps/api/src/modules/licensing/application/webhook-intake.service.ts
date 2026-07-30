@@ -86,8 +86,15 @@ export class WebhookIntakeService {
       // Tenant sem configuração também é `401`. Ele não configurou webhook
       // nenhum, então nenhuma entrega para ele é legítima — e aceitar sem
       // segredo seria abrir a emissão de licença para quem descobrir o slug.
+      //
+      // **`!settings?.webhookSecret` e não só `!settings` desde o FIX #212**: a
+      // coluna virou `String?`, e a linha passou a poder existir sem segredo
+      // (criada ao salvar só o PAT do source). Sem esta metade da guarda, um
+      // tenant nessa situação verificaria a assinatura contra `null` — e o
+      // desfecho seria decidido pelo `verifySignature`, não por uma regra
+      // explícita. O `401` aqui é o mesmo de antes, pelo mesmo motivo.
       if (
-        !settings ||
+        !settings?.webhookSecret ||
         !verifySignature({
           rawBody: input.rawBody,
           // O `payload` também: a Kiwify assina o RE-STRINGIFY do objeto
