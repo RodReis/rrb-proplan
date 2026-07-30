@@ -22,6 +22,8 @@ import {
   type LicProductView,
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
+import { LicenseDangerActions } from './LicenseDangerActions';
+import { MetricsPanel } from './MetricsPanel';
 import { SourceOpsPanel } from './SourceOpsPanel';
 import { WebhookOpsPanel } from './WebhookOpsPanel';
 import {
@@ -44,6 +46,22 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready' };
 
+type Aba = 'licencas' | 'metricas' | 'pendencias' | 'configuracoes';
+
+/**
+ * As quatro seções da área (SPEC-040 §A área).
+ *
+ * A ordem é a de **uso**, não a da spec: licenças é o dia a dia, métricas se
+ * olha de vez em quando, pendências só quando há trabalho, e configurações uma
+ * vez na vida do workspace.
+ */
+const ABAS: Array<{ chave: Aba; rotulo: string }> = [
+  { chave: 'licencas', rotulo: 'Licenças' },
+  { chave: 'metricas', rotulo: 'Métricas' },
+  { chave: 'pendencias', rotulo: 'Pendências' },
+  { chave: 'configuracoes', rotulo: 'Configurações' },
+];
+
 /**
  * Licenças do workspace (SPEC-036) — a **tela mínima** da Fatia 25.
  *
@@ -63,6 +81,7 @@ type State =
  */
 export function LicensesPage() {
   const { tenant = '' } = useParams();
+  const [aba, setAba] = useState<Aba>('licencas');
   const [state, setState] = useState<State>({ status: 'loading' });
   const [catalogo, setCatalogo] = useState<LicCatalogResponse | null>(null);
   const [licencas, setLicencas] = useState<LicenseView[]>([]);
@@ -172,16 +191,29 @@ export function LicensesPage() {
       return;
     }
     try {
-      const [d, eventos] = await Promise.all([
-        getLicenseDetail(id),
-        listLicenseEvents(id),
-      ]);
-      setDetalhe(d);
-      setTrilha(eventos);
+      await recarregarGaveta(id);
       setAbertaDe(id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'falha ao abrir a licença');
     }
+  }
+
+  /**
+   * Relê detalhe e trilha da licença aberta.
+   *
+   * Extraído porque **toda ação da gaveta precisa das duas**: desativar máquina
+   * muda a vaga (detalhe) e vira evento (trilha); estender muda a data e vira
+   * evento; anonimizar muda o e-mail e vira evento. Recarregar só uma deixaria
+   * a tela metade velha — e a metade velha é a que o operador leria como
+   * "não funcionou".
+   */
+  async function recarregarGaveta(id: string) {
+    const [d, eventos] = await Promise.all([
+      getLicenseDetail(id),
+      listLicenseEvents(id),
+    ]);
+    setDetalhe(d);
+    setTrilha(eventos);
   }
 
   /** Suporte manual: libera a vaga quando o self-service do cliente não resolve. */
@@ -189,13 +221,9 @@ export function LicensesPage() {
     setOcupado(true);
     try {
       await deactivateActivation(licenseId, activationId);
-      // Recarrega as duas: a vaga mudou (detalhe) e a ação virou evento (trilha).
-      const [d, eventos] = await Promise.all([
-        getLicenseDetail(licenseId),
-        listLicenseEvents(licenseId),
-      ]);
-      setDetalhe(d);
-      setTrilha(eventos);
+      // A vaga mudou (detalhe) e a ação virou evento (trilha); a lista mostra a
+      // contagem de máquinas, então ela também.
+      await recarregarGaveta(licenseId);
       setLicencas(await listLicenses());
       toast.success('Máquina desativada — a vaga foi liberada');
     } catch (err) {
@@ -239,8 +267,53 @@ export function LicensesPage() {
             </p>
           )}
 
+          {/* Sem produto nenhum, a área **ensina em vez de mostrar quatro abas
+              vazias**.
+
+              A SPEC-040 §A área mandava o item sumir do menu neste caso. Isso
+              não se sustentou: o menu é o único caminho para cá, e é *daqui*
+              que se cadastra o primeiro produto — esconder deixaria o
+              licenciamento inalcançável em todo tenant novo (decisão do PI,
+              2026-07-30). O que a regra queria evitar era ruído no menu de quem
+              não vende software; esta tela resolve isso dizendo, na última
+              linha, para ignorar a área. */}
+          {catalogo.products.length === 0 ? (
+            <PrimeiroProduto
+              catalogo={catalogo}
+              onMudou={() => void carregar()}
+            />
+          ) : (
+          <>
+          {/* As quatro seções da área (SPEC-040 §A área). A ordem é a de uso:
+              licenças é o dia a dia, métricas se olha de vez em quando,
+              pendências só quando há trabalho, e configurações uma vez na vida
+              do workspace. */}
+          <div role="tablist" className="flex flex-wrap gap-1.5">
+            {ABAS.map(({ chave, rotulo }) => (
+              <button
+                key={chave}
+                role="tab"
+                aria-selected={aba === chave}
+                onClick={() => setAba(chave)}
+                className={
+                  'rounded-[9px] px-3.5 py-1.5 text-[12.5px] transition-colors duration-150 ' +
+                  (aba === chave
+                    ? 'bg-card font-semibold text-text'
+                    : 'text-body2 hover:bg-card hover:text-text')
+                }
+              >
+                {rotulo}
+              </button>
+            ))}
+          </div>
+
+          {aba === 'metricas' && <MetricsPanel />}
+
           {/* A chave em claro. Bloco próprio, não linha de lista: ela existe uma
-              vez só, e recarregar a página a perde para sempre. */}
+              vez só, e recarregar a página a perde para sempre.
+
+              **Fora do `aba === 'licencas'` de propósito**: trocar de aba com a
+              chave na tela a perderia para sempre, e ela não tem segunda via. */}
           {emitida && (
             <section className="rounded-[14px] border border-accentBorder bg-accentSoft p-5">
               <h2 className="m-0 text-[15px] font-semibold text-text">
@@ -276,6 +349,8 @@ export function LicensesPage() {
             </section>
           )}
 
+          {aba === 'licencas' && (
+            <>
           {/* Emissão */}
           <section className="rounded-[14px] border border-border bg-panel p-5">
             <h2 className="m-0 text-[15px] font-semibold text-text">Emitir licença</h2>
@@ -511,6 +586,21 @@ export function LicensesPage() {
                             ))}
                           </ul>
                         </div>
+
+                        {/* Estender e excluir a pedido (SPEC-040). Dentro da
+                            gaveta, no fim: são as ações que mexem no que já foi
+                            decidido, e a lista não é lugar de oferecê-las —
+                            exclusão sem volta por clique errado numa linha é
+                            exatamente o que a confirmação por digitação evita. */}
+                        {detalhe && (
+                          <LicenseDangerActions
+                            licenca={detalhe}
+                            onMudou={() => {
+                              void recarregarGaveta(detalhe.id);
+                              void carregar();
+                            }}
+                          />
+                        )}
                       </div>
                     )}
                   </li>
@@ -519,27 +609,104 @@ export function LicensesPage() {
             )}
           </section>
 
-          <CadastroProdutos
-            catalogo={catalogo}
-            aberto={abrirCadastro}
-            onToggle={() => setAbrirCadastro((v) => !v)}
-            onMudou={() => void carregar()}
-          />
+            </>
+          )}
 
-          {/* Operação do webhook (SPEC-038, PR-5) — abaixo do cadastro porque a
-              ordem da tela é a ordem de uso: emitir é o dia a dia, cadastrar é
-              raro, e resolver venda travada é excepcional (mas urgente quando
-              acontece — daí o contador de falhas no próprio título). */}
-          <WebhookOpsPanel catalogo={catalogo} />
+          {/* Pendências: as duas operações que dependem de gente. O webhook
+              vem antes porque venda travada é dinheiro parado; o acesso ao
+              source depende do comprador responder, e espera por natureza. */}
+          {aba === 'pendencias' && (
+            <>
+              <WebhookOpsPanel catalogo={catalogo} />
+              <SourceOpsPanel />
+            </>
+          )}
 
-          {/* Acesso ao repo source (SPEC-039, PR-5) — por último porque é a
-              operação mais rara das três, e a que mais depende de gente de fora
-              (o comprador informar o username, aceitar o convite). O contador no
-              título é o que a traz para cima quando há trabalho. */}
-          <SourceOpsPanel />
+          {/* Configurações: produtos, edições e o que se cadastra uma vez na
+              vida do workspace. Os painéis de webhook e source trazem a própria
+              configuração junto da operação — separá-la aqui obrigaria a ir e
+              voltar entre abas para ligar um PAT e testá-lo. */}
+          {aba === 'configuracoes' && (
+            <CadastroProdutos
+              catalogo={catalogo}
+              aberto={abrirCadastro}
+              onToggle={() => setAbrirCadastro((v) => !v)}
+              onMudou={() => void carregar()}
+            />
+          )}
+          </>
+          )}
         </>
       )}
     </ClientsShell>
+  );
+}
+
+/**
+ * A área sem produto nenhum: **explica o que é, e diz quando ignorar**.
+ *
+ * Substitui as quatro abas vazias — cada uma delas responderia "nada aqui" a
+ * uma pergunta que o operador não fez. E substitui o *esconder o item do menu*
+ * que a spec pedia, porque esconder tornaria esta tela — a única que cadastra o
+ * primeiro produto — inalcançável (decisão do PI, 2026-07-30).
+ *
+ * **A última linha é a que faz o trabalho da regra original.** Quem não vende
+ * software abre isto uma vez, lê "ignore esta área", e não volta. O ruído que o
+ * "some" evitava passa a custar uma visita, não um item permanente no menu.
+ */
+function PrimeiroProduto({
+  catalogo,
+  onMudou,
+}: {
+  catalogo: LicCatalogResponse;
+  onMudou: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+
+  return (
+    <section className="rounded-[14px] border border-border bg-panel p-6">
+      <h2 className="m-0 text-[15px] font-semibold text-text">
+        Licenciamento de software
+      </h2>
+      <p className="mt-2 max-w-[62ch] text-[12.5px] leading-relaxed text-body">
+        Esta área emite e administra chaves de licença dos <strong>seus
+        produtos</strong>: ativação por máquina, validade, revogação em caso de
+        reembolso e — quando a edição prevê — convite ao repositório de
+        código-fonte. Ela não tem relação com os contratos de prestação de
+        serviço: um produto licenciado não é um cliente.
+      </p>
+      <p className="mt-2 max-w-[62ch] text-[12.5px] leading-relaxed text-body">
+        Nada acontece aqui até existir um produto cadastrado.
+      </p>
+
+      <div className="mt-4">
+        <button
+          onClick={() => setAberto(true)}
+          className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg"
+        >
+          Cadastrar o primeiro produto
+        </button>
+      </div>
+
+      {aberto && (
+        <div className="mt-4">
+          <CadastroProdutos
+            catalogo={catalogo}
+            aberto
+            // Já aberto e sem como recolher: nesta tela o cadastro **é** a
+            // tarefa, e um "Ocultar" só devolveria a pessoa ao lugar de onde ela
+            // acabou de sair.
+            onToggle={() => undefined}
+            onMudou={onMudou}
+          />
+        </div>
+      )}
+
+      <p className="mt-5 border-t border-border pt-4 text-[11.5px] text-body2">
+        Se você não vende software licenciado, pode ignorar esta área — ela não
+        afeta projetos, clientes nem contratos.
+      </p>
+    </section>
   );
 }
 

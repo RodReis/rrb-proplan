@@ -422,8 +422,11 @@ describe('SPEC-036: tela de Licenças', () => {
   });
 
   describe('estados vazios', () => {
-    it('sem produto, diz o que fazer em vez de mostrar formulário morto', async () => {
-      // Ausência é informação (ADR-014).
+    it('sem produto, a área ENSINA em vez de mostrar quatro abas vazias', async () => {
+      // Ausência é informação (ADR-014) — e aqui ela substitui duas coisas: as
+      // abas (cada uma responderia "nada aqui" a uma pergunta que ninguém fez)
+      // e o *esconder o item do menu* que a SPEC-040 pedia. Esconder tornaria
+      // esta tela inalcançável, e é dela que sai o primeiro produto.
       apiMock.getLicensingCatalog.mockResolvedValue({
         signingConfigured: true,
         products: [],
@@ -431,8 +434,41 @@ describe('SPEC-036: tela de Licenças', () => {
       apiMock.listLicenses.mockResolvedValue([]);
       montar();
 
-      expect(await screen.findByText(/Nenhum produto cadastrado ainda/)).toBeInTheDocument();
+      expect(await screen.findByText(/Licenciamento de software/)).toBeInTheDocument();
       expect(screen.queryByLabelText(/E-mail do comprador/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    });
+
+    it('sem produto, diz explicitamente para IGNORAR quem não vende software', async () => {
+      // É esta frase que faz o trabalho da regra original do "some": quem não
+      // vende software abre uma vez, lê, e não volta. Sem ela a área seria
+      // ruído permanente para metade dos tenants.
+      apiMock.getLicensingCatalog.mockResolvedValue({
+        signingConfigured: true,
+        products: [],
+      });
+      apiMock.listLicenses.mockResolvedValue([]);
+      montar();
+
+      expect(
+        await screen.findByText(/pode ignorar esta área/),
+      ).toBeInTheDocument();
+    });
+
+    it('sem produto, o cadastro abre a partir daqui', async () => {
+      // O impasse que a decisão do PI resolveu: se esta tela não cadastrasse, e
+      // o item sumisse do menu, um tenant novo nunca teria licenciamento.
+      apiMock.getLicensingCatalog.mockResolvedValue({
+        signingConfigured: true,
+        products: [],
+      });
+      apiMock.listLicenses.mockResolvedValue([]);
+      montar();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: /Cadastrar o primeiro produto/ }),
+      );
+      expect(await screen.findByLabelText(/Identificador/)).toBeInTheDocument();
     });
 
     it('sem licença, diz "nenhuma encontrada" em vez de lista em branco', async () => {
@@ -449,16 +485,30 @@ describe('SPEC-036: tela de Licenças', () => {
   });
 
   describe('produtos e edições', () => {
+    /**
+     * Entra na aba Configurações (SPEC-040 §A área).
+     *
+     * O cadastro deixou de ser um bloco no fim da página e virou seção própria:
+     * ele acontece uma vez na vida do workspace, e ocupar espaço na tela de
+     * emissão todo dia era o preço de tê-lo à mão uma vez.
+     */
+    async function irParaConfiguracoes() {
+      montar();
+      await userEvent.click(
+        await screen.findByRole('tab', { name: 'Configurações' }),
+      );
+    }
+
     it('vem recolhido — o caminho comum é emitir', async () => {
       // Cadastrar produto acontece uma vez na vida do workspace; aberto,
       // empurraria a emissão para baixo da dobra todo dia.
-      montar();
+      await irParaConfiguracoes();
       const botao = await screen.findByRole('button', { name: /Produtos e edições/ });
       expect(botao).toHaveAttribute('aria-expanded', 'false');
     });
 
     it('mostra quantas licenças saíram da edição — o que impede apagá-la', async () => {
-      montar();
+      await irParaConfiguracoes();
       await userEvent.click(
         await screen.findByRole('button', { name: /Produtos e edições/ }),
       );
@@ -468,7 +518,7 @@ describe('SPEC-036: tela de Licenças', () => {
     it('não oferece botão de remover produto nem edição', async () => {
       // O `ON DELETE RESTRICT` recusa apagar edição com licença vendida.
       // Oferecer o botão para depois recusá-lo é pior que não oferecer.
-      montar();
+      await irParaConfiguracoes();
       await userEvent.click(
         await screen.findByRole('button', { name: /Produtos e edições/ }),
       );
@@ -484,7 +534,7 @@ describe('SPEC-036: tela de Licenças', () => {
      */
     describe('repositório de código-fonte', () => {
       async function abrir() {
-        montar();
+        await irParaConfiguracoes();
         await userEvent.click(
           await screen.findByRole('button', { name: /Produtos e edições/ }),
         );
@@ -537,7 +587,7 @@ describe('SPEC-036: tela de Licenças', () => {
      */
     describe('acesso ao código-fonte por edição', () => {
       it('mostra o estado atual como checkbox', async () => {
-        montar();
+        await irParaConfiguracoes();
         await userEvent.click(
           await screen.findByRole('button', { name: /Produtos e edições/ }),
         );
@@ -553,7 +603,7 @@ describe('SPEC-036: tela de Licenças', () => {
           ...CATALOGO.products[0].editions[0],
           grantsSourceAccess: true,
         });
-        montar();
+        await irParaConfiguracoes();
         await userEvent.click(
           await screen.findByRole('button', { name: /Produtos e edições/ }),
         );

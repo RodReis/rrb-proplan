@@ -6567,3 +6567,208 @@ ignorada.
 agora é possível (o PAT tem onde ser cadastrado), mas exige um PAT fine-grained
 emitido pelo PI e um repositório de produto configurado. É o último passo da fatia,
 e ele é do PI: o token dá `administration:write` num repositório privado dele.
+
+## Fatia 29 (SPEC-040) — Licensing: painel do tenant, métricas honestas e exclusão a pedido — `código entregue · dogfooding pendente`
+
+Issue **#196** (spec `aprovada-pi` 2026-07-29). **5ª e última fatia do MVP4.**
+Licenciamento deixa de ser quatro telas mínimas espalhadas por quatro fatias e
+vira **uma área onde o operador resolve o caso de um cliente sem abrir o banco**.
+
+**Quatro PRs empilhados**, todos com base `main`:
+
+1. **PR-1 — busca ampliada e detalhe agregado** (`feito`, PR #219)
+2. **PR-2 — estender e excluir a pedido** (`feito`, PR #220)
+3. **PR-3 — métricas em contagem** (`feito`, PR #221)
+4. **PR-4 — a área em quatro seções** (este)
+
+### PR-1 — a heurística do `@` era o bug
+
+- [x] `GET /licenses?q=&status=` casando cinco colunas
+- [x] `GET /licenses/:id` com source, e-mails e trilha na mesma resposta
+
+**Um campo, cinco colunas — e o que existia antes falhava em silêncio.** A tela
+decidia entre `?email=` e `?key=` pela presença do arroba. Quem colasse o **nome
+do comprador** ou o **`saleRef`** caía no ramo "chave": o hash não casava, e a
+resposta era **lista vazia — indistinguível de "esse cliente não existe"**.
+Escolher a coluna nunca foi trabalho da tela.
+
+**A chave entra no `OR` por hash exato; as outras quatro, por `contains`.** Hash
+não tem prefixo em comum com nada, então `contains` sobre `keyHash` só acharia
+por acidente. O hash do termo é somado ao `OR` sempre — uma busca que não seja a
+chave produz um hash que não casa com linha nenhuma, ao custo de uma comparação
+de índice. **Há teste afirmando que a chave em claro não aparece no `where`**: se
+aparecesse, entraria no log de query do Postgres — o mesmo vazamento que a
+decisão de não persistir a chave existe para impedir, por um caminho que ninguém
+olharia.
+
+**`?status=` inválido é recusado, nunca ignorado.** Ignorar faria uma lista
+completa passar por lista filtrada: o operador pediria as revogadas, receberia
+todas, e concluiria que não há revogada nenhuma quando só errou o valor.
+
+**O detalhe agregado responde numa tela só.** Antes, *"ele recebeu a chave?"* e
+*"ele tem acesso ao código?"* exigiam outras duas telas — e a de pendências de
+source só mostra quem está **travado**, então licença saudável não aparecia em
+lugar nenhum.
+
+### PR-2 — anonimizar não é deletar
+
+- [x] `POST /licenses/:id/extend` com autor, motivo e **valor anterior**
+- [x] `POST /licenses/:id/anonymize` com allowlist no payload
+- [x] `LicensePrivacyService` + `domain/anonymize.ts`
+
+**A extensão assume que o webhook vence depois.** `expiresAt` tem uma autoridade
+— a plataforma, desde a SPEC-038. Duas autoridades permanentes sobre a mesma
+data significam divergência que só aparece quando alguém for cobrado errado. O
+que torna a extensão administrável é o aviso na tela e o **valor anterior
+gravado no evento**: sem ele a trilha diz que a data mudou e não diz de quê.
+
+**Revogada não é estendida** (o `/activate` responde `410` pelo `status`, não
+pela data), e **encurtar é permitido de propósito** — o caso real é desfazer uma
+extensão digitada errada, e proibir obrigaria a mexer no banco para consertar um
+erro cometido na mesma tela.
+
+**A redação do payload é ALLOWLIST, e é a decisão que mais importa da fatia.**
+Uma denylist apagaria os campos pessoais **que conhecemos hoje**. O payload é da
+plataforma, não nosso: no dia em que a Kiwify acrescentar `customer_document` —
+ou em que o adapter da Hotmart entrar (a coluna `platform` existe para isso) —,
+o campo novo **sobreviveria à anonimização em silêncio**. O titular teria pedido
+a exclusão, o ProPlan teria respondido que fez, e o CPF continuaria no banco. Há
+teste com campo pessoal inventado provando o descarte.
+
+**O preço não está na allowlist, e é deliberado**: é o único dado do payload que
+a §Métricas manda não usar para número nenhum.
+
+**O acesso ao repo source NÃO é revogado.** Excluir dado pessoal não desfaz a
+compra: quem comprou o código-fonte continua com direito a ele. Amarrar as duas
+coisas faria um pedido de LGPD virar cancelamento de um produto pago.
+
+**Tudo numa transação, e o carimbo é a última escrita.** Metade feita é o pior
+desfecho — o titular recebe a confirmação e o e-mail dele continua no payload
+porque a segunda escrita falhou. E criar o evento junto do `update` exigiria
+adivinhar os números antes de executar: diria "3 entregas redigidas" num caso em
+que só duas foram.
+
+### PR-3 — métricas honestas
+
+- [x] `licensing-summary.service.ts` — **a promessa do MVP4 §3, cumprida**
+- [x] `GET /summary?period=` · `domain/period.ts` próprio · 5 regras na arch-spec
+
+**Receita fica de fora, e a prova é em três camadas**: o tipo não tem campo de
+valor, um teste varre a resposta por onze nomes de dinheiro, e a arch-spec varre
+o arquivo. Preço vive no `payload`, sem coluna tipada nem moeda normalizada — um
+total derivado dali seria plausível e **indefensável**.
+
+**Métrica é contagem sobre coluna tipada.** Vendas/reembolsos/chargebacks saem
+de `LicWebhookEvent.eventType`. Duas consequências: **reembolso e chargeback
+ficam distintos** (o `LicEvent` grava os dois como `webhook_revoked`, e a
+distinção só sobrevive ali), e **a anonimização não mexe em número nenhum** —
+`eventType` está na allowlist, o que faz *"as métricas antes e depois são
+idênticas"* ser garantia e não coincidência.
+
+**O que erraria em cada número:** licenças por status filtradas por período
+diriam "0 revogadas" numa semana sem revogação nova; inadimplente contado pelo
+`status` daria zero sempre (atraso não muda status, SPEC-038); assinatura sem o
+filtro de `billingModel` incluiria licença perpétua.
+
+**`everSold` viaja fora do recorte de período** — responde *"já houve alguma
+vez"*, que nenhuma janela responde. Sem ele a tela mostraria "0 vendas" para
+quem nunca vendeu, e o operador leria como **queda**.
+
+**O dia é o de São Paulo, e o `GROUP BY` do Postgres não serve**: um
+`date_trunc` cortaria em UTC e uma ativação às 22 h apareceria na barra do dia
+seguinte. Testes de virada de mês **e de ano**.
+
+**`period.ts` é cópia, não import.** Importar do `dashboard` criaria a
+dependência de módulo-irmão que a **primeira regra da própria arch-spec** existe
+para impedir — por 60 linhas sem estado.
+
+**Um erro meu, achado por sabotagem deliberada:** escrevi o teste do período
+inválido com `await expect(...).rejects`, mas a rota lança **antes** de devolver
+a Promise — o `expect` não observava nada e passaria por qualquer implementação.
+Corrigido para a forma síncrona; aproveitei e sabotei a guarda do PR-1 para
+confirmar que aquele teste falha quando deve.
+
+### PR-4 — a área, e a regra da spec que não se sustentou
+
+- [x] Quatro seções (Licenças · Métricas · Pendências · Configurações)
+- [x] `MetricsPanel` + `licensingMetrics.ts` (funções puras, testadas)
+- [x] `LicenseDangerActions` — estender e excluir, com os avisos antes
+- [x] Estado vazio que ensina, no lugar de esconder o item do menu
+
+**As telas mínimas foram absorvidas, não reimplementadas.** `WebhookOpsPanel` e
+`SourceOpsPanel` já eram componentes independentes: viraram o conteúdo de
+*Pendências* sem mudança interna. O cadastro de produtos virou *Configurações*.
+Nenhum service novo para o que já existia.
+
+**A chave em claro fica FORA das abas.** Trocar de aba com ela na tela a perderia
+para sempre, e ela não tem segunda via.
+
+**O aviso de sobrescrita aparece antes da confirmação** (decisão PI #2), e a
+exclusão declara os três efeitos antes do campo: sem e-mail futuro, sem
+reemissão de chave, **e o acesso ao código continua**. Confirmação por digitação
+do e-mail do titular, que aceita caixa trocada — a confirmação existe para dar
+uma pausa, não para testar datilografia.
+
+**Licença já anonimizada não oferece nenhuma das duas ações**: o marcador não é
+destinatário de nada, e "excluir de novo" não tem o que excluir.
+
+**O gráfico não mente por compressão.** O servidor não devolve os dias vazios (a
+janela `current_month` tem tamanho variável, e só a tela sabe quantas barras
+cabem), então a lacuna se preenche na tela — sem isso, três ativações em dias
+alternados apareceriam coladas, sugerindo atividade contínua. E a escala é pelo
+**maior valor**, não por um teto fixo: um pico de 3 num painel calibrado para 100
+pareceria irrelevante, e 3 é a ordem de grandeza do piloto.
+
+**`NONE` não aparece no bloco de source**: é o estado de toda licença que não
+vende código-fonte, ou seja, a maioria. Exibi-lo faria o bloco dizer "247 sem
+acesso" sobre licenças que nunca deveriam ter acesso nenhum.
+
+#### A regra do "some" caiu, e o motivo é um impasse que a spec não previu
+
+A SPEC-040 §A área pedia que o item **Licenças sumisse do menu** quando o tenant
+não tivesse `LicProduct` — precedente do §2.12 da SPEC-035, onde o Dashboard some
+sem cliente nenhum.
+
+**Isso deixaria o licenciamento inalcançável em todo tenant novo.** O menu é o
+único caminho para a área, e é *dentro* dela que se cadastra o primeiro produto.
+Sem produto → item some → não há como cadastrar → nunca haverá produto. O
+Dashboard não tem esse problema porque cliente se cria noutra tela.
+
+Cheguei a implementar `GET /licensing/nav` + `hasProducts` para o menu decidir, e
+**removi** ao ver o impasse: rota sem consumidor é código morto. Também não serve
+pendurar a entrada na `/settings` — ela é global, sem tenant.
+
+**Decisão do PI (2026-07-30): item sempre visível, área vazia ensina.** Sem
+produto, a área explica o que é licenciamento, oferece o cadastro e — na última
+linha — **diz para ignorar quem não vende software**. É essa frase que faz o
+trabalho que a regra original queria: o ruído passa a custar uma visita, não um
+item permanente no menu.
+
+#### Dois defeitos meus, achados por teste
+
+1. **Botão ambíguo**: o que *abre* o formulário de extensão e o que *confirma*
+   tinham o mesmo nome. O teste falhou com *"Found multiple elements with the
+   role button and name Estender validade"* — que é exatamente o que um leitor
+   de tela encontraria. Virou *"Confirmar extensão"*.
+2. **Recarga pela metade**: `abrirGaveta` e `desativarMaquina` duplicavam a
+   leitura de detalhe + trilha. Extraí `recarregarGaveta` porque **toda** ação da
+   gaveta precisa das duas — recarregar só uma deixaria a tela metade velha, e a
+   metade velha é a que o operador lê como "não funcionou".
+
+### O que a Fatia 29 NÃO entrega
+
+**O dogfooding do painel com dado real.** As métricas foram testadas com dobras;
+nenhuma contagem rodou contra um banco com vendas de verdade — que dependem do
+mesmo webhook da Kiwify que a Fatia 28 ainda espera. **A exclusão a pedido nunca
+rodou em produção**, e não deve rodar como teste: ela é irreversível por
+construção.
+
+**Receita, ticket médio e qualquer valor em moeda** ficam fora por decisão
+(§Fora de escopo). O caminho de volta está registrado: emenda datada na SPEC-038
+extraindo valor e moeda para coluna tipada **no recebimento** — nunca lendo o
+payload na hora de renderizar.
+
+**Revisão jurídica dos termos** continua pendente (ressalva do MVP4 §7): esta
+fatia entrega o **mecanismo** de exclusão a pedido; se o texto dos termos e a
+política de retenção estão corretos é parecer de advogado, não critério de
+aceite de software.
