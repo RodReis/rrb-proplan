@@ -18,6 +18,7 @@ import {
   type LicenseView,
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
+import { WebhookOpsPanel } from './WebhookOpsPanel';
 import {
   eventLabel,
   isAtMachineLimit,
@@ -519,6 +520,12 @@ export function LicensesPage() {
             onToggle={() => setAbrirCadastro((v) => !v)}
             onMudou={() => void carregar()}
           />
+
+          {/* Operação do webhook (SPEC-038, PR-5) — abaixo do cadastro porque a
+              ordem da tela é a ordem de uso: emitir é o dia a dia, cadastrar é
+              raro, e resolver venda travada é excepcional (mas urgente quando
+              acontece — daí o contador de falhas no próprio título). */}
+          <WebhookOpsPanel catalogo={catalogo} />
         </>
       )}
     </ClientsShell>

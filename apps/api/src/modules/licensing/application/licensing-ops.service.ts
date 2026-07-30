@@ -1,0 +1,334 @@
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { UnprocessableEntityException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { LICENSING_QUEUE, PLATFORM_KIWIFY } from '../licensing.constants';
+import type { WebhookJobData } from './webhook-intake.service';
+
+/**
+ * Operação do licenciamento (SPEC-038, PR-5) — o mínimo para o dono resolver
+ * uma venda que não virou licença **sem** pedir reenvio à plataforma.
+ *
+ * ## O que este serviço existe para destravar
+ *
+ * O PR-3 grava evento de oferta não mapeada como `FAILED` **de propósito**: o
+ * evento tem dono (o tenant vem da URL), o payload está guardado bruto, e nada
+ * foi emitido. Sem uma tela, esse estado é um beco — a informação existe no
+ * banco e ninguém a alcança. O critério de aceite da fatia é exatamente sair
+ * dele: *"cadastrar o mapeamento e reprocessar o evento pendente emite a
+ * licença — sem precisar da plataforma reenviar"*.
+ *
+ * ## Reprocessar reenfileira; não processa aqui
+ *
+ * Mesma razão do PR-3: processar na request acopla a resposta ao tempo do
+ * processamento. E há uma razão a mais, própria do reprocess — o job é o único
+ * caminho que já sabe rodar sob `runInTenantContext` fora de request. Duplicar
+ * essa fiação aqui criaria um segundo lugar que precisa acertar o contexto, e o
+ * modo de errar é o silencioso (RLS fail-closed grava zero linhas sem erro).
+ *
+ * ## `webhookSecret` é write-only
+ *
+ * O `GET` devolve **se está configurado**, nunca o valor. O segredo é o Token
+ * que a *Kiwify* gera (achado do PR-3) — a origem dele é o painel dela, então
+ * ninguém precisa lê-lo de volta daqui, e uma tela que o exibisse seria uma
+ * superfície de vazamento sem nada em troca. Mesmo princípio que manteve o
+ * segredo fora da `resolve_past_due_tolerance` no PR-1.
+ */
+
+/** Item da lista de entregas de webhook. Sem o payload bruto — ver `webhookEvent()`. */
+export interface WebhookEventListItem {
+  id: string;
+  platform: string;
+  eventType: string;
+  externalEventId: string;
+  status: string;
+  error: string | null;
+  receivedAt: Date;
+  processedAt: Date | null;
+  licenseId: string | null;
+}
+
+export interface LicSettingsView {
+  /** `true` quando há segredo gravado. O valor **nunca** sai. */
+  webhookSecretSet: boolean;
+  /** `null` = o ProPlan não corta por atraso (decisão PI #3). */
+  pastDueToleranceDays: number | null;
+}
+
+export interface UpdateSettingsInput {
+  /** Ausente = não mexe. String vazia é recusada (ver `updateSettings`). */
+  webhookSecret?: unknown;
+  /** Ausente = não mexe. `null` explícito = desligar o corte. */
+  pastDueToleranceDays?: unknown;
+}
+
+export interface OfferMappingInput {
+  externalProductId?: unknown;
+  /** `null`/ausente = curinga: qualquer oferta daquele produto. */
+  externalOfferId?: unknown;
+  editionId?: unknown;
+}
+
+/** Teto de itens por página. Lista de operação não pode virar dump da tabela. */
+const MAX_PAGE = 100;
+
+@Injectable()
+export class LicensingOpsService {
+  private readonly logger = new Logger(LicensingOpsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue(LICENSING_QUEUE) private readonly queue: Queue<WebhookJobData>,
+  ) {}
+
+  /**
+   * Entregas recebidas, mais recentes primeiro, com filtro por status.
+   *
+   * O `payload` **não** vem na lista: é o corpo bruto da plataforma, com dado do
+   * comprador, e a lista é o que a tela carrega sempre. Quem precisa do payload
+   * abre o item (`evento()`).
+   */
+  async listWebhookEvents(status?: string, take = 50): Promise<WebhookEventListItem[]> {
+    return this.prisma.licWebhookEvent.findMany({
+      where: status ? { status: status as never } : undefined,
+      select: {
+        id: true,
+        platform: true,
+        eventType: true,
+        externalEventId: true,
+        status: true,
+        error: true,
+        receivedAt: true,
+        processedAt: true,
+        licenseId: true,
+      },
+      orderBy: { receivedAt: 'desc' },
+      take: Math.min(Math.max(1, take), MAX_PAGE),
+    });
+  }
+
+  /** Uma entrega, com o payload bruto — para o dono ver o que a plataforma mandou. */
+  async webhookEvent(id: string) {
+    const evento = await this.prisma.licWebhookEvent.findUnique({ where: { id } });
+    // Sob RLS, evento de outro tenant já volta `null`: 404 aqui é
+    // "não existe para você", que é a resposta certa nos dois casos.
+    if (!evento) throw new NotFoundException('Entrega não encontrada');
+    return evento;
+  }
+
+  /**
+   * Reenfileira uma entrega para processamento.
+   *
+   * **Só o que não deu certo.** Reprocessar um `PROCESSED` não é ideia ruim por
+   * ser inútil — é ideia ruim porque a idempotência do PR-3 mora no
+   * `UNIQUE (platform, external_event_id)` do **recebimento**, não no
+   * processamento: o job rodaria de novo sobre uma venda já emitida. Recusar
+   * aqui é mais honesto que confiar que nada vai acontecer.
+   */
+  async reprocess(id: string, tenantId: string): Promise<{ enqueued: true }> {
+    const evento = await this.prisma.licWebhookEvent.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!evento) throw new NotFoundException('Entrega não encontrada');
+
+    if (evento.status === 'PROCESSED') {
+      throw new UnprocessableEntityException(
+        'Entrega já processada — reprocessar emitiria de novo',
+      );
+    }
+
+    // Volta para `PENDING` antes de enfileirar: se o processo cair entre as duas
+    // linhas, o estado na tela é "esperando", não "falhou" — e o dono reprocessa
+    // de novo. O inverso (enfileirar e depois marcar) deixaria um evento
+    // `FAILED` que já está na fila, e o segundo clique duplicaria o job.
+    await this.prisma.licWebhookEvent.update({
+      where: { id },
+      data: { status: 'PENDING', error: null },
+    });
+
+    await this.queue.add('webhook', { webhookEventId: id, tenantId });
+    this.logger.log(`Entrega ${id} reenfileirada pelo admin`);
+    return { enqueued: true };
+  }
+
+  /** Configuração do tenant. O segredo **não** sai daqui. */
+  async settings(tenantId: string): Promise<LicSettingsView> {
+    const linha = await this.prisma.licSettings.findUnique({
+      where: { tenantId },
+      select: { webhookSecret: true, pastDueToleranceDays: true },
+    });
+
+    // Tenant sem linha ainda: `false`/`15` descreve o efeito real — o default do
+    // schema é 15, então é o que valerá quando a linha nascer. Inventar `null`
+    // aqui diria "não corta" sobre um tenant que vai cortar.
+    if (!linha) return { webhookSecretSet: false, pastDueToleranceDays: 15 };
+
+    return {
+      webhookSecretSet: linha.webhookSecret.length > 0,
+      pastDueToleranceDays: linha.pastDueToleranceDays,
+    };
+  }
+
+  /**
+   * Grava segredo e/ou tolerância. Campo ausente não é tocado.
+   *
+   * **`null` e ausente são coisas diferentes** e é o ponto mais fácil de errar
+   * aqui: `pastDueToleranceDays: null` é a mitigação sem deploy do risco aceito
+   * (decisão PI #3) — desliga o corte. Ausente é "não mexe". Tratar os dois como
+   * iguais tornaria impossível desligar o corte pela tela, que é justamente para
+   * que a tela existe.
+   */
+  async updateSettings(
+    tenantId: string,
+    input: UpdateSettingsInput,
+  ): Promise<LicSettingsView> {
+    const dados: { webhookSecret?: string; pastDueToleranceDays?: number | null } = {};
+
+    if (input.webhookSecret !== undefined) {
+      const segredo = typeof input.webhookSecret === 'string' ? input.webhookSecret.trim() : '';
+      // Vazio é recusado em vez de gravado: um segredo em branco faria **toda**
+      // entrega legítima falhar a assinatura, e o sintoma no log seria só `401`
+      // — indistinguível de ataque. Para desligar o webhook, remova a URL no
+      // painel da plataforma.
+      if (!segredo) {
+        throw new UnprocessableEntityException(
+          '`webhookSecret` não pode ser vazio — toda entrega passaria a falhar com 401',
+        );
+      }
+      dados.webhookSecret = segredo;
+    }
+
+    if (input.pastDueToleranceDays !== undefined) {
+      dados.pastDueToleranceDays = tolerancia(input.pastDueToleranceDays);
+    }
+
+    if (Object.keys(dados).length === 0) {
+      throw new UnprocessableEntityException('Nada a atualizar');
+    }
+
+    // `upsert`: o tenant pode nunca ter tido linha de settings. No `create` o
+    // segredo é obrigatório — gravar tolerância sem segredo deixaria a linha
+    // inválida para o webhook.
+    if (dados.webhookSecret === undefined) {
+      const existe = await this.prisma.licSettings.findUnique({
+        where: { tenantId },
+        select: { id: true },
+      });
+      if (!existe) {
+        throw new UnprocessableEntityException(
+          'Configure o segredo do webhook antes da tolerância',
+        );
+      }
+    }
+
+    await this.prisma.licSettings.upsert({
+      where: { tenantId },
+      update: dados,
+      create: {
+        tenantId,
+        webhookSecret: dados.webhookSecret ?? '',
+        pastDueToleranceDays: dados.pastDueToleranceDays ?? 15,
+      },
+    });
+
+    // O log registra QUE mudou, nunca o valor do segredo.
+    this.logger.log(
+      `Settings do tenant ${tenantId} atualizados: ${Object.keys(dados).join(', ')}`,
+    );
+    return this.settings(tenantId);
+  }
+
+  /** Mapeamentos oferta→edição do tenant, com a edição resolvida para a tela. */
+  async listOfferMappings(tenantId: string) {
+    return this.prisma.licOfferMapping.findMany({
+      where: { tenantId },
+      include: { edition: { select: { id: true, slug: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Cadastra um mapeamento — o ato que destrava a venda parada em `FAILED`.
+   *
+   * `externalOfferId` nulo é **curinga** do produto. O PR-1 pôs dois uniques por
+   * isso (em Postgres NULL não colide com NULL): sem o índice parcial, dois
+   * curingas do mesmo produto conviveriam apontando para edições diferentes e a
+   * compra emitiria a licença de qualquer uma das duas.
+   */
+  async createOfferMapping(tenantId: string, input: OfferMappingInput) {
+    const externalProductId = texto(input.externalProductId);
+    const editionId = texto(input.editionId);
+    const externalOfferId = texto(input.externalOfferId) || null;
+
+    if (!externalProductId || !editionId) {
+      throw new UnprocessableEntityException(
+        '`externalProductId` e `editionId` são obrigatórios',
+      );
+    }
+
+    // A edição tem de ser deste tenant. Sob RLS um id alheio já volta `null`,
+    // mas a mensagem explícita evita o "cadastrei e a compra continua falhando".
+    const edicao = await this.prisma.licEdition.findFirst({
+      where: { id: editionId },
+      select: { id: true },
+    });
+    if (!edicao) throw new NotFoundException('Edição não encontrada');
+
+    return this.prisma.licOfferMapping.create({
+      data: {
+        tenantId,
+        // A MESMA constante que o processador do PR-3 usa para buscar. Divergir
+        // aqui produziria o pior sintoma: mapeamento na tela, compra ainda
+        // falhando como "oferta não mapeada", nada errado em log.
+        platform: PLATFORM_KIWIFY,
+        externalProductId,
+        externalOfferId,
+        editionId,
+      },
+    });
+  }
+
+  /**
+   * Remove um mapeamento.
+   *
+   * Não mexe em licença já emitida: o mapeamento resolve a compra **no momento**
+   * em que ela chega, e apagá-lo depois não desfaz nada. Quem foi emitido
+   * continua válido — é revogação que derruba acesso, não isto.
+   */
+  async deleteOfferMapping(id: string): Promise<{ deleted: true }> {
+    const mapeamento = await this.prisma.licOfferMapping.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!mapeamento) throw new NotFoundException('Mapeamento não encontrado');
+
+    await this.prisma.licOfferMapping.delete({ where: { id } });
+    return { deleted: true };
+  }
+}
+
+/**
+ * `unknown` → dias de tolerância válidos, ou `null` para desligar.
+ *
+ * Aceita `null` explícito (desligar) e recusa negativo e não-inteiro. O teto de
+ * 3650 dias existe para que um dedo escorregado no formulário não grave uma
+ * tolerância de mil anos, que é "nunca cortar" escrito de um jeito que ninguém
+ * lê como tal — quem quer isso tem o `null`, que diz o que faz.
+ */
+function tolerancia(valor: unknown): number | null {
+  if (valor === null) return null;
+
+  const n = typeof valor === 'number' ? valor : Number(valor);
+  if (!Number.isInteger(n) || n < 0 || n > 3650) {
+    throw new UnprocessableEntityException(
+      '`pastDueToleranceDays` deve ser inteiro entre 0 e 3650, ou null para desligar',
+    );
+  }
+  return n;
+}
+
+function texto(valor: unknown): string {
+  return typeof valor === 'string' ? valor.trim() : '';
+}

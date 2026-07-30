@@ -5853,3 +5853,81 @@ escolher o mecanismo de agendamento é decisão de infra que não é minha.
 
 **Suíte**: regras **1782** (+4), banco **219** (+10), tela 530. Build nos três
 apps, lint 0 erros, guarda do ADR-019 aprovando.
+
+### PR-5 — o admin mínimo
+
+Fecha a Fatia 27. O que ele destrava, em uma frase: **a venda que não virou
+licença deixa de ser um beco.**
+
+O PR-3 grava oferta não mapeada como `FAILED` de propósito — evento com dono,
+payload bruto guardado, nada emitido. Sem tela, esse estado é informação no banco
+que ninguém alcança, e a única saída seria pedir à Kiwify que reenviasse. O
+critério de aceite da fatia é justamente sair dele: *"cadastrar o mapeamento e
+reprocessar o evento pendente emite a licença — sem precisar da plataforma
+reenviar"*.
+
+**Quatro grupos de endpoints**, em `licensing-ops.service.ts` + as rotas no
+controller que já existia:
+
+1. `GET webhook-events?status=` e `GET webhook-events/:id` — a lista **não**
+   devolve o `payload`: é corpo bruto com dado do comprador, e a lista carrega
+   sempre. Quem precisa dele abre o item.
+2. `POST webhook-events/:id/reprocess` — volta para `PENDING` **antes** de
+   enfileirar. Se o processo cair entre as duas linhas, a tela diz "esperando" e
+   o dono reprocessa; o inverso deixaria um `FAILED` já na fila, e o segundo
+   clique duplicaria o job. Recusa `PROCESSED` com 422: a idempotência do PR-3
+   mora no `UNIQUE` do **recebimento**, não do processamento.
+3. `GET|PUT settings` — segredo **write-only** e a tolerância.
+4. CRUD de `LicOfferMapping` — o de-para que resolve a compra em edição.
+
+**O desvio da spec, registrado:** ela escreve as rotas como
+`/licensing/admin/...`, mas o controller do PR-2 é `@Controller('t/:tenant/licensing')`
+— **o ProPlan não tem `/admin`**. Segui o código, não o texto: inventar um
+prefixo novo criaria duas convenções de rota no mesmo módulo.
+
+**Três decisões que a tela não pode errar**, todas cobertas por teste:
+
+- **O segredo nunca aparece.** `GET` devolve `webhookSecretSet: true|false`,
+  jamais o valor; o campo é `type="password"` e nasce vazio, porque serve para
+  gravar, não para ler. O segredo é o Token que a **Kiwify** gera (achado do
+  PR-3), então a origem é o painel dela — ninguém precisa lê-lo de volta daqui, e
+  exibi-lo seria superfície de vazamento sem nada em troca. Mesmo princípio que o
+  manteve fora da `resolve_past_due_tolerance` no PR-1. Provado contra o bug:
+  trocar o campo para `type="text"` **quebra** o teste.
+- **`null` na tolerância não é campo vazio.** É a decisão PI #3 — o ProPlan não
+  corta e quem revoga é a plataforma. A tela diz isso por extenso
+  (*"O ProPlan nunca corta por atraso"*), porque um `—` seria lido como "não
+  configurado" e alguém iria "consertar" configurando: ligaria um corte que o
+  dono desligou de propósito. `null` e ausente são distinguíveis em todo o
+  caminho — client, service e `PUT`.
+- **Reprocessar diz "reenfileirada", nunca "reprocessada".** O job é assíncrono;
+  afirmar o resultado no toast seria o *fechamento frágil* que este produto
+  existe para detectar. Há teste barrando as palavras de sucesso na mensagem.
+
+**Um detalhe que fecha um bug silencioso:** `platform` era literal `'kiwify'` em
+dois lugares do PR-3. Extraí `PLATFORM_KIWIFY` e usei nos três (intake,
+processor, cadastro) — porque o cadastro **tem** de casar exatamente com o filtro
+do processador. Gravar `'Kiwify'` produziria o pior sintoma possível: mapeamento
+visível na tela, compra continuando a falhar como "oferta não mapeada", e nada
+errado em log nenhum.
+
+**Detalhes menores, com motivo:** `IGNORED` é badge **neutro**, não alerta —
+evento de tipo desconhecido (`pix_created`) é resultado normal, e pintá-lo de
+vermelho faria caçar problema onde não há; `IGNORED` **pode** ser reprocessado
+(se um tipo passar a ser suportado, é exatamente o que se quer); curinga é dito
+por extenso (`—` faria o caso mais importante parecer campo em branco); o
+`<select>` leva `color-scheme`, senão a lista aberta fica ilegível no tema escuro
+(achado da #153).
+
+**Arquivo próprio, não inflar a página:** `LicensesPage.tsx` estava em 721 linhas
+e o teto do projeto é 800. O painel virou `WebhookOpsPanel.tsx` + `webhookOpsView.ts`
+(funções puras), e a página só ganhou o import e a fiação.
+
+**Fora de escopo, por decisão registrada:** `GET mail-deliveries` e
+`POST licenses/:id/reissue` estão nos Contratos da spec mas **não** na tela
+mínima do §Fora de escopo — e a SPEC-040 absorve as telas mínimas das fatias
+25–28. Não ampliei.
+
+**Suíte**: regras **1804** (+22), banco 219, tela **562** (+32). Build nos três
+apps, lint 0 erros, guarda do ADR-019 aprovando. **Pendente: dogfooding com
+túnel** — a fatia inteira (PR-3 a PR-5) nunca viu uma entrega real da Kiwify.

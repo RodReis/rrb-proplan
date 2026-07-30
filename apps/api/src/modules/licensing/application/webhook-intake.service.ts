@@ -4,7 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { parseKiwifyEvent } from '../domain/kiwify-event';
 import { verifySignature } from '../domain/webhook-signature';
-import { LICENSING_QUEUE } from '../licensing.constants';
+import { LICENSING_QUEUE, PLATFORM_KIWIFY } from '../licensing.constants';
 
 /**
  * O recebimento do webhook (SPEC-038 §Contratos).
@@ -124,7 +124,7 @@ export class WebhookIntakeService {
         const registro = await this.prisma.licWebhookEvent.create({
           data: {
             tenantId: tenant.id,
-            platform: 'kiwify',
+            platform: PLATFORM_KIWIFY,
             externalEventId: evento.externalEventId,
             eventType: evento.eventType,
             // O payload BRUTO, como chegou. É o que torna o reprocessamento

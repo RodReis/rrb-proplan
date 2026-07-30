@@ -1,0 +1,95 @@
+import type { OfferMappingView, WebhookEventView } from '../../lib/api';
+
+/**
+ * Lógica de apresentação da operação do webhook (SPEC-038, PR-5).
+ *
+ * Fora do componente pelo motivo de sempre nesta casa: o que decide o que a
+ * tela **afirma** deve ser testável sem montar React.
+ *
+ * O que mais importa aqui é o texto de estado. Esta tela existe para responder
+ * *"a venda virou licença?"*, e cada rótulo errado é uma resposta errada a essa
+ * pergunta — do tipo que faz alguém reprocessar o que já emitiu, ou ignorar o
+ * que ficou parado.
+ */
+
+export type WebhookStatus = WebhookEventView['status'];
+
+/** Rótulo em português do status da entrega. */
+export function webhookStatusLabel(status: WebhookStatus): string {
+  if (status === 'PENDING') return 'Aguardando';
+  if (status === 'PROCESSED') return 'Processada';
+  if (status === 'FAILED') return 'Falhou';
+  return 'Ignorada';
+}
+
+/**
+ * Tom do badge, em três níveis — e a distinção entre eles é a razão da tela.
+ *
+ * `IGNORED` é **neutro, não alerta**: evento de tipo desconhecido é resultado
+ * normal (a plataforma manda `pix_created` e afins), e pintá-lo de vermelho
+ * faria o dono caçar problema onde não há. `FAILED` é o único que pede ação.
+ */
+export function webhookStatusTone(status: WebhookStatus): 'ok' | 'alert' | 'muted' {
+  if (status === 'PROCESSED') return 'ok';
+  if (status === 'FAILED') return 'alert';
+  return 'muted';
+}
+
+/**
+ * `true` quando reprocessar é oferecido.
+ *
+ * `PROCESSED` fica de fora porque a idempotência do recebimento não protege o
+ * processamento: reprocessar rodaria o job sobre uma venda já emitida. O
+ * servidor recusa com `422`, mas oferecer um botão que sempre falha ensina a
+ * ignorar erro — então a tela nem o mostra.
+ *
+ * `IGNORED` **pode** ser reprocessado: se um tipo de evento passar a ser
+ * suportado numa versão nova, o que ficou ignorado é exatamente o que se quer
+ * reprocessar.
+ */
+export function canReprocess(evento: WebhookEventView): boolean {
+  return evento.status !== 'PROCESSED';
+}
+
+/**
+ * O que o dono precisa ler numa entrega que falhou.
+ *
+ * Devolve a mensagem do servidor quando existe. O fallback não é genérico de
+ * propósito: *"falhou sem mensagem"* é uma informação real (e um defeito nosso,
+ * porque o PR-3 deveria gravar o motivo), enquanto *"erro desconhecido"* soaria
+ * como estado normal.
+ */
+export function webhookErrorText(evento: WebhookEventView): string | null {
+  if (evento.status !== 'FAILED') return null;
+  return evento.error?.trim() || 'Falhou sem mensagem registrada';
+}
+
+/**
+ * Rótulo do alvo do mapeamento. Curinga (`externalOfferId` nulo) é dito por
+ * extenso — `—` deixaria o caso mais importante parecendo campo em branco, e é
+ * justamente o que resolve "qualquer oferta deste produto".
+ */
+export function offerLabel(mapeamento: OfferMappingView): string {
+  return mapeamento.externalOfferId ?? 'qualquer oferta (curinga)';
+}
+
+/**
+ * Descreve o efeito da tolerância em vez do número solto.
+ *
+ * `null` **não** é "0 dias" nem campo vazio: é a decisão PI #3 — o ProPlan não
+ * corta e quem revoga é a plataforma. A frase diz isso, porque um `—` na tela
+ * seria lido como "não configurado" e alguém iria "consertar" configurando.
+ */
+export function toleranceLabel(days: number | null): string {
+  if (days === null) return 'O ProPlan nunca corta por atraso — só a plataforma revoga';
+  if (days === 0) return 'Corta assim que a plataforma avisa o atraso';
+  return `Corta ${days} ${days === 1 ? 'dia' : 'dias'} depois do aviso de atraso`;
+}
+
+/**
+ * Quantas entregas pedem ação. É o número que justifica a tela existir — e
+ * conta só `FAILED`, porque `PENDING` está no caminho normal (o job vai pegar).
+ */
+export function pendingCount(eventos: WebhookEventView[]): number {
+  return eventos.filter((e) => e.status === 'FAILED').length;
+}

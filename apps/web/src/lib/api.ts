@@ -1846,6 +1846,103 @@ export function listLicenseEvents(id: string): Promise<LicEventView[]> {
   return request(`/licensing/licenses/${id}/events`);
 }
 
+// ===========================================================================
+// Operação do webhook (SPEC-038, PR-5)
+// ===========================================================================
+
+/** Uma entrega da plataforma, como a lista a mostra (sem o payload bruto). */
+export interface WebhookEventView {
+  id: string;
+  platform: string;
+  eventType: string;
+  externalEventId: string;
+  status: 'PENDING' | 'PROCESSED' | 'FAILED' | 'IGNORED';
+  error: string | null;
+  receivedAt: string;
+  processedAt: string | null;
+  licenseId: string | null;
+}
+
+/** A entrega com o corpo bruto que a plataforma mandou. */
+export interface WebhookEventDetail extends WebhookEventView {
+  payload: unknown;
+}
+
+export function listWebhookEvents(status?: string): Promise<WebhookEventView[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return request(`/licensing/webhook-events${query}`);
+}
+
+export function getWebhookEvent(id: string): Promise<WebhookEventDetail> {
+  return request(`/licensing/webhook-events/${id}`);
+}
+
+export function reprocessWebhookEvent(id: string): Promise<{ enqueued: true }> {
+  return request(`/licensing/webhook-events/${id}/reprocess`, { method: 'POST' });
+}
+
+/**
+ * Configuração do webhook do tenant.
+ *
+ * **O segredo não vem** — só se está configurado. Ele é o Token que a Kiwify
+ * gera, então a origem é o painel dela; a tela nunca precisa lê-lo de volta.
+ */
+export interface LicSettingsView {
+  webhookSecretSet: boolean;
+  /** `null` = o ProPlan não corta por atraso (decisão PI #3). */
+  pastDueToleranceDays: number | null;
+}
+
+export function getLicensingSettings(): Promise<LicSettingsView> {
+  return request('/licensing/settings');
+}
+
+/**
+ * Grava segredo e/ou tolerância. **Campo omitido não é tocado**, e
+ * `pastDueToleranceDays: null` é o que DESLIGA o corte — por isso os dois casos
+ * têm de ser distinguíveis aqui também.
+ */
+export function updateLicensingSettings(input: {
+  webhookSecret?: string;
+  pastDueToleranceDays?: number | null;
+}): Promise<LicSettingsView> {
+  return request('/licensing/settings', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Mapeamento oferta→edição, com a edição já resolvida para a tela. */
+export interface OfferMappingView {
+  id: string;
+  platform: string;
+  externalProductId: string;
+  /** `null` = curinga: qualquer oferta daquele produto. */
+  externalOfferId: string | null;
+  editionId: string;
+  createdAt: string;
+  edition: { id: string; slug: string; name: string };
+}
+
+export function listOfferMappings(): Promise<OfferMappingView[]> {
+  return request('/licensing/offer-mappings');
+}
+
+export function createOfferMapping(input: {
+  externalProductId: string;
+  externalOfferId?: string | null;
+  editionId: string;
+}): Promise<OfferMappingView> {
+  return request('/licensing/offer-mappings', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteOfferMapping(id: string): Promise<{ deleted: true }> {
+  return request(`/licensing/offer-mappings/${id}`, { method: 'DELETE' });
+}
+
 /** Uma máquina ativada, como o admin a vê (SPEC-037). */
 export interface ActivationView {
   id: string;
