@@ -45,6 +45,13 @@ import { TenantContextInterceptor } from './presentation/tenant-context.intercep
   ],
   exports: [
     AuthService,
+    // Exportado para a SPEC-039: o `licensing` cifra o PAT de source com o mesmo
+    // `TOKEN_ENCRYPTION_KEY` (decisão PI #2). A alternativa era duplicar
+    // AES-256-GCM no outro módulo — dois lugares para a mesma primitiva, e o
+    // risco de os formatos divergirem em silêncio. Isto **não** abre o
+    // `identity` para o `licensing` ler tokens de ninguém: `CryptoService` é
+    // cifra pura, sem Prisma e sem estado.
+    CryptoService,
     GithubAuth,
     GithubInstallationsClient,
     JwtAuthGuard,
