@@ -262,3 +262,81 @@ describe('isCollaborator', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('cancelInvitation', () => {
+  it('204 é sucesso e usa DELETE em /invitations/:id', async () => {
+    const f = dobrarFetch([{ status: 204 }]);
+
+    await new GithubSourceClient().cancelInvitation('pat', 'o/r', '42');
+
+    const [url, init] = f.mock.calls[0] as [string, { method: string }];
+    // Pelo **id da invitation**, não pelo username: é a chamada de quem está em
+    // `INVITED`, onde existe convite e não existe assento de colaborador.
+    expect(url).toBe('https://api.github.com/repos/o/r/invitations/42');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('404 TAMBÉM é sucesso — o convite já não existe', async () => {
+    dobrarFetch([{ status: 404 }]);
+
+    // Tratar como erro poria a licença em `FAILED` e faria o admin retentar para
+    // sempre uma remoção que não tem o que remover. O caso "aceitou no meio do
+    // caminho" volta pela reconciliação, e aí é o `removeCollaborator` que resolve.
+    await expect(
+      new GithubSourceClient().cancelInvitation('pat', 'o/r', '42'),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([401, 403, 500])('%s LANÇA com motivo legível', async (status) => {
+    dobrarFetch([{ status }]);
+
+    // O reembolsado continuaria com o convite de pé. Falha aqui tem de virar
+    // `FAILED` na licença, nunca sucesso silencioso.
+    await expect(
+      new GithubSourceClient().cancelInvitation('pat', 'o/r', '42'),
+    ).rejects.toThrow();
+  });
+
+  it('manda o PAT no header', async () => {
+    const f = dobrarFetch([{ status: 204 }]);
+
+    await new GithubSourceClient().cancelInvitation('pat-secreto', 'o/r', '42');
+
+    const [, init] = f.mock.calls[0] as [string, { headers: Record<string, string> }];
+    expect(init.headers.Authorization).toBe('Bearer pat-secreto');
+  });
+});
+
+describe('removeCollaborator', () => {
+  it('204 é sucesso e usa DELETE em /collaborators/:username', async () => {
+    const f = dobrarFetch([{ status: 204 }]);
+
+    await new GithubSourceClient().removeCollaborator('pat', 'o/r', 'RodReis');
+
+    const [url, init] = f.mock.calls[0] as [string, { method: string }];
+    // Pelo **username**: é a chamada de quem está em `ACTIVE`, onde o convite já
+    // foi aceito e não há mais invitation para cancelar.
+    expect(url).toBe('https://api.github.com/repos/o/r/collaborators/RodReis');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it.each([401, 403, 404, 500])('%s LANÇA — não é remoção bem-sucedida', async (status) => {
+    dobrarFetch([{ status }]);
+
+    // Ao contrário do `cancelInvitation`, aqui `404` LANÇA: o `204` do GitHub já
+    // cobre "não era colaborador", então um `404` significa que o repositório não
+    // foi encontrado — problema de PAT ou de configuração, não acesso removido.
+    await expect(
+      new GithubSourceClient().removeCollaborator('pat', 'o/r', 'RodReis'),
+    ).rejects.toThrow();
+  });
+
+  it('escapa o username na URL', async () => {
+    const f = dobrarFetch([{ status: 204 }]);
+
+    await new GithubSourceClient().removeCollaborator('pat', 'o/r', 'a b/c');
+
+    const [url] = f.mock.calls[0] as [string];
+    expect(url).toBe('https://api.github.com/repos/o/r/collaborators/a%20b%2Fc');
+  });
+});

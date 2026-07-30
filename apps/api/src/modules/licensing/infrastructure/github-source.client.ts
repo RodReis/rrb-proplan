@@ -29,12 +29,13 @@ const TIMEOUT_MS = 10_000;
  * ecoasse o header entregaria `administration:write` no repositório privado de
  * outra pessoa a quem lê log.
  *
- * ## Nesta fatia, só leitura de usuário
+ * ## As quatro operações, na mesma credencial
  *
- * `GET /users/:username` é tudo que o PR-2 precisa: a página pública valida o
- * login antes de gravar. Convidar, remover colaborador e cancelar *invitation*
- * são do PR-3/PR-4 e entram aqui depois — no mesmo cliente, porque é a mesma
- * credencial.
+ * `GET /users/:username` valida o login na página pública (PR-2); `invite` e
+ * `isCollaborator` são a reconciliação (PR-3); `cancelInvitation` e
+ * `removeCollaborator` desfazem o acesso (PR-4). Todas no mesmo cliente, porque
+ * é o mesmo PAT — e concentrá-las aqui é o que mantém `administration:write`
+ * num único arquivo.
  */
 @Injectable()
 export class GithubSourceClient {
@@ -182,6 +183,66 @@ export class GithubSourceClient {
     // Qualquer outra coisa é indefinição, não "não é colaborador". Devolver
     // `false` num 403 faria a reconciliação concluir que o convite não foi aceito
     // — e no PR-4 isso viraria a chamada errada de revogação.
+    throw new GithubSourceError(this.motivo(res.status), res.status);
+  }
+
+  /**
+   * Cancela um convite **ainda não aceito** (SPEC-039 §Revogação).
+   *
+   * `DELETE /repos/:owner/:repo/invitations/:id` — pelo **id da invitation**, não
+   * pelo username. É a chamada de quem está em `INVITED`: o convite existe, o
+   * assento de colaborador não.
+   *
+   * **Chamar `removeCollaborator` aqui seria no-op silencioso**: a API responde
+   * `204` para quem não é colaborador, nada aparece em log, e o convite continua
+   * de pé — o reembolsado só precisa aceitá-lo depois. Foi por essa diferença que
+   * o `sourceInvited: Boolean` da SPEC-036 morreu no PR-1.
+   *
+   * `404` é **sucesso**: o convite já não existe (o comprador aceitou entre a
+   * nossa leitura e esta chamada, ou alguém cancelou pela interface do GitHub).
+   * Tratar como erro poria a licença em `FAILED` e faria o admin retentar para
+   * sempre uma remoção que não tem o que remover. Quem cuida do caso "aceitou no
+   * meio do caminho" é o `removeCollaborator` da rodada seguinte, porque o estado
+   * volta pela reconciliação.
+   */
+  async cancelInvitation(pat: string, repo: string, invitationId: string): Promise<void> {
+    const res = await this.send(
+      'DELETE',
+      `https://api.github.com/repos/${repo}/invitations/${encodeURIComponent(invitationId)}`,
+      pat,
+    );
+
+    // 204 = cancelado. 404 = já não existe, que é o mesmo desfecho desejado.
+    if (res.status === 204 || res.status === 404) return;
+
+    throw new GithubSourceError(this.motivo(res.status), res.status);
+  }
+
+  /**
+   * Remove o colaborador **aceito** (SPEC-039 §Revogação).
+   *
+   * `DELETE /repos/:owner/:repo/collaborators/:username` — a chamada de quem está
+   * em `ACTIVE`.
+   *
+   * **O que esta remoção entrega é o fim dos *updates*, não a recuperação do
+   * código** (§Objetivo da spec): o que já foi clonado continua clonado. O
+   * mecanismo real do produto é contratual (§8 do MVP4), e nenhuma tela pode
+   * sugerir o contrário.
+   *
+   * `204` é a única resposta de sucesso — e a API devolve `204` **também para
+   * quem nunca foi colaborador**. É justamente essa indiferença que torna a
+   * escolha da chamada responsabilidade de quem sabe o estado (o service), nunca
+   * deste cliente: aqui não há como distinguir "removi" de "não havia nada".
+   */
+  async removeCollaborator(pat: string, repo: string, username: string): Promise<void> {
+    const res = await this.send(
+      'DELETE',
+      `https://api.github.com/repos/${repo}/collaborators/${encodeURIComponent(username)}`,
+      pat,
+    );
+
+    if (res.status === 204) return;
+
     throw new GithubSourceError(this.motivo(res.status), res.status);
   }
 

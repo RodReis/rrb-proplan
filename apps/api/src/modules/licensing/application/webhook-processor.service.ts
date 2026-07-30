@@ -5,6 +5,7 @@ import { generateKey, hashKey, updatesUntil } from '../domain/license-key';
 import { parseKiwifyEvent, type ParsedEvent } from '../domain/kiwify-event';
 import { PLATFORM_KIWIFY } from '../licensing.constants';
 import { SourceLinkService } from './source-link.service';
+import { SourceRevokeService } from './source-revoke.service';
 
 /**
  * O que o evento recebido significa para a licença (SPEC-038 §Escopo).
@@ -42,6 +43,7 @@ export class WebhookProcessorService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly sourceLinks: SourceLinkService,
+    private readonly sourceRevoke: SourceRevokeService,
   ) {}
 
   /**
@@ -254,6 +256,10 @@ export class WebhookProcessorService {
    * **Limpa `sourceInviteAt`**: reembolso antes do 8º dia cancela o convite ao
    * repo privado que ainda não saiu (§Escopo). Sem isso, quem pediu o dinheiro
    * de volta ganharia acesso ao código uma semana depois.
+   *
+   * **E se o convite já saiu, o acesso é desfeito no GitHub** (SPEC-039 PR-4):
+   * convite pendente se cancela, colaborador aceito se remove — chamadas
+   * diferentes, escolhidas pelo `sourceAccess` no `SourceRevokeService`.
    */
   private async revogar(tenantId: string, evento: ParsedEvent): Promise<string> {
     const licenca = await this.encontrar(tenantId, evento);
@@ -261,7 +267,17 @@ export class WebhookProcessorService {
 
     // Idempotente: revogar de novo não reescreve a data original nem manda um
     // segundo e-mail. A 1ª revogação é o fato; a 2ª é reentrega.
-    if (licenca.status === 'REVOKED') return licenca.id;
+    //
+    // **Mas a remoção do acesso é retentada mesmo aqui**, e é de propósito: a 1ª
+    // revogação pode ter gravado `REVOKED` e falhado no GitHub (rede, PAT
+    // expirado). Sair antes deixaria a reentrega da plataforma — a chance grátis
+    // de consertar — passar direto por cima de um reembolsado que continua
+    // colaborador. `SourceRevokeService` é idempotente: se o acesso já morreu,
+    // devolve `nothing_to_do` sem falar com o GitHub.
+    if (licenca.status === 'REVOKED') {
+      await this.removerAcessoSource(tenantId, licenca.id, motivo);
+      return licenca.id;
+    }
 
     await this.prisma.license.update({
       where: { id: licenca.id },
@@ -285,7 +301,7 @@ export class WebhookProcessorService {
         // no-op silencioso — e o reembolsado ficaria com o código-fonte. Era
         // exatamente o que o `sourceInvited: Boolean` não sabia distinguir.
         //
-        // A remoção efetiva é do PR-4; aqui só morre o agendamento.
+        // A remoção efetiva vem logo abaixo, DEPOIS desta escrita.
         ...(licenca.sourceAccess === 'PENDING' ? { sourceAccess: 'NONE' as const } : {}),
         events: { create: { tenantId, type: 'webhook_revoked', payload: { motivo } } },
       },
@@ -303,8 +319,44 @@ export class WebhookProcessorService {
       },
     });
 
+    // **Depois da escrita, e a ordem é a decisão.** O `REVOKED` no banco é o que
+    // corta a validação (`/activate` e `/heartbeat`) — ele não pode depender de o
+    // GitHub responder. Antes, uma API fora do ar impediria a revogação da
+    // licença; agora, o pior caso é `sourceAccess = FAILED` na lista de
+    // pendências, com a licença já cortada.
+    await this.removerAcessoSource(tenantId, licenca.id, motivo);
+
     this.logger.log(`Licença ${licenca.id} revogada por ${motivo}`);
     return licenca.id;
+  }
+
+  /**
+   * Desfaz o acesso ao repo, sem nunca derrubar o processamento do webhook.
+   *
+   * **O `catch` é o ponto todo deste método.** Uma exceção aqui subiria para o
+   * `process`, que carimbaria o evento como `FAILED` — e o admin, ao reprocessar,
+   * repetiria o e-mail de revogação. Pior: um erro do GitHub apareceria como
+   * "falha no webhook", mandando o operador investigar a Kiwify por um problema
+   * que é do PAT.
+   *
+   * O `SourceRevokeService` já grava `FAILED` + motivo legível **na licença**, que
+   * é onde a pendência pertence e onde o admin a retenta (PR-5). Este `catch`
+   * cobre só o inesperado (o próprio `update` falhando), para que nem isso
+   * contamine o carimbo do evento.
+   */
+  private async removerAcessoSource(
+    tenantId: string,
+    licenseId: string,
+    motivo: string,
+  ): Promise<void> {
+    try {
+      await this.sourceRevoke.revoke(tenantId, licenseId, motivo);
+    } catch (erro) {
+      this.logger.error(
+        `Licença ${licenseId}: remoção do acesso ao source falhou fora do previsto — ` +
+          `${erro instanceof Error ? erro.message : erro}`,
+      );
+    }
   }
 
   /**
