@@ -11,6 +11,8 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { hashKey } from '../domain/license-key';
 import type { LicenseFile } from '../domain/license-file';
+import { cortarPorInadimplencia } from '../domain/past-due';
+import { PAST_DUE_CUT } from '../licensing.constants';
 import { LicenseSigningService } from './license-signing.service';
 
 /**
@@ -72,6 +74,8 @@ interface ResolvedLicenseRow {
   status: string;
   issued_at: Date;
   expires_at: Date | null;
+  /** Atraso avisado pela plataforma (PR-3). `null` = em dia. */
+  past_due_at: Date | null;
   updates_until: Date;
   max_machines: number;
   edition_slug: string;
@@ -268,8 +272,81 @@ export class LicenseActivationService {
     if (this.expirou(licenca)) {
       throw new GoneException('Licença expirada');
     }
+    await this.gateInadimplencia(licenca);
 
     return licenca;
+  }
+
+  /**
+   * Corte por inadimplência — o terceiro `410`, e o único que depende de
+   * configuração do tenant.
+   *
+   * Mora aqui, junto dos outros dois, porque a spec manda a comparação viver na
+   * validação e porque este método é o que `/activate` e `/heartbeat`
+   * compartilham: um gate só, avaliado igual nas duas rotas.
+   *
+   * ## Por que a tolerância vem de uma função e não de um `findUnique`
+   *
+   * Estas rotas não têm sessão. `lic_settings` é fail-closed sob RLS, então um
+   * `SELECT` direto devolveria vazio para **todo** tenant — lido como "sem
+   * tolerância configurada", que por decisão PI #3 significa *nunca cortar*. O
+   * corte simplesmente não aconteceria, sem erro em log nenhum. A
+   * `resolve_past_due_tolerance` (SECURITY DEFINER, PR-1) existe exatamente para
+   * isso, e devolve **só** os dias — nunca o `webhookSecret`.
+   */
+  private async gateInadimplencia(licenca: ResolvedLicenseRow): Promise<void> {
+    // Caso comum: em dia. Sai antes de consultar a tolerância — não faz sentido
+    // ler configuração para decidir sobre um atraso que não existe.
+    if (!licenca.past_due_at) return;
+
+    const linhas = await this.prisma.$queryRaw<
+      Array<{ resolve_past_due_tolerance: number | null }>
+    >`SELECT resolve_past_due_tolerance(${licenca.tenant_id})`;
+    const toleranceDays = linhas[0]?.resolve_past_due_tolerance ?? null;
+
+    if (
+      !cortarPorInadimplencia({
+        pastDueAt: licenca.past_due_at,
+        toleranceDays,
+        now: new Date(),
+      })
+    ) {
+      return;
+    }
+
+    // A trilha registra o corte **uma vez**, e o `status` NÃO muda: a spec é
+    // explícita — `pastDueAt` "registra inadimplência sem mudar `status`". A
+    // licença segue `ACTIVE` porque o atraso é reversível: o evento de pagamento
+    // aprovado limpa `pastDueAt` e o acesso volta na mesma transação (PR-3).
+    // Virar o status aqui criaria um estado do qual o caminho de volta teria de
+    // saber voltar — e o PR-3, que já está mergeado, não sabe.
+    //
+    // Um cliente cortado segue chamando de hora em hora, então a idempotência
+    // vem da própria trilha: só grava se ainda não houver um `past_due_cut`
+    // para este atraso. Sem isso a `LicEvent` encheria de linhas idênticas e
+    // afogaria o histórico que o painel da SPEC-040 vai ler.
+    await this.prisma.runInTenantContext([licenca.tenant_id], async () => {
+      const jaRegistrado = await this.prisma.licEvent.findFirst({
+        where: {
+          licenseId: licenca.id,
+          type: PAST_DUE_CUT,
+          createdAt: { gte: licenca.past_due_at ?? undefined },
+        },
+        select: { id: true },
+      });
+      if (jaRegistrado) return;
+
+      // Tipo próprio, SEM o prefixo `webhook_` que o PR-3 usa: a causa é nossa
+      // (tolerância vencida), não um aviso da plataforma. A spec pede o corte
+      // "distinguível da revogação vinda da plataforma" porque são causas
+      // diferentes e a trilha precisa dizer qual foi.
+      await this.evento(licenca, PAST_DUE_CUT, {
+        pastDueAt: licenca.past_due_at?.toISOString() ?? null,
+        toleranceDays,
+      });
+    });
+
+    throw new GoneException('Licença suspensa por inadimplência');
   }
 
   /**
