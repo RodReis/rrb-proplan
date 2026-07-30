@@ -5932,7 +5932,13 @@ mínima do §Fora de escopo — e a SPEC-040 absorve as telas mínimas das fatia
 apps, lint 0 erros, guarda do ADR-019 aprovando. **Pendente: dogfooding com
 túnel** — a fatia inteira (PR-3 a PR-5) nunca viu uma entrega real da Kiwify.
 
-## Fatia 28 (SPEC-039) — Licensing: convite ao repo source, coleta do username e revogação de colaborador — `código entregue · dogfooding pendente`
+## Fatia 28 (SPEC-039) — Licensing: convite ao repo source, coleta do username e revogação de colaborador — `aceita-pi (2026-07-30)`
+
+> **Aceite do PI em 2026-07-30**, com o dogfooding do fluxo **fora** da fatia: o
+> convite real e a revogação contra o GitHub dependem de uma **venda**, não de
+> código, e prender a fatia a isso a manteria aberta por tempo indeterminado. A
+> verificação continua devendo — está registrada como pendência própria no
+> `STATUS.md`, para que ninguém a confunda com algo já conferido.
 
 Issue **#195** (spec `aprovada-pi` 2026-07-29). **4ª fatia do MVP4.** A venda da
 edição **com código-fonte** vira acesso ao repositório privado sem ninguém no
