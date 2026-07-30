@@ -10,6 +10,7 @@ import { LicenseSigningService } from './application/license-signing.service';
 import { LicensingOpsService } from './application/licensing-ops.service';
 import { SourceInviteService } from './application/source-invite.service';
 import { SourceLinkService } from './application/source-link.service';
+import { SourceAdminService } from './application/source-admin.service';
 import { SourceRevokeService } from './application/source-revoke.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
@@ -91,6 +92,12 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     // ou remover o colaborador pelo username. Chamar a errada é no-op silencioso,
     // e o reembolsado fica com o código-fonte.
     SourceRevokeService,
+    // O admin do acesso ao source (SPEC-039 PR-5): pendências, correção de
+    // username, reemissão, revogação manual e o PAT write-only com teste de
+    // conexão. Fecha a fatia — sem ele, os três estados que pedem gente
+    // (`PENDING` sem username, `INVITED` parado, `FAILED`) são informação no
+    // banco que ninguém alcança.
+    SourceAdminService,
     // O cliente do GitHub do caminho do convite — **não** o do GitHub App
     // (ADR-015). Credenciais de propósitos diferentes: aqui é PAT fine-grained
     // com `administration:write` num repo só, e a arch-spec cobra a separação.

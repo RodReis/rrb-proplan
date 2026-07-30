@@ -1967,6 +1967,100 @@ export function getLicenseDetail(id: string): Promise<LicenseDetail> {
   return request(`/licensing/licenses/${id}`);
 }
 
+/**
+ * Acesso ao repo source (SPEC-039 PR-5).
+ *
+ * Uma licença que **pede gente**. O `reason` vem do servidor, não é deduzido do
+ * enum aqui: a regra de "o que é pendência" mora num lugar só, senão as duas
+ * versões divergem na primeira mudança.
+ */
+export interface SourcePendingItem {
+  licenseId: string;
+  customerEmail: string;
+  customerName: string | null;
+  editionName: string;
+  sourceAccess: string;
+  githubUsername: string | null;
+  sourceInviteAt: string | null;
+  sourceAccessError: string | null;
+  reason: 'awaiting_username' | 'invited_not_accepted' | 'failed';
+}
+
+export function listSourcePending(): Promise<SourcePendingItem[]> {
+  return request('/licensing/source-pending');
+}
+
+/**
+ * Grava ou substitui o username (decisão PI #4: **só pelo admin**).
+ *
+ * `previousInviteCanceled` diz se havia convite/colaborador anterior desfeito — a
+ * tela precisa distinguir "gravei" de "gravei e cancelei o convite errado", porque
+ * o segundo caso significa que alguém perdeu acesso agora.
+ */
+export function setLicenseGithubUsername(
+  licenseId: string,
+  username: string,
+): Promise<{ username: string; previousInviteCanceled: boolean }> {
+  return request(`/licensing/licenses/${licenseId}/github-username`, {
+    method: 'PUT',
+    body: JSON.stringify({ username }),
+  });
+}
+
+/** O que uma rodada de reconciliação fez — o retorno de reemitir. */
+export interface ReconcileResult {
+  convidados: number;
+  aceitos: number;
+  falhas: number;
+  aguardandoUsername: number;
+}
+
+/**
+ * Reemite: dispara a **reconciliação do tenant**, não uma chamada avulsa. Por isso
+ * o retorno é o resultado da rodada inteira — a tela não pode prometer "convidei
+ * este" quando o efeito é maior que isso.
+ */
+export function reinviteSource(licenseId: string): Promise<ReconcileResult> {
+  return request(`/licensing/licenses/${licenseId}/source-invite`, { method: 'POST' });
+}
+
+/** Revogação manual do acesso ao repo. Não toca o `status` da licença. */
+export function removeSourceAccess(
+  licenseId: string,
+): Promise<{ outcome: 'invitation_canceled' | 'collaborator_removed' | 'nothing_to_do' | 'failed' }> {
+  return request(`/licensing/licenses/${licenseId}/source-access`, { method: 'DELETE' });
+}
+
+/** Configuração de source. **O PAT não vem** — só se está configurado. */
+export interface SourceSettingsView {
+  githubPatSet: boolean;
+  sourceRepo: string | null;
+}
+
+export function getSourceSettings(): Promise<SourceSettingsView> {
+  return request('/licensing/source-settings');
+}
+
+export function setSourcePat(githubPat: string): Promise<SourceSettingsView> {
+  return request('/licensing/source-settings/pat', {
+    method: 'PUT',
+    body: JSON.stringify({ githubPat }),
+  });
+}
+
+/**
+ * Teste de conexão do PAT.
+ *
+ * **`ok: false` não é erro HTTP** — é o resultado. O PAT fine-grained expira, e o
+ * par "teste aqui + pendência `FAILED`" é o que torna a expiração visível antes da
+ * primeira venda.
+ */
+export function testSourceConnection(): Promise<
+  { ok: true; repo: string } | { ok: false; reason: string }
+> {
+  return request('/licensing/source-settings/test', { method: 'POST' });
+}
+
 /** Suporte manual: libera a vaga quando o self-service do cliente não resolve. */
 export function deactivateActivation(
   licenseId: string,
