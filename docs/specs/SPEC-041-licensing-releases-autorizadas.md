@@ -82,6 +82,13 @@ piloto.
       `sha256`) e lista por produto; `sha256` malformado é recusado no servidor.
 - [ ] Ativação de teste do tenant `wr-test` não aparece em métrica do tenant
       real (isolamento por RLS, já existente — verificado, não presumido).
+- [ ] **PAT ausente, expirado ou sem `contents:read`** → `download` responde
+      erro de configuração explícito (nunca `500`, nunca URL vazia) **e** o
+      admin mostra pendência — mesma regra da SPEC-039: *"nunca falha
+      silenciosa"*. O modo de errar aqui é mudo por natureza: a máquina do
+      cliente para de receber update e ninguém no admin fica sabendo.
+- [ ] **Tenant B não baixa asset com o PAT do tenant A** (RLS verificado por
+      teste, como na SPEC-039).
 
 ## Contratos
 
@@ -115,22 +122,44 @@ POST releases/download  { licenseKey, fingerprint, version, os }
 
 ## Notas técnicas
 
-**Um ADR novo é pré-requisito desta fatia** (a escrever antes do 1º PR), com
-duas decisões:
+**ADR-028 acompanha esta fatia**, redigido pelo Code **no PR-1** — mesmo caminho
+dos ADR-026/027, que também eram pré-requisito de spec e nasceram no PR. Ele
+registra **uma** decisão estrutural, não duas (ver *Emenda de 2026-07-30*
+abaixo):
 
-1. **O artefato de release vive em Release privada do GitHub, não no Postgres.**
-   O ADR-025 guarda binário em `bytea` com teto de **10 MB** e lista como
-   gatilho de revisão *"arquivo acima de 10 MB"* e *"segundo caso de uso de
-   binário"*. Um instalador de ~80 MB dispara os dois — então esta fatia não
-   escolhe livremente: ela é o gatilho disparando. GitHub Release privada
-   reaproveita o App do ADR-015 e não acrescenta provedor, credencial nem linha
-   na fatura.
-2. **Exceção estreita ao ADR-015**, que manda ler com token *user-to-server* e
-   proíbe ler com *installation token*. A regra existe para que a leitura
-   respeite a **visibilidade do usuário**; aqui **não há usuário** — quem pede é
-   uma máquina licenciada, sem identidade GitHub. A exceção fica amarrada a
-   **um repo** (o do War Room) e **uma rota** (`releases/download`), e o ADR
-   precisa dizer isso com essas palavras, ou vira porta larga.
+**O artefato de release vive em Release privada do GitHub, não no Postgres.**
+O ADR-025 guarda binário em `bytea` com teto de **10 MB** e lista como gatilho
+de revisão *"arquivo acima de 10 MB"* e *"segundo caso de uso de binário"*. Um
+instalador de ~80 MB dispara os dois — então esta fatia não escolhe livremente:
+ela é o gatilho disparando, e o próprio ADR-025 já pré-escreveu que *"disparado
+o gatilho, nasce ADR novo escolhendo object storage"*. GitHub Release privada
+não acrescenta provedor, credencial nem linha na fatura.
+
+### Emenda de 2026-07-30 — a exceção ao ADR-015 foi retirada
+
+A versão original desta spec pedia uma **exceção estreita ao ADR-015** para ler
+o asset com *installation token*. **Não é necessária**, e a razão é que a
+credencial já existe: a SPEC-039 (entregue 2026-07-30, issue #214) criou
+`LicSettings.githubPat` — **PAT fine-grained, por tenant, criptografado com o
+`TOKEN_ENCRYPTION_KEY`, com teste de conexão no admin** — e `LicProduct.sourceRepo`,
+apontando para o mesmo repo cujo asset esta fatia quer baixar.
+
+Decisão do PI (**2026-07-30**): **`releases/download` autentica com o
+`githubPat` do tenant.** Comparação que decidiu:
+
+- O PAT amplia um risco **já aceito e confinado ao módulo `licensing`**; a
+  exceção abriria buraco numa regra **global de leitura**.
+- A "estreiteza" prometida não era verificável por máquina: o ADR diria *"um
+  repo"*, mas o repo é `LicProduct.sourceRepo`, **campo configurável na tela** —
+  na prática ficaria amarrada a qualquer repo que o tenant digitasse. Pelo
+  padrão do ADR-027 item 3 (fronteira checada por máquina, não por lembrança),
+  isso nasceria promessa, não guarda.
+- Some o **Risco #1** original (se o installation token alcança asset de Release
+  privada) — com PAT a pergunta não se coloca.
+
+**O ADR-015 não é tocado por esta fatia.** O par user-to-server/installation
+continua valendo sem exceção; o PAT do `licensing` já vivia fora desse modelo
+desde a SPEC-039.
 
 **Mecanismo do download.** `GET /repos/{owner}/{repo}/releases/assets/{id}` com
 `Accept: application/octet-stream` responde **302** com `Location` para URL
@@ -139,11 +168,21 @@ e devolve a URL ao cliente. A URL expira em segundos a minutos e **não pode ser
 cacheada** — por isso `check` e `download` são rotas separadas: a primeira é
 barata e idempotente, a segunda cunha URL fresca a cada chamada.
 
-**Risco #1, a validar no 1º PR:** que o installation token do App tenha escopo
-para asset de Release **privada**. Se não tiver, o plano B é decisão do PI entre
-PAT dedicado só-leitura (credencial de vida longa — o que o App existe para
-evitar) e object storage R2/S3 (provedor novo). **Validar antes de escrever a
-tela do admin** — é o que decide se a fatia inteira se sustenta.
+**Risco #1, a validar no 1º PR (reescrito na emenda de 2026-07-30):** o PAT da
+SPEC-039 é **fine-grained com `administration:write` só no repo do produto** —
+baixar asset exige **`contents:read` no mesmo repo**. É **ampliação de escopo do
+mesmo token, no mesmo repo**, não credencial nova; mas é ampliação, e precisa
+de três coisas no PR-1:
+
+1. provar que o 302 → `Location` assinado funciona com PAT fine-grained;
+2. o **teste de conexão do admin** (que a SPEC-039 já tem) passa a validar
+   **os dois escopos**, não só `administration:write` — senão a primeira venda
+   volta a ser o lugar onde se descobre que o token está errado, que é
+   exatamente o que aquele teste existe para evitar;
+3. a rotação do PAT no `docs/DEPLOY.md` (SPEC-039) ganha a menção ao novo
+   escopo.
+
+**Validar antes de escrever a tela do admin.**
 
 **Rota nova no `/v1` é adição, não quebra** — o contrato do license file
 continua intacto (MVP4 decisão 9: mudança de formato seria `/v2`).
@@ -158,5 +197,8 @@ Nenhuma. As cinco decisões desta fatia foram resolvidas com o PI em
 3. `updatesUntil` vencido: o cliente **continua baixando** a última versão
    autorizada ⇒ **artefato nunca é apagado**, storage cresce monotonicamente.
 4. Fatia **dentro do MVP4** (`[MVP4][SPEC-041][F30]`).
-5. Autenticação no GitHub por **exceção estreita ao ADR-015**, registrada em ADR
-   novo.
+5. ~~Autenticação no GitHub por **exceção estreita ao ADR-015**, registrada em
+   ADR novo.~~ **Revista em 2026-07-30**: autenticação pelo **`githubPat` do
+   tenant** (SPEC-039), sem exceção ao ADR-015 — ver *Emenda de 2026-07-30* nas
+   Notas técnicas. O ADR-028 fica com **uma** decisão (artefato fora do
+   Postgres) e é redigido pelo Code no PR-1.
