@@ -2,6 +2,7 @@ import { UnprocessableEntityException } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../../identity/presentation/jwt-auth.guard';
 import type { LicCatalogService } from '../application/lic-catalog.service';
 import type { LicenseAdminService } from '../application/license-admin.service';
+import type { LicensePrivacyService } from '../application/license-privacy.service';
 import type { LicenseSigningService } from '../application/license-signing.service';
 import type { LicensingOpsService } from '../application/licensing-ops.service';
 import type { SourceAdminService } from '../application/source-admin.service';
@@ -16,7 +17,7 @@ import { LicensingAdminController } from './licensing-admin.controller';
  */
 
 function pedido(): AuthenticatedRequest {
-  return { tenantId: 't-1' } as AuthenticatedRequest;
+  return { tenantId: 't-1', userId: 'user-42' } as AuthenticatedRequest;
 }
 
 function montar() {
@@ -24,15 +25,21 @@ function montar() {
     list: jest.fn(async () => []),
   } as unknown as LicenseAdminService;
 
+  const privacy = {
+    extend: jest.fn(async () => ({ id: 'lic-1' })),
+    anonymize: jest.fn(async () => ({ id: 'lic-1' })),
+  } as unknown as LicensePrivacyService;
+
   const controller = new LicensingAdminController(
     licenses,
     {} as LicCatalogService,
     {} as LicenseSigningService,
     {} as LicensingOpsService,
     {} as SourceAdminService,
+    privacy,
   );
 
-  return { controller, licenses };
+  return { controller, licenses, privacy };
 }
 
 describe('SPEC-040: busca de licenças no admin', () => {
@@ -72,5 +79,51 @@ describe('SPEC-040: busca de licenças no admin', () => {
     for (const status of ['ACTIVE', 'REVOKED', 'EXPIRED']) {
       await expect(controller.list(pedido(), '', status)).resolves.toEqual([]);
     }
+  });
+});
+
+describe('SPEC-040: estender e excluir a pedido', () => {
+  it('estender carrega o AUTOR da sessão, não do corpo', async () => {
+    // O autor vem do JWT. Aceitá-lo do corpo deixaria a trilha afirmar que
+    // fulano estendeu a licença porque foi isso que o cliente HTTP mandou — um
+    // carimbo de auditoria que quem é auditado escreve.
+    const { controller, privacy } = montar();
+    await controller.extend(pedido(), 'lic-1', {
+      until: '2026-12-31',
+      reason: 'cortesia',
+      // @ts-expect-error — o corpo não tem `authorId`; o teste prova que, se
+      // alguém o mandar assim mesmo, ele não vira o autor gravado.
+      authorId: 'user-falsificado',
+    });
+
+    expect(privacy.extend).toHaveBeenCalledWith(
+      't-1',
+      'lic-1',
+      'user-42',
+      expect.objectContaining({ reason: 'cortesia' }),
+    );
+  });
+
+  it('anonimizar carrega o autor da sessão', async () => {
+    const { controller, privacy } = montar();
+    await controller.anonymize(pedido(), 'lic-1', { reason: 'pedido do titular' });
+
+    expect(privacy.anonymize).toHaveBeenCalledWith('t-1', 'lic-1', 'user-42', {
+      reason: 'pedido do titular',
+    });
+  });
+
+  it('corpo ausente não quebra a rota — a validação é do service', async () => {
+    // O service recusa por motivo vazio, com mensagem em português. Um
+    // `TypeError` aqui viraria 500 e diria "o ProPlan quebrou" sobre um campo
+    // em branco.
+    const { controller, privacy } = montar();
+    await controller.anonymize(
+      pedido(),
+      'lic-1',
+      undefined as unknown as { reason?: unknown },
+    );
+
+    expect(privacy.anonymize).toHaveBeenCalledWith('t-1', 'lic-1', 'user-42', {});
   });
 });

@@ -1890,6 +1890,59 @@ export function listLicenseEvents(id: string): Promise<LicEventView[]> {
   return request(`/licensing/licenses/${id}/events`);
 }
 
+export interface ExtendResult {
+  id: string;
+  expiresAt: string | null;
+  /** O que estava lá antes — a tela mostra os dois para o operador conferir. */
+  previousExpiresAt: string | null;
+}
+
+/**
+ * Estende a validade — **conserto pontual, não segunda fonte de verdade**
+ * (SPEC-040 §Estender).
+ *
+ * `expiresAt` tem uma autoridade: a plataforma. A próxima renovação
+ * **sobrescreve** esta data, e a tela precisa dizer isso ANTES da confirmação —
+ * o operador não pode descobrir depois que prometeu ao cliente uma data que
+ * volta sozinha.
+ */
+export function extendLicense(
+  id: string,
+  input: { until: string; reason: string },
+): Promise<ExtendResult> {
+  return request(`/licensing/licenses/${id}/extend`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export interface AnonymizeResult {
+  id: string;
+  mailDeliveries: number;
+  webhookEvents: number;
+}
+
+/**
+ * Exclusão a pedido (LGPD, SPEC-040 §Exclusão a pedido).
+ *
+ * **Anonimiza, não deleta.** Saem e-mail, nome e username; ficam a licença, as
+ * ativações, a trilha e o `saleRef` — o direito é sobre dado pessoal, não sobre
+ * o fato da transação.
+ *
+ * **Irreversível.** A tela exige digitar o e-mail do titular e declara os
+ * efeitos antes: a licença deixa de receber e-mail (não há destino) e reemitir
+ * chave para de funcionar pelo fluxo normal.
+ */
+export function anonymizeLicense(
+  id: string,
+  input: { reason: string },
+): Promise<AnonymizeResult> {
+  return request(`/licensing/licenses/${id}/anonymize`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // ===========================================================================
 // Operação do webhook (SPEC-038, PR-5)
 // ===========================================================================

@@ -35,6 +35,7 @@ import {
   type OfferMappingInput,
   type UpdateSettingsInput,
 } from '../application/licensing-ops.service';
+import { LicensePrivacyService } from '../application/license-privacy.service';
 import { SourceAdminService } from '../application/source-admin.service';
 
 /**
@@ -50,6 +51,15 @@ function isLicenseStatus(valor: string): valor is LicenseStatus {
 }
 
 interface RevokeBody {
+  reason?: unknown;
+}
+
+interface ExtendBody {
+  until?: unknown;
+  reason?: unknown;
+}
+
+interface AnonymizeBody {
   reason?: unknown;
 }
 
@@ -96,6 +106,7 @@ export class LicensingAdminController {
     private readonly signing: LicenseSigningService,
     private readonly ops: LicensingOpsService,
     private readonly source: SourceAdminService,
+    private readonly privacy: LicensePrivacyService,
   ) {}
 
   /**
@@ -223,6 +234,42 @@ export class LicensingAdminController {
       licenseId,
       typeof body?.reason === 'string' ? body.reason : '',
     );
+  }
+
+  /**
+   * Estende a validade — **conserto pontual, não segunda fonte de verdade**
+   * (SPEC-040 §Estender). `expiresAt` tem uma autoridade: a plataforma. Esta
+   * extensão assume que o próximo evento de renovação vence, e o que a torna
+   * administrável é o aviso na tela + o valor anterior gravado no evento.
+   *
+   * `POST` numa sub-rota e não `PATCH` na licença: é um **ato** com autor e
+   * motivo, não a edição de um campo.
+   */
+  @Post('licenses/:id/extend')
+  extend(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') licenseId: string,
+    @Body() body: ExtendBody,
+  ) {
+    return this.privacy.extend(req.tenantId!, licenseId, req.userId, body ?? {});
+  }
+
+  /**
+   * Exclusão a pedido (LGPD, SPEC-040 §Exclusão a pedido).
+   *
+   * **`POST` e não `DELETE`, e a diferença é a ação inteira**: nada é apagado.
+   * A licença, as ativações, a trilha e o `saleRef` permanecem — o que sai é
+   * quem é a pessoa. Um `DELETE` aqui prometeria remoção da linha, que é
+   * justamente o que não se faz: apagaria a prova da transação, inclusive a
+   * prova de que a exclusão foi feita.
+   */
+  @Post('licenses/:id/anonymize')
+  anonymize(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') licenseId: string,
+    @Body() body: AnonymizeBody,
+  ) {
+    return this.privacy.anonymize(req.tenantId!, licenseId, req.userId, body ?? {});
   }
 
   /**

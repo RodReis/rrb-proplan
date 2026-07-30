@@ -10,6 +10,7 @@ import { LicenseSigningService } from './application/license-signing.service';
 import { LicensingOpsService } from './application/licensing-ops.service';
 import { SourceInviteService } from './application/source-invite.service';
 import { SourceLinkService } from './application/source-link.service';
+import { LicensePrivacyService } from './application/license-privacy.service';
 import { SourceAdminService } from './application/source-admin.service';
 import { SourceRevokeService } from './application/source-revoke.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
@@ -80,6 +81,11 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     LicenseExpirySweepService,
     LicenseSigningService,
     LicensingOpsService,
+    // Estender e excluir a pedido (SPEC-040). Service próprio, e não métodos do
+    // `LicenseAdminService`: aquele responde "emita, liste, revogue"; aqui mora
+    // o que só acontece quando alguém **pede** — carimbado, com autor e motivo
+    // obrigatórios.
+    LicensePrivacyService,
     SourceLinkService,
     // A reconciliação do convite (SPEC-039 PR-3). Sem agendador de propósito:
     // não há `@nestjs/schedule` nem `repeat` no repo e a spec não diz como
