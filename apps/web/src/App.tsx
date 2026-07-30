@@ -15,6 +15,7 @@ import { ContractSettingsPage } from './pages/clients/ContractSettingsPage';
 import { LicensesPage } from './pages/clients/LicensesPage';
 import { FunnelPage } from './pages/clients/FunnelPage';
 import { BriefingLinkPage } from './pages/briefing/BriefingLinkPage';
+import { SourceLinkPage } from './pages/source/SourceLinkPage';
 
 type AuthState =
   | { status: 'loading' }
@@ -68,6 +69,9 @@ export default function App() {
         {/* Rota pública — fora do gate de sessão, de propósito. Declarada antes
             das demais para deixar explícito que não depende de `auth`. */}
         <Route path="/b/:token" element={<BriefingLinkPage />} />
+        {/* Coleta do username do GitHub (SPEC-039). Mesmo argumento do `/b/`:
+            quem abre é o comprador do produto, que não tem conta no ProPlan. */}
+        <Route path="/s/:token" element={<SourceLinkPage />} />
         {auth.status !== 'authenticated' ? (
           // Carregando ou anônimo: qualquer caminho que não seja público cai na
           // porta de entrada. Skeleton enquanto a sessão resolve, para não

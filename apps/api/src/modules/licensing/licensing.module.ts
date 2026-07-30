@@ -8,12 +8,15 @@ import { LicenseAdminService } from './application/license-admin.service';
 import { LicenseExpirySweepService } from './application/license-expiry-sweep.service';
 import { LicenseSigningService } from './application/license-signing.service';
 import { LicensingOpsService } from './application/licensing-ops.service';
+import { SourceLinkService } from './application/source-link.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
+import { GithubSourceClient } from './infrastructure/github-source.client';
 import { LicensingWorker } from './infrastructure/licensing.worker';
 import { LICENSING_QUEUE } from './licensing.constants';
 import { LicensingAdminController } from './presentation/licensing-admin.controller';
 import { LicensingPublicController } from './presentation/licensing-public.controller';
+import { SourceLinkPublicController } from './presentation/source-link-public.controller';
 
 /**
  * Licenciamento (SPEC-036, Fatia 25 — 1ª do MVP4). Piloto: War Room.
@@ -57,7 +60,16 @@ import { LicensingPublicController } from './presentation/licensing-public.contr
     MailModule,
     BullModule.registerQueue({ name: LICENSING_QUEUE }),
   ],
-  controllers: [LicensingAdminController, LicensingPublicController],
+  controllers: [
+    LicensingAdminController,
+    LicensingPublicController,
+    // **Terceiro controller, e o terceiro arquivo é o mesmo argumento do
+    // segundo.** A coleta de username também é pública, mas fora do
+    // `/licensing/v1`: aquele prefixo é contrato estável consumido pelo binário
+    // do War Room noutro repo, e esta rota é da nossa página React — vai mudar
+    // quando a tela mudar. Pendurá-la lá prometeria estabilidade que ela não tem.
+    SourceLinkPublicController,
+  ],
   providers: [
     LicCatalogService,
     LicenseAdminService,
@@ -65,6 +77,11 @@ import { LicensingPublicController } from './presentation/licensing-public.contr
     LicenseExpirySweepService,
     LicenseSigningService,
     LicensingOpsService,
+    SourceLinkService,
+    // O cliente do GitHub do caminho do convite — **não** o do GitHub App
+    // (ADR-015). Credenciais de propósitos diferentes: aqui é PAT fine-grained
+    // com `administration:write` num repo só, e a arch-spec cobra a separação.
+    GithubSourceClient,
     WebhookIntakeService,
     WebhookProcessorService,
     LicensingWorker,

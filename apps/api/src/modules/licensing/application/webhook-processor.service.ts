@@ -4,6 +4,7 @@ import { MailService } from '../../mail/application/mail.service';
 import { generateKey, hashKey, updatesUntil } from '../domain/license-key';
 import { parseKiwifyEvent, type ParsedEvent } from '../domain/kiwify-event';
 import { PLATFORM_KIWIFY } from '../licensing.constants';
+import { SourceLinkService } from './source-link.service';
 
 /**
  * O que o evento recebido significa para a licença (SPEC-038 §Escopo).
@@ -25,11 +26,13 @@ import { PLATFORM_KIWIFY } from '../licensing.constants';
  * se grava a data, para que o job daquela fatia não precise de migração.
  */
 
-/** Dias entre a compra da edição `source` e o convite ao repo (SPEC-039). */
+/**
+ * Dias entre a compra da edição source e o convite ao repo (SPEC-039).
+ *
+ * É o prazo legal de arrependimento (CDC art. 49, decisão #5 do MVP4): antes
+ * dele, reembolso cancela o agendamento e ninguém entra no repositório.
+ */
 const DIAS_ATE_CONVITE = 8;
-
-/** A edição que dá acesso ao código-fonte — a única que agenda convite. */
-const EDICAO_SOURCE = 'source';
 
 @Injectable()
 export class WebhookProcessorService {
@@ -38,6 +41,7 @@ export class WebhookProcessorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly sourceLinks: SourceLinkService,
   ) {}
 
   /**
@@ -154,6 +158,13 @@ export class WebhookProcessorService {
     const key = generateKey(edicao.product.keyPrefix);
     const issuedAt = new Date();
 
+    // **Pela COLUNA, não pelo slug** (SPEC-039). Até o PR-1 desta fatia isto era
+    // `edicao.slug === 'source'`, que funciona no piloto e quebra em silêncio no
+    // primeiro produto que chame a edição de outra coisa: a compra emitiria a
+    // licença sem agendar convite, e o comprador da edição mais cara do catálogo
+    // nunca receberia o código — sem erro em lugar nenhum.
+    const daSource = edicao.grantsSourceAccess;
+
     const licenca = await this.prisma.license.create({
       data: {
         tenantId,
@@ -167,10 +178,14 @@ export class WebhookProcessorService {
         // SUBSCRIPTION vence no fim do ciclo pago; PERPETUAL nunca vence.
         expiresAt:
           edicao.billingModel === 'SUBSCRIPTION' ? (evento.periodEndsAt ?? null) : null,
-        // A edição `source` agenda o convite ao repo para o 8º dia (SPEC-039).
-        // Aqui só a data — o convite é da fatia seguinte.
-        sourceInviteAt:
-          edicao.slug === EDICAO_SOURCE ? emDias(issuedAt, DIAS_ATE_CONVITE) : null,
+        // A edição que concede source agenda o convite ao repo para o 8º dia
+        // (SPEC-039). Aqui a data e o estado; o convite em si é do job (PR-3).
+        sourceInviteAt: daSource ? emDias(issuedAt, DIAS_ATE_CONVITE) : null,
+        // `PENDING` põe a licença na fila do job de reconciliação já na compra —
+        // mesmo antes de o comprador informar o username. É o que faz a licença
+        // sem username aparecer na lista de pendências do admin em vez de
+        // simplesmente não existir para ninguém.
+        sourceAccess: daSource ? 'PENDING' : 'NONE',
         events: {
           create: {
             tenantId,
@@ -206,6 +221,27 @@ export class WebhookProcessorService {
       },
     });
 
+    // O 2º e-mail da compra source: o link de coleta do username (SPEC-039).
+    //
+    // **Depois do `license_key`, e a ordem importa.** O que o comprador pagou é a
+    // chave; o convite ao repo vem no 8º dia. Mandar o pedido de username antes
+    // faria o e-mail mais urgente chegar depois do menos urgente.
+    //
+    // **Falha aqui não desfaz a emissão** — a licença já está gravada e a chave
+    // já foi enfileirada. O comprador sem link aparece na lista de pendências do
+    // admin, que reemite; derrubar a compra por causa disto seria trocar um
+    // problema recuperável por um irrecuperável.
+    if (daSource) {
+      try {
+        await this.sourceLinks.createAndSend(tenantId, licenca.id);
+      } catch (erro) {
+        this.logger.warn(
+          `Licença ${licenca.id}: link de coleta não criado — ` +
+            `${erro instanceof Error ? erro.message : erro}`,
+        );
+      }
+    }
+
     // Log sem a chave e sem o hash: o hash é o que a busca usa, e registrá-lo
     // daria a quem lê o log o mesmo poder de lookup que o banco dá.
     this.logger.log(`Licença ${licenca.id} emitida pela venda ${evento.saleRef}`);
@@ -234,6 +270,23 @@ export class WebhookProcessorService {
         revokedAt: new Date(),
         revokedReason: motivo,
         sourceInviteAt: null,
+        // **`PENDING` volta a `NONE`; `INVITED` e `ACTIVE` NÃO são tocados** —
+        // e essa condição é a razão de o enum existir.
+        //
+        // Se o convite ainda não saiu, limpar o estado tira a licença da fila do
+        // job. Sem isso ela ficaria em `PENDING` para sempre na lista de
+        // pendências do admin: um convite que nunca sai (o job exige `ACTIVE`) e
+        // que ninguém consegue resolver.
+        //
+        // Mas se o convite JÁ saiu, sobrescrever com `NONE` apagaria justamente
+        // o que diz **qual chamada desfaz o acesso**: `INVITED` cancela a
+        // *invitation* pelo `githubInvitationId`, `ACTIVE` remove o colaborador
+        // pelo username. Perdido o estado, o PR-4 chamaria a errada — que é
+        // no-op silencioso — e o reembolsado ficaria com o código-fonte. Era
+        // exatamente o que o `sourceInvited: Boolean` não sabia distinguir.
+        //
+        // A remoção efetiva é do PR-4; aqui só morre o agendamento.
+        ...(licenca.sourceAccess === 'PENDING' ? { sourceAccess: 'NONE' as const } : {}),
         events: { create: { tenantId, type: 'webhook_revoked', payload: { motivo } } },
       },
     });
