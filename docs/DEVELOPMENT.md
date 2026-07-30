@@ -6495,6 +6495,58 @@ sendo recusado na verificação de assinatura como sempre foi.
 CHECK `length(btrim(webhook_secret)) > 0` não barra `NULL`, e eu conferi em vez de
 supor); build e lint verdes.
 
+**Validado em produção (2026-07-30)**: PAT salvo, `sourceRepo` gravado e teste de
+conexão respondendo *"Conexão OK — o PAT administra RodReis/war-room"*. O par
+`checkRepoAccess` + `permissions.admin` fez o que existe para fazer — confirmou o
+escopo **antes** de qualquer venda.
+
+### FIX #214 — a terceira coluna sem caminho, e uma tela que se contradizia
+
+**Dois achados do mesmo dogfooding, ambos na tela de licenças.**
+
+**1. `grantsSourceAccess` não tinha caminho — nem API, nem tela.** A coluna nasceu
+no PR-1 desta fatia e é *lida* pelo `webhook-processor` para decidir se a compra
+agenda o convite. Mas nada a escrevia: `CreateEditionInput` não a aceitava, não
+havia rota de update, e o formulário não a mostrava. Uma edição criada pela tela
+nascia com `false` e não havia como mudar sem SQL.
+
+**Consequência: não existia caminho para vender código-fonte pela interface.** A
+venda chegaria, `grantsSourceAccess` seria `false`, a licença sairia sem
+`sourceInviteAt` — e o comprador da edição mais cara do catálogo nunca receberia o
+convite, **sem erro em lugar nenhum**.
+
+É a **terceira ocorrência do mesmo padrão** nesta fatia (depois de `sourceRepo` no
+#212, e do próprio `githubPat` que o PR-5 expôs): coluna criada no schema,
+consumida pelo backend, sem caminho para o operador preencher. O padrão tem uma
+causa comum — o PR de schema semeia, e o PR de tela seguinte só cobre o que a spec
+listou como contrato, não o que o schema ganhou.
+
+`grantsSourceAccess` **é alterável**, ao contrário de `slug` e `billingModel`:
+aqueles viajam no license file já emitido ou mudam o significado de `expiresAt`
+numa licença viva; este só decide o que acontece nas compras **futuras**, e licença
+já emitida carrega o próprio `sourceInviteAt`.
+
+**Só `true` literal concede.** `'true'`, `1` e `'sim'` são recusados — uma string
+`'false'` é truthy em JS, e aceitar coerção faria um formulário mal ligado dar
+código-fonte a quem comprou a edição fechada. No update, porém, `false` **explícito
+desliga**: confundi-lo com ausente tornaria impossível desmarcar pela tela.
+
+**2. A frase do PAT contradizia o teste de conexão logo abaixo.** Depois de salvar o
+repositório e testar com sucesso, a tela mostrava as duas ao mesmo tempo:
+
+> PAT salvo, **mas nenhum produto tem repositório de código-fonte configurado**.
+>
+> Conexão OK — o PAT administra RodReis/war-room.
+
+`testar()` não chamava `onMudou()`, então `settings.sourceRepo` ficava com o valor
+de quando o painel montou (`null`) — o repositório é salvo no bloco de produtos,
+que recarrega o catálogo, e os dois painéis não se falavam. **Das duas afirmações
+contraditórias, a assustadora era a falsa** — e é assim que uma tela ensina a ser
+ignorada.
+
+**Verificação**: +11 regras · +3 tela (regras 2030 · banco 240 · tela 624 —
+**2894 verdes**), build e lint verdes, entrega carimbada no histórico (ADR-019).
+
 ### PR-5 — verificação
 
 - **2866 testes verdes** (2008 regras · 240 banco · 618 tela) — **+73** sobre os

@@ -11,12 +11,14 @@ import {
   listLicenseEvents,
   listLicenses,
   revokeLicense,
+  updateLicEditionLimits,
   updateProductSourceRepo,
   type IssuedLicense,
   type LicCatalogResponse,
   type LicEventView,
   type LicenseDetail,
   type LicenseView,
+  type LicEditionView,
   type LicProductView,
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
@@ -553,6 +555,61 @@ export function LicensesPage() {
  * botão para depois recusá-lo é pior que não oferecer.
  */
 /**
+ * A edição concede código-fonte? (FIX #214.)
+ *
+ * **O que o `webhook-processor` lê no momento da venda** para agendar o convite.
+ * A coluna nasceu no PR-1 da SPEC-039 e não tinha caminho: uma edição criada pela
+ * tela nascia com `false` e não havia como mudar sem SQL — a venda chegava, a
+ * licença saía sem agendamento, e o comprador da edição mais cara nunca recebia o
+ * convite, **sem erro em lugar nenhum**.
+ *
+ * Checkbox e não botão porque o estado é binário e precisa ser **legível de
+ * relance**: a pergunta que esta linha responde é "esta edição vende o código?",
+ * e um botão obrigaria a inferir o estado atual a partir do rótulo da ação.
+ */
+function SourceAccessToggle({
+  edicao,
+  onMudou,
+}: {
+  edicao: LicEditionView;
+  onMudou: () => void;
+}) {
+  const [ocupado, setOcupado] = useState(false);
+
+  async function alternar(valor: boolean) {
+    setOcupado(true);
+    try {
+      await updateLicEditionLimits(edicao.id, { grantsSourceAccess: valor });
+      onMudou();
+      // Diz o EFEITO, não "salvo": o que muda é o que acontece nas próximas
+      // compras — licença já emitida carrega o próprio agendamento.
+      toast.success(
+        valor
+          ? `"${edicao.name}" passa a dar acesso ao repositório nas próximas compras`
+          : `"${edicao.name}" deixa de dar acesso ao repositório nas próximas compras`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível salvar');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <label className="mt-0.5 flex items-center gap-1.5 text-[11px] text-body2">
+      <input
+        type="checkbox"
+        checked={edicao.grantsSourceAccess}
+        onChange={(ev) => alternar(ev.target.checked)}
+        disabled={ocupado}
+        className="accent-[var(--accent)]"
+      />
+      dá acesso ao código-fonte
+    </label>
+  );
+}
+
+/**
  * O repositório de código-fonte do produto (FIX #212).
  *
  * **Só faz sentido para quem vende código-fonte**, e é por isso que o campo não
@@ -699,6 +756,10 @@ function CadastroProdutos({
                           · {e.licenseCount} licença{e.licenseCount > 1 ? 's' : ''}
                         </span>
                       )}
+                      {/* O que o webhook lê para agendar o convite (FIX #214).
+                          Sem caminho para marcá-lo, não havia como vender
+                          código-fonte pela interface — e o modo de errar é mudo. */}
+                      <SourceAccessToggle edicao={e} onMudou={onMudou} />
                     </li>
                   ))}
                 </ul>

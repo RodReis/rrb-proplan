@@ -42,6 +42,8 @@ interface RevokeBody {
 interface EditionLimitsBody {
   maxMachines?: unknown;
   updatesMonths?: unknown;
+  /** FIX #214 — o que o webhook lê para agendar o convite ao repo source. */
+  grantsSourceAccess?: unknown;
 }
 
 interface SourceRepoBody {
@@ -135,9 +137,13 @@ export class LicensingAdminController {
   }
 
   /**
-   * Ajusta os limites da edição. `PATCH` e não `PUT`: `slug` e `billingModel`
-   * **não** são alteráveis — o primeiro viaja no license file já emitido, o
-   * segundo muda o significado de `expiresAt` numa licença viva.
+   * Ajusta os limites da edição e o acesso ao código-fonte. `PATCH` e não `PUT`:
+   * `slug` e `billingModel` **não** são alteráveis — o primeiro viaja no license
+   * file já emitido, o segundo muda o significado de `expiresAt` numa licença
+   * viva.
+   *
+   * `grantsSourceAccess` **é** alterável (FIX #214): ele só decide o que acontece
+   * nas compras futuras, e licença já emitida carrega o próprio `sourceInviteAt`.
    */
   @Patch('editions/:id')
   updateEdition(

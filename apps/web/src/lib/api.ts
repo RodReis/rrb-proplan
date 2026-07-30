@@ -1716,6 +1716,14 @@ export interface LicEditionView {
   billingModel: LicBillingModel;
   maxMachines: number;
   updatesMonths: number;
+  /**
+   * Esta edição dá acesso ao repositório de código-fonte? (SPEC-039.)
+   *
+   * É o que o webhook lê para agendar o convite na compra. Sem ver o valor não há
+   * como corrigi-lo, e o modo de errar é mudo: a venda chega, a licença sai sem
+   * agendamento, e o comprador nunca recebe o convite.
+   */
+  grantsSourceAccess: boolean;
   /** Quantas licenças já saíram desta edição — o que impede apagá-la. */
   licenseCount: number;
 }
@@ -1826,7 +1834,12 @@ export function createLicEdition(
 
 export function updateLicEditionLimits(
   editionId: string,
-  input: { maxMachines?: number; updatesMonths?: number },
+  input: {
+    maxMachines?: number;
+    updatesMonths?: number;
+    /** FIX #214 — campo omitido não é tocado; `false` explícito desliga. */
+    grantsSourceAccess?: boolean;
+  },
 ): Promise<LicEditionView> {
   return request(`/licensing/editions/${editionId}`, {
     method: 'PATCH',

@@ -27,6 +27,8 @@ const apiMock = vi.hoisted(() => ({
   getSourceSettings: vi.fn(),
   // FIX #212
   updateProductSourceRepo: vi.fn(),
+  // FIX #214
+  updateLicEditionLimits: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -57,6 +59,9 @@ const CATALOGO: LicCatalogResponse = {
           billingModel: 'PERPETUAL',
           maxMachines: 2,
           updatesMonths: 12,
+          // `false` é o estado que bloqueava a venda de código-fonte: sem caminho
+          // para marcá-lo, a compra nunca agendava convite (FIX #214).
+          grantsSourceAccess: false,
           licenseCount: 3,
         },
       ],
@@ -508,6 +513,47 @@ describe('SPEC-036: tela de Licenças', () => {
         // Sem isto, clicar sem alterar nada dispararia um PATCH que não muda nada
         // — e o toast de sucesso ensinaria que "salvou" é barato.
         expect(screen.getByRole('button', { name: /Salvar repo/i })).toBeDisabled();
+      });
+    });
+
+    /**
+     * `grantsSourceAccess` na tela (FIX #214).
+     *
+     * É o que o webhook lê para agendar o convite na compra. Sem caminho para
+     * marcá-lo, **não existia forma de vender código-fonte pela interface** — e o
+     * modo de errar é mudo: a venda chega, a licença sai sem agendamento, e o
+     * comprador da edição mais cara nunca recebe o convite.
+     */
+    describe('acesso ao código-fonte por edição', () => {
+      it('mostra o estado atual como checkbox', async () => {
+        montar();
+        await userEvent.click(
+          await screen.findByRole('button', { name: /Produtos e edições/ }),
+        );
+
+        // Checkbox e não botão: a pergunta que a linha responde é "esta edição
+        // vende o código?", e um botão obrigaria a inferir o estado atual pelo
+        // rótulo da ação.
+        expect(screen.getByRole('checkbox', { name: /código-fonte/i })).not.toBeChecked();
+      });
+
+      it('marcar chama o PATCH e diz o efeito nas PRÓXIMAS compras', async () => {
+        apiMock.updateLicEditionLimits.mockResolvedValue({
+          ...CATALOGO.products[0].editions[0],
+          grantsSourceAccess: true,
+        });
+        montar();
+        await userEvent.click(
+          await screen.findByRole('button', { name: /Produtos e edições/ }),
+        );
+
+        await userEvent.click(screen.getByRole('checkbox', { name: /código-fonte/i }));
+
+        await waitFor(() =>
+          expect(apiMock.updateLicEditionLimits).toHaveBeenCalledWith('ed-1', {
+            grantsSourceAccess: true,
+          }),
+        );
       });
     });
   });
