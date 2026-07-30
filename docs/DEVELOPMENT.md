@@ -5779,3 +5779,77 @@ direto pularia a fila.
   confirma de ponta a ponta. O botão *Testar Webhook* do painel da Kiwify dispara
   eventos de teste, e o menu *Ver logs* mostra requisição e resposta de cada
   entrega, com reenvio manual.
+
+### PR-4 — o ciclo da assinatura
+
+O que o PR-3 deixou pela metade, e não era óbvio: ele entregou toda a **escrita**
+do ciclo — renovação estende `expiresAt` e limpa `pastDueAt`, atraso marca,
+cancelamento preserva a data, reembolso revoga e limpa `sourceInviteAt`. Faltava
+a **leitura**. `pastDueAt` não aparecia em nenhum arquivo de validação: o webhook
+marcava a inadimplência e **nada cortava**.
+
+Era a versão silenciosa do defeito que o PR-1 previu ao criar a
+`resolve_past_due_tolerance` — a função existia na migration e **não tinha um
+único chamador**.
+
+**Cinco peças:**
+
+1. **Migration `resolve_license` + `past_due_at`.** A função devolvia 9 colunas e
+   nenhuma era o atraso — o gate não tinha o que comparar. `DROP` + `CREATE` é
+   obrigatório (o Postgres recusa `CREATE OR REPLACE` que muda o tipo de retorno,
+   `42P13`), e o `GRANT` no fim não é cerimônia: sem ele toda ativação falha por
+   permissão. Mesmo molde da emenda do `issued_at`.
+2. **`domain/past-due.ts`** — regra pura, `now` por parâmetro. A decisão PI #3
+   mora aqui: `toleranceDays: null` é tolerância **infinita**, não zero. Ler os
+   dois como a mesma coisa inverteria a decisão do PI e cortaria a base inteira
+   de um tenant que nunca pediu corte automático. Fronteira **exclusiva** — no
+   instante exato do vencimento o acesso ainda vale, porque quem paga no último
+   dia precisa poder abrir o app.
+3. **Gate em `licencaUtilizavel`** — o terceiro `410`, junto dos outros dois, no
+   método que `/activate` e `/heartbeat` **compartilham**. O comentário que já
+   estava lá dizia por quê: *"uma cópia divergindo deixaria uma das rotas
+   servindo licença vencida"*. Cortar só no `/activate` seria pior que não cortar
+   — é o heartbeat que renova a validade offline, então o inadimplente seguiria
+   com o produto vivo para sempre.
+4. **`LicEvent` do corte, tipo `past_due_cut`** — **sem** o prefixo `webhook_`
+   que o PR-3 usa: a causa é nossa (a tolerância venceu), não um aviso da
+   plataforma, e a spec pede o corte "distinguível da revogação vinda da
+   plataforma". Gravado **uma vez** por ciclo de atraso: o binário cortado segue
+   chamando de hora em hora, e a idempotência vem da própria trilha
+   (`createdAt >= pastDueAt`, que é o que faz um atraso **novo** voltar a
+   registrar em vez de ficar mudo para sempre).
+5. **`LicenseExpirySweepService`** — o job que materializa `status=EXPIRED` para
+   o admin ver. Ele **não decide nada**: pode morrer por semanas sem afetar
+   acesso nenhum, porque a comparação `expiresAt < now` já mora na validação. O
+   pior caso é a lista do admin ficar velha — nunca alguém entrando onde não
+   devia.
+
+**Um erro meu, pego antes de fiar.** Escrevi `status: 'PAST_DUE'` no primeiro
+rascunho do gate. Esse valor **não existe** no enum (`ACTIVE`/`REVOKED`/`EXPIRED`)
+e contradiz a spec, que diz que `pastDueAt` registra inadimplência **sem mudar
+`status`**. Se tivesse passado, teria quebrado o caminho de volta do PR-3: o
+pagamento aprovado limpa `pastDueAt` e espera a licença ainda `ACTIVE`. Um estado
+novo exigiria que o PR-3 — já mergeado — soubesse voltar dele. O gate agora não
+toca no `status`.
+
+**Três provas contra o bug**, não só testes verdes:
+
+- **Gate comentado** → 6 dos 10 casos do int-spec falham.
+- **Guarda de idempotência removida** → o contador vai de 1 para 3 eventos.
+- **`past_due_at` removido da `resolve_license`** (função mutilada à mão no banco
+  de teste, que o `migrate deploy` não reaplica) → *"Received promise resolved
+  instead of rejected"*: a licença atrasada há 20 dias **ativa normalmente**. É a
+  prova de que a migration carrega peso, e não é acompanhamento decorativo.
+
+**Por que int-spec e não mock.** Três coisas do corte só existem no banco: a
+`resolve_past_due_tolerance` é `SECURITY DEFINER` (um mock devolveria 15
+alegremente, escondendo um `GRANT` faltando), a `resolve_license` precisa
+carregar a coluna, e o evento é escrito sob RLS — fora de contexto o `create`
+grava zero linhas **sem erro**.
+
+**Não introduzi agendador.** Não existe `@nestjs/schedule` nem `repeat` do BullMQ
+no repo, e a spec não diz como o job dispara. O serviço é invocável e testado;
+escolher o mecanismo de agendamento é decisão de infra que não é minha.
+
+**Suíte**: regras **1782** (+4), banco **219** (+10), tela 530. Build nos três
+apps, lint 0 erros, guarda do ADR-019 aprovando.

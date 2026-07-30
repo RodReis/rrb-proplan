@@ -5,6 +5,7 @@ import { MailModule } from '../mail/mail.module';
 import { LicCatalogService } from './application/lic-catalog.service';
 import { LicenseActivationService } from './application/license-activation.service';
 import { LicenseAdminService } from './application/license-admin.service';
+import { LicenseExpirySweepService } from './application/license-expiry-sweep.service';
 import { LicenseSigningService } from './application/license-signing.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
@@ -18,6 +19,10 @@ import { LicensingPublicController } from './presentation/licensing-public.contr
  *
  * PR-1 entregou o schema; PR-2, o domínio e o admin; **PR-3, a rota pública
  * `/activate`**; PR-4, a tela.
+ *
+ * A SPEC-038 (Fatia 27) continua aqui: PR-1 o schema do webhook, PR-2 o módulo
+ * `mail`, PR-3 o webhook da Kiwify, **PR-4 o ciclo da assinatura** — o corte por
+ * inadimplência na validação e o job que materializa `EXPIRED`.
  *
  * **`IdentityModule` é o único import — e isso não é acidente.** Licenciamento
  * é uma frente disjunta das outras duas (ADR-023/024 valem aqui pelo mesmo
@@ -56,6 +61,7 @@ import { LicensingPublicController } from './presentation/licensing-public.contr
     LicCatalogService,
     LicenseAdminService,
     LicenseActivationService,
+    LicenseExpirySweepService,
     LicenseSigningService,
     WebhookIntakeService,
     WebhookProcessorService,
