@@ -247,30 +247,41 @@ describe('SPEC-036: tela de Licenças', () => {
     });
   });
 
-  describe('busca', () => {
-    it('texto com @ vira busca por e-mail', async () => {
+  describe('busca (SPEC-040)', () => {
+    /**
+     * A tela manda o termo cru; quem escolhe a coluna é o servidor.
+     *
+     * Antes disto a página decidia entre `email` e `key` pela presença do `@`,
+     * e quem colasse o nome do comprador ou o `saleRef` caía no ramo "chave":
+     * o hash não casava, e a resposta era lista vazia — indistinguível de
+     * "esse cliente não existe".
+     */
+    it.each([
+      ['e-mail', 'ana@exemplo.com'],
+      ['chave', 'WR-AB23-CD45-EF67-GH89'],
+      ['nome', 'Ana Silva'],
+      ['saleRef', 'kiwify-9931'],
+      ['username do GitHub', 'anasilva'],
+    ])('manda %s cru para o servidor decidir a coluna', async (_rotulo, termo) => {
       montar();
       await screen.findByText('Comprador');
 
-      await userEvent.type(screen.getByLabelText(/Buscar/), 'ana@exemplo.com');
+      await userEvent.type(screen.getByLabelText(/Buscar/), termo);
       await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
 
       await waitFor(() =>
-        expect(apiMock.listLicenses).toHaveBeenLastCalledWith({ email: 'ana@exemplo.com' }),
+        expect(apiMock.listLicenses).toHaveBeenLastCalledWith({ q: termo }),
       );
     });
 
-    it('texto sem @ vira busca por chave', async () => {
+    it('campo vazio recarrega a lista inteira, sem filtro', async () => {
       montar();
       await screen.findByText('Comprador');
 
-      await userEvent.type(screen.getByLabelText(/Buscar/), 'WR-AB23-CD45-EF67-GH89');
       await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
 
       await waitFor(() =>
-        expect(apiMock.listLicenses).toHaveBeenLastCalledWith({
-          key: 'WR-AB23-CD45-EF67-GH89',
-        }),
+        expect(apiMock.listLicenses).toHaveBeenLastCalledWith(undefined),
       );
     });
   });

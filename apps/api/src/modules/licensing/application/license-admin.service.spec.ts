@@ -24,6 +24,14 @@ interface LinhaLicenca {
   expiresAt: Date | null;
   revokedAt: Date | null;
   revokedReason: string | null;
+  /** As três colunas que a busca da SPEC-040 passou a casar além do e-mail. */
+  saleRef: string | null;
+  githubUsername: string | null;
+  /** O que o detalhe agregado da SPEC-040 devolve sobre o acesso ao source. */
+  sourceAccess: string;
+  sourceAccessError: string | null;
+  sourceInviteAt: Date | null;
+  pastDueAt: Date | null;
 }
 
 /**
@@ -36,6 +44,8 @@ function montar(
     edicao?: typeof EDICAO | null;
     licencas?: LinhaLicenca[];
     eventos?: Array<Record<string, unknown>>;
+    /** Entregas de e-mail que o detalhe agregado da SPEC-040 devolve. */
+    entregas?: Array<Record<string, unknown>>;
   } = {},
 ) {
   const licencas = opcoes.licencas ?? [];
@@ -69,6 +79,12 @@ function montar(
           expiresAt: (data.expiresAt as Date | null) ?? null,
           revokedAt: null,
           revokedReason: null,
+          saleRef: (data.saleRef as string | null) ?? null,
+          githubUsername: (data.githubUsername as string | null) ?? null,
+          sourceAccess: 'NONE',
+          sourceAccessError: null,
+          sourceInviteAt: null,
+          pastDueAt: null,
         };
         licencas.push(linha);
         const aninhado = data.events as { create?: Record<string, unknown> };
@@ -76,21 +92,69 @@ function montar(
         return comEdicao(linha);
       }),
       findMany: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        const filtro = where.customerEmail as { contains?: string } | undefined;
+        // Dobra do `OR` da busca ampliada (SPEC-040). Cada ramo é
+        // `{ coluna: { contains } }` ou `{ keyHash: '<hash>' }` — o mesmo
+        // formato que o service monta, para que um ramo esquecido lá apareça
+        // como teste vermelho aqui, e não como busca que não acha.
+        const ramos = where.OR as Array<Record<string, unknown>> | undefined;
+        const casa = (l: LinhaLicenca) =>
+          !ramos ||
+          ramos.some((ramo) => {
+            const [coluna, criterio] = Object.entries(ramo)[0];
+            const valor = (l as unknown as Record<string, unknown>)[coluna];
+            if (typeof criterio === 'string') return valor === criterio;
+            const alvo = (criterio as { contains?: string }).contains;
+            const sensivel = (criterio as { mode?: string }).mode !== 'insensitive';
+            if (typeof valor !== 'string' || alvo === undefined) return false;
+            return sensivel
+              ? valor.includes(alvo)
+              : valor.toLowerCase().includes(alvo.toLowerCase());
+          });
+
         return licencas
           .filter((l) => l.tenantId === where.tenantId)
-          .filter((l) => !filtro?.contains || l.customerEmail.includes(filtro.contains))
+          .filter((l) => !where.status || l.status === where.status)
+          .filter(casa)
           .map(comEdicao);
       }),
-      findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        const achada = licencas.find(
-          (l) =>
-            (where.id === undefined || l.id === where.id) &&
-            (where.keyHash === undefined || l.keyHash === where.keyHash) &&
-            (where.tenantId === undefined || l.tenantId === where.tenantId),
-        );
-        return achada ? comEdicao(achada) : null;
-      }),
+      findFirst: jest.fn(
+        async ({
+          where,
+          include,
+        }: {
+          where: Record<string, unknown>;
+          include?: Record<string, unknown>;
+        }) => {
+          const achada = licencas.find(
+            (l) =>
+              (where.id === undefined || l.id === where.id) &&
+              (where.keyHash === undefined || l.keyHash === where.keyHash) &&
+              (where.tenantId === undefined || l.tenantId === where.tenantId),
+          );
+          if (!achada) return null;
+          // O `detail` pede os dois `include` novos da SPEC-040; os demais
+          // caminhos não. A dobra só os devolve quando pedidos, senão um
+          // `include` esquecido no service passaria despercebido.
+          return {
+            ...comEdicao(achada),
+            ...(include?.mailDeliveries
+              ? { mailDeliveries: opcoes.entregas ?? [] }
+              : {}),
+            ...(include?.events
+              ? {
+                  events: eventos
+                    .filter((e) => e.licenseId === achada.id)
+                    .map((e, i) => ({
+                      id: `evt-${i}`,
+                      type: e.type,
+                      payload: e.payload ?? null,
+                      createdAt: new Date('2026-07-29T12:00:00Z'),
+                    })),
+                }
+              : {}),
+          };
+        },
+      ),
       update: jest.fn(
         async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
           const linha = licencas.find((l) => l.id === where.id)!;
@@ -107,6 +171,7 @@ function montar(
     },
     activation: { count: jest.fn(async () => 0) },
     licEvent: {
+      count: jest.fn(async () => 0),
       findMany: jest.fn(async ({ where }: { where: { licenseId: string } }) =>
         eventos
           .filter((e) => e.licenseId === where.licenseId)
@@ -277,6 +342,159 @@ describe('SPEC-036: emissão e revogação de licença', () => {
       const so = await service.list('t-1', 'ana@');
       expect(so).toHaveLength(1);
       expect(so[0].customerEmail).toBe('ana@exemplo.com');
+    });
+  });
+
+  describe('SPEC-040: a busca ampliada', () => {
+    /** Uma licença com as cinco colunas preenchidas, para buscar por cada uma. */
+    async function comDadosCompletos() {
+      const montado = montar();
+      const emitida = await montado.service.issue('t-1', {
+        editionId: 'ed-1',
+        customerEmail: 'ana@exemplo.com',
+        customerName: 'Ana Silva',
+      });
+      // As duas colunas que a emissão manual não preenche: `saleRef` vem do
+      // webhook (SPEC-038) e o username, do link de coleta (SPEC-039).
+      const linha = montado.licencas.find((l) => l.id === emitida.id)!;
+      linha.saleRef = 'kiwify-9931';
+      linha.githubUsername = 'anasilva';
+
+      await montado.service.issue('t-1', {
+        editionId: 'ed-1',
+        customerEmail: 'bruno@exemplo.com',
+        customerName: 'Bruno Costa',
+      });
+
+      return { ...montado, emitida };
+    }
+
+    it('acha pelo e-mail, pelo nome, pelo saleRef e pelo username', async () => {
+      // Os quatro casos existem porque o canal por onde o cliente reclama
+      // decide o que ele manda: o e-mail vem do próprio e-mail, o nome vem do
+      // WhatsApp, o `saleRef` vem do print da plataforma, e o username vem de
+      // quem já passou pelo link de coleta do source.
+      const { service, emitida } = await comDadosCompletos();
+
+      for (const termo of ['ana@', 'Ana Silva', 'kiwify-9931', 'anasilva']) {
+        const achadas = await service.list('t-1', termo);
+        expect(achadas.map((l) => l.id)).toEqual([emitida.id]);
+      }
+    });
+
+    it('acha pelo nome com a caixa trocada', async () => {
+      // O nome é digitado pelo comprador com as maiúsculas que ele quis.
+      // Buscar "silva" não pode falhar porque a linha diz "Silva" — o modo de
+      // falhar é mudo: lista vazia lida como "esse cliente não existe".
+      const { service, emitida } = await comDadosCompletos();
+      const achadas = await service.list('t-1', 'silva');
+      expect(achadas.map((l) => l.id)).toEqual([emitida.id]);
+    });
+
+    it('acha pela chave, que entra no OR como hash exato', async () => {
+      // A chave é o único ramo por igualdade: hash não tem prefixo em comum
+      // com nada, e `contains` sobre `keyHash` só acharia por acidente.
+      const { service, prisma, emitida } = await comDadosCompletos();
+      const achadas = await service.list('t-1', emitida.key);
+      expect(achadas.map((l) => l.id)).toEqual([emitida.id]);
+
+      const where = (prisma.license.findMany as jest.Mock).mock.calls.at(-1)![0].where;
+      expect(where.OR).toContainEqual({ keyHash: hashKey(emitida.key) });
+    });
+
+    it('a chave em claro não vaza para a query de busca', async () => {
+      // O termo digitado vira hash antes de virar filtro. Se a chave crua
+      // aparecesse no `where`, ela entraria no log de query do Postgres — o
+      // mesmo vazamento que a decisão de não persistir a chave existe para
+      // impedir, por um caminho que ninguém olharia.
+      const { service, prisma, emitida } = await comDadosCompletos();
+      await service.list('t-1', emitida.key);
+
+      const where = (prisma.license.findMany as jest.Mock).mock.calls.at(-1)![0].where;
+      const ramoDaChave = where.OR.find((r: Record<string, unknown>) => 'keyHash' in r);
+      expect(JSON.stringify(ramoDaChave)).not.toContain(emitida.key);
+    });
+
+    it('termo que não casa nada devolve lista vazia, não erro', async () => {
+      const { service } = await comDadosCompletos();
+      expect(await service.list('t-1', 'ninguem-com-esse-nome')).toEqual([]);
+    });
+
+    it('sem termo, devolve tudo do tenant', async () => {
+      const { service } = await comDadosCompletos();
+      expect(await service.list('t-1')).toHaveLength(2);
+    });
+
+    it('o detalhe responde numa resposta só: source, e-mails e trilha', async () => {
+      // O critério de aceite da fatia é *"o detalhe responde sozinho o que
+      // aconteceu com este cliente"*. Antes disto, "ele recebeu a chave?" e
+      // "ele tem acesso ao código?" exigiam outras duas telas — e a segunda só
+      // mostrava quem estava travado, então licença saudável não aparecia
+      // em lugar nenhum.
+      const entrega = {
+        id: 'mail-1',
+        to: 'ana@exemplo.com',
+        template: 'license_key',
+        subject: 'Sua chave',
+        status: 'SENT',
+        attempts: 1,
+        error: null,
+        createdAt: new Date('2026-07-29T12:00:00Z'),
+        sentAt: new Date('2026-07-29T12:00:05Z'),
+      };
+      const { service, licencas } = montar({ entregas: [entrega] });
+      const emitida = await service.issue('t-1', {
+        editionId: 'ed-1',
+        customerEmail: 'ana@exemplo.com',
+      });
+      Object.assign(licencas[0], {
+        saleRef: 'kiwify-9931',
+        sourceAccess: 'ACTIVE',
+        githubUsername: 'anasilva',
+        sourceAccessError: null,
+        sourceInviteAt: new Date('2026-07-20T12:00:00Z'),
+        pastDueAt: null,
+      });
+
+      const detalhe = await service.detail('t-1', emitida.id);
+
+      expect(detalhe.sourceAccess).toBe('ACTIVE');
+      expect(detalhe.githubUsername).toBe('anasilva');
+      expect(detalhe.saleRef).toBe('kiwify-9931');
+      expect(detalhe.sourceInviteAt).toBe('2026-07-20T12:00:00.000Z');
+      expect(detalhe.mailDeliveries).toEqual([
+        expect.objectContaining({ template: 'license_key', status: 'SENT' }),
+      ]);
+      // A trilha vem junto — o `GET /licenses/:id/events` continua existindo e
+      // não muda de caminho, mas exigir duas requisições para responder uma
+      // pergunta é o que a spec chama de "numa tela só" não cumprido.
+      expect(detalhe.events).toEqual([expect.objectContaining({ type: 'issued' })]);
+    });
+
+    it('o detalhe não devolve a chave em claro', async () => {
+      // Mesma garantia da lista, no caminho que ganhou campos novos: cada
+      // `include` acrescentado é uma chance de reintroduzir o que a fatia 25
+      // decidiu nunca persistir.
+      const { service } = montar();
+      const emitida = await service.issue('t-1', {
+        editionId: 'ed-1',
+        customerEmail: 'ana@exemplo.com',
+      });
+
+      const detalhe = await service.detail('t-1', emitida.id);
+      expect(JSON.stringify(detalhe)).not.toContain(emitida.key);
+      expect(detalhe).not.toHaveProperty('key');
+    });
+
+    it('o status filtra POR CIMA da busca, não no lugar dela', async () => {
+      // Se o status substituísse o termo, buscar "ana@" com status REVOKED
+      // devolveria as revogadas de todo mundo — e o operador leria como se a
+      // licença da Ana estivesse revogada.
+      const { service, licencas, emitida } = await comDadosCompletos();
+      licencas.find((l) => l.id !== emitida.id)!.status = 'REVOKED';
+
+      expect(await service.list('t-1', 'ana@', 'REVOKED')).toEqual([]);
+      expect(await service.list('t-1', 'ana@', 'ACTIVE')).toHaveLength(1);
     });
   });
 

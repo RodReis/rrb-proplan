@@ -6,7 +6,7 @@ import {
   machineLabel,
   machineStatus,
   machinesLabel,
-  searchMode,
+  searchTerm,
   shortDate,
   shortDateTime,
   statusLabel,
@@ -125,23 +125,21 @@ describe('SPEC-036: apresentação da tela de licenças', () => {
     });
   });
 
-  describe('busca', () => {
-    it('texto com @ busca por e-mail', () => {
-      expect(searchMode('  ana@exemplo.com ')).toEqual({ email: 'ana@exemplo.com' });
-    });
-
-    it('texto sem @ busca por chave', () => {
-      // Um campo só, não dois: quem usa é o suporte com o que o comprador
-      // mandou. Escolher o tipo antes de digitar é burocracia sobre a
-      // informação que ele já tem na mão.
-      expect(searchMode('WR-AB23-CD45-EF67-GH89')).toEqual({
-        key: 'WR-AB23-CD45-EF67-GH89',
-      });
+  describe('busca (SPEC-040)', () => {
+    it('devolve o termo aparado, sem escolher coluna', () => {
+      // A heurística do `@` morreu: ela mandava o texto para UM campo, e quem
+      // digitasse o nome do comprador ou o `saleRef` caía no ramo "chave" — o
+      // hash não casava e a resposta era lista vazia, indistinguível de "esse
+      // cliente não existe". Quem casa as cinco colunas agora é o servidor.
+      expect(searchTerm('  ana@exemplo.com ')).toBe('ana@exemplo.com');
+      expect(searchTerm('WR-AB23-CD45-EF67-GH89')).toBe('WR-AB23-CD45-EF67-GH89');
+      expect(searchTerm('  Ana Silva ')).toBe('Ana Silva');
+      expect(searchTerm('kiwify-9931')).toBe('kiwify-9931');
     });
 
     it('texto vazio não busca nada', () => {
-      expect(searchMode('')).toBeNull();
-      expect(searchMode('   ')).toBeNull();
+      expect(searchTerm('')).toBeNull();
+      expect(searchTerm('   ')).toBeNull();
     });
   });
 

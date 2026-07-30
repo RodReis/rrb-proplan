@@ -1847,14 +1847,22 @@ export function updateLicEditionLimits(
   });
 }
 
-/** `email` filtra; `key` busca pela chave (o servidor hasheia e procura). */
+/**
+ * Busca de licenças (SPEC-040). **Um campo só, cinco colunas**: e-mail, nome,
+ * `saleRef`, username do GitHub e a chave — esta hasheada no servidor, que
+ * nunca a guardou em claro.
+ *
+ * Os antigos `email` e `key` separados sumiram: eram dois campos para uma
+ * pergunta só, e colar no errado devolvia lista vazia — indistinguível de "esse
+ * cliente não existe".
+ */
 export function listLicenses(filtro?: {
-  email?: string;
-  key?: string;
+  q?: string;
+  status?: LicenseStatus;
 }): Promise<LicenseView[]> {
   const params = new URLSearchParams();
-  if (filtro?.email) params.set('email', filtro.email);
-  if (filtro?.key) params.set('key', filtro.key);
+  if (filtro?.q) params.set('q', filtro.q);
+  if (filtro?.status) params.set('status', filtro.status);
   const query = params.toString();
   return request(`/licensing/licenses${query ? `?${query}` : ''}`);
 }
@@ -1991,12 +1999,37 @@ export interface ActivationView {
   deactivatedAt: string | null;
 }
 
-/** Detalhe da licença: as máquinas e o sinal de troca (SPEC-037). */
+/** Uma entrega de e-mail desta licença (SPEC-040). */
+export interface MailDeliveryView {
+  id: string;
+  to: string;
+  template: string;
+  subject: string;
+  status: string;
+  attempts: number;
+  error: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
+/**
+ * Detalhe da licença — **responde "o que aconteceu com este cliente" numa
+ * resposta só** (SPEC-040 §Busca e detalhe): máquinas, acesso ao source,
+ * e-mails enviados e a trilha completa.
+ */
 export interface LicenseDetail extends LicenseView {
   activations: ActivationView[];
   /** Desativações + reativações na janela. **Sinal, não limite** — nada bloqueia. */
   swapCount: number;
   swapWindowDays: number;
+  sourceAccess: string;
+  githubUsername: string | null;
+  sourceAccessError: string | null;
+  sourceInviteAt: string | null;
+  saleRef: string | null;
+  pastDueAt: string | null;
+  mailDeliveries: MailDeliveryView[];
+  events: LicEventView[];
 }
 
 export function getLicenseDetail(id: string): Promise<LicenseDetail> {
