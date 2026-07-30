@@ -1725,6 +1725,13 @@ export interface LicProductView {
   slug: string;
   name: string;
   keyPrefix: string;
+  /**
+   * `owner/name` do repositório de código-fonte, ou `null` (SPEC-039).
+   *
+   * `null` é a causa de o convite não ter destino — sem este campo na tela, o
+   * operador só descobriria isso no teste de conexão, depois de cadastrar o PAT.
+   */
+  sourceRepo: string | null;
   editions: LicEditionView[];
 }
 
@@ -1782,6 +1789,22 @@ export function createLicProduct(input: {
   return request('/licensing/products', {
     method: 'POST',
     body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Define ou limpa o repositório de código-fonte do produto (FIX #212).
+ *
+ * String vazia limpa (`null` no banco): desconfigurar é ação legítima — o produto
+ * deixou de vender código-fonte — e não pode exigir SQL.
+ */
+export function updateProductSourceRepo(
+  productId: string,
+  sourceRepo: string,
+): Promise<LicProductView> {
+  return request(`/licensing/products/${productId}/source-repo`, {
+    method: 'PATCH',
+    body: JSON.stringify({ sourceRepo }),
   });
 }
 

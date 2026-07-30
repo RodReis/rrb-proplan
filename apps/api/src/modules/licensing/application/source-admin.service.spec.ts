@@ -41,6 +41,7 @@ function montar(
 ) {
   const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
   const settingsUpdates: Array<Record<string, unknown>> = [];
+  const settingsCreates: Array<Record<string, unknown>> = [];
 
   const prisma = {
     license: {
@@ -60,6 +61,15 @@ function montar(
         settingsUpdates.push(args.data);
         return {};
       }),
+      upsert: jest.fn(
+        async (args: { update: Record<string, unknown>; create: Record<string, unknown> }) => {
+          // Guarda os DOIS lados: o `create` é o que prova que a linha nasce sem
+          // tocar no `webhookSecret` (FIX #212).
+          settingsUpdates.push(args.update);
+          settingsCreates.push(args.create);
+          return {};
+        },
+      ),
     },
     licProduct: {
       findFirst: jest.fn(async () => ({
@@ -111,6 +121,7 @@ function montar(
     revokes,
     updates,
     settingsUpdates,
+    settingsCreates,
   };
 }
 
@@ -408,13 +419,32 @@ describe('PAT write-only', () => {
     expect(c.settingsUpdates).toEqual([]);
   });
 
-  it('sem linha de settings, manda configurar o webhook primeiro', async () => {
+  it('salva SEM webhook configurado — FIX #212', async () => {
     const c = montar({ settingsExiste: false });
 
-    // Criar aqui deixaria `webhookSecret: ''`, e toda entrega da plataforma
-    // passaria a falhar com 401 — efeito colateral que ninguém ligaria a "salvei o
-    // PAT".
-    await expect(c.service.setPat(TENANT, 'ghp_x')).rejects.toThrow(/segredo do webhook/);
+    await c.service.setPat(TENANT, 'ghp_x');
+
+    // **O bug que este fix conserta.** Antes isto lançava
+    // `422 "Configure o segredo do webhook antes do PAT do GitHub"`, e um tenant
+    // com `lic_settings` vazia ficava sem caminho pela interface para o que a
+    // SPEC-039 §Configuração por tenant define como configurável no admin.
+    //
+    // São credenciais independentes: uma convida ao repositório, a outra recebe
+    // vendas. A guarda foi copiada do `updateSettings`, onde é correta por outro
+    // motivo.
+    expect(c.settingsCreates[0]).toEqual({ tenantId: TENANT, githubPat: 'cifra(ghp_x)' });
+  });
+
+  it('o `create` NÃO grava `webhookSecret` — nem vazio', async () => {
+    const c = montar({ settingsExiste: false });
+
+    await c.service.setPat(TENANT, 'ghp_x');
+
+    // Gravar `''` aqui faria toda entrega da plataforma falhar com `401` no dia em
+    // que o webhook fosse configurado no painel da Kiwify — e ninguém ligaria o
+    // sintoma a "salvei o PAT". Ausente significa "não configurou webhook", que é
+    // o que o intake já trata.
+    expect(Object.keys(c.settingsCreates[0])).not.toContain('webhookSecret');
   });
 
   it('o log não ecoa o PAT', async () => {

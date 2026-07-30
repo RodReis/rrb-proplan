@@ -1859,7 +1859,22 @@ model LicSettings {
   tenantId String @unique @map("tenant_id")
   /// Segredo compartilhado com a plataforma, usado para validar a assinatura de
   /// cada entrega.
-  webhookSecret String @map("webhook_secret")
+  ///
+  /// **Opcional desde o FIX #212, e a razão é de configuração, não de
+  /// segurança.** Ele nasceu obrigatório na SPEC-038, quando o webhook era a
+  /// única coisa nesta tabela. A SPEC-039 acrescentou o `githubPat`, e a
+  /// obrigatoriedade passou a **impedir** que um tenant configurasse o acesso ao
+  /// repo source sem antes cadastrar um webhook que talvez nem use — são
+  /// propósitos independentes (uma credencial convida ao repositório, a outra
+  /// recebe vendas).
+  ///
+  /// **Ausente continua significando "não configurou webhook", e toda entrega
+  /// para esse tenant é recusada com `401`** — mesmo desfecho de antes, quando o
+  /// que faltava era a linha inteira. O que mudou é só *quando a linha pode
+  /// nascer*. `updateSettings` segue recusando string vazia: gravar `''` num
+  /// tenant que JÁ recebe entregas faria todas passarem a falhar, com sintoma
+  /// indistinguível de ataque.
+  webhookSecret String? @map("webhook_secret")
   /// Dias de tolerância entre `pastDueAt` e o corte de acesso (decisão PI #3).
   ///
   /// **Não é `graceDays`** — aquele já existe no license file da SPEC-036 e

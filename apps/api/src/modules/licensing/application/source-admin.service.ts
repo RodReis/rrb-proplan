@@ -368,25 +368,24 @@ export class SourceAdminService {
       );
     }
 
-    const existe = await this.prisma.licSettings.findUnique({
-      where: { tenantId },
-      select: { id: true },
-    });
-    if (!existe) {
-      // Mesma regra do `updateSettings`: a linha nasce com o segredo do webhook,
-      // que é obrigatório. Criar aqui deixaria `webhookSecret: ''`, e toda entrega
-      // da plataforma passaria a falhar com 401 — um efeito colateral que ninguém
-      // ligaria a "salvei o PAT".
-      throw new UnprocessableEntityException(
-        'Configure o segredo do webhook antes do PAT do GitHub',
-      );
-    }
+    // Cifrado com o `TOKEN_ENCRYPTION_KEY` que já existe (decisão PI #2): um dump
+    // do banco não pode virar acesso de escrita ao repositório privado.
+    const githubPat = this.crypto.encrypt(valor);
 
-    await this.prisma.licSettings.update({
+    // **`upsert` sem tocar no segredo do webhook — FIX #212.** Antes isto exigia
+    // a linha já criada, e a mensagem mandava configurar o webhook primeiro: um
+    // tenant que só queria o acesso ao repo source ficava sem caminho pela
+    // interface. São configurações independentes (uma convida ao repositório, a
+    // outra recebe vendas), e amarrá-las era erro meu, copiado do
+    // `updateSettings` — onde a regra é correta por outro motivo.
+    //
+    // O `create` **não** grava `webhookSecret`: ele é `String?` desde este fix, e
+    // ausente continua significando "não configurou webhook", com toda entrega
+    // recusada por `401` no intake. O que mudou é só quando a linha pode nascer.
+    await this.prisma.licSettings.upsert({
       where: { tenantId },
-      // Cifrado com o `TOKEN_ENCRYPTION_KEY` que já existe (decisão PI #2): um
-      // dump do banco não pode virar acesso de escrita ao repositório privado.
-      data: { githubPat: this.crypto.encrypt(valor) },
+      update: { githubPat },
+      create: { tenantId, githubPat },
     });
 
     // Registra QUE mudou, nunca o valor.

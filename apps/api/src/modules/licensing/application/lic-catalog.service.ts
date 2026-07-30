@@ -38,6 +38,14 @@ export interface ProductView {
   slug: string;
   name: string;
   keyPrefix: string;
+  /**
+   * `owner/name` do repositório de código-fonte, ou `null` (SPEC-039).
+   *
+   * Sai na listagem porque a tela precisa mostrar o **valor atual** para editá-lo
+   * — e porque `null` aqui é a causa de o convite não ter destino, que sem isto o
+   * operador só descobriria pelo teste de conexão.
+   */
+  sourceRepo: string | null;
   editions: EditionView[];
 }
 
@@ -69,6 +77,17 @@ const SLUG_RE = /^[a-z0-9-]{1,32}$/;
  */
 const PREFIXO_RE = /^[A-Z]{2,6}$/;
 
+/**
+ * `owner/name` do GitHub, exatamente o que a API de colaboradores espera.
+ *
+ * Recusa URL colada inteira e caminho com barra a mais. As regras de nome do
+ * GitHub são mais estritas que isto (sem `--`, sem começar com hífen), mas
+ * replicá-las aqui criaria uma segunda fonte da verdade que diverge quando eles
+ * mudarem — quem julga o nome é o GitHub, no teste de conexão. O que esta regex
+ * pega é o erro de **forma**, que produziria um `404` confuso na hora do convite.
+ */
+const REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
 const MAX_MACHINES_TETO = 100;
 const MAX_UPDATES_MESES = 120;
 
@@ -93,6 +112,7 @@ export class LicCatalogService {
       slug: p.slug,
       name: p.name,
       keyPrefix: p.keyPrefix,
+      sourceRepo: p.sourceRepo,
       editions: p.editions.map((e) => ({
         id: e.id,
         slug: e.slug,
@@ -131,7 +151,7 @@ export class LicCatalogService {
       const produto = await this.prisma.licProduct.create({
         data: { tenantId, slug, name, keyPrefix },
       });
-      return { ...produto, editions: [] };
+      return { ...produto, sourceRepo: produto.sourceRepo, editions: [] };
     } catch (erro) {
       // O unique `(tenant_id, slug)` é quem decide, não uma consulta prévia:
       // duas criações simultâneas passariam as duas por um `findFirst`.
@@ -208,6 +228,57 @@ export class LicCatalogService {
    * file já emitido, o segundo muda o significado de `expiresAt` numa licença
    * viva. Trocar qualquer um dos dois é criar edição nova.
    */
+  /**
+   * Define (ou limpa) o repositório de código-fonte do produto — FIX #212.
+   *
+   * A coluna nasceu no PR-1 da SPEC-039 e **não tinha caminho pela interface**:
+   * sem ela preenchida, o convite não tem destino, e o operador só descobria isso
+   * no teste de conexão — depois de já ter cadastrado o PAT.
+   *
+   * **Formato validado aqui, e não só no GitHub.** `owner/name` é o que a API
+   * espera em `PUT /repos/:owner/:repo/collaborators/…`; um valor com barra a
+   * mais, ou uma URL colada inteira (`https://github.com/o/r`), produziria um
+   * `404` no momento do convite — que a lista de pendências mostraria como
+   * *"repositório não encontrado"*, mandando o operador procurar problema de
+   * permissão num erro de digitação.
+   *
+   * **String vazia limpa** (`null`), e isso é deliberado: desconfigurar é uma
+   * ação legítima (o produto deixou de vender código-fonte) e não pode exigir
+   * SQL. Diferente do PAT, aqui não há segredo a perder nem entrega que passe a
+   * falhar — só o agendamento de convite, que o próprio job trata como "nada a
+   * fazer".
+   */
+  async updateProductSourceRepo(
+    tenantId: string,
+    productId: string,
+    sourceRepo: unknown,
+  ): Promise<ProductView> {
+    const produto = await this.prisma.licProduct.findFirst({
+      where: { id: productId, tenantId },
+      select: { id: true },
+    });
+    if (!produto) throw new NotFoundException('Produto não encontrado');
+
+    const bruto = texto(sourceRepo);
+    const valor = bruto === '' ? null : bruto;
+
+    if (valor !== null && !REPO_RE.test(valor)) {
+      throw new UnprocessableEntityException(
+        'Repositório no formato `dono/nome` (ex.: RodReis/war-room), sem URL',
+      );
+    }
+
+    await this.prisma.licProduct.update({
+      where: { id: productId },
+      data: { sourceRepo: valor },
+    });
+
+    // Devolve a listagem do produto atualizado — a tela substitui o item inteiro,
+    // e montar um `ProductView` parcial aqui duplicaria o mapeamento do `list`.
+    const atualizados = await this.listProducts(tenantId);
+    return atualizados.find((p) => p.id === productId)!;
+  }
+
   async updateEditionLimits(
     tenantId: string,
     editionId: string,

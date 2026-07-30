@@ -234,14 +234,42 @@ describe('LicensingOpsService', () => {
       });
     });
 
-    /** Linha nova sem segredo ficaria inválida para o webhook. */
-    it('exige o segredo antes da tolerância quando não há linha ainda', async () => {
+    /**
+     * A tolerância cria a linha sozinha desde o FIX #212.
+     *
+     * Antes isto lançava `422 "Configure o segredo do webhook antes da
+     * tolerância"`, porque o `create` precisava de um `webhookSecret` e gravar
+     * `''` deixaria a linha inválida para o webhook. Com a coluna `String?`, a
+     * linha nasce sem segredo — e **ausente já significa "não configurou
+     * webhook"**, o mesmo `401` no intake de quando não havia linha nenhuma.
+     */
+    it('cria a linha só com a tolerância, sem tocar no segredo', async () => {
+      const upsert = jest.fn();
       const { service } = montar({
-        licSettings: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
+        licSettings: { findUnique: jest.fn().mockResolvedValue(null), upsert },
       });
 
+      await service.updateSettings('tenant-1', { pastDueToleranceDays: 30 });
+
+      // O `create` não pode carregar `webhookSecret: ''`: no dia em que o webhook
+      // fosse configurado na Kiwify, toda entrega falharia com `401` e ninguém
+      // ligaria o sintoma a "mudei a tolerância".
+      expect(Object.keys(upsert.mock.calls[0][0].create)).not.toContain('webhookSecret');
+      expect(upsert.mock.calls[0][0].create).toMatchObject({
+        tenantId: 'tenant-1',
+        pastDueToleranceDays: 30,
+      });
+    });
+
+    /** O que NÃO mudou: string vazia explícita continua recusada. */
+    it('string vazia continua recusada mesmo com a coluna opcional', async () => {
+      const { service } = montar();
+
+      // Gravar `''` num tenant que JÁ recebe entregas faria todas passarem a
+      // falhar, com sintoma indistinguível de ataque. Opcional no schema ≠
+      // apagável pela tela.
       await expect(
-        service.updateSettings('tenant-1', { pastDueToleranceDays: 30 }),
+        service.updateSettings('tenant-1', { webhookSecret: '   ' }),
       ).rejects.toMatchObject({ status: 422 });
     });
   });

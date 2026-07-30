@@ -26,18 +26,34 @@ function montar(
     edicao?: typeof EDICAO | null;
     createProductErro?: Error;
     createEditionErro?: Error;
+    sourceRepoAtual?: string | null;
+    listaVazia?: boolean;
   } = {},
 ) {
+  /** O que `listProducts` devolve — usado pelo retorno do `updateProductSourceRepo`. */
+  const produtoListado = {
+    id: 'prod-1',
+    slug: 'warroom',
+    name: 'War Room',
+    keyPrefix: 'WR',
+    sourceRepo: opcoes.sourceRepoAtual ?? null,
+    editions: [],
+  };
+
   const prisma = {
     licProduct: {
-      findMany: jest.fn(async () => []),
+      findMany: jest.fn(async () => (opcoes.listaVazia ? [] : [produtoListado])),
       findFirst: jest.fn(async () =>
         opcoes.produto === undefined ? { id: 'prod-1' } : opcoes.produto,
       ),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         if (opcoes.createProductErro) throw opcoes.createProductErro;
-        return { id: 'prod-1', ...data };
+        return { id: 'prod-1', sourceRepo: null, ...data };
       }),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 'prod-1',
+        ...data,
+      })),
     },
     licEdition: {
       findFirst: jest.fn(async () =>
@@ -196,6 +212,65 @@ describe('SPEC-036: catálogo de produtos e edições', () => {
       const { service } = montar();
       const e = await service.updateEditionLimits('t-1', 'ed-1', { maxMachines: 3 });
       expect(e.licenseCount).toBe(3);
+    });
+  });
+
+  /**
+   * O repositório de código-fonte (SPEC-039), exposto no FIX #212.
+   *
+   * A coluna nasceu no PR-1 daquela fatia e **não tinha caminho pela interface**:
+   * sem ela preenchida o convite não tem destino, e o operador só descobriria isso
+   * no teste de conexão — depois de já ter cadastrado o PAT.
+   */
+  describe('updateProductSourceRepo', () => {
+    it('grava `owner/name`', async () => {
+      const { service, prisma } = montar({ sourceRepoAtual: 'RodReis/war-room' });
+
+      const p = await service.updateProductSourceRepo('t-1', 'prod-1', 'RodReis/war-room');
+
+      expect((prisma.licProduct.update as jest.Mock).mock.calls[0][0].data).toEqual({
+        sourceRepo: 'RodReis/war-room',
+      });
+      expect(p.sourceRepo).toBe('RodReis/war-room');
+    });
+
+    it('string vazia LIMPA o campo', async () => {
+      const { service, prisma } = montar();
+
+      await service.updateProductSourceRepo('t-1', 'prod-1', '   ');
+
+      // Desconfigurar é ação legítima (o produto deixou de vender código-fonte) e
+      // não pode exigir SQL. Diferente do PAT: aqui não há segredo a perder nem
+      // entrega que passe a falhar.
+      expect((prisma.licProduct.update as jest.Mock).mock.calls[0][0].data).toEqual({
+        sourceRepo: null,
+      });
+    });
+
+    it.each([
+      'https://github.com/RodReis/war-room',
+      'RodReis/war-room/extra',
+      'só-o-nome',
+      'RodReis /war-room',
+    ])('recusa formato inválido: %s', async (entrada) => {
+      const { service, prisma } = montar();
+
+      // Um valor com barra a mais, ou uma URL colada inteira, produziria `404` no
+      // momento do convite — que a lista de pendências mostraria como "repositório
+      // não encontrado", mandando o operador procurar problema de permissão num
+      // erro de digitação.
+      await expect(
+        service.updateProductSourceRepo('t-1', 'prod-1', entrada),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(prisma.licProduct.update).not.toHaveBeenCalled();
+    });
+
+    it('404 em produto de outro tenant', async () => {
+      const { service } = montar({ produto: null });
+
+      await expect(
+        service.updateProductSourceRepo('t-1', 'prod-de-outro', 'a/b'),
+      ).rejects.toThrow('Produto não encontrado');
     });
   });
 });
