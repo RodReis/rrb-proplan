@@ -5953,8 +5953,8 @@ fica sem check nenhum, silenciosamente):
    validação na GitHub API com confirmação por avatar, template do e-mail.
 3. **PR-3 — job do convite**: reconciliação diária, `PENDING → INVITED → ACTIVE`,
    cliente GitHub com PAT (separado do cliente do GitHub App).
-4. **PR-4 — revogação**: cancela *invitation* **ou** remove colaborador, conforme
-   o estado; `FAILED` retentável.
+4. **PR-4 — revogação** (`feito`): cancela *invitation* **ou** remove colaborador,
+   conforme o estado; `FAILED` retentável.
 5. **PR-5 — admin mínimo**: pendências de source, corrigir username, reemitir,
    remover acesso, PAT write-only com teste de conexão.
 
@@ -6226,3 +6226,120 @@ Build nos três apps, lint 0 erros (3 warnings pré-existentes).
 **Pendente**: o convite real nunca saiu — exige PAT fine-grained configurado, que
 é do PR-5. A revogação (`DELETE /invitations/:id` × `DELETE /collaborators/:user`)
 é o PR-4.
+
+---
+
+### PR-4 — a revogação, e a chamada que não pode ser a errada
+
+- [x] `GithubSourceClient.cancelInvitation` (`DELETE /invitations/:id`) e
+      `.removeCollaborator` (`DELETE /collaborators/:username`)
+- [x] `SourceRevokeService.revoke(tenantId, licenseId, motivo)` — escolhe a
+      chamada pelo `sourceAccess`, grava `REMOVED`, trilha
+      `source_access_removed`
+- [x] Ligado no `WebhookProcessorService.revogar` (reembolso e chargeback)
+- [x] `FAILED` retentável, com `githubUsername`/`githubInvitationId` preservados
+- [x] +43 testes de regra
+
+**A fatia inteira converge para uma escolha, e ela é binária:**
+
+| estado | chamada | por quê |
+|---|---|---|
+| `INVITED` **com** `githubInvitationId` | `DELETE /repos/:repo/invitations/:id` | o convite existe e não foi aceito; não há assento de colaborador |
+| `ACTIVE` (ou `INVITED`/`FAILED` sem id) | `DELETE /repos/:repo/collaborators/:username` | o convite foi aceito; não há mais invitation |
+
+**Chamar a errada é no-op silencioso — nos dois sentidos.**
+`DELETE /collaborators` devolve `204` para quem *nunca* foi colaborador, e o
+convite pendente continua de pé esperando ser aceito. Nada aparece em log,
+ninguém é notificado, e o reembolsado fica com o código-fonte. É por isso que o
+`sourceInvited: Boolean` da SPEC-036 morreu no PR-1: ele não sabia distinguir
+esses dois estados, e a revogação depende exatamente da diferença. Os dois
+caminhos têm testes **separados** (critério de aceite) — um teste que aceitasse
+qualquer das duas chamadas passaria com a implementação errada.
+
+**`404` do `cancelInvitation` é sucesso; do `removeCollaborator`, não.** No
+convite, `404` significa que ele já não existe (o comprador aceitou entre a nossa
+leitura e a chamada, ou alguém cancelou pela interface) — tratar como erro poria a
+licença em `FAILED` e faria o admin retentar para sempre uma remoção sem nada para
+remover; o caso "aceitou no meio do caminho" volta pela reconciliação, e aí é o
+`removeCollaborator` que resolve. Na remoção de colaborador, o `204` já cobre "não
+era colaborador", então um `404` só pode ser repositório não encontrado — problema
+de PAT ou configuração, e passar isso como sucesso seria o silêncio que custa
+dinheiro.
+
+**O fallback é `removeCollaborator`, e a assimetria é deliberada.** Sem
+`githubInvitationId` (o `201` do GitHub veio sem `id`, ou a licença veio de
+`FAILED`) não há o que cancelar — `cancelInvitation` exige o id. E
+`removeCollaborator` é *seguro no estado errado*: devolve `204` para quem não é
+colaborador. O inverso não vale, então a ordem só pode ser esta.
+
+**A remoção vem DEPOIS da escrita do `REVOKED`, e há teste de ordem.** O
+`status = REVOKED` no banco é o que corta a validação (`/activate`,
+`/heartbeat`) — não pode depender de o GitHub responder. Invertida, a ordem faria
+uma API fora do ar impedir a revogação da licença; nesta, o pior caso é
+`sourceAccess = FAILED` na lista de pendências, com a licença já cortada.
+
+**A reentrega retenta a remoção mesmo com a licença já `REVOKED`.** O caminho
+idempotente do `revogar` (que não reescreve data nem manda 2º e-mail) passou a
+chamar a revogação de acesso *antes* de sair. A 1ª revogação pode ter gravado
+`REVOKED` e falhado no GitHub; sair antes descartaria a reentrega da plataforma —
+a chance grátis de consertar — e o reembolsado continuaria colaborador. O service
+é idempotente por estado: se o acesso já morreu, devolve `nothing_to_do` sem falar
+com o GitHub.
+
+**Falha do GitHub não contamina o carimbo do evento.** A remoção roda dentro de um
+`try` no `webhook-processor`: uma exceção subindo faria o evento virar `FAILED`, e
+o admin, ao reprocessar, repetiria o e-mail de revogação — pior, um erro do PAT
+apareceria como "falha no webhook", mandando investigar a Kiwify. A pendência
+pertence à **licença** (`sourceAccess = FAILED` + `sourceAccessError` legível), que
+é onde o PR-5 a retenta.
+
+**`FAILED` preserva o que a retentativa precisa.** `githubUsername` e
+`githubInvitationId` ficam intactos — sem eles, a retentativa não saberia qual das
+duas chamadas fazer, e o `FAILED` seria pendência visível e insolúvel. Pelo mesmo
+motivo `FAILED` **não** entra na lista de "nada a fazer": é justamente o estado que
+precisa de nova tentativa, e incluí-lo faria a retentativa do admin responder
+sucesso sem remover ninguém.
+
+**Ausência de PAT aqui é `FAILED`, não silêncio — ao contrário do job de convite.**
+Lá, PAT ausente é pendência de configuração e nada acontece (marcar as licenças
+encheria a lista de linhas com uma causa só). Aqui o silêncio custa dinheiro: o
+reembolsado continua com acesso e ninguém saberia. Mesmo tratamento para repo
+ausente e cifra ilegível.
+
+**`githubInvitationId` é limpo no sucesso; `githubUsername`, não.** O id aponta
+para uma invitation que já não existe, e mantê-lo faria uma retentativa futura
+cancelar convite inexistente em vez de remover o colaborador de uma recompra. O
+username fica: é a trilha de quem teve acesso, e quem o apaga é a exclusão a
+pedido (LGPD, §7 do MVP4).
+
+**O que a remoção NÃO entrega, e está no código para nenhuma tela dizer o
+contrário:** ela não recupera o que já foi clonado. O que acaba são os *updates* —
+o mecanismo real do produto é contratual (§8 do MVP4). Por isso o desfecho
+devolvido nomeia a chamada feita (`invitation_canceled` / `collaborator_removed`),
+gravado em `payload.via` da trilha, e não um "acesso recuperado" que não existe.
+
+**A leitura de configuração foi duplicada, não extraída.** São três linhas de
+consulta compartilhadas com o `SourceInviteService`, e o que um helper economizaria
+não paga o acoplamento: os dois tratam a ausência de PAT de formas **opostas**
+(pendência lá, `FAILED` aqui), e um helper comum convidaria a unificar isso.
+
+### PR-4 — verificação
+
+- **2793 testes verdes** (1974 regras · 240 banco · 579 tela) — **+43** sobre os
+  2750 do PR-3, todos em regras.
+- Os dois caminhos de revogação em `describe` **separados**, cada um afirmando que
+  a outra chamada **não** aconteceu (`not.toHaveBeenCalled`) — é o que um teste
+  frouxo deixaria passar.
+- **O PAT não vaza** nem em `sourceAccessError` nem no log: os dois testes do PR-3
+  replicados para este caminho (mensagem curada no banco, `Bearer` redigido no
+  log).
+- Ordem `update → revoke` verificada por array de sequência, não por suposição.
+- Arch-specs verdes: o caminho da revogação **não** chama `.installationToken(`
+  (ADR-015) — são credenciais de propósitos diferentes, e misturá-las reabriria o
+  ADR por acidente.
+- `build` nos três apps, `lint` **0 erros** (3 warnings pré-existentes),
+  `test:report:check` OK.
+
+**Pendente**: a revogação real nunca rodou contra o GitHub — exige PAT
+fine-grained configurado, que é o PR-5, junto da lista de pendências e do botão de
+retentar.

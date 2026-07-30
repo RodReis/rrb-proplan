@@ -10,6 +10,7 @@ import { LicenseSigningService } from './application/license-signing.service';
 import { LicensingOpsService } from './application/licensing-ops.service';
 import { SourceInviteService } from './application/source-invite.service';
 import { SourceLinkService } from './application/source-link.service';
+import { SourceRevokeService } from './application/source-revoke.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
 import { GithubSourceClient } from './infrastructure/github-source.client';
@@ -84,6 +85,12 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     // dispara — escolher isso é decisão de infra. O método é chamável, e o
     // PR-5 dá o botão ao admin.
     SourceInviteService,
+    // A revogação do acesso ao repo (SPEC-039 PR-4). Existe separado do
+    // `SourceInviteService` porque a decisão que ele carrega é outra: **qual das
+    // duas chamadas do GitHub desfaz o acesso** — cancelar a invitation pelo id,
+    // ou remover o colaborador pelo username. Chamar a errada é no-op silencioso,
+    // e o reembolsado fica com o código-fonte.
+    SourceRevokeService,
     // O cliente do GitHub do caminho do convite — **não** o do GitHub App
     // (ADR-015). Credenciais de propósitos diferentes: aqui é PAT fine-grained
     // com `administration:write` num repo só, e a arch-spec cobra a separação.

@@ -19,6 +19,8 @@ describe('WebhookProcessorService', () => {
   const send = jest.fn();
   /** O link de coleta do username (SPEC-039) — só a compra source o dispara. */
   const createAndSend = jest.fn();
+  /** A remoção do acesso ao repo (SPEC-039 PR-4) — reembolso e chargeback. */
+  const revoke = jest.fn();
 
   const prisma = {
     licWebhookEvent: { findUnique: findUniqueEvento, update: updateEvento },
@@ -77,10 +79,12 @@ describe('WebhookProcessorService', () => {
     findFirstMapeamento.mockResolvedValue({ edition: edicao });
     createLicenca.mockResolvedValue({ id: 'lic_nova' });
     createAndSend.mockResolvedValue({ token: 'tok' });
+    revoke.mockResolvedValue('nothing_to_do');
     service = new WebhookProcessorService(
       prisma,
       { send } as never,
       { createAndSend } as never,
+      { revoke } as never,
     );
   });
 
@@ -364,6 +368,88 @@ describe('WebhookProcessorService', () => {
 
       expect(updateLicenca).not.toHaveBeenCalled();
       expect(send).not.toHaveBeenCalled();
+    });
+
+    it('manda remover o acesso ao repo, com o motivo', async () => {
+      await service.process(
+        evento({ order_id: 'ord_123', webhook_event_type: 'order_refunded' }),
+        't1',
+      );
+
+      // Quem escolhe a chamada (cancelar invitation vs. remover colaborador) é o
+      // `SourceRevokeService`, pelo `sourceAccess` — aqui só se garante que ele é
+      // chamado. Sem esta linha, o reembolso cortaria a licença e deixaria o
+      // comprador no repositório privado.
+      expect(revoke).toHaveBeenCalledWith('t1', 'lic_1', 'reembolso');
+    });
+
+    it('a remoção vem DEPOIS da escrita do `REVOKED`', async () => {
+      const ordem: string[] = [];
+      updateLicenca.mockImplementation(async () => {
+        ordem.push('update');
+        return {};
+      });
+      revoke.mockImplementation(async () => {
+        ordem.push('revoke');
+        return 'collaborator_removed';
+      });
+
+      await service.process(
+        evento({ order_id: 'ord_123', webhook_event_type: 'order_refunded' }),
+        't1',
+      );
+
+      // O `REVOKED` no banco é o que corta a validação (`/activate`,
+      // `/heartbeat`) — ele não pode depender de o GitHub responder. Invertida, a
+      // ordem faria uma API fora do ar impedir a revogação da licença.
+      expect(ordem).toEqual(['update', 'revoke']);
+    });
+
+    it('reentrega retenta a remoção mesmo com a licença já `REVOKED`', async () => {
+      findFirstLicenca.mockResolvedValue({ ...licencaExistente, status: 'REVOKED' });
+
+      await service.process(
+        evento({ order_id: 'ord_123', webhook_event_type: 'chargeback' }),
+        't1',
+      );
+
+      // A 1ª revogação pode ter gravado `REVOKED` e falhado no GitHub (rede, PAT
+      // expirado). Sair antes deixaria a reentrega da plataforma — a chance grátis
+      // de consertar — passar por cima de um reembolsado que continua colaborador.
+      // O service é idempotente: se o acesso já morreu, não fala com o GitHub.
+      expect(revoke).toHaveBeenCalledWith('t1', 'lic_1', 'chargeback');
+      expect(updateLicenca).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('falha inesperada na remoção NÃO derruba o processamento', async () => {
+      revoke.mockRejectedValue(new Error('banco fora'));
+
+      await service.process(
+        evento({ order_id: 'ord_123', webhook_event_type: 'order_refunded' }),
+        't1',
+      );
+
+      // Uma exceção aqui carimbaria o evento como `FAILED`, e o admin, ao
+      // reprocessar, repetiria o e-mail de revogação. Pior: um erro do GitHub
+      // apareceria como "falha no webhook", mandando investigar a Kiwify por um
+      // problema do PAT. A pendência pertence à licença, não ao evento.
+      expect(updateEvento.mock.calls[0][0].data.status).toBe('PROCESSED');
+    });
+
+    it('licença sem source: a remoção é chamada e resolve sozinha', async () => {
+      revoke.mockResolvedValue('nothing_to_do');
+
+      await service.process(
+        evento({ order_id: 'ord_123', webhook_event_type: 'order_refunded' }),
+        't1',
+      );
+
+      // Não há ramo aqui decidindo se chama ou não: o estado do acesso mora na
+      // licença, e quem o lê é o service. Duplicar a decisão neste arquivo abriria
+      // a chance de os dois discordarem.
+      expect(revoke).toHaveBeenCalled();
+      expect(updateEvento.mock.calls[0][0].data.status).toBe('PROCESSED');
     });
   });
 
