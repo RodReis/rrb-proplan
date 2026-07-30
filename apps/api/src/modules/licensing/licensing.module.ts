@@ -8,6 +8,7 @@ import { LicenseAdminService } from './application/license-admin.service';
 import { LicenseExpirySweepService } from './application/license-expiry-sweep.service';
 import { LicenseSigningService } from './application/license-signing.service';
 import { LicensingOpsService } from './application/licensing-ops.service';
+import { LicensingSummaryService } from './application/licensing-summary.service';
 import { SourceInviteService } from './application/source-invite.service';
 import { SourceLinkService } from './application/source-link.service';
 import { LicensePrivacyService } from './application/license-privacy.service';
@@ -86,6 +87,10 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     // o que só acontece quando alguém **pede** — carimbado, com autor e motivo
     // obrigatórios.
     LicensePrivacyService,
+    // As contagens do painel (SPEC-040). **É o service público de métrica que o
+    // MVP4 §3 prometeu**: quem um dia compuser número de licenciamento noutra
+    // tela lê daqui, nunca `lic_*` direto — a arch-spec cobra os dois lados.
+    LicensingSummaryService,
     SourceLinkService,
     // A reconciliação do convite (SPEC-039 PR-3). Sem agendador de propósito:
     // não há `@nestjs/schedule` nem `repeat` no repo e a spec não diz como
@@ -112,6 +117,11 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     WebhookProcessorService,
     LicensingWorker,
   ],
-  exports: [LicenseAdminService, LicenseSigningService],
+  // `LicensingSummaryService` exportado **antes de haver consumidor** — é o
+  // ponto único por onde métrica de licenciamento sai do módulo (MVP4 §3). Sem
+  // ele exportado, o primeiro compositor que precisasse de um número leria
+  // `PrismaService` direto (que é global) e a fronteira desmancharia em
+  // silêncio, sem nenhum `@Module` reclamar.
+  exports: [LicenseAdminService, LicenseSigningService, LicensingSummaryService],
 })
 export class LicensingModule {}

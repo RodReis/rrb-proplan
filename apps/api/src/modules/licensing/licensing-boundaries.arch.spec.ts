@@ -270,3 +270,57 @@ describe('licensing: a rota pública é separada da protegida', () => {
     expect(semComentarios(ativacao)).not.toMatch(/bypass/i);
   });
 });
+
+describe('licensing: métricas saem por um service público (SPEC-040)', () => {
+  it('o `licensing-summary.service.ts` existe — a promessa do MVP4 §3 cumprida', () => {
+    // O `licensing.module.ts` prometia este arquivo desde a Fatia 25: *"se um
+    // compositor quiser métricas daqui, o módulo exporta um
+    // licensing-summary.service.ts"*. Enquanto ele não existia, a promessa era
+    // prosa; agora é o ponto único por onde número de licenciamento sai.
+    const caminho = join(RAIZ, 'application', 'licensing-summary.service.ts');
+    expect(statSync(caminho).isFile()).toBe(true);
+  });
+
+  it('o módulo EXPORTA o service de métrica', () => {
+    // Exportado antes de haver consumidor, de propósito. Sem isso, o primeiro
+    // compositor que precisasse de um número leria `PrismaService` direto (ele
+    // é global) e a fronteira desmancharia em silêncio — nenhum `@Module`
+    // reclamaria, que é exatamente o buraco que o ADR-027 nomeia.
+    const modulo = semComentarios(
+      readFileSync(join(RAIZ, 'licensing.module.ts'), 'utf8'),
+    );
+    expect(modulo).toMatch(/exports:\s*\[[^\]]*LicensingSummaryService/);
+  });
+
+  it('a métrica não lê `payload` — contagem é sobre coluna tipada', () => {
+    // Contar sobre o JSON bruto faria a métrica depender do formato que a
+    // plataforma manda, e mudá-lo do lado dela quebraria a contagem em
+    // silêncio. É também o que garante que a anonimização (que reduz o
+    // payload a uma allowlist) não altere número nenhum.
+    const summary = semComentarios(
+      readFileSync(join(RAIZ, 'application', 'licensing-summary.service.ts'), 'utf8'),
+    );
+    expect(summary).not.toMatch(/payload/);
+  });
+
+  it('nenhum nome de dinheiro aparece no service de métrica', () => {
+    // Prova por ausência, no código e não só no tipo (mesmo desenho das provas
+    // de receita da SPEC-034/035). Preço não é do ProPlan: vive no payload,
+    // sem coluna tipada nem moeda normalizada, e um total derivado dali seria
+    // plausível e indefensável — o número sem origem que o MVP3 §9 barra.
+    const summary = semComentarios(
+      readFileSync(join(RAIZ, 'application', 'licensing-summary.service.ts'), 'utf8'),
+    );
+    expect(summary).not.toMatch(/\b(amount|price|revenue|currency|totalCents|ticket)\b/i);
+  });
+
+  it('o `period.ts` é do módulo, não importado do `dashboard`', () => {
+    // A regra do período é a mesma dos dois (lista fechada + virada em BRT),
+    // mas importar de `dashboard/` criaria a dependência de módulo-irmão que a
+    // primeira regra deste arquivo existe para impedir — por um arquivo de 60
+    // linhas sem estado. A duplicação é o custo escolhido, e os testes dos dois
+    // falham antes de qualquer contagem mentir.
+    expect(statSync(join(RAIZ, 'domain', 'period.ts')).isFile()).toBe(true);
+    expect(varrer(/from '.*dashboard.*period'/)).toEqual([]);
+  });
+});

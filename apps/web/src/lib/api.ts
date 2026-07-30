@@ -1922,6 +1922,47 @@ export interface AnonymizeResult {
   webhookEvents: number;
 }
 
+/** Os quatro períodos das métricas. Lista fechada — o servidor recusa o resto. */
+export type LicensingPeriod = '7' | '30' | '90' | 'current_month';
+
+export interface LicDailyCount {
+  /** `YYYY-MM-DD` **no fuso de São Paulo** — o rótulo que a tela mostra. */
+  day: string;
+  count: number;
+}
+
+/**
+ * As contagens do painel (SPEC-040 §Métricas).
+ *
+ * **Nenhum campo de valor, e é deliberado.** Preço não é do ProPlan (decisão #4
+ * do MVP4): vive no payload do webhook, sem coluna tipada nem moeda
+ * normalizada. Um total derivado dali seria plausível e indefensável. No lugar
+ * dele a tela leva link para a plataforma, que é onde dinheiro se confere.
+ */
+export interface LicensingSummary {
+  period: LicensingPeriod;
+  activationsByDay: LicDailyCount[];
+  licensesByStatus: { active: number; revoked: number; expired: number };
+  /** Contagem de eventos da plataforma na janela. Nunca valor. */
+  sales: { approved: number; refunded: number; chargeback: number };
+  subscriptions: { active: number; pastDue: number };
+  activeMachines: number;
+  sourceAccess: Record<string, number>;
+  /**
+   * **Zero é resultado; ausência é outra coisa.** Viaja fora do recorte de
+   * período porque responde *"já houve alguma vez"* — que nenhuma janela
+   * responde. Sem ele a tela mostraria "0 vendas" para quem nunca vendeu, e o
+   * operador leria como queda.
+   */
+  everSold: boolean;
+}
+
+export function getLicensingSummary(
+  period?: LicensingPeriod,
+): Promise<LicensingSummary> {
+  return request(`/licensing/summary${period ? `?period=${period}` : ''}`);
+}
+
 /**
  * Exclusão a pedido (LGPD, SPEC-040 §Exclusão a pedido).
  *

@@ -36,7 +36,9 @@ import {
   type UpdateSettingsInput,
 } from '../application/licensing-ops.service';
 import { LicensePrivacyService } from '../application/license-privacy.service';
+import { LicensingSummaryService } from '../application/licensing-summary.service';
 import { SourceAdminService } from '../application/source-admin.service';
+import { DEFAULT_PERIOD, isPeriod } from '../domain/period';
 
 /**
  * Os três estados de licença (`LicenseStatus` do schema). Escritos aqui e não
@@ -107,6 +109,7 @@ export class LicensingAdminController {
     private readonly ops: LicensingOpsService,
     private readonly source: SourceAdminService,
     private readonly privacy: LicensePrivacyService,
+    private readonly summaries: LicensingSummaryService,
   ) {}
 
   /**
@@ -206,6 +209,33 @@ export class LicensingAdminController {
       throw new UnprocessableEntityException(`Status inválido: ${status}`);
     }
     return this.licenses.list(req.tenantId!, q, status as LicenseStatus | undefined);
+  }
+
+  /**
+   * As contagens do painel (SPEC-040 §Métricas). **Nenhum valor monetário** —
+   * o tipo da resposta não tem campo de valor, e há teste afirmando isso.
+   *
+   * **Período fora da lista fechada é RECUSADO, nunca corrigido para o padrão**
+   * (§6 da SPEC-035): corrigir em silêncio faria um erro de front virar
+   * contagem plausível de uma janela que ninguém pediu — e ninguém descobriria,
+   * porque o número apareceria normal.
+   *
+   * Um bloco por rota seriam seis requisições para uma tela só; a tela mostra
+   * todos juntos, então a resposta vem junta — mesmo raciocínio do detalhe
+   * agregado.
+   */
+  @Get('summary')
+  summary(@Req() req: AuthenticatedRequest, @Query('period') period?: string) {
+    // O padrão é resolvido AQUI e passado explícito: deixar `undefined` seguir
+    // adiante faria o "30" morar em dois lugares — a rota e o service —, e eles
+    // divergiriam na primeira mudança.
+    if (!period) {
+      return this.summaries.summary(req.tenantId!, DEFAULT_PERIOD);
+    }
+    if (!isPeriod(period)) {
+      throw new UnprocessableEntityException(`Período inválido: ${period}`);
+    }
+    return this.summaries.summary(req.tenantId!, period);
   }
 
   /**

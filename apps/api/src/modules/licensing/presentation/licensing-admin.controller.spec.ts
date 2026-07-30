@@ -5,6 +5,7 @@ import type { LicenseAdminService } from '../application/license-admin.service';
 import type { LicensePrivacyService } from '../application/license-privacy.service';
 import type { LicenseSigningService } from '../application/license-signing.service';
 import type { LicensingOpsService } from '../application/licensing-ops.service';
+import type { LicensingSummaryService } from '../application/licensing-summary.service';
 import type { SourceAdminService } from '../application/source-admin.service';
 import { LicensingAdminController } from './licensing-admin.controller';
 
@@ -30,6 +31,10 @@ function montar() {
     anonymize: jest.fn(async () => ({ id: 'lic-1' })),
   } as unknown as LicensePrivacyService;
 
+  const summaries = {
+    summary: jest.fn(async () => ({ period: '30' })),
+  } as unknown as LicensingSummaryService;
+
   const controller = new LicensingAdminController(
     licenses,
     {} as LicCatalogService,
@@ -37,9 +42,10 @@ function montar() {
     {} as LicensingOpsService,
     {} as SourceAdminService,
     privacy,
+    summaries,
   );
 
-  return { controller, licenses, privacy };
+  return { controller, licenses, privacy, summaries };
 }
 
 describe('SPEC-040: busca de licenças no admin', () => {
@@ -79,6 +85,45 @@ describe('SPEC-040: busca de licenças no admin', () => {
     for (const status of ['ACTIVE', 'REVOKED', 'EXPIRED']) {
       await expect(controller.list(pedido(), '', status)).resolves.toEqual([]);
     }
+  });
+});
+
+describe('SPEC-040: período das métricas', () => {
+  it('período fora da lista fechada é RECUSADO, nunca corrigido', () => {
+    // Corrigir em silêncio para o padrão faria um erro de front virar contagem
+    // plausível de uma janela que ninguém pediu — e ninguém descobriria,
+    // porque o número apareceria normal (§6 da SPEC-035).
+    //
+    // Síncrono de propósito: a rota lança ANTES de devolver a Promise, então
+    // `rejects` não pega nada. Este teste falhou exatamente assim quando eu o
+    // escrevi com `await expect(...).rejects` — e um `expect` que não observa o
+    // que pensa observar passa por qualquer implementação.
+    const { controller, summaries } = montar();
+
+    for (const invalido of ['60', '365', 'last_month', 'CURRENT_MONTH']) {
+      expect(() => controller.summary(pedido(), invalido)).toThrow(
+        UnprocessableEntityException,
+      );
+    }
+    expect(summaries.summary).not.toHaveBeenCalled();
+  });
+
+  it('aceita os quatro da lista', async () => {
+    const { controller, summaries } = montar();
+
+    for (const valido of ['7', '30', '90', 'current_month']) {
+      await controller.summary(pedido(), valido);
+      expect(summaries.summary).toHaveBeenLastCalledWith('t-1', valido);
+    }
+  });
+
+  it('sem período, usa o padrão explícito de 30 dias', async () => {
+    // Passar `undefined` adiante deixaria o padrão morar em dois lugares — a
+    // rota e o service — e eles divergiriam na primeira mudança.
+    const { controller, summaries } = montar();
+    await controller.summary(pedido());
+
+    expect(summaries.summary).toHaveBeenCalledWith('t-1', '30');
   });
 });
 
