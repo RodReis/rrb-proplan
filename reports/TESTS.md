@@ -13,7 +13,7 @@ Totais da última execução (regenerado, não acumulado):
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
 | — | — | — | Regras de Negócio | 2030 | 2030 | 0 | 81.3 | — | — |
-| — | — | — | Banco | 240 | 240 | 0 | 65.1 | — | — |
+| — | — | — | Banco | 242 | 242 | 0 | 65.1 | — | — |
 | — | — | — | Tela | 624 | 624 | 0 | 57.1 | — | — |
 
 ## Histórico por entrega
@@ -244,3 +244,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #214 | SPEC-039 | Regras de Negócio | 2030 | 2030 | 0 | 81.3 | — | — |
 | — | #214 | SPEC-039 | Banco | 240 | 240 | 0 | 65.1 | — | — |
 | — | #214 | SPEC-039 | Tela | 624 | 624 | 0 | 57.1 | — | — |
+| — | #216 | SPEC-038 | Regras de Negócio | 2030 | 2030 | 0 | 81.3 | — | — |
+| — | #216 | SPEC-038 | Banco | 242 | 242 | 0 | 65.1 | — | — |
+| — | #216 | SPEC-038 | Tela | 624 | 624 | 0 | 57.1 | — | — |

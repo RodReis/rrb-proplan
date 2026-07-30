@@ -84,7 +84,11 @@ describe('LicensingOpsService', () => {
       await service.reprocess('ev-1', 'tenant-1');
 
       const update = (prisma.licWebhookEvent.update as jest.Mock).mock.calls[0][0];
-      expect(update.data).toEqual({ status: 'PENDING', error: null });
+      // `processedAt: null` é obrigatório (FIX #216): o CHECK
+      // `lic_webhook_events_processed_coherent` recusa `PENDING` com data, e sem
+      // ele o reprocessar responde `500` — o botão que existe para tirar a venda
+      // do beco seria o único que não funciona.
+      expect(update.data).toEqual({ status: 'PENDING', error: null, processedAt: null });
       expect(add).toHaveBeenCalledWith('webhook', {
         webhookEventId: 'ev-1',
         tenantId: 'tenant-1',
