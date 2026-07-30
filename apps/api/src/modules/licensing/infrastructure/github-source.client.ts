@@ -126,23 +126,126 @@ export class GithubSourceClient {
   }
 
   /**
+   * Convida ao repo com permissão `pull` (SPEC-039 §Job do convite).
+   *
+   * **Dois desfechos de sucesso, e a documentação oficial foi o que me disse
+   * isso** — eu teria tratado tudo como convite:
+   *
+   * - **`201`** → convite criado. O corpo traz a *invitation*, e o `id` dela é o
+   *   que permite **cancelar** depois (`DELETE /invitations/:id`, PR-4). Sem
+   *   guardar esse id, a revogação só saberia remover colaborador — que é no-op
+   *   em convite não aceito, e o reembolsado ficaria com acesso.
+   * - **`204`** → **já era colaborador**, e nenhum convite foi emitido. Acontece
+   *   quando o comprador já tinha acesso (recompra, ou convite aceito entre a
+   *   nossa leitura e esta chamada). Tratar como `INVITED` deixaria a licença
+   *   esperando para sempre uma aceitação que já aconteceu; o certo é `ACTIVE`.
+   *
+   * `permission: 'pull'` — leitura e nada mais. O produto é o código-fonte, não
+   * a colaboração: `push` deixaria o comprador escrever no repositório do
+   * vendedor.
+   */
+  async invite(pat: string, repo: string, username: string): Promise<InviteResult> {
+    const res = await this.send('PUT', `https://api.github.com/repos/${repo}/collaborators/${encodeURIComponent(username)}`, pat, {
+      permission: 'pull',
+    });
+
+    // 204: já é colaborador. A API não devolve corpo, e não há invitation.
+    if (res.status === 204) return { kind: 'already_collaborator' };
+
+    if (res.status === 201) {
+      const body = (await res.json()) as { id?: number };
+      // Sem `id` no corpo, o convite existe e não temos como cancelá-lo. Melhor
+      // registrar como colaborador-em-potencial e deixar a reconciliação
+      // resolver do que gravar `INVITED` com id nulo e mentir para o PR-4.
+      return { kind: 'invited', invitationId: body.id != null ? String(body.id) : null };
+    }
+
+    throw new GithubSourceError(this.motivo(res.status), res.status);
+  }
+
+  /**
+   * O usuário já é colaborador do repo? (`204` sim, `404` não.)
+   *
+   * É como a **aceitação é descoberta**: o GitHub não manda webhook de convite
+   * aceito nesta configuração (repo pessoal), então `INVITED → ACTIVE` sai desta
+   * pergunta, feita pela reconciliação.
+   */
+  async isCollaborator(pat: string, repo: string, username: string): Promise<boolean> {
+    const res = await this.send(
+      'GET',
+      `https://api.github.com/repos/${repo}/collaborators/${encodeURIComponent(username)}`,
+      pat,
+    );
+
+    if (res.status === 204) return true;
+    if (res.status === 404) return false;
+    // Qualquer outra coisa é indefinição, não "não é colaborador". Devolver
+    // `false` num 403 faria a reconciliação concluir que o convite não foi aceito
+    // — e no PR-4 isso viraria a chamada errada de revogação.
+    throw new GithubSourceError(this.motivo(res.status), res.status);
+  }
+
+  /** Mensagem legível por status — é o que vai para `sourceAccessError`. */
+  private motivo(status: number): string {
+    if (status === 401) return 'token inválido ou expirado';
+    if (status === 403) return 'token sem permissão de administração no repositório';
+    if (status === 404) return 'repositório não encontrado ou fora do escopo do token';
+    if (status === 422) return 'o GitHub recusou o convite (validação)';
+    return `GitHub respondeu ${status}`;
+  }
+
+  /**
    * `fetch` com timeout e headers da API. Um único lugar por dois motivos: o
    * `User-Agent` (a API do GitHub recusa requisição sem ele) e a garantia de que
    * nenhum caminho novo esqueça o `AbortSignal.timeout` — sem ele, um GitHub
    * lento pendura o job noturno indefinidamente.
    */
   private get(url: string, pat?: string): Promise<Response> {
+    return this.send('GET', url, pat);
+  }
+
+  private send(
+    method: string,
+    url: string,
+    pat?: string,
+    body?: unknown,
+  ): Promise<Response> {
     return fetch(url, {
+      method,
       headers: {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'rrb-proplan',
         ...(pat ? { Authorization: `Bearer ${pat}` } : {}),
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
+      ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   }
 }
+
+/**
+ * Falha do GitHub com motivo legível e status.
+ *
+ * **Não carrega o PAT, nem em `cause`.** Esta mensagem vai para
+ * `License.sourceAccessError`, que a lista de pendências do admin exibe — e um
+ * token nela entregaria `administration:write` no repositório privado a quem
+ * abrir a tela.
+ */
+export class GithubSourceError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/** O que `invite` descobriu. Os dois desfechos de sucesso da API do GitHub. */
+export type InviteResult =
+  | { kind: 'invited'; invitationId: string | null }
+  | { kind: 'already_collaborator' };
 
 /** O que a página mostra para o comprador confirmar antes de gravar. */
 export interface GithubUser {

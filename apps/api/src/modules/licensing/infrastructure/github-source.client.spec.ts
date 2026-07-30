@@ -170,3 +170,95 @@ describe('checkRepoAccess', () => {
     expect((await new GithubSourceClient().checkRepoAccess('pat', 'x/y')).ok).toBe(false);
   });
 });
+
+describe('invite', () => {
+  it('`201` devolve o id da invitation', async () => {
+    dobrarFetch([{ status: 201, body: { id: 12345 } }]);
+
+    // O id é o que permite CANCELAR o convite depois (PR-4). Sem guardá-lo, a
+    // revogação só saberia remover colaborador — que é no-op em convite não
+    // aceito, e o reembolsado ficaria com acesso ao código.
+    expect(await new GithubSourceClient().invite('pat', 'o/r', 'RodReis')).toEqual({
+      kind: 'invited',
+      invitationId: '12345',
+    });
+  });
+
+  it('`204` significa "já era colaborador", não convite', async () => {
+    dobrarFetch([{ status: 204 }]);
+
+    // **A documentação oficial foi o que me disse isso** — eu teria tratado tudo
+    // como convite. `204` acontece na recompra, ou quando o convite é aceito
+    // entre a nossa leitura e esta chamada.
+    expect(await new GithubSourceClient().invite('pat', 'o/r', 'RodReis')).toEqual({
+      kind: 'already_collaborator',
+    });
+  });
+
+  it('`201` sem `id` devolve `invitationId: null` em vez de mentir', async () => {
+    dobrarFetch([{ status: 201, body: {} }]);
+
+    // Gravar `INVITED` com um id inventado faria o PR-4 chamar
+    // `DELETE /invitations/undefined`. Nulo é honesto: a reconciliação resolve.
+    expect(await new GithubSourceClient().invite('pat', 'o/r', 'x')).toEqual({
+      kind: 'invited',
+      invitationId: null,
+    });
+  });
+
+  it('pede permissão `pull`, nunca `push`', async () => {
+    const mock = dobrarFetch([{ status: 201, body: { id: 1 } }]);
+
+    await new GithubSourceClient().invite('pat', 'o/r', 'RodReis');
+
+    // O produto é o código-fonte, não a colaboração: `push` deixaria o comprador
+    // escrever no repositório do vendedor.
+    const init = mock.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ permission: 'pull' });
+  });
+
+  it.each([
+    [401, /expirado/],
+    [403, /permissão/],
+    [404, /não encontrado/],
+    [422, /recusou/],
+  ])('%s lança com motivo legível', async (status, esperado) => {
+    dobrarFetch([{ status }]);
+
+    // A mensagem vai para `sourceAccessError`, exibido no admin — por isso é
+    // construída a partir do STATUS, nunca do corpo ou dos headers da resposta.
+    await expect(new GithubSourceClient().invite('pat', 'o/r', 'x')).rejects.toThrow(esperado);
+  });
+
+  it('escapa o username na URL', async () => {
+    const mock = dobrarFetch([{ status: 204 }]);
+
+    await new GithubSourceClient().invite('pat', 'o/r', 'a b');
+
+    expect(mock.mock.calls[0][0]).toBe(
+      'https://api.github.com/repos/o/r/collaborators/a%20b',
+    );
+  });
+});
+
+describe('isCollaborator', () => {
+  it('`204` é colaborador; `404` não é', async () => {
+    dobrarFetch([{ status: 204 }]);
+    expect(await new GithubSourceClient().isCollaborator('pat', 'o/r', 'x')).toBe(true);
+
+    dobrarFetch([{ status: 404 }]);
+    expect(await new GithubSourceClient().isCollaborator('pat', 'o/r', 'x')).toBe(false);
+  });
+
+  it.each([401, 403, 500])('%s LANÇA, não devolve `false`', async (status) => {
+    dobrarFetch([{ status }]);
+
+    // Devolver `false` num `403` faria a reconciliação concluir "não aceitou" —
+    // e no PR-4 isso viraria a chamada errada de revogação: cancelar uma
+    // invitation que já não existe, deixando o colaborador no repositório.
+    await expect(
+      new GithubSourceClient().isCollaborator('pat', 'o/r', 'x'),
+    ).rejects.toThrow();
+  });
+});

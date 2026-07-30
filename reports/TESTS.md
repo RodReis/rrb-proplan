@@ -12,8 +12,8 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 1896 | 1896 | 0 | 80.6 | — | — |
-| — | — | — | Banco | 240 | 240 | 0 | 68.1 | — | — |
+| — | — | — | Regras de Negócio | 1931 | 1931 | 0 | 80.8 | — | — |
+| — | — | — | Banco | 240 | 240 | 0 | 65.8 | — | — |
 | — | — | — | Tela | 579 | 579 | 0 | 55.9 | — | — |
 
 ## Histórico por entrega
@@ -234,4 +234,7 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #195 | SPEC-039 | Tela | 562 | 562 | 0 | 55.0 | #207 | [#207](https://github.com/RodReis/rrb-proplan/pull/207) |
 | — | #195 | SPEC-039 | Regras de Negócio | 1896 | 1896 | 0 | 80.6 | — | — |
 | — | #195 | SPEC-039 | Banco | 240 | 240 | 0 | 68.1 | — | — |
+| — | #195 | SPEC-039 | Tela | 579 | 579 | 0 | 55.9 | — | — |
+| — | #195 | SPEC-039 | Regras de Negócio | 1931 | 1931 | 0 | 80.8 | — | — |
+| — | #195 | SPEC-039 | Banco | 240 | 240 | 0 | 65.8 | — | — |
 | — | #195 | SPEC-039 | Tela | 579 | 579 | 0 | 55.9 | — | — |

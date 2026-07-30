@@ -8,6 +8,7 @@ import { LicenseAdminService } from './application/license-admin.service';
 import { LicenseExpirySweepService } from './application/license-expiry-sweep.service';
 import { LicenseSigningService } from './application/license-signing.service';
 import { LicensingOpsService } from './application/licensing-ops.service';
+import { SourceInviteService } from './application/source-invite.service';
 import { SourceLinkService } from './application/source-link.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
@@ -78,6 +79,11 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     LicenseSigningService,
     LicensingOpsService,
     SourceLinkService,
+    // A reconciliação do convite (SPEC-039 PR-3). Sem agendador de propósito:
+    // não há `@nestjs/schedule` nem `repeat` no repo e a spec não diz como
+    // dispara — escolher isso é decisão de infra. O método é chamável, e o
+    // PR-5 dá o botão ao admin.
+    SourceInviteService,
     // O cliente do GitHub do caminho do convite — **não** o do GitHub App
     // (ADR-015). Credenciais de propósitos diferentes: aqui é PAT fine-grained
     // com `administration:write` num repo só, e a arch-spec cobra a separação.

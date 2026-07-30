@@ -6147,3 +6147,82 @@ pré-existentes).
 **Pendente: dogfooding.** A página nunca foi aberta no navegador, e o convite
 real ao GitHub é do PR-3. O `checkRepoAccess` existe mas ainda não tem chamador —
 é do PR-5, junto do campo de PAT no admin.
+
+### PR-3 — o convite, e o que a documentação oficial corrigiu
+
+- [x] `SourceInviteService.reconcile(tenantId)` — duas fases, idempotente por estado
+- [x] `GithubSourceClient.invite` e `.isCollaborator`
+- [x] `CryptoService` exportado do `identity` (PAT cifrado com a chave existente)
+- [x] +35 testes de regra
+
+**A documentação oficial mudou uma decisão que eu teria errado por suposição.**
+`PUT /repos/:owner/:repo/collaborators/:username` tem **dois desfechos de
+sucesso**, não um:
+
+| resposta | significado |
+|---|---|
+| `201` | convite criado — o corpo traz a *invitation*, e o `id` dela é o que permite **cancelar** depois |
+| `204` | **já era colaborador**; nenhum convite foi emitido |
+
+Eu trataria tudo como convite. O `204` acontece na recompra, ou quando o convite
+é aceito entre a nossa leitura e a chamada — e gravar `INVITED` nesse caso
+deixaria a licença esperando **para sempre** uma aceitação que já aconteceu, com o
+PR-4 tentando cancelar uma invitation inexistente. Agora `204` grava `ACTIVE`.
+
+**A reconciliação não é gatilho de data, e o filtro prova isso.** `sourceInviteAt
+<= agora`, nunca `= hoje`. Um job por data exata deixaria órfão, para sempre e em
+silêncio, o comprador que informou o username no dia 9 — o caso mais provável de
+todos, porque depende de alguém ler e-mail. Há teste afirmando que o `where` tem
+`lte` e **não tem** `equals` nem `gte`.
+
+**A aceitação é descoberta, não notificada.** O GitHub não manda webhook de
+convite aceito em repo pessoal, então `INVITED → ACTIVE` sai de
+`GET /collaborators/:username` (`204` sim, `404` não) na mesma rodada. Sem isso a
+licença aceita ficaria `INVITED` indefinidamente.
+
+**Falha na promoção NÃO rebaixa o estado.** Um `401` não significa "não aceitou",
+significa "não deu para saber": a licença continua `INVITED` e a próxima rodada
+tenta de novo. Rebaixar para `FAILED` faria a lista de pendências acusar o
+comprador por um problema do nosso token. Já na fase de **convite**, a falha vira
+`FAILED` com motivo legível — *"reembolsado que continua colaborador"* é a falha
+que custa dinheiro, e não pode viver só no log.
+
+**Sem username não é falha.** É pendência humana, contada em campo próprio
+(`aguardandoUsername`). Marcar `FAILED` misturaria o silêncio do comprador com
+defeito nosso, e a coluna de falhas do admin perderia o significado.
+
+**Uma falha não interrompe a fila.** Cada licença é tratada num `try` próprio; uma
+rodada que morresse na primeira falha deixaria todas as seguintes sem convite, e o
+sintoma seria *"o job roda e ninguém é convidado"*.
+
+**Sem agendador, e registrado como pendência de infra.** Não há
+`@nestjs/schedule` nem `repeat` de BullMQ no repo, e a spec diz "job diário" sem
+dizer como dispara — mesmo tratamento do job de `EXPIRED` da SPEC-038. O método é
+chamável, testável, e o PR-5 dá o botão ao admin. **Nada de acesso depende de ele
+rodar na hora**: atraso adia um convite, não concede nem revoga nada.
+
+**`CryptoService` passou a ser exportado do `identity`.** A alternativa era
+duplicar AES-256-GCM no `licensing` — dois lugares para a mesma primitiva, com o
+risco de os formatos divergirem em silêncio. Não abre o `identity`: é cifra pura,
+sem Prisma e sem estado.
+
+### PR-3 — verificação
+
+**Uma vulnerabilidade real, achada pelo teste que escrevi para procurá-la.** O
+`sourceAccessError` é **exibido na tela do admin**, e o código gravava ali a
+mensagem de qualquer erro — inclusive a de um `fetch` que arrasta o header
+`Authorization`. O teste montou um erro com `Bearer <pat>` no texto e provou o
+vazamento: quem abrisse a página de pendências sairia com
+`administration:write` no repositório privado.
+
+Agora **só mensagem curada** chega ao banco (construída a partir do *status*,
+nunca do corpo ou dos headers); erro desconhecido vira texto fixo apontando para
+o log. E o log **redige o `Bearer`** — log não é superfície pública, mas também
+não é lugar de segredo. Dois testes ancoram as duas metades.
+
+**Suíte**: regras **1931** (+35), banco 240, tela 579 — **2171 verdes** na API.
+Build nos três apps, lint 0 erros (3 warnings pré-existentes).
+
+**Pendente**: o convite real nunca saiu — exige PAT fine-grained configurado, que
+é do PR-5. A revogação (`DELETE /invitations/:id` × `DELETE /collaborators/:user`)
+é o PR-4.
