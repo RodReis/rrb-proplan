@@ -107,11 +107,29 @@ describe('findUser', () => {
 });
 
 describe('checkRepoAccess', () => {
-  it('PAT com admin no repo passa', async () => {
-    dobrarFetch([{ status: 200, body: { permissions: { admin: true } } }]);
+  it('PAT com admin E leitura de conteúdo no repo passa', async () => {
+    dobrarFetch([{ status: 200, body: { permissions: { admin: true, pull: true } } }]);
 
+    // Os DOIS escopos desde a SPEC-041: `administration:write` convida (SPEC-039),
+    // `contents:read` baixa o asset da release. Mesmo token, mesmo repo.
     expect(await new GithubSourceClient().checkRepoAccess('pat', 'RodReis/war-room')).toEqual({
       ok: true,
+    });
+  });
+
+  it('PAT que administra mas não lê conteúdo falha, nomeando o escopo', async () => {
+    dobrarFetch([{ status: 200, body: { permissions: { admin: true, pull: false } } }]);
+
+    // **O caso que a SPEC-041 acrescentou, e o mais mudo do módulo.** O convite
+    // funcionaria; só o download da release falharia — e falharia na máquina do
+    // cliente, sem venda travada, sem pendência, sem erro no admin. Ninguém
+    // descobre por reclamação: descobre pela ausência dela.
+    const r = await new GithubSourceClient().checkRepoAccess('pat', 'RodReis/war-room');
+
+    expect(r).toEqual({
+      ok: false,
+      reason:
+        'o token não tem permissão de leitura de conteúdo (`contents:read`) — o download de releases falharia sem aviso',
     });
   });
 
@@ -153,7 +171,7 @@ describe('checkRepoAccess', () => {
   });
 
   it('manda o PAT no header', async () => {
-    const mock = dobrarFetch([{ status: 200, body: { permissions: { admin: true } } }]);
+    const mock = dobrarFetch([{ status: 200, body: { permissions: { admin: true, pull: true } } }]);
 
     await new GithubSourceClient().checkRepoAccess('pat-secreto', 'x/y');
 

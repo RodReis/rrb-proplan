@@ -225,6 +225,40 @@ no processamento, porque reenvio não conserta oferta sem mapeamento.
 Webhook* dispara eventos de teste, e o menu de três pontos → *Ver logs* mostra
 requisição e resposta de cada entrega, com **reenvio manual** por log.
 
+### 3.7 PAT do repo source — escopos e rotação (SPEC-039 + SPEC-041)
+
+**Não é variável de ambiente.** O PAT vive em `LicSettings.githubPat`, **por
+tenant**, cifrado com o `TOKEN_ENCRYPTION_KEY`, gravado pela tela de
+configurações do licenciamento. Está aqui porque **expira** — e rotacionar é ato
+operacional, não de código.
+
+**Token fine-grained**, com dono = a conta que administra o repositório do
+produto (`LicProduct.sourceRepo`). Dois escopos, **ambos obrigatórios**, no
+mesmo repo:
+
+| escopo | quem usa | o que quebra sem ele |
+|---|---|---|
+| `administration:write` | convite ao colaborador (SPEC-039) | a compra emite licença e o convite nunca sai; aparece como pendência `FAILED` no admin |
+| `contents:read` | download do asset da release (SPEC-041) | **falha muda**: a máquina do cliente para de receber update, sem venda travada e sem pendência |
+
+O segundo é o perigoso, e é por isso que o **teste de conexão do admin valida os
+dois** desde a SPEC-041. Um PAT que administra sem ler conteúdo passaria no teste
+antigo e falharia só na máquina de quem comprou — descoberto pela ausência de
+reclamação, não por erro.
+
+**Rotação** (o GitHub não avisa antes de expirar):
+
+1. Gerar o token novo no GitHub — *Settings → Developer settings → Personal access
+   tokens → Fine-grained*, escopo nos **dois** itens acima, só no repo do produto.
+2. Colar na tela de configurações do licenciamento do tenant. O valor antigo é
+   substituído; não há caminho para lê-lo de volta (write-only, por desenho).
+3. **Rodar o teste de conexão** e conferir o verde. É o único ponto do fluxo que
+   confirma os dois escopos antes de uma venda real depender deles.
+4. Revogar o token antigo no GitHub.
+
+**Ordem importa**: revogar antes de gravar o novo deixa a janela em que convite e
+download falham juntos.
+
 ### 3.2 Serviço `web`
 
 | Variável | Valor | Nota |

@@ -115,6 +115,9 @@ model Tenant {
   licenses          License[]
   licActivations    Activation[]
   licEvents         LicEvent[]
+  // Versões publicadas (SPEC-041). Raiz pelo mesmo motivo das demais: o caminho
+  // público as procura sem id de linha vindo do cliente.
+  licReleases       LicRelease[]
   // Venda automatizada (SPEC-038): o que chega da plataforma, o que sai por
   // e-mail e o que configura os dois. `LicSettings` é 1:1 — um tenant tem um
   // segredo de webhook e uma política de inadimplência, não uma lista.
@@ -1537,6 +1540,7 @@ model LicProduct {
   // produto — junto iriam as licenças já vendidas dele.
   project   Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
   editions  LicEdition[]
+  releases  LicRelease[]
 
   // Slug único POR TENANT, não global: dois tenants podem vender um `warroom`
   // cada um, e nada relaciona os dois.
@@ -1578,6 +1582,55 @@ model LicEdition {
 
   @@unique([productId, slug])
   @@map("lic_editions")
+}
+
+// Uma versão publicada do produto (SPEC-041). **Ponteiro, não arquivo** — os
+// bytes vivem na Release privada do GitHub (ADR-028) e nunca entram no Postgres
+// nem atravessam a API.
+//
+// **Raiz de tenancy, ao contrário de `LicEdition`.** A edição corta por JOIN no
+// produto porque nada a busca direto; esta é procurada por
+// `(licença → produto, versão)` no caminho público de `check`/`download`, sem
+// nenhum id de linha vindo do cliente. Um filtro esquecido ali serviria release
+// de outro tenant — a policy de linha é o que fecha isso sem depender de eu
+// lembrar do `where`.
+model LicRelease {
+  id         String     @id @default(uuid())
+  tenantId   String     @map("tenant_id")
+  productId  String     @map("product_id")
+  // Semver da versão, como o instalador se identifica.
+  version    String
+  // Alvo do artefato. `win-x64` no piloto; o campo existe porque a mesma versão
+  // vira arquivos diferentes por plataforma, e descobrir isso depois exigiria
+  // migrar linhas já vendidas.
+  os         String
+  // Quando a versão saiu — é o lado direito da autorização
+  // (`updatesUntil >= releasedAt`). Informado pelo admin, não `now()`: registrar
+  // uma release antiga com a data de hoje a tornaria indevidamente autorizada
+  // para quem já tinha a janela vencida.
+  releasedAt DateTime   @map("released_at")
+  // Id do asset na Release do GitHub — o que o download troca por URL assinada.
+  assetId    String     @map("asset_id")
+  // Hash do arquivo, conferido pela máquina do cliente depois de baixar. Vem do
+  // admin junto com o `assetId`: sem ele, um asset trocado no GitHub passaria
+  // despercebido.
+  sha256     String
+  notes      String?
+  // Despublicar tira do `check` E do `download` — sem apagar a linha, porque a
+  // trilha de quem já baixou aponta para ela.
+  published  Boolean    @default(true)
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product    LicProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // A mesma versão só existe uma vez por plataforma. Sem isto, registrar
+  // `1.2.0/win-x64` duas vezes daria duas respostas possíveis ao `check`, e a
+  // escolhida seria a que o banco devolvesse primeiro.
+  @@unique([productId, version, os])
+  // A leitura do `check`: as versões deste produto, mais nova primeiro.
+  @@index([productId, releasedAt])
+  @@map("lic_releases")
 }
 
 // A licença. Raiz de tenancy.
