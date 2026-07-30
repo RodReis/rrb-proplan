@@ -17,6 +17,8 @@ describe('WebhookProcessorService', () => {
   const findFirstMapeamento = jest.fn();
   const findFirstLicEvent = jest.fn();
   const send = jest.fn();
+  /** O link de coleta do username (SPEC-039) — só a compra source o dispara. */
+  const createAndSend = jest.fn();
 
   const prisma = {
     licWebhookEvent: { findUnique: findUniqueEvento, update: updateEvento },
@@ -33,7 +35,22 @@ describe('WebhookProcessorService', () => {
     name: 'Sem código-fonte',
     billingModel: 'PERPETUAL',
     updatesMonths: 12,
+    // A coluna que decide o agendamento do convite (SPEC-039). Era o slug até o
+    // PR-1 daquela fatia.
+    grantsSourceAccess: false,
     product: { keyPrefix: 'WR', name: 'War Room' },
+  };
+
+  /** A edição que concede código-fonte — nome diferente de `source` de propósito. */
+  const edicaoSource = {
+    ...edicao,
+    id: 'edi_src',
+    // **Slug que NÃO é `source`.** É o que prova que a decisão vem da coluna: com
+    // o hardcode antigo (`slug === 'source'`) esta edição não agendaria convite
+    // nenhum, e o comprador da edição mais cara nunca receberia o código.
+    slug: 'completa',
+    name: 'Completa com código-fonte',
+    grantsSourceAccess: true,
   };
 
   const licencaExistente = {
@@ -43,6 +60,7 @@ describe('WebhookProcessorService', () => {
     customerName: 'Mario',
     expiresAt: new Date('2026-09-01T00:00:00Z'),
     pastDueAt: null,
+    sourceAccess: 'NONE',
     edition: edicao,
   };
 
@@ -58,7 +76,12 @@ describe('WebhookProcessorService', () => {
     findFirstLicEvent.mockResolvedValue(null);
     findFirstMapeamento.mockResolvedValue({ edition: edicao });
     createLicenca.mockResolvedValue({ id: 'lic_nova' });
-    service = new WebhookProcessorService(prisma, { send } as never);
+    createAndSend.mockResolvedValue({ token: 'tok' });
+    service = new WebhookProcessorService(
+      prisma,
+      { send } as never,
+      { createAndSend } as never,
+    );
   });
 
   const compra = {
@@ -145,20 +168,80 @@ describe('WebhookProcessorService', () => {
       expect(createLicenca.mock.calls[0][0].data.expiresAt).toBeNull();
     });
 
-    it('edição `source` agenda o convite para o 8º dia', async () => {
-      // A data nasce aqui; o convite é da SPEC-039.
-      findFirstMapeamento.mockResolvedValue({ edition: { ...edicao, slug: 'source' } });
+    it('edição que concede source agenda o convite para o 8º dia', async () => {
+      findFirstMapeamento.mockResolvedValue({ edition: edicaoSource });
 
       await service.process(evento(compra), 't1');
 
       const { issuedAt, sourceInviteAt } = createLicenca.mock.calls[0][0].data;
+      // 8 dias = prazo legal de arrependimento (CDC art. 49, decisão #5 do MVP4).
       const dias = (sourceInviteAt.getTime() - issuedAt.getTime()) / 86_400_000;
       expect(dias).toBe(8);
     });
 
-    it('edição comum não agenda convite', async () => {
+    it('decide pela COLUNA, não pelo slug `source`', async () => {
+      // `edicaoSource.slug` é `completa`, não `source`. Com o hardcode antigo
+      // (`slug === 'source'`) este caso não agendaria convite nenhum: a licença
+      // sairia normal, o comprador da edição mais cara nunca receberia o código,
+      // e nada apareceria em log. É o bug que a coluna fecha.
+      findFirstMapeamento.mockResolvedValue({ edition: edicaoSource });
+
       await service.process(evento(compra), 't1');
+
+      expect(edicaoSource.slug).not.toBe('source');
+      expect(createLicenca.mock.calls[0][0].data.sourceInviteAt).not.toBeNull();
+      expect(createLicenca.mock.calls[0][0].data.sourceAccess).toBe('PENDING');
+    });
+
+    it('nasce `PENDING` para entrar na lista de pendências do admin', async () => {
+      findFirstMapeamento.mockResolvedValue({ edition: edicaoSource });
+
+      await service.process(evento(compra), 't1');
+
+      // `PENDING` já na compra, antes de o comprador informar o username: é o que
+      // faz a licença sem username APARECER para o operador, em vez de
+      // simplesmente não existir para ninguém.
+      expect(createLicenca.mock.calls[0][0].data.sourceAccess).toBe('PENDING');
+    });
+
+    it('manda o link de coleta DEPOIS da chave', async () => {
+      findFirstMapeamento.mockResolvedValue({ edition: edicaoSource });
+
+      await service.process(evento(compra), 't1');
+
+      // A ordem importa: o que o comprador pagou é a chave; o convite vem no 8º
+      // dia. Invertida, o e-mail mais urgente chegaria depois do menos urgente.
+      expect(send).toHaveBeenCalled();
+      expect(createAndSend).toHaveBeenCalledWith('t1', 'lic_nova');
+      expect(send.mock.invocationCallOrder[0]).toBeLessThan(
+        createAndSend.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('falha no link de coleta NÃO desfaz a emissão', async () => {
+      findFirstMapeamento.mockResolvedValue({ edition: edicaoSource });
+      createAndSend.mockRejectedValue(new Error('redis fora'));
+
+      // A licença já está gravada e a chave já foi enfileirada. Derrubar a compra
+      // aqui trocaria um problema recuperável (reemitir o link pelo admin) por um
+      // irrecuperável — a plataforma não reenvia o evento de compra por erro
+      // nosso.
+      await service.process(evento(compra), 't1');
+
+      expect(createLicenca).toHaveBeenCalled();
+      expect(updateEvento).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'PROCESSED' }) }),
+      );
+    });
+
+    it('edição comum não agenda convite nem manda link', async () => {
+      await service.process(evento(compra), 't1');
+
       expect(createLicenca.mock.calls[0][0].data.sourceInviteAt).toBeNull();
+      expect(createLicenca.mock.calls[0][0].data.sourceAccess).toBe('NONE');
+      // O e-mail de coleta pedindo username a quem não comprou código-fonte
+      // seria confuso e pediria dado pessoal sem finalidade (LGPD).
+      expect(createAndSend).not.toHaveBeenCalled();
     });
   });
 
@@ -226,6 +309,49 @@ describe('WebhookProcessorService', () => {
       );
       expect(updateLicenca.mock.calls[0][0].data.sourceInviteAt).toBeNull();
     });
+
+    it('`PENDING` volta a `NONE` — sai da fila do job', async () => {
+      findFirstLicenca.mockResolvedValue({
+        ...licencaExistente,
+        sourceAccess: 'PENDING',
+      });
+
+      await service.process(
+        evento({ order_id: 'ord_123', webhook_event_type: 'order_refunded' }),
+        't1',
+      );
+
+      // Sem isto a licença revogada ficaria em `PENDING` para sempre na lista de
+      // pendências: um convite que nunca sai (o job exige `ACTIVE`) e que ninguém
+      // consegue resolver.
+      expect(updateLicenca.mock.calls[0][0].data.sourceAccess).toBe('NONE');
+    });
+
+    it.each(['INVITED', 'ACTIVE'])(
+      '`%s` NÃO é sobrescrito — o PR-4 precisa saber qual chamada desfaz',
+      async (estado) => {
+        findFirstLicenca.mockResolvedValue({
+          ...licencaExistente,
+          sourceAccess: estado,
+        });
+
+        await service.process(
+          evento({ order_id: 'ord_123', webhook_event_type: 'order_refunded' }),
+          't1',
+        );
+
+        // **A razão de o enum existir.** `INVITED` cancela a *invitation* pelo
+        // `githubInvitationId`; `ACTIVE` remove o colaborador pelo username. Se
+        // a revogação apagasse o estado com `NONE`, o PR-4 chamaria a errada —
+        // que é no-op silencioso na API do GitHub — e o reembolsado ficaria com o
+        // código-fonte. Era exatamente o que o `sourceInvited: Boolean` não
+        // distinguia.
+        const gravado = updateLicenca.mock.calls[0][0].data;
+        expect(gravado.sourceAccess).toBeUndefined();
+        // E a revogação em si acontece: o que se preserva é só o estado do acesso.
+        expect(gravado.status).toBe('REVOKED');
+      },
+    );
 
     it('revogar de novo não reescreve a data nem manda 2º e-mail', async () => {
       // A 1ª revogação é o fato; a 2ª é reentrega.

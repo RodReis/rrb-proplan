@@ -6043,3 +6043,107 @@ desta fatia — o SQL escrito à mão casa com o modelo (as duas linhas de
 **Suíte**: regras 1804, banco **232** (+13), tela 562 — **2036 verdes** na API.
 Build nos três apps, lint 0 erros (3 warnings pré-existentes), `reports/TESTS.md`
 regenerado para a guarda do ADR-019.
+
+### PR-2 — a coleta do username
+
+- [x] `GET /source-links/:token` · `POST .../lookup` · `POST .../username`
+- [x] Página pública React `/s/:token`, duas etapas com confirmação por avatar
+- [x] `GithubSourceClient` (PAT, **separado** do cliente do GitHub App)
+- [x] Templates `source_username_request` e `source_username_confirmed`
+- [x] Gatilho na compra: o webhook decide pela **coluna**, não pelo slug
+- [x] +92 testes de regra, +8 de banco, +15 de tela
+
+**O hardcode que o PR-1 previu estava vivo, e eu o matei aqui.** O webhook da
+SPEC-038 agendava o convite por `edicao.slug === 'source'`. Agora decide por
+`grantsSourceAccess`, e há teste com uma edição de slug **`completa`** que
+concede source: com o hardcode antigo ela não agendaria convite nenhum — a
+licença sairia normal, o comprador da edição mais cara do catálogo nunca
+receberia o código, e nada apareceria em log.
+
+**A licença nasce `PENDING` na compra**, antes de o comprador informar o
+username. É o que faz a licença sem username **aparecer** na lista de pendências
+do admin, em vez de simplesmente não existir para ninguém.
+
+**Na revogação, `PENDING` volta a `NONE`; `INVITED` e `ACTIVE` não são tocados.**
+Essa condição é a razão de o enum existir. Limpar o estado de quem ainda não foi
+convidado tira a licença da fila do job — sem isso ela ficaria em `PENDING` para
+sempre na lista de pendências, um convite que nunca sai e ninguém resolve. Mas se
+o convite **já saiu**, sobrescrever com `NONE` apagaria justamente o que diz qual
+chamada desfaz o acesso: `INVITED` cancela a *invitation* pelo
+`githubInvitationId`, `ACTIVE` remove o colaborador pelo username. Perdido o
+estado, o PR-4 chamaria a errada — que é no-op silencioso — e o reembolsado
+ficaria com o código-fonte. Era exatamente o que o booleano não distinguia.
+
+**O e-mail de coleta sai depois da chave, e falhar nele não desfaz a compra.** A
+licença já está gravada e a chave já foi enfileirada; derrubar a emissão por
+causa do segundo e-mail trocaria um problema recuperável (reemitir o link pelo
+admin) por um irrecuperável — a plataforma não reenvia o evento de compra por
+erro nosso.
+
+**Três desfechos, não dois, na consulta ao GitHub.** `404` é "não existe";
+`403`/`429`/`5xx` **lançam**. Tratar rede fora como "usuário não existe" faria o
+comprador corrigir um dado correto — ou desistir. É o precedente do FIX #136, e
+a tela chega a dizer *"o seu usuário provavelmente está certo"*.
+
+**A sintaxe do username é validada ANTES da rede**, e não por elegância: sem
+isso, `../../admin` é interpolado em `GET /users/:username` e a requisição sai
+para outro endpoint da API do GitHub. Há teste com cinco formas de path
+traversal afirmando que o cliente nunca é chamado.
+
+**`used` é distinto de `invalid`**, e é o único ponto em que esta rota não é
+não-diferencial. O critério de aceite exige que reabrir o próprio link mostre
+*"já utilizado"* — mostrar o formulário de novo faria quem já informou concluir
+que o envio falhou, e informar outra vez. O que continua indistinguível são
+inexistente e de outro tenant, que é onde a não-diferenciação protege: a
+enumeração de tokens.
+
+**O username fica `PENDING`, nunca `INVITED`**, ao ser gravado. O comprador
+informou o login; o convite ainda não saiu. Marcar `INVITED` aqui afirmaria um
+convite que ninguém emitiu — e o job do PR-3, que seleciona `PENDING`, nunca
+convidaria esta licença.
+
+**O link queima na MESMA transação do username**, com `usedAt: null` no `WHERE`.
+Separá-los abriria a janela em que o username está gravado e o link ainda serve —
+e o link serve para gravar username: quem tivesse a URL sobrescreveria o dado de
+quem comprou. Um `if` antes do update deixaria duas requisições simultâneas
+passarem; o teste de corrida prova que a segunda é recusada.
+
+**A URL do e-mail é a da web, não a da API.** `/s/:token` é rota React. Mandar a
+base da API levaria o comprador a um JSON — ou ao catálogo, sem erro visível. Já
+aconteceu nesta base com `/b/` (web) e `/c/` (API), e há teste afirmando a porta.
+
+### PR-2 — verificação
+
+**Dois defeitos meus, achados por teste que eu escrevi para pegá-los.**
+
+O primeiro: **`503` no carregamento do link mostrava "Link inválido"**. A causa
+era a tradução no cliente HTTP — todo `503` virava `GithubUnavailableError`, e a
+página só tratava `UnreachableError`, então caía no `else` como inválido. Mas no
+`GET` do link **não existe GitHub envolvido**: ali um `503` é a nossa API fora do
+ar. Acusar de ruim um link intacto, de uso único e sem segunda via, é o pior
+desfecho possível desta tela.
+
+O segundo: o int-spec inteiro falhava com *"licença não encontrada"* porque o
+`PrismaService` lê `DATABASE_URL` do `.env` — o banco de **dev**. O service
+escrevia num banco e o `owner` lia noutro. O int-spec do `/activate` carrega
+esse mesmo aviso desde a SPEC-036; eu repeti o erro que já estava documentado.
+
+**Um falso positivo de arch-spec corrigido.** A
+`installation-token-usage.arch.spec.ts` (ADR-015) varria `.installationToken(`
+sobre o texto cru, e o `github-source.client.ts` **cita o método em prosa** —
+justamente para explicar que não o chama. Reprovado pela frase que documenta a
+própria conformidade. Passou a descartar comentários, como a
+`licensing-boundaries` já fazia. **Provado nos dois sentidos**: verde com o
+comentário, e vermelho quando inseri uma chamada real de teste.
+
+**Prova contra o bug**: derrubada a `resolve_source_link` no banco de teste,
+**7 dos 8** testes de integração falham — a medida de que a rota pública depende
+dela de verdade.
+
+**Suíte**: regras **1896** (+92), banco **240** (+8), tela **579** (+17) —
+**2136 verdes** na API. Build nos três apps, lint 0 erros (3 warnings
+pré-existentes).
+
+**Pendente: dogfooding.** A página nunca foi aberta no navegador, e o convite
+real ao GitHub é do PR-3. O `checkRepoAccess` existe mas ainda não tem chamador —
+é do PR-5, junto do campo de PAT no admin.

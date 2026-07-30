@@ -42,10 +42,30 @@ function tsFiles(dir: string): string[] {
   return out;
 }
 
+/**
+ * Tira comentários de bloco e de linha antes de varrer.
+ *
+ * A regra é sobre o que **executa**. Sem isto, um arquivo que documenta a
+ * própria conformidade — *"este arquivo não chama `.installationToken(`"* — é
+ * reprovado pela frase que explica por que ele está correto. Aconteceu com o
+ * `licensing/infrastructure/github-source.client.ts` (SPEC-039), que existe
+ * justamente porque o caminho do convite usa PAT e **não** o token de
+ * instalação.
+ *
+ * Um arch-spec que grita por engano é um arch-spec que alguém desliga — e aí ele
+ * para de proteger a regra de verdade. Mesma correção que a
+ * `licensing-boundaries.arch.spec.ts` já carrega, e pelo mesmo motivo.
+ */
+function semComentarios(fonte: string): string {
+  return fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
+
 describe('arquitetura: installationToken só em caminhos de escrita', () => {
   it('nenhum caminho fora da allowlist chama installationToken', () => {
     const offenders = tsFiles(MODULES_DIR)
-      .filter((file) => /\.installationToken\s*\(/.test(readFileSync(file, 'utf-8')))
+      .filter((file) =>
+        /\.installationToken\s*\(/.test(semComentarios(readFileSync(file, 'utf-8'))),
+      )
       .map((file) => file.slice(MODULES_DIR.length + 1).replace(/\\/g, '/'))
       .filter(
         (rel) => !WRITE_ALLOWLIST.some((allowed) => rel.endsWith(allowed.replace(/\\/g, '/'))),

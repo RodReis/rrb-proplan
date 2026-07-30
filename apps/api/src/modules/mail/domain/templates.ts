@@ -25,7 +25,11 @@ export interface RenderedMail {
 }
 
 /** Nomes dos templates. É o valor gravado em `MailDelivery.template`. */
-export type TemplateName = 'license_key' | 'license_revoked';
+export type TemplateName =
+  | 'license_key'
+  | 'license_revoked'
+  | 'source_username_request'
+  | 'source_username_confirmed';
 
 export interface LicenseKeyData {
   /** Nome do comprador. Nulo quando a plataforma não informou. */
@@ -43,6 +47,23 @@ export interface LicenseRevokedData {
   productName: string;
   /** Motivo, em linguagem do comprador — nunca o `revokedReason` interno cru. */
   reason: string;
+}
+
+export interface SourceUsernameRequestData {
+  customerName: string | null;
+  productName: string;
+  editionName: string;
+  /** URL completa da página de coleta, já com o token. Montada por quem envia. */
+  url: string;
+}
+
+export interface SourceUsernameConfirmedData {
+  customerName: string | null;
+  productName: string;
+  /** O login que será convidado — nomeá-lo é a razão de este e-mail existir. */
+  githubUsername: string;
+  /** Data prevista do convite (ISO). Nula quando ainda não agendada. */
+  inviteAt: string | null;
 }
 
 /**
@@ -118,13 +139,135 @@ export function licenseRevoked(data: LicenseRevokedData): RenderedMail {
   };
 }
 
+/**
+ * Pedido do username do GitHub — o e-mail que a compra da edição source dispara
+ * (SPEC-039 §Escopo → Coleta do username).
+ *
+ * **O link é a mensagem.** Este e-mail existe para levar o comprador a uma página
+ * onde ele informa o próprio login; sem clique, nada acontece e ele fica na lista
+ * de pendências do admin. Por isso o link aparece duas vezes no HTML (botão e URL
+ * em texto) — cliente que bloqueia imagem ou estiliza mal o botão deixaria a
+ * ação invisível, e a URL crua é o caminho de volta.
+ *
+ * **Não promete prazo, porque não há** (decisão PI #3): o link vale até ser
+ * usado. Escrever "expira em X dias" seria inventar uma regra que o código não
+ * tem — e mandaria o comprador correr sem motivo.
+ *
+ * **Declara a finalidade** (LGPD, §Notas técnicas): o username do GitHub é dado
+ * pessoal, e o texto diz para que ele será usado, em uma frase.
+ */
+export function sourceUsernameRequest(data: SourceUsernameRequestData): RenderedMail {
+  const saudacao = data.customerName ? `Olá, ${data.customerName}!` : 'Olá!';
+  const produto = `${data.productName} — ${data.editionName}`;
+
+  return {
+    subject: `Falta um passo para liberar o código-fonte do ${data.productName}`,
+    text: [
+      saudacao,
+      '',
+      `Sua compra do ${produto} inclui acesso ao repositório com o código-fonte.`,
+      '',
+      'Para liberar esse acesso, precisamos do seu nome de usuário do GitHub — é com ele que enviamos o convite ao repositório privado.',
+      '',
+      'Informe o seu usuário nesta página:',
+      data.url,
+      '',
+      'O link funciona uma única vez. Se você ainda não tem conta no GitHub, crie uma em github.com e depois use o link acima.',
+    ].join('\n'),
+    html: envelope([
+      `<p>${esc(saudacao)}</p>`,
+      `<p>Sua compra do <strong>${esc(produto)}</strong> inclui acesso ao repositório com o código-fonte.</p>`,
+      `<p>Para liberar esse acesso, precisamos do seu <strong>nome de usuário do GitHub</strong> — ` +
+        `é com ele que enviamos o convite ao repositório privado.</p>`,
+      `<p><a href="${esc(data.url)}" style="display:inline-block;background:#18181b;` +
+        `color:#fafafa;padding:12px 20px;border-radius:6px;text-decoration:none;">` +
+        `Informar meu usuário do GitHub</a></p>`,
+      // A URL em texto, além do botão: cliente que estiliza mal o link deixaria a
+      // ação invisível, e este e-mail sem clique não faz nada.
+      `<p style="font-size:13px;color:#52525b;">Se o botão não funcionar, abra este endereço:<br>` +
+        `<a href="${esc(data.url)}">${esc(data.url)}</a></p>`,
+      `<p>O link funciona uma única vez. Se você ainda não tem conta no GitHub, ` +
+        `crie uma em github.com e depois use o link acima.</p>`,
+    ]),
+  };
+}
+
+/**
+ * Confirmação de quem será convidado (SPEC-039 §Escopo).
+ *
+ * **Este e-mail é uma das três mitigações do risco aceito**, e a única que age
+ * depois do fato: a tela protege contra descuido (confirmação por avatar), o uso
+ * único fecha a janela, e este e-mail é o canal por onde o erro volta **antes** de
+ * virar acesso. Se o comprador digitou o login de um estranho e confirmou sem
+ * olhar, é aqui que ele percebe — enquanto ainda dá tempo.
+ *
+ * Por isso o login aparece **em destaque**, não no meio de um parágrafo: um
+ * username errado escondido no texto corrido não é um aviso, é uma formalidade.
+ */
+export function sourceUsernameConfirmed(data: SourceUsernameConfirmedData): RenderedMail {
+  const saudacao = data.customerName ? `Olá, ${data.customerName}!` : 'Olá!';
+  const quando = data.inviteAt ? formatarData(data.inviteAt) : null;
+  const previsao = quando
+    ? `O convite será enviado em ${quando}.`
+    : 'O convite será enviado em breve.';
+
+  return {
+    subject: `Confirmado: o convite do ${data.productName} vai para @${data.githubUsername}`,
+    text: [
+      saudacao,
+      '',
+      `Registramos o seu usuário do GitHub para o convite ao repositório do ${data.productName}:`,
+      '',
+      `@${data.githubUsername}`,
+      '',
+      previsao,
+      '',
+      // A frase que faz este e-mail valer: sem convite à correção, ele é só um
+      // recibo — e recibo não impede que um estranho entre no repositório.
+      'Se esse não é o seu usuário, responda a esta mensagem agora que corrigimos antes de enviar o convite.',
+    ].join('\n'),
+    html: envelope([
+      `<p>${esc(saudacao)}</p>`,
+      `<p>Registramos o seu usuário do GitHub para o convite ao repositório do ` +
+        `<strong>${esc(data.productName)}</strong>:</p>`,
+      `<p style="font-family:monospace;font-size:18px;background:#f4f4f5;padding:16px;` +
+        `border-radius:6px;">@${esc(data.githubUsername)}</p>`,
+      `<p>${esc(previsao)}</p>`,
+      `<p><strong>Se esse não é o seu usuário</strong>, responda a esta mensagem agora ` +
+        `que corrigimos antes de enviar o convite.</p>`,
+    ]),
+  };
+}
+
 /** Despacha pelo nome — o que o worker tem em mãos ao processar o job. */
-export function render(
-  template: TemplateName,
-  data: LicenseKeyData | LicenseRevokedData,
-): RenderedMail {
-  if (template === 'license_key') return licenseKey(data as LicenseKeyData);
-  return licenseRevoked(data as LicenseRevokedData);
+export function render(template: TemplateName, data: TemplateData): RenderedMail {
+  switch (template) {
+    case 'license_key':
+      return licenseKey(data as LicenseKeyData);
+    case 'license_revoked':
+      return licenseRevoked(data as LicenseRevokedData);
+    case 'source_username_request':
+      return sourceUsernameRequest(data as SourceUsernameRequestData);
+    case 'source_username_confirmed':
+      return sourceUsernameConfirmed(data as SourceUsernameConfirmedData);
+  }
+}
+
+/** Dados aceitos pelo `render`, união dos quatro templates. */
+export type TemplateData =
+  | LicenseKeyData
+  | LicenseRevokedData
+  | SourceUsernameRequestData
+  | SourceUsernameConfirmedData;
+
+/**
+ * Data em pt-BR, sem hora. O comprador precisa saber o dia — a hora exata
+ * depende de quando o job roda, e prometê-la seria prometer o que não se
+ * controla.
+ */
+function formatarData(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
 }
 
 /**
