@@ -180,6 +180,58 @@ describe('SPEC-038: schema do webhook, do e-mail e da configuração de venda', 
       ).rejects.toThrow(/processed_coherent/);
     });
 
+    it('a volta de FAILED para PENDING limpa `processed_at` — FIX #216', async () => {
+      // **O caminho do botão "Reprocessar", contra o banco real.** O CHECK acima
+      // já estava provado; o que faltava era provar que o `update` do
+      // `LicensingOpsService.reprocess` o respeita.
+      //
+      // Ele não respeitava: gravava `status: PENDING, error: null` e deixava o
+      // `processed_at` da falha anterior, o que faz o Postgres recusar com
+      // `23514` e a rota responder `500`. O teste unitário não pegava porque o
+      // mock do Prisma não tem CHECKs — só um teste contra Postgres pega esta
+      // classe de erro.
+      //
+      // O modo de falhar era o pior possível para esta tela: o botão que existe
+      // para tirar a venda travada do beco era justamente o que não funcionava.
+      await eventoDeWebhook(owner, TENANT, 'evt-reproc', {
+        status: 'FAILED',
+        processedAt: 'now()',
+        error: 'Oferta sem mapeamento',
+      });
+
+      await owner.$executeRawUnsafe(
+        `UPDATE lic_webhook_events
+            SET status = 'PENDING', error = NULL, processed_at = NULL
+          WHERE external_event_id = 'evt-reproc'`,
+      );
+
+      const [linha] = (await owner.$queryRawUnsafe(
+        `SELECT status, processed_at FROM lic_webhook_events
+          WHERE external_event_id = 'evt-reproc'`,
+      )) as Array<{ status: string; processed_at: Date | null }>;
+      expect(linha.status).toBe('PENDING');
+      expect(linha.processed_at).toBeNull();
+    });
+
+    it('voltar para PENDING SEM limpar `processed_at` é recusado', async () => {
+      // A outra metade: prova que o CHECK é o que barrava, e não outra coisa. Se
+      // esta expectativa parar de falhar, a guarda caiu e o `reprocess` poderia
+      // regredir sem ninguém notar.
+      await eventoDeWebhook(owner, TENANT, 'evt-reproc2', {
+        status: 'FAILED',
+        processedAt: 'now()',
+        error: 'Oferta sem mapeamento',
+      });
+
+      await expect(
+        owner.$executeRawUnsafe(
+          `UPDATE lic_webhook_events
+              SET status = 'PENDING', error = NULL
+            WHERE external_event_id = 'evt-reproc2'`,
+        ),
+      ).rejects.toThrow(/processed_coherent/);
+    });
+
     it('evento FAILED exige motivo legível', async () => {
       // FAILED sem motivo é o item da lista de pendências que ninguém sabe
       // como resolver — e a lista existe justamente para ser resolvida.
@@ -491,6 +543,8 @@ interface EventoOpts {
   status?: string;
   processedAt?: string;
   licenseId?: string;
+  /** Obrigatório em `FAILED` — o CHECK `failure_explained` recusa sem motivo. */
+  error?: string;
 }
 
 function eventoDeWebhook(
@@ -505,13 +559,17 @@ function eventoDeWebhook(
     status = 'PENDING',
     processedAt = 'NULL',
     licenseId,
+    // `FAILED` exige motivo (CHECK `failure_explained`), então quem monta uma
+    // linha nesse estado precisa passá-lo.
+    error,
   } = opts;
   return db.$executeRawUnsafe(
     `INSERT INTO lic_webhook_events
        (id, tenant_id, platform, external_event_id, event_type, payload,
-        received_at, processed_at, status, license_id)
+        received_at, processed_at, status, license_id, error)
      VALUES ($1, $2, $3, $4, 'order.approved', '{}'::jsonb,
-             now(), ${processedAt}, '${status}', ${licenseId ? `'${licenseId}'` : 'NULL'})`,
+             now(), ${processedAt}, '${status}', ${licenseId ? `'${licenseId}'` : 'NULL'},
+             ${error ? `'${error}'` : 'NULL'})`,
     id,
     tenantId,
     platform,

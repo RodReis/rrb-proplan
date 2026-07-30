@@ -145,7 +145,21 @@ export class LicensingOpsService {
     // `FAILED` que já está na fila, e o segundo clique duplicaria o job.
     await this.prisma.licWebhookEvent.update({
       where: { id },
-      data: { status: 'PENDING', error: null },
+      data: {
+        status: 'PENDING',
+        error: null,
+        // **`processedAt: null` junto — FIX #216.** Sem esta linha o `update`
+        // viola o CHECK `lic_webhook_events_processed_coherent` e o reprocessar
+        // responde `500`: o carimbo do desfecho anterior sobrevive à volta para
+        // `PENDING`, e o banco recusa a combinação — *"um PENDING com data diria
+        // que foi processado e não foi"* (comentário do CHECK, PR-1 da SPEC-038).
+        //
+        // A guarda do banco estava certa; o defeito era este `update`, que
+        // desfazia o status e o erro e deixava para trás a data. O modo de falhar
+        // é o pior possível para esta tela: o botão que existe para tirar a venda
+        // do beco é justamente o que não funciona.
+        processedAt: null,
+      },
     });
 
     await this.queue.add('webhook', { webhookEventId: id, tenantId });
