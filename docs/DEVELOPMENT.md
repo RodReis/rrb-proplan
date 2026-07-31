@@ -7223,3 +7223,136 @@ morreria numa tela em branco por causa de uma barra numa variável de ambiente.
 - [x] O teste do `AppShell` fixa o **contrato do bug**: sem tenant ativo, nada
       de chamada; com tenant, o item aparece. É a guarda que faltava nas duas
       ocorrências anteriores da mesma armadilha.
+
+## `[FIX] #230` — 2ª rodada: a corrida que a 1ª não fechou, e a tremida que ela criou
+
+A primeira rodada acertou a causa (tenant ausente nas telas globais) e **errou o
+mecanismo**. Vale registrar as duas, porque o erro é instrutivo.
+
+### O que a 1ª rodada assumiu
+
+Que bastava fixar o tenant num `useEffect` do `AppShell`. Mas **efeito de filho
+roda antes do efeito do pai**: o `useDashboardNav`, que vive dentro do
+`GlobalNav`, já tinha disparado `getDashboard()` sem prefixo quando o efeito do
+shell rodou.
+
+Os 18 testes daquele PR passaram porque **mockam `getDashboard`**, que fica
+*acima* de `withTenantPrefix`. O prefixo nunca aparecia neles. É a lição do topo
+do `tenantPrefix.test.ts` de novo: mockar a fronteira esconde defeitos DA
+fronteira.
+
+### A corrida real, medida em vez de deduzida
+
+Ao navegar entre telas, o React monta a rota nova **antes** de desmontar a velha:
+
+1. a URL muda e o `GlobalNav` **ainda montado** reage ao novo `pathname`;
+2. ele chama `getDashboard()` com `activeTenant` já nulo (o cleanup de quem sai
+   correu antes) → sai `/dashboard` cru → **404**;
+3. só então o shell de destino monta e fixa o tenant.
+
+O `catch` preserva o estado, mas o componente é desmontado logo depois: o
+`GlobalNav` novo nasce com `hasClients` em `false` e **nunca repete a chamada**,
+porque para ele o `pathname` já é o de destino.
+
+**O sinal que denunciava**: com F5 o item aparecia, navegando não. Assimetria
+assim é corrida, não regra de negócio — e foi só instrumentando o `fetch` no
+navegador que ela apareceu. Duas rodadas foram gastas deduzindo.
+
+### A tremida, que foi dívida da própria correção
+
+Corrigido o sumiço, o PI reportou o item piscando. Medido com `MutationObserver`:
+**26 ms ausente** por navegação (`false` em 81 ms → `true` em 107 ms). Rápido
+demais para ler, lento o bastante para o olho pegar.
+
+A causa era a mesma remontagem: o estado nascia em `false` toda vez. **A resposta
+não foi esperar menos, foi não esquecer** — o fato "este tenant tem clientes" não
+muda entre duas telas, e quem esquecia era a montagem, não o servidor.
+
+### O risco de lembrar
+
+Memória pode virar mentira. Três testes fecham isso:
+
+- tenant que **perde** os clientes → o item some (a resposta nova sempre vence);
+- **outro** tenant não herda o "tem clientes" do anterior;
+- primeira visita continua nascendo escondida (SPEC-035 §2.12 intacta).
+
+### Verificação
+
+- [x] **703/703 web** · API 2168 + 262 · `tsc` e lint limpos.
+- [x] Os 3 testes de corrida **falham** com o comportamento antigo — verificado
+      revertendo a função, não presumido.
+- [x] Navegador: **8 navegações → 1 transição** do item (antes: 2 por navegação).
+- [x] Varredura das 10 rotas do menu: o item permanece em todas.
+
+### Nota de ambiente que custou tempo
+
+O CI barrou a primeira tentativa por divergência no `TESTS.md` (contagem subira
+de 691 para 706). Ao regenerar, o relatório acusava **2 falhas em Tela** enquanto
+`vitest run` dava verde — e a suspeita natural (flake, teste novo sensível a
+timing) era falsa.
+
+Era um **servidor `preview` órfão na porta 4173**, de execução anterior, servindo
+um **build antigo**. O Playwright reusa o que já está escutando, então os 2 e2e
+testavam código velho. Terceira ocorrência da mesma família neste projeto
+(watchers órfãos, EADDRINUSE 404 fantasma): **processo velho responde no lugar
+do novo, e a falha aponta para o código errado**.
+
+## `[F29] #232` — as abas de licenciamento reorganizadas por assunto
+
+Pedido do PI no dogfooding de 2026-07-31, com as três decisões tomadas na mesma
+conversa.
+
+### O que estava partido
+
+Cada assunto tinha **metade em cada aba**:
+
+- **Acesso ao código-fonte** — contagem em Métricas, lista acionável em
+  Pendências. Nenhuma metade bastava, e **as duas se chamavam igual**: a mesma
+  pergunta tinha dois lugares e nenhuma resposta inteira.
+- **`Oferta → edição`** — em Pendências, a duas abas da edição que referencia.
+- **Configuração** — três campos no rodapé de duas telas de operação.
+
+O argumento antigo (*"configuração junto da operação para não ir e voltar entre
+abas"*) não se sustentou no uso: **configurar é uma vez na vida do workspace,
+operar é diário**. Otimizar o layout diário para o caso raro custava um campo
+perdido no rodapé de outra tela.
+
+### As cinco abas
+
+1. **Métricas** — *"como está?"*. Primeira porque é o que se pergunta ao chegar;
+   emitir é a tarefa de quem já sabe o que fazer.
+2. **Licenças** — emitir, buscar, gaveta.
+3. **Produtos e Edições** (nova) — produto → edição → de-para → releases.
+4. **Pendências** — só o que falhou.
+5. **Configurações** — os três ajustes reunidos.
+
+### O achado que não é cosmético
+
+**`text-danger` e `border-danger` nunca existiram no `@theme`** do `index.css`.
+O Tailwind não gerava as classes, então o alerta mais grave da área — *"assinatura
+não configurada"* —, o botão **Revogar** e o badge de status eram desenhados
+**sem vermelho nenhum**.
+
+O token correto sempre foi `error`. Mesma família do FIX #166: falha silenciosa
+numa camada que nenhum teste olha, porque teste de componente não verifica se a
+classe existe no tema.
+
+### Sobre a cor
+
+A regra do DESIGN.md §1 continua valendo — **cor só carrega significado**: verde
+= ativo/ok, âmbar = espera por terceiro, vermelho = falhou, azul = leitura/volume.
+O que mudou é a presença, não a licença para decorar.
+
+O `licensingUi.tsx` existe porque cinco abas montadas por painéis diferentes
+reinventavam badge e cartão cada uma do seu jeito — **duas telas que dizem a
+mesma coisa de dois jeitos ensinam o operador a reler tudo**.
+
+### Pendências que esta entrega deixa
+
+- **A SPEC-040 §A área descreve a organização antiga.** As decisões desta
+  reorganização foram do PI na conversa (aval confirmado por ele), mas a spec
+  precisa ser atualizada pelo Cowork — senão ela mente sobre a tela.
+- **O campo `id do produto na plataforma` pede um id que o operador não tem.** Ele
+  só existe no payload de uma venda que já chegou. Decisão do PI: listar as
+  ofertas vistas nas entregas **e** oferecer o botão *Mapear* na entrega que
+  falhou. Item próprio.
