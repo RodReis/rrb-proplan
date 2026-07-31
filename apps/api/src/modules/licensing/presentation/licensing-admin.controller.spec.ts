@@ -6,6 +6,7 @@ import type { LicensePrivacyService } from '../application/license-privacy.servi
 import type { LicenseSigningService } from '../application/license-signing.service';
 import type { LicensingOpsService } from '../application/licensing-ops.service';
 import type { LicensingSummaryService } from '../application/licensing-summary.service';
+import type { ReleaseAdminService } from '../application/release-admin.service';
 import type { SourceAdminService } from '../application/source-admin.service';
 import { LicensingAdminController } from './licensing-admin.controller';
 
@@ -43,6 +44,11 @@ function montar() {
     {} as SourceAdminService,
     privacy,
     summaries,
+    // Acrescentado ao controller pelo PR-4 desta fatia e esquecido aqui — a
+    // suíte parou de compilar na `main` e o CI ficou vermelho. Fica `{}` porque
+    // nenhum caso deste arquivo chama rota de release; quem as cobre é o
+    // `release-admin.service.spec.ts`.
+    {} as ReleaseAdminService,
   );
 
   return { controller, licenses, privacy, summaries };

@@ -19,6 +19,7 @@ import {
 import {
   LicenseReleaseService,
   type ReleaseCheckInput,
+  type ReleaseDownloadInput,
 } from '../application/license-release.service';
 import { WebhookIntakeService } from '../application/webhook-intake.service';
 import { hashKey } from '../domain/license-key';
@@ -137,6 +138,29 @@ export class LicensingPublicController {
   async releasesCheck(@Body() body: ReleaseCheckInput, @Req() req: Request) {
     this.enforce(body, req);
     return this.releases.check(body ?? {});
+  }
+
+  /**
+   * Cunha a URL assinada do artefato (SPEC-041 §Contratos).
+   *
+   * `403` versão fora da janela de updates · `404` release inexistente ou
+   * despublicada · `409` · `410` · `429` iguais aos do `check` · `503` quando o
+   * PAT falta, não abre ou não tem `contents:read`.
+   *
+   * **Uma chamada, uma URL** — e é por isso que esta rota não é cacheável nem
+   * idempotente na prática: a URL do GitHub expira em segundos a minutos, então
+   * dois `download` seguidos devolvem endereços diferentes (é critério de aceite,
+   * não efeito colateral). Guardar a resposta entregaria ao próximo cliente um
+   * link já morto.
+   *
+   * **Conta no mesmo rate limit das outras**, por IP e por chave: quem varre
+   * chaves não ganha uma quarta porta por a rota ser nova, e alternar entre
+   * `check` e `download` não dobra a cota de ninguém.
+   */
+  @Post('releases/download')
+  async releasesDownload(@Body() body: ReleaseDownloadInput, @Req() req: Request) {
+    this.enforce(body, req);
+    return this.releases.download(body ?? {});
   }
 
   /**

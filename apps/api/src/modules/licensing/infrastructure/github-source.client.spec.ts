@@ -10,7 +10,7 @@ import { GithubSourceClient } from './github-source.client';
  */
 
 function dobrarFetch(
-  respostas: Array<{ status: number; body?: unknown }>,
+  respostas: Array<{ status: number; body?: unknown; location?: string }>,
 ): jest.Mock {
   const fila = [...respostas];
   const mock = jest.fn(async () => {
@@ -19,7 +19,12 @@ function dobrarFetch(
       status: r.status,
       ok: r.status >= 200 && r.status < 300,
       json: async () => r.body ?? {},
-    } as Response;
+      // Só o `assetDownloadUrl` lê header, e lê um só: o `Location` do 302.
+      headers: {
+        get: (nome: string) =>
+          nome.toLowerCase() === 'location' ? (r.location ?? null) : null,
+      },
+    } as unknown as Response;
   });
   global.fetch = mock as unknown as typeof fetch;
   return mock;
@@ -356,5 +361,109 @@ describe('removeCollaborator', () => {
 
     const [url] = f.mock.calls[0] as [string];
     expect(url).toBe('https://api.github.com/repos/o/r/collaborators/a%20b%2Fc');
+  });
+});
+
+describe('assetDownloadUrl', () => {
+  it('302 devolve o `Location` — a URL assinada', async () => {
+    dobrarFetch([{ status: 302, location: 'https://objects.githubusercontent.com/x?sig=abc' }]);
+
+    expect(await new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42')).toBe(
+      'https://objects.githubusercontent.com/x?sig=abc',
+    );
+  });
+
+  it('NÃO segue o redirect — é o que mantém os bytes fora da API', async () => {
+    const f = dobrarFetch([{ status: 302, location: 'https://storage/x' }]);
+
+    await new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42');
+
+    const [url, init] = f.mock.calls[0] as [string, RequestInit];
+    // **A asserção mais importante do arquivo.** Com o `follow` padrão do
+    // `fetch`, o Node seguiria o 302 e baixaria os ~80 MB para dentro da API — o
+    // critério de aceite "nenhum byte do artefato passa pela API" deixaria de
+    // valer sem nada quebrar: a rota continuaria respondendo, só que gorda.
+    expect(init.redirect).toBe('manual');
+    // `octet-stream` é o que faz a API redirecionar em vez de devolver o JSON de
+    // metadados: sem ele não há `Location`, e o método devolveria a descrição do
+    // arquivo achando que é o arquivo.
+    expect((init.headers as Record<string, string>).Accept).toBe('application/octet-stream');
+    expect(url).toBe('https://api.github.com/repos/o/r/releases/assets/42');
+  });
+
+  it('307 também é redirect válido', async () => {
+    dobrarFetch([{ status: 307, location: 'https://storage/y' }]);
+
+    expect(await new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42')).toBe(
+      'https://storage/y',
+    );
+  });
+
+  it('302 sem `Location` lança em vez de devolver vazio', async () => {
+    dobrarFetch([{ status: 302 }]);
+
+    // Devolver string vazia daria ao cliente uma URL que falha como "download
+    // corrompido", longe daqui. O erro precisa dizer o que é.
+    await expect(
+      new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42'),
+    ).rejects.toThrow(/sem endereço/);
+  });
+
+  it('200 sem redirect lança — não há URL, e ler o corpo puxaria os bytes', async () => {
+    dobrarFetch([{ status: 200, body: { name: 'setup.exe' } }]);
+
+    await expect(
+      new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42'),
+    ).rejects.toThrow(/não devolveu URL/);
+  });
+
+  it('403 nomeia `contents:read`, não administração', async () => {
+    dobrarFetch([{ status: 403 }]);
+
+    // O mesmo status quer dizer outra coisa no caminho do convite. Reaproveitar
+    // aquela mensagem mandaria o operador reemitir o token com a permissão
+    // errada — e o sintoma (update que não chega) é silencioso, então ele não
+    // descobriria pelo uso.
+    await expect(
+      new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42'),
+    ).rejects.toThrow(/contents:read/);
+  });
+
+  it('404 diz as DUAS causas — o GitHub esconde o que o token não alcança', async () => {
+    dobrarFetch([{ status: 404 }]);
+
+    await expect(
+      new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42'),
+    ).rejects.toThrow(/asset não encontrado.*fora do escopo/);
+  });
+
+  it('401 é token inválido ou expirado', async () => {
+    dobrarFetch([{ status: 401 }]);
+
+    await expect(
+      new GithubSourceClient().assetDownloadUrl('pat', 'o/r', '42'),
+    ).rejects.toThrow(/inválido ou expirado/);
+  });
+
+  it('o PAT vai no header e NUNCA na mensagem de erro', async () => {
+    const f = dobrarFetch([{ status: 403 }]);
+
+    await expect(
+      new GithubSourceClient().assetDownloadUrl('pat-secreto', 'o/r', '42'),
+    ).rejects.not.toThrow(/pat-secreto/);
+
+    const [, init] = f.mock.calls[0] as [string, RequestInit];
+    // Um erro que ecoasse o header entregaria acesso ao repositório privado a
+    // quem lê log — e este é o mesmo PAT que administra o repo.
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer pat-secreto');
+  });
+
+  it('escapa o `assetId` na URL', async () => {
+    const f = dobrarFetch([{ status: 302, location: 'https://storage/x' }]);
+
+    await new GithubSourceClient().assetDownloadUrl('pat', 'o/r', 'a b/c');
+
+    const [url] = f.mock.calls[0] as [string];
+    expect(url).toBe('https://api.github.com/repos/o/r/releases/assets/a%20b%2Fc');
   });
 });

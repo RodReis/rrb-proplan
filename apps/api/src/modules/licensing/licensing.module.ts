@@ -113,9 +113,12 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     // (`PENDING` sem username, `INVITED` parado, `FAILED`) são informação no
     // banco que ninguém alcança.
     SourceAdminService,
-    // O cliente do GitHub do caminho do convite — **não** o do GitHub App
-    // (ADR-015). Credenciais de propósitos diferentes: aqui é PAT fine-grained
-    // com `administration:write` num repo só, e a arch-spec cobra a separação.
+    // O cliente do GitHub do PAT do tenant — **não** o do GitHub App (ADR-015).
+    // Credenciais de propósitos diferentes: aqui é PAT fine-grained num repo só,
+    // e a arch-spec cobra a separação. **Dois escopos desde a SPEC-041**:
+    // `administration:write` convida ao source, `contents:read` baixa o asset da
+    // Release. Mesmo token, mesmo repo, mesmo cliente — o que mantém a
+    // credencial confinada a um arquivo.
     GithubSourceClient,
     WebhookIntakeService,
     WebhookProcessorService,
