@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SessionUser } from '../lib/api';
+import { setActiveTenant, type SessionUser } from '../lib/api';
 import { useTheme } from '../theme';
 import { GlobalNav } from '../pages/clients/GlobalNav';
 
@@ -26,9 +26,31 @@ export function AppShell({ user, tenant, section, onLogout, children }: Props) {
   const { theme, toggle } = useTheme();
   const dark = theme === 'carbono';
 
+  // Slug que o menu usa para montar as URLs (`/t/:tenant/...`).
+  const slug = tenant ?? user.tenants[0]?.accountLogin ?? '';
+  const membership = user.tenants.find(
+    (t) => t.accountLogin.toLowerCase() === slug.toLowerCase(),
+  );
+
+  // FIX #230 — as telas GLOBAIS (Catálogo, Configuração) desenham o menu global
+  // sem passar pelo `ClientsRoute`, que é quem fixa o tenant ativo. Sem ele o
+  // `request()` não prefixa `/dashboard` com `/t/:tenant`, a API devolve 404, e
+  // o `catch` do `useDashboardNav` deixa `hasClients` em `false` — o item
+  // Dashboard SUMIA do menu ao entrar no Catálogo, reaparecendo nas telas de
+  // cliente. Some por falta de tenant ativo ≠ some por não ter cliente, que é a
+  // única razão que a SPEC-035 §2.12 admite.
+  //
+  // Solta ao desmontar, como o `ClientsRoute`: tenant fixo depois de sair faria
+  // uma chamada global seguinte sair escopada por engano.
+  useEffect(() => {
+    if (!membership) return;
+    setActiveTenant(membership.id);
+    return () => setActiveTenant(null);
+  }, [membership]);
+
   return (
     <div className="flex h-screen bg-bg text-text max-[720px]:flex-col">
-      <GlobalNav tenant={tenant ?? user.tenants[0]?.accountLogin ?? ''} section={section} />
+      <GlobalNav tenant={slug} section={section} />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-[56px] shrink-0 items-center gap-3.5 border-b border-border bg-panel px-6 max-[720px]:px-3">

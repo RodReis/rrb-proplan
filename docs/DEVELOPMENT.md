@@ -7147,3 +7147,79 @@ não vê discrepância; o erro só aparece no banco ou na reclamação.
 
 Comportamento correto já documentado (SPEC-041 §Contratos + os dois trechos do
 `releasedAt` acima), então é `[FIX]` com issue própria, não fatia.
+
+## `[FIX] #230` — o menu perdia o Dashboard, e o login não caía nele
+
+Dois sintomas relatados pelo PI no dogfooding de 2026-07-31, entregues juntos
+porque a causa do primeiro é pré-requisito do segundo.
+
+### O item sumia porque a tela global não tinha tenant
+
+Clicar em **ProPlan** (Catálogo) fazia o **Dashboard** desaparecer do menu;
+voltar para Clientes ou Licenças o trazia de volta.
+
+O menu não tinha defeito nenhum. O item só renderiza com `hasClients`, que vem
+de `getDashboard()` — e essa chamada é escopada por tenant em
+`withTenantPrefix()`. Quem fixa o `activeTenant` é o `ClientsRoute` (ou o
+`ResolveRoute`), e as telas **globais** — Catálogo e Configuração — desenham o
+menu pelo `AppShell`, que **não passa por nenhum dos dois**. Sem tenant ativo,
+`/dashboard` sai sem o prefixo `/t/:tenant`, a API devolve **404**, e o `catch`
+do `useDashboardNav` mantém `hasClients` em `false`.
+
+**É a terceira ocorrência da mesma armadilha** — a segunda está anotada dentro
+do próprio `api.ts` (FIX #166, `/artifacts/` na SPEC-032). A falha é sempre
+muda: nada quebra, a tela só mostra menos. E nenhum teste pega, porque todos
+mockam a camada de API, que é justamente onde `withTenantPrefix` vive.
+
+O que torna **esta** ocorrência pior que as anteriores é o disfarce: sumir é um
+estado **previsto**. A SPEC-035 §2.12 manda o item sumir quando o tenant não tem
+cliente nenhum — *"uma tela de retomada sem nada a retomar não é informação, é
+ruído no menu"*. Um bug cujo sintoma é indistinguível de uma regra escrita não
+se denuncia; ele passa por comportamento correto até alguém reparar que o item
+volta ao mudar de tela.
+
+**Correção:** o `AppShell` fixa o tenant da sessão enquanto está montado e o
+solta ao desmontar — a mesma disciplina do `ClientsRoute`, pelo mesmo motivo
+(tenant fixo depois de sair faria uma chamada global seguinte sair escopada por
+engano).
+
+### O destino do login não estava escrito, então foi ao PI
+
+O segundo pedido — *"ao fazer login, exibir o Dashboard"* — **não tinha
+comportamento correto documentado**. A SPEC-035 define quando o Dashboard
+existe, não para onde o login vai. Pelo CLAUDE.md isso é decisão de produto, e
+foi ao PI antes de qualquer linha de código.
+
+**Decisão do PI (2026-07-31): opção A** — Dashboard, **mas só quando o tenant
+tem cliente**; sem cliente, Catálogo. Mandar todo mundo ao dashboard
+contradiria a §2.12: a pessoa cairia numa tela que o próprio menu esconde.
+
+A rota `/entrar` existe para isso e nada mais — pergunta ao servidor, escolhe o
+destino e sai de cena. **Não** é um redirect dentro do Catálogo: mandar para o
+dashboard todo mundo que abre `/` tornaria o Catálogo inalcançável pelo menu.
+Falha na chamada, ou tenant sem cliente, cai no Catálogo — que funciona em
+qualquer estado, inclusive com o GitHub desconectado.
+
+### O callback do GitHub serve a dois fluxos, e só um é login
+
+`github/callback` é a volta do **login** e também a volta da **conexão** do
+GitHub numa sessão que já existia (SPEC-025). Apontar os dois para `/entrar`
+teria criado um bug novo no lugar do corrigido: quem saiu do Catálogo para
+conectar espera **voltar para lá**, não ser despejado no dashboard no meio do
+fluxo. Só quem chega **sem sessão** está entrando — `userId ? '/' : '/entrar'`.
+
+O `frontendUrl()` normaliza a barra final do `FRONTEND_URL`: com ela, o destino
+sairia `//entrar`, que não casa com rota nenhuma do React Router — o login
+morreria numa tela em branco por causa de uma barra numa variável de ambiente.
+
+### Verificação
+
+- [x] **API 2430/2430**, **web 689/689**, `build` e `lint` verdes (0 erros).
+- [x] **+18 testes**: 6 na API (destino por fluxo, incluindo a barra final) e 12
+      na web — `EntryRoute` (com cliente → dashboard; sem cliente e falha →
+      catálogo; tenant fixado antes da chamada e solto depois) e `AppShell`
+      (item aparece no Catálogo; **continua sumindo sem cliente**, provando que
+      a regra da §2.12 não foi afrouxada junto).
+- [x] O teste do `AppShell` fixa o **contrato do bug**: sem tenant ativo, nada
+      de chamada; com tenant, o item aparece. É a guarda que faltava nas duas
+      ocorrências anteriores da mesma armadilha.
