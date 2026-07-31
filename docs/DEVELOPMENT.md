@@ -7093,18 +7093,57 @@ forma por causa da resposta, então esperar por ela só segurava a entrega.
 - [x] `build`, `lint` e suíte verdes (2426 API + 677 web); `reports/TESTS.md`
       carimbado
 
-### O que continua sendo do PI — e não bloqueia mais
+### Dogfooding (2026-07-31) — o Risco #1 morreu contra a rede real
 
-O `302 → Location` está provado **contra o contrato do GitHub** (dobrado), não
-contra a rede real. Para o piloto rodar de ponta a ponta ainda faltam duas coisas
-que não são minhas de criar:
+O PI ampliou o PAT para `contents:read` no mesmo repo e criou a Release. Com
+isso, a fatia foi exercitada **pela rota pública, contra o GitHub real, sem nada
+dobrado**.
 
-1. o PAT do tenant **ampliado** para `contents:read` — hoje ele tem só
-   `administration:write`, foi assim que a SPEC-039 o criou;
-2. uma **Release com asset** em `RodReis/war-room`.
+- [x] **Teste de conexão do admin verde** — é ele que fecha o Risco #1: confirma
+      os **dois** escopos no mesmo PAT fine-grained. Era a pergunta que segurou o
+      PR-3 desde o PR-1, e a resposta é sim.
 
-**A diferença para o bloqueio anterior é o desfecho de errar.** Antes, resposta
-negativa mudaria a arquitetura da fatia. Agora, se o escopo faltar, o teste de
-conexão do admin **já diz qual escopo falta** (PR-1) e o `download` **já responde
-`503` com motivo** — o caminho de descoberta existe e é o previsto na spec. O que
-resta é dogfooding, não decisão.
+- [x] **Release `v1.0.0`** em `RodReis/war-room` com o instalador real
+      (`war-room-setup-1.0.0-win-x64.exe`, 35 MB, `assetId 496635571`), **a custo
+      zero**: release asset é grátis e ilimitado em repo privado, e **não passa
+      por Packages nem Git LFS** — o que cobraria seria `git add` no binário, que
+      é exatamente o que o ADR-028 evita.
+
+- [x] **`activate → check → download → GET url`**: 35.498.457 bytes baixados,
+      **SHA256 idêntico ao registrado**. Os 35 MB vieram de
+      `release-assets.githubusercontent.com` — *"nenhum byte pela API"* verificado
+      no tráfego, não afirmado.
+
+- [x] **Os nove critérios de aceite, um a um**: `403` para versão fora da janela ·
+      `409` para fingerprint inativo · `404` para chave, versão e plataforma
+      inexistentes · `429` por chave · URLs diferentes a cada chamada ·
+      despublicada some das duas rotas · `LicEvent` por download.
+
+- [x] **O rate limit apareceu sem ser chamado.** Três casos negativos voltaram
+      `429` em vez do código esperado, porque eu tinha gasto a cota de **5/min por
+      chave** com os downloads anteriores — e a janela é **compartilhada entre as
+      quatro rotas**. É o defeito que o PR-2 corrigiu (o `enforce` lia só `key`,
+      não `licenseKey`) confirmado no tráfego: alternar entre `check` e `download`
+      não dobra a cota de quem varre chaves. Esperada a janela, os três
+      responderam certo.
+
+- [x] **A trilha confirmou o desenho**: `check` chamado 3× gravou **zero linhas**,
+      a URL **não** entra no payload, e a recusa por `403` **não** gerou evento — a
+      contagem seguiu em 2 depois do teste da janela vencida.
+
+### O que o dogfooding encontrou — `[FIX] #228`
+
+A tela registrou `30/07/2026`; o banco gravou **`2026-07-31`**. O
+`<input type="date">` devolve `YYYY-MM-DD` sem fuso, e a conversão para `Date` o
+lê como meia-noite UTC — num servidor em UTC−3, o dia anda.
+
+**Não é cosmético.** `releasedAt` é o lado direito de
+`updatesUntil >= releasedAt`: um dia a mais pode deixar **fora da janela** quem
+tinha direito à versão. O PR-1 se preocupou com o lado de conceder demais
+(*"registrar release antiga com a data de hoje a tornaria indevidamente
+autorizada"*); este bug **nega de menos**, que é o lado que gera reclamação de
+cliente pagante. E **a tela mostra a data certa** — quem confere pela interface
+não vê discrepância; o erro só aparece no banco ou na reclamação.
+
+Comportamento correto já documentado (SPEC-041 §Contratos + os dois trechos do
+`releasedAt` acima), então é `[FIX]` com issue própria, não fatia.
