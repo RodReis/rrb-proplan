@@ -6,14 +6,17 @@ import {
   createOfferMapping,
   deleteOfferMapping,
   listOfferMappings,
+  listSeenOffers,
   updateLicEditionLimits,
   updateProductSourceRepo,
   type LicCatalogResponse,
   type LicEditionView,
   type LicProductView,
   type OfferMappingView,
+  type SeenOfferView,
 } from '../../lib/api';
 import { offerLabel } from './webhookOpsView';
+import { shortDateTime } from './licensingView';
 import { ReleasesPanel } from './ReleasesPanel';
 import { Cartao, Etiqueta, LinhaCartao, TituloSecao } from './licensingUi';
 
@@ -442,12 +445,26 @@ function NovaEdicao({
  * `Oferta → edição`: o de-para que resolve a compra.
  *
  * Sem ele a venda chega e falha como "oferta não mapeada" — o estado `FAILED`
- * que a aba Pendências mostra. Ele mora aqui porque referencia uma **edição**:
+ * que a aba Pendências mostra. Mora aqui porque referencia uma **edição**:
  * cadastrar o par ao lado da edição que ele aponta evita a ida e volta entre
  * abas que o desenho anterior exigia.
+ *
+ * ## O id que o operador não tem (FIX do dogfooding, 2026-07-31)
+ *
+ * O cadastro pedia o id do produto na plataforma num campo de texto livre. **Ele
+ * não existe em lugar nenhum que se copie**: nasce dentro do payload da venda, e
+ * o único caminho era ler a mensagem de erro da entrega que falhou e transcrever
+ * um uuid à mão.
+ *
+ * Agora a tela **oferece o que já chegou**: as ofertas vistas nas entregas e
+ * ainda sem mapeamento viram linhas com um seletor de edição. Digitar continua
+ * possível, recolhido — é o escape de quem quer mapear antes da primeira venda,
+ * que é o caso raro.
  */
 function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
   const [mapeamentos, setMapeamentos] = useState<OfferMappingView[]>([]);
+  const [vistas, setVistas] = useState<SeenOfferView[]>([]);
+  const [manual, setManual] = useState(false);
   const [produtoId, setProdutoId] = useState('');
   const [ofertaId, setOfertaId] = useState('');
   const [edicaoId, setEdicaoId] = useState('');
@@ -455,7 +472,9 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
 
   async function carregar() {
     try {
-      setMapeamentos(await listOfferMappings());
+      const [maps, seen] = await Promise.all([listOfferMappings(), listSeenOffers()]);
+      setMapeamentos(maps);
+      setVistas(seen);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'não foi possível carregar');
     }
@@ -469,16 +488,14 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
     p.editions.map((e) => ({ id: e.id, label: `${p.name} · ${e.name}` })),
   );
 
-  async function criar() {
+  async function criar(entrada: {
+    externalProductId: string;
+    externalOfferId: string | null;
+    editionId: string;
+  }) {
     setOcupado(true);
     try {
-      await createOfferMapping({
-        externalProductId: produtoId,
-        // Vazio = curinga. `null` explícito, não string vazia: é o que faz
-        // "qualquer oferta deste produto" resolver.
-        externalOfferId: ofertaId.trim() || null,
-        editionId: edicaoId,
-      });
+      await createOfferMapping(entrada);
       setProdutoId('');
       setOfertaId('');
       await carregar();
@@ -504,7 +521,7 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
   }
 
   return (
-    <Cartao tom={edicoes.length > 0 && mapeamentos.length === 0 ? 'atencao' : 'neutro'}>
+    <Cartao tom={vistas.length > 0 ? 'atencao' : 'neutro'}>
       <TituloSecao
         titulo="Oferta → edição"
         descricao={
@@ -516,91 +533,223 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
           </>
         }
         etiqueta={
-          mapeamentos.length > 0 ? (
-            <Etiqueta tom="ok" ponto={false}>
-              {mapeamentos.length} {mapeamentos.length === 1 ? 'mapeada' : 'mapeadas'}
-            </Etiqueta>
-          ) : edicoes.length > 0 ? (
-            <Etiqueta tom="atencao">nenhuma oferta ligada</Etiqueta>
-          ) : undefined
+          <>
+            {vistas.length > 0 && (
+              <Etiqueta tom="atencao">{vistas.length} sem mapeamento</Etiqueta>
+            )}
+            {mapeamentos.length > 0 && (
+              <Etiqueta tom="ok" ponto={false}>
+                {mapeamentos.length} {mapeamentos.length === 1 ? 'mapeada' : 'mapeadas'}
+              </Etiqueta>
+            )}
+          </>
         }
       />
 
-      <ul className="mt-4 grid list-none gap-2 p-0">
-        {mapeamentos.length === 0 && (
-          <li className="text-[12.5px] text-body">
-            Nenhum mapeamento ainda. Pegue o id do produto no painel da plataforma
-            e ligue-o à edição correspondente.
-          </li>
-        )}
-        {mapeamentos.map((m) => (
-          <LinhaCartao key={m.id}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="m-0 truncate text-[13px] text-text">
-                  {m.edition.name}
-                  <span className="ml-1.5 font-mono text-[10.5px] text-dim">
-                    {m.edition.slug}
-                  </span>
-                </p>
-                <p className="m-0 mt-0.5 font-mono text-[10.5px] text-dim">
-                  produto {m.externalProductId} · {offerLabel(m)}
-                </p>
+      {/* O caminho principal: o que já chegou e ainda não tem par. Vem antes dos
+          mapeamentos existentes porque é o que pede ação. */}
+      {vistas.length > 0 && (
+        <ul className="mt-4 grid list-none gap-2 p-0">
+          {vistas.map((v) => (
+            <OfertaVistaLinha
+              key={`${v.externalProductId} ${v.externalOfferId ?? ''}`}
+              oferta={v}
+              edicoes={edicoes}
+              ocupado={ocupado}
+              onMapear={(editionId) =>
+                criar({
+                  externalProductId: v.externalProductId,
+                  externalOfferId: v.externalOfferId,
+                  editionId,
+                })
+              }
+            />
+          ))}
+        </ul>
+      )}
+
+      {mapeamentos.length > 0 && (
+        <ul className="mt-4 grid list-none gap-2 p-0">
+          {mapeamentos.map((m) => (
+            <LinhaCartao key={m.id} tom="ok">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="m-0 truncate text-[13px] text-text">
+                    {m.edition.name}
+                    <span className="ml-1.5 font-mono text-[10.5px] text-dim">
+                      {m.edition.slug}
+                    </span>
+                  </p>
+                  <p className="m-0 mt-0.5 font-mono text-[10.5px] text-dim">
+                    produto {m.externalProductId} · {offerLabel(m)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => remover(m.id)}
+                  disabled={ocupado}
+                  className="shrink-0 rounded-[9px] border border-border2 px-2.5 py-1 text-[11.5px] text-body2 transition-colors hover:border-error/45 hover:text-error disabled:opacity-50"
+                >
+                  Remover
+                </button>
               </div>
-              <button
-                onClick={() => remover(m.id)}
-                disabled={ocupado}
-                className="shrink-0 rounded-[9px] border border-border2 px-2.5 py-1 text-[11.5px] text-body2 transition-colors hover:border-error/45 hover:text-error disabled:opacity-50"
+            </LinhaCartao>
+          ))}
+        </ul>
+      )}
+
+      {vistas.length === 0 && mapeamentos.length === 0 && (
+        <p className="mt-4 max-w-[72ch] text-[12.5px] leading-relaxed text-body">
+          Nenhuma venda chegou ainda, então não há oferta para mapear.{' '}
+          <strong className="text-text2">O id do produto vem dentro da venda</strong> —
+          quando a primeira chegar, ela aparece aqui pronta para ligar a uma edição.
+        </p>
+      )}
+
+      {/* O escape: digitar à mão. Recolhido porque é o caso raro — mapear antes
+          da primeira venda, quando ainda não há o que a lista mostrar. */}
+      <div className="mt-4 border-t border-border2/60 pt-3">
+        <button
+          onClick={() => setManual((v) => !v)}
+          aria-expanded={manual}
+          className="text-[11.5px] text-body2 transition-colors hover:text-text"
+        >
+          {manual ? 'Ocultar cadastro manual' : 'Cadastrar manualmente'}
+        </button>
+
+        {manual && (
+          <fieldset disabled={ocupado} className="mt-3 grid gap-2 border-0 p-0">
+            <legend className="sr-only">Novo mapeamento manual</legend>
+            <p className="m-0 text-[11px] leading-relaxed text-body2">
+              Só se você já tem os ids em mãos. Normalmente não é o caso: eles
+              chegam com a venda.
+            </p>
+            <div className="grid gap-2 min-[720px]:grid-cols-4">
+              <input
+                value={produtoId}
+                onChange={(e) => setProdutoId(e.target.value)}
+                placeholder="id do produto na plataforma"
+                aria-label="Id do produto na plataforma"
+                className="rounded-[9px] border border-border2 bg-bg px-3 py-2 font-mono text-[12px] text-text transition-colors focus:border-accentBorder"
+              />
+              <input
+                value={ofertaId}
+                onChange={(e) => setOfertaId(e.target.value)}
+                placeholder="id da oferta (vazio = qualquer)"
+                aria-label="Id da oferta na plataforma"
+                className="rounded-[9px] border border-border2 bg-bg px-3 py-2 font-mono text-[12px] text-text transition-colors focus:border-accentBorder"
+              />
+              <select
+                value={edicaoId}
+                onChange={(e) => setEdicaoId(e.target.value)}
+                aria-label="Edição"
+                // `color-scheme` é o que torna a lista aberta legível no tema
+                // escuro — sem ela o popup é desenhado pelo sistema em tema claro
+                // (achado do dogfooding da SPEC-031, #153).
+                className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12.5px] text-text transition-colors focus:border-accentBorder [color-scheme:dark_light]"
               >
-                Remover
+                <option value="">edição…</option>
+                {edicoes.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() =>
+                  criar({
+                    externalProductId: produtoId,
+                    // Vazio = curinga. `null` explícito, não string vazia: é o
+                    // que faz "qualquer oferta deste produto" resolver.
+                    externalOfferId: ofertaId.trim() || null,
+                    editionId: edicaoId,
+                  })
+                }
+                disabled={!produtoId.trim() || !edicaoId || ocupado}
+                className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg transition-opacity disabled:opacity-40"
+              >
+                Cadastrar
               </button>
             </div>
-          </LinhaCartao>
-        ))}
-      </ul>
-
-      <fieldset disabled={ocupado} className="mt-4 grid gap-2 border-0 p-0">
-        <legend className="text-[11.5px] text-body2">Novo mapeamento</legend>
-        <div className="grid gap-2 min-[720px]:grid-cols-4">
-          <input
-            value={produtoId}
-            onChange={(e) => setProdutoId(e.target.value)}
-            placeholder="id do produto na plataforma"
-            aria-label="Id do produto na plataforma"
-            className="rounded-[9px] border border-border2 bg-bg px-3 py-2 font-mono text-[12px] text-text transition-colors focus:border-accentBorder"
-          />
-          <input
-            value={ofertaId}
-            onChange={(e) => setOfertaId(e.target.value)}
-            placeholder="id da oferta (vazio = qualquer)"
-            aria-label="Id da oferta na plataforma"
-            className="rounded-[9px] border border-border2 bg-bg px-3 py-2 font-mono text-[12px] text-text transition-colors focus:border-accentBorder"
-          />
-          <select
-            value={edicaoId}
-            onChange={(e) => setEdicaoId(e.target.value)}
-            aria-label="Edição"
-            // `color-scheme` é o que torna a lista aberta legível no tema
-            // escuro — sem ela o popup é desenhado pelo sistema em tema claro
-            // (achado do dogfooding da SPEC-031, #153).
-            className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12.5px] text-text transition-colors focus:border-accentBorder [color-scheme:dark_light]"
-          >
-            <option value="">edição…</option>
-            {edicoes.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.label}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={criar}
-            disabled={!produtoId.trim() || !edicaoId || ocupado}
-            className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg transition-opacity disabled:opacity-40"
-          >
-            Cadastrar
-          </button>
-        </div>
-      </fieldset>
+          </fieldset>
+        )}
+      </div>
     </Cartao>
   );
 }
+
+/**
+ * Uma oferta que já chegou e ainda não tem par.
+ *
+ * A linha diz **o que aconteceu** (quantas vendas, quantas falharam, quando) e
+ * oferece a única coisa que falta: a edição. O id fica visível em mono, mas
+ * ninguém precisa copiá-lo — ele já vai na chamada.
+ */
+function OfertaVistaLinha({
+  oferta,
+  edicoes,
+  ocupado,
+  onMapear,
+}: {
+  oferta: SeenOfferView;
+  edicoes: Array<{ id: string; label: string }>;
+  ocupado: boolean;
+  onMapear: (editionId: string) => void;
+}) {
+  const [edicaoId, setEdicaoId] = useState('');
+
+  return (
+    <LinhaCartao tom={oferta.falhas > 0 ? 'erro' : 'atencao'}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="m-0 truncate font-mono text-[12px] text-text">
+            {oferta.externalProductId}
+          </p>
+          <p className="m-0 mt-0.5 text-[11.5px] text-body2">
+            {oferta.externalOfferId ? (
+              <>
+                oferta <span className="font-mono text-dim">{oferta.externalOfferId}</span>
+              </>
+            ) : (
+              // A Kiwify não manda oferta: o mapeamento vira curinga do produto.
+              'sem id de oferta — vale para qualquer oferta deste produto'
+            )}
+            {' · '}
+            {oferta.ocorrencias} {oferta.ocorrencias === 1 ? 'venda' : 'vendas'}
+            {oferta.falhas > 0 && (
+              <span className="text-error">
+                {' · '}
+                {oferta.falhas} {oferta.falhas === 1 ? 'falhou' : 'falharam'}
+              </span>
+            )}
+            {' · '}última em {shortDateTime(oferta.ultimaEm)}
+          </p>
+        </div>
+        {oferta.falhas > 0 && <Etiqueta tom="erro">venda parada</Etiqueta>}
+      </div>
+
+      <div className="mt-3 grid gap-2 min-[720px]:grid-cols-[1fr_auto]">
+        <select
+          value={edicaoId}
+          onChange={(e) => setEdicaoId(e.target.value)}
+          aria-label={`Edição para o produto ${oferta.externalProductId}`}
+          className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12.5px] text-text transition-colors focus:border-accentBorder [color-scheme:dark_light]"
+        >
+          <option value="">escolha a edição que esta venda entrega…</option>
+          {edicoes.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.label}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => onMapear(edicaoId)}
+          disabled={!edicaoId || ocupado}
+          className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg transition-opacity disabled:opacity-40"
+        >
+          Mapear
+        </button>
+      </div>
+    </LinhaCartao>
+  );
+}
+

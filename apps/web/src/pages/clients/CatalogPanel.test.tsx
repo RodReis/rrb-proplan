@@ -1,10 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LicCatalogResponse, OfferMappingView } from '../../lib/api';
+import type {
+  LicCatalogResponse,
+  OfferMappingView,
+  SeenOfferView,
+} from '../../lib/api';
 
 const apiMock = vi.hoisted(() => ({
   listOfferMappings: vi.fn(),
+  listSeenOffers: vi.fn(),
   createOfferMapping: vi.fn(),
   deleteOfferMapping: vi.fn(),
   createLicProduct: vi.fn(),
@@ -97,6 +102,7 @@ function montar(catalogo = CATALOGO) {
 beforeEach(() => {
   vi.clearAllMocks();
   apiMock.listOfferMappings.mockResolvedValue([]);
+  apiMock.listSeenOffers.mockResolvedValue([]);
   apiMock.listLicReleases.mockResolvedValue([]);
 });
 
@@ -264,20 +270,103 @@ describe('acesso ao código-fonte por edição', () => {
  * tela. Ficava junto das entregas com falha porque é ali que se *descobre* que
  * falta um mapeamento — mas descobrir e cadastrar são momentos diferentes.
  */
-describe('mapeamentos de oferta', () => {
-  it('diz curinga por extenso, não com travessão', async () => {
-    apiMock.listOfferMappings.mockResolvedValue([MAPEAMENTO]);
+/**
+ * `Oferta → edição` — veio de Pendências (decisão do PI, 2026-07-31), e o campo
+ * de id mudou de dono no mesmo dia.
+ *
+ * **O que o dogfooding encontrou**: o cadastro pedia o id do produto na
+ * plataforma num campo de texto livre, e **o operador não tem esse id**. Ele
+ * nasce dentro do payload da venda; o único caminho era ler a mensagem de erro
+ * da entrega que falhou e transcrever um uuid à mão.
+ *
+ * Agora a tela **oferece o que já chegou**. O que estes testes protegem é isso:
+ * a lista tem de aparecer sem digitação, e o cadastro manual tem de continuar
+ * existindo — recolhido — para quem mapeia antes da primeira venda.
+ */
+const OFERTA_VISTA: SeenOfferView = {
+  externalProductId: 'prod-kiwify-1',
+  externalOfferId: null,
+  ocorrencias: 2,
+  falhas: 2,
+  ultimaEm: '2026-07-30T12:35:00.000Z',
+};
+
+describe('ofertas vistas: o caminho sem digitar id', () => {
+  it('mostra a oferta que chegou e ainda não tem par', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
     montar();
 
-    expect(await screen.findByText(/qualquer oferta \(curinga\)/i)).toBeInTheDocument();
+    expect(await screen.findByText('prod-kiwify-1')).toBeInTheDocument();
+    // O que aconteceu, não só o id: é o que dá contexto para escolher a edição.
+    expect(screen.getByText(/2 vendas/)).toBeInTheDocument();
+    expect(screen.getByText(/2 falharam/)).toBeInTheDocument();
   });
 
-  it('cadastra com oferta vazia como null (curinga), nunca string vazia', async () => {
+  it('mapear usa o id da própria linha — sem o operador digitar nada', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
     apiMock.createOfferMapping.mockResolvedValue(MAPEAMENTO);
     montar();
 
+    await userEvent.selectOptions(
+      await screen.findByLabelText(/Edição para o produto prod-kiwify-1/i),
+      'ed-1',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Mapear' }));
+
+    await waitFor(() =>
+      expect(apiMock.createOfferMapping).toHaveBeenCalledWith({
+        externalProductId: 'prod-kiwify-1',
+        // Curinga: a Kiwify não manda oferta, então o par é do produto inteiro.
+        externalOfferId: null,
+        editionId: 'ed-1',
+      }),
+    );
+  });
+
+  it('sem edição escolhida, o botão não mapeia nada', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
+    montar();
+
+    expect(await screen.findByRole('button', { name: 'Mapear' })).toBeDisabled();
+  });
+
+  it('a linha diz quando a plataforma NÃO manda oferta', async () => {
+    // Sem esta frase, o `null` pareceria dado faltando em vez de curinga.
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
+    montar();
+
+    expect(
+      await screen.findByText(/vale para qualquer oferta deste produto/i),
+    ).toBeInTheDocument();
+  });
+
+  it('sem venda nenhuma, explica que o id vem dentro da venda', async () => {
+    // O estado que mais confundia: campo pedindo um id que não existe ainda.
+    montar();
+
+    expect(
+      await screen.findByText(/O id do produto vem dentro da venda/i),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('cadastro manual: o escape, recolhido', () => {
+  it('não aparece por padrão — o caminho comum é a lista', async () => {
+    montar();
+    await screen.findByRole('button', { name: /Cadastrar manualmente/i });
+
+    expect(screen.queryByLabelText('Id do produto na plataforma')).toBeNull();
+  });
+
+  it('abre e cadastra com oferta vazia como null (curinga), nunca string vazia', async () => {
+    apiMock.createOfferMapping.mockResolvedValue(MAPEAMENTO);
+    montar();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Cadastrar manualmente/i }),
+    );
     await userEvent.type(
-      await screen.findByLabelText('Id do produto na plataforma'),
+      screen.getByLabelText('Id do produto na plataforma'),
       'prod-kiwify-1',
     );
     await userEvent.selectOptions(screen.getByLabelText('Edição'), 'ed-1');
@@ -295,12 +384,27 @@ describe('mapeamentos de oferta', () => {
   it('o botão de cadastrar fica travado sem produto e sem edição', async () => {
     montar();
 
-    expect(await screen.findByRole('button', { name: 'Cadastrar' })).toBeDisabled();
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Cadastrar manualmente/i }),
+    );
+    expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeDisabled();
   });
 
-  it('sem nenhuma oferta ligada, o cartão avisa — venda chegaria e falharia', async () => {
+  it('diz que normalmente não é o caso — os ids chegam com a venda', async () => {
     montar();
 
-    expect(await screen.findByText(/nenhuma oferta ligada/i)).toBeInTheDocument();
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Cadastrar manualmente/i }),
+    );
+    expect(screen.getByText(/eles\s+chegam com a venda/i)).toBeInTheDocument();
+  });
+});
+
+describe('mapeamentos já cadastrados', () => {
+  it('diz curinga por extenso, não com travessão', async () => {
+    apiMock.listOfferMappings.mockResolvedValue([MAPEAMENTO]);
+    montar();
+
+    expect(await screen.findByText(/qualquer oferta \(curinga\)/i)).toBeInTheDocument();
   });
 });

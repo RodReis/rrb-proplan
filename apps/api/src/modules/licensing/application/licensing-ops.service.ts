@@ -4,6 +4,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LICENSING_QUEUE, PLATFORM_KIWIFY } from '../licensing.constants';
+import { parseKiwifyEvent } from '../domain/kiwify-event';
+import { ofertasNaoMapeadas, type OfertaVista } from '../domain/seen-offers';
 import type { WebhookJobData } from './webhook-intake.service';
 
 /**
@@ -254,6 +256,56 @@ export class LicensingOpsService {
       `Settings do tenant ${tenantId} atualizados: ${Object.keys(dados).join(', ')}`,
     );
     return this.settings(tenantId);
+  }
+
+  /**
+   * As ofertas que **já apareceram** nas entregas e ainda não têm mapeamento
+   * (FIX do dogfooding, 2026-07-31).
+   *
+   * ## Por que esta rota existe
+   *
+   * O cadastro `Oferta → edição` pedia o id do produto na plataforma num campo
+   * de texto livre — e **o operador não tem esse id**. Ele nasce dentro do
+   * payload da venda e não aparece em tela nenhuma da Kiwify que se copie. O
+   * único caminho era ler a mensagem de erro da entrega que falhou e transcrever
+   * um uuid à mão.
+   *
+   * A informação sempre esteve aqui: toda entrega guarda o payload bruto, que é
+   * o que torna o reprocessamento possível. Faltava alguém olhar.
+   *
+   * ## O payload é lido, não indexado
+   *
+   * `externalProductId` não é coluna — vive dentro do JSON. Ler N eventos e
+   * extrair com o parser da plataforma é aceitável **porque a lista é limitada**
+   * (`MAX_PAGE`) e esta rota é de configuração, não de caminho quente. Se um dia
+   * a operação crescer, a saída é coluna gerada + índice, não paginação maior.
+   */
+  async listSeenOffers(take = MAX_PAGE): Promise<OfertaVista[]> {
+    const [eventos, mapeamentos] = await Promise.all([
+      this.prisma.licWebhookEvent.findMany({
+        select: { payload: true, receivedAt: true, status: true, platform: true },
+        orderBy: { receivedAt: 'desc' },
+        take: Math.min(Math.max(1, take), MAX_PAGE),
+      }),
+      this.prisma.licOfferMapping.findMany({
+        select: { externalProductId: true, externalOfferId: true },
+      }),
+    ]);
+
+    const paraOferta = eventos.map((ev) => {
+      // Só a Kiwify tem parser hoje. Outra plataforma entra aqui quando existir
+      // o adapter dela — e até lá o evento vira linha sem produto, que a regra
+      // descarta em vez de inventar um id.
+      const lido = ev.platform === PLATFORM_KIWIFY ? parseKiwifyEvent(ev.payload) : null;
+      return {
+        externalProductId: lido?.externalProductId,
+        externalOfferId: lido?.externalOfferId ?? null,
+        receivedAt: ev.receivedAt,
+        status: ev.status as string,
+      };
+    });
+
+    return ofertasNaoMapeadas(paraOferta, mapeamentos);
   }
 
   /** Mapeamentos oferta→edição do tenant, com a edição resolvida para a tela. */

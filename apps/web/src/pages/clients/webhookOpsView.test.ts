@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  produtoDoErro,
   canReprocess,
   offerLabel,
   pendingCount,
@@ -154,5 +155,38 @@ describe('pendingCount', () => {
 
   it('zero em lista vazia', () => {
     expect(pendingCount([])).toBe(0);
+  });
+});
+
+/**
+ * O id do produto dentro da mensagem de falha (FIX do dogfooding, 2026-07-31).
+ *
+ * Esse era o **único lugar** onde o operador via o id, para transcrevê-lo à mão
+ * noutra aba. Extraí-lo é o que permite oferecer o mapeamento na própria linha
+ * que falhou.
+ */
+describe('produtoDoErro', () => {
+  it('extrai o produto da mensagem que o servidor grava', () => {
+    const erro = 'Oferta sem mapeamento: produto 2567aaf0-f9d7-4ca0, oferta (nenhuma)';
+
+    expect(produtoDoErro(erro)).toBe('2567aaf0-f9d7-4ca0');
+  });
+
+  it('extrai também quando há id de oferta', () => {
+    const erro = 'Oferta sem mapeamento: produto prod-1, oferta of-9';
+
+    expect(produtoDoErro(erro)).toBe('prod-1');
+  });
+
+  it('outro erro não vira oferta de mapeamento', () => {
+    // Licença não encontrada não tem o que mapear; oferecer o seletor ali
+    // sugeriria que o problema é de-para quando não é.
+    expect(produtoDoErro('Licença não encontrada para a assinatura sub-1')).toBeNull();
+    expect(produtoDoErro('Assinatura inválida')).toBeNull();
+  });
+
+  it('sem erro, nada', () => {
+    expect(produtoDoErro(null)).toBeNull();
+    expect(produtoDoErro('')).toBeNull();
   });
 });

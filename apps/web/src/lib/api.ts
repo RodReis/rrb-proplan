@@ -2135,6 +2135,29 @@ export interface OfferMappingView {
   edition: { id: string; slug: string; name: string };
 }
 
+/**
+ * Uma oferta que **já apareceu** numa entrega e ainda não tem mapeamento.
+ *
+ * Existe porque o cadastro pedia o id do produto num campo de texto livre — e o
+ * operador não tem esse id: ele nasce dentro do payload da venda e não aparece
+ * em tela nenhuma da plataforma que se copie (FIX do dogfooding, 2026-07-31).
+ */
+export interface SeenOfferView {
+  externalProductId: string;
+  /** `null` = a plataforma não mandou oferta (é o caso da Kiwify). */
+  externalOfferId: string | null;
+  /** Quantas entregas trouxeram este par. */
+  ocorrencias: number;
+  /** Quantas delas falharam — o número que dá urgência à linha. */
+  falhas: number;
+  ultimaEm: string;
+}
+
+/** As ofertas vistas nas entregas que ainda não têm mapeamento. */
+export function listSeenOffers(): Promise<SeenOfferView[]> {
+  return request('/licensing/seen-offers');
+}
+
 export function listOfferMappings(): Promise<OfferMappingView[]> {
   return request('/licensing/offer-mappings');
 }

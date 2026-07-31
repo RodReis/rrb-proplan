@@ -652,7 +652,7 @@ export function LicensesPage() {
           {/* Pendências: só o que falhou e pede conserto. O acesso ao
               código-fonte saiu daqui para Métricas (decisão do PI, 2026-07-31),
               onde a contagem e a lista acionável passam a viver juntas. */}
-          {aba === 'pendencias' && <WebhookOpsPanel />}
+          {aba === 'pendencias' && <WebhookOpsPanel catalogo={catalogo} />}
 
           {/* Configurações: os três ajustes da área, reunidos. Estavam no rodapé
               de duas telas de operação — o argumento de "configuração junto da
