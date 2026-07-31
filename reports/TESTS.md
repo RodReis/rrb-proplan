@@ -14,7 +14,7 @@ Totais da última execução (regenerado, não acumulado):
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
 | — | — | — | Regras de Negócio | 2168 | 2168 | 0 | 82.0 | — | — |
 | — | — | — | Banco | 262 | 262 | 0 | 67.1 | — | — |
-| — | — | — | Tela | 691 | 691 | 0 | 58.8 | — | — |
+| — | — | — | Tela | 703 | 703 | 0 | 59.0 | — | — |
 
 ## Histórico por entrega
 
@@ -271,3 +271,15 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #230 | SPEC-035 | Regras de Negócio | 2168 | 2168 | 0 | 82.0 | #231 | [#231](https://github.com/RodReis/rrb-proplan/pull/231) |
 | — | #230 | SPEC-035 | Banco | 262 | 262 | 0 | 67.1 | #231 | [#231](https://github.com/RodReis/rrb-proplan/pull/231) |
 | — | #230 | SPEC-035 | Tela | 691 | 691 | 0 | 58.8 | #231 | [#231](https://github.com/RodReis/rrb-proplan/pull/231) |
+| — | #230 | SPEC-035 | Regras de Negócio | 2168 | 2168 | 0 | 82.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Banco | 262 | 262 | 0 | 67.1 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Tela | 703 | 701 | 2 | 59.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Regras de Negócio | 2168 | 2168 | 0 | 82.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Banco | 262 | 262 | 0 | 67.1 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Tela | 703 | 701 | 2 | 59.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Regras de Negócio | 2168 | 2168 | 0 | 82.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Banco | 262 | 262 | 0 | 67.1 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Tela | 703 | 701 | 2 | 59.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Regras de Negócio | 2168 | 2168 | 0 | 82.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Banco | 262 | 262 | 0 | 67.1 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
+| — | #230 | SPEC-035 | Tela | 703 | 703 | 0 | 59.0 | #234 | [#234](https://github.com/RodReis/rrb-proplan/pull/234) |
