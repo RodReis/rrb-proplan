@@ -52,6 +52,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      # SPEC-036: sem estas duas a emissão funciona mas o /activate devolve 503.
+      LICENSING_SIGNING_KEY: ${LICENSING_SIGNING_KEY}
+      LICENSING_SIGNING_KID: ${LICENSING_SIGNING_KID}
     ports:
       - "3311:3311"
 

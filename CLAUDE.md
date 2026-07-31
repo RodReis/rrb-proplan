@@ -135,6 +135,21 @@ O repo tem um grafo de conhecimento persistente em `graphify-out/` (gerado pela 
 - **Ao final de cada entrega** (junto com STATUS.md/DEVELOPMENT.md): me pergunta se sim ou não para rodar o `/graphify . --update` — incremental, re-extrai só arquivos novos/alterados via manifest. Não recrie o grafo do zero.
 - `graphify-out/` é artefato local (cache), não entra em commit.
 
+## Skills relevantes a usar (Claude Code)
+
+- `superpowers:brainstorming` — antes de implementar feature não-trivial
+- `superpowers:writing-plans` — pra task com mais de 1 etapa de DB/API
+- `superpowers:test-driven-development` — feature crítica (LGPD, RLS, anti-banimento)
+- `superpowers:systematic-debugging` — bugs reportados
+- `superpowers:verification-before-completion` — antes de declarar "pronto"
+- `frontend-design` — UI distinta (não cair em shadcn-default genérico)
+-`context7-mcp` - pesquisa na internet
+-`playwright` - smoke ao vivo
+-`security-review` - segurança do sistema
+-`design-review` - padrões do frontend.
+-`code-review` - padrões do código criado.
+-`impeccable` - critique craft layout delight clarify polish optimize 
+
 ## Documentos-chave
 
 - `docs/DEVELOPMENT.md` — **sua ordem de execução e status por item (você é o dono; atualize a cada entrega junto com STATUS.md)**
