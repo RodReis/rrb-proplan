@@ -103,7 +103,7 @@ const MAQUINA = {
   deactivatedAt: null as string | null,
 };
 
-function montar() {
+function render_() {
   return render(
     <ThemeProvider>
       <MemoryRouter initialEntries={['/t/acme/licencas']}>
@@ -113,6 +113,20 @@ function montar() {
       </MemoryRouter>
     </ThemeProvider>,
   );
+}
+
+/**
+ * Monta a página **na aba Licenças**.
+ *
+ * A área abre em **Métricas** desde a reorganização do PI (2026-07-31): a
+ * pergunta de quem chega é *"como está?"*, e emitir é a tarefa de quem já sabe o
+ * que fazer. Estes testes são sobre licenças, então clicam para lá — a aba
+ * inicial tem teste próprio, logo abaixo.
+ */
+async function montar() {
+  const r = render_();
+  await userEvent.click(await screen.findByRole('tab', { name: 'Licenças' }));
+  return r;
 }
 
 describe('SPEC-036: tela de Licenças', () => {
@@ -143,7 +157,7 @@ describe('SPEC-036: tela de Licenças', () => {
   });
 
   it('lista as licenças do workspace', async () => {
-    montar();
+    await montar();
     expect(await screen.findByText('Comprador')).toBeInTheDocument();
     expect(screen.getByText(/1 de 2 máquinas/)).toBeInTheDocument();
   });
@@ -156,7 +170,7 @@ describe('SPEC-036: tela de Licenças', () => {
         ...LICENCA,
         key: 'WR-AB23-CD45-EF67-GH89',
       });
-      montar();
+      await montar();
 
       await userEvent.type(
         await screen.findByLabelText(/E-mail do comprador/),
@@ -173,7 +187,7 @@ describe('SPEC-036: tela de Licenças', () => {
         ...LICENCA,
         key: 'WR-AB23-CD45-EF67-GH89',
       });
-      montar();
+      await montar();
 
       await userEvent.type(
         await screen.findByLabelText(/E-mail do comprador/),
@@ -189,7 +203,7 @@ describe('SPEC-036: tela de Licenças', () => {
     it('NÃO aparece na lista de licenças', async () => {
       // O servidor não devolve a chave em leitura nenhuma; este teste afirma
       // que a tela também não a guarda para reexibir.
-      montar();
+      await montar();
       await screen.findByText('Comprador');
       expect(screen.queryByText(/WR-[A-Z0-9]{4}-/)).not.toBeInTheDocument();
     });
@@ -204,7 +218,7 @@ describe('SPEC-036: tela de Licenças', () => {
         ...CATALOGO,
         signingConfigured: false,
       });
-      montar();
+      await montar();
 
       const aviso = await screen.findByRole('alert');
       expect(aviso).toHaveTextContent(/não vão ativar/i);
@@ -212,7 +226,7 @@ describe('SPEC-036: tela de Licenças', () => {
     });
 
     it('não aparece quando está configurada', async () => {
-      montar();
+      await montar();
       await screen.findByText('Comprador');
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
@@ -223,7 +237,7 @@ describe('SPEC-036: tela de Licenças', () => {
       apiMock.listLicenses.mockResolvedValue([
         { ...LICENCA, status: 'REVOKED', revokedAt: '2026-07-29T13:00:00Z', revokedReason: 'reembolso' },
       ]);
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       expect(screen.queryByRole('button', { name: 'Revogar' })).not.toBeInTheDocument();
@@ -234,7 +248,7 @@ describe('SPEC-036: tela de Licenças', () => {
       // `null` do prompt = cancelou. Revogar por engano é irreversível: a
       // licença não volta a ACTIVE.
       vi.spyOn(window, 'prompt').mockReturnValue(null);
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: 'Revogar' }));
@@ -245,7 +259,7 @@ describe('SPEC-036: tela de Licenças', () => {
     it('envia o motivo digitado', async () => {
       vi.spyOn(window, 'prompt').mockReturnValue('chargeback');
       apiMock.revokeLicense.mockResolvedValue({ ...LICENCA, status: 'REVOKED' });
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: 'Revogar' }));
@@ -272,7 +286,7 @@ describe('SPEC-036: tela de Licenças', () => {
       ['saleRef', 'kiwify-9931'],
       ['username do GitHub', 'anasilva'],
     ])('manda %s cru para o servidor decidir a coluna', async (_rotulo, termo) => {
-      montar();
+      await montar();
       await screen.findByText('Comprador');
 
       await userEvent.type(screen.getByLabelText(/Buscar/), termo);
@@ -284,7 +298,7 @@ describe('SPEC-036: tela de Licenças', () => {
     });
 
     it('campo vazio recarrega a lista inteira, sem filtro', async () => {
-      montar();
+      await montar();
       await screen.findByText('Comprador');
 
       await userEvent.click(screen.getByRole('button', { name: 'Buscar' }));
@@ -301,7 +315,7 @@ describe('SPEC-036: tela de Licenças', () => {
         { id: 'e1', type: 'issued', payload: null, createdAt: '2026-07-29T12:00:00Z' },
         { id: 'e2', type: 'activated', payload: null, createdAt: '2026-07-29T12:05:00Z' },
       ]);
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
@@ -327,7 +341,7 @@ describe('SPEC-036: tela de Licenças', () => {
           },
         ],
       });
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
@@ -347,7 +361,7 @@ describe('SPEC-036: tela de Licenças', () => {
           { ...MAQUINA, id: 'act-2', hostname: 'morta', deactivatedAt: '2026-07-28T10:00:00Z' },
         ],
       });
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
@@ -366,7 +380,7 @@ describe('SPEC-036: tela de Licenças', () => {
         ...MAQUINA,
         deactivatedAt: '2026-07-29T14:00:00Z',
       });
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
@@ -386,7 +400,7 @@ describe('SPEC-036: tela de Licenças', () => {
         swapWindowDays: 30,
         activations: [],
       });
-      montar();
+      await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
@@ -404,7 +418,7 @@ describe('SPEC-036: tela de Licenças', () => {
           swapWindowDays: 30,
           activations: [MAQUINA],
         });
-        montar();
+        await montar();
 
         await screen.findByText('Comprador');
         await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
@@ -420,7 +434,7 @@ describe('SPEC-036: tela de Licenças', () => {
           swapWindowDays: 30,
           activations: [MAQUINA],
         });
-        montar();
+        await montar();
 
         await screen.findByText('Comprador');
         await userEvent.click(screen.getByRole('button', { name: /Máquinas e trilha/ }));
@@ -431,7 +445,7 @@ describe('SPEC-036: tela de Licenças', () => {
   });
 
   describe('estados vazios', () => {
-    it('sem produto, a área ENSINA em vez de mostrar quatro abas vazias', async () => {
+    it('sem produto, a área ENSINA em vez de mostrar cinco abas vazias', async () => {
       // Ausência é informação (ADR-014) — e aqui ela substitui duas coisas: as
       // abas (cada uma responderia "nada aqui" a uma pergunta que ninguém fez)
       // e o *esconder o item do menu* que a SPEC-040 pedia. Esconder tornaria
@@ -441,7 +455,7 @@ describe('SPEC-036: tela de Licenças', () => {
         products: [],
       });
       apiMock.listLicenses.mockResolvedValue([]);
-      montar();
+      render_();
 
       expect(await screen.findByText(/Licenciamento de software/)).toBeInTheDocument();
       expect(screen.queryByLabelText(/E-mail do comprador/)).not.toBeInTheDocument();
@@ -457,7 +471,7 @@ describe('SPEC-036: tela de Licenças', () => {
         products: [],
       });
       apiMock.listLicenses.mockResolvedValue([]);
-      montar();
+      render_();
 
       expect(
         await screen.findByText(/pode ignorar esta área/),
@@ -472,7 +486,7 @@ describe('SPEC-036: tela de Licenças', () => {
         products: [],
       });
       apiMock.listLicenses.mockResolvedValue([]);
-      montar();
+      render_();
 
       await userEvent.click(
         await screen.findByRole('button', { name: /Cadastrar o primeiro produto/ }),
@@ -482,149 +496,16 @@ describe('SPEC-036: tela de Licenças', () => {
 
     it('sem licença, diz "nenhuma encontrada" em vez de lista em branco', async () => {
       apiMock.listLicenses.mockResolvedValue([]);
-      montar();
-      expect(await screen.findByText(/Nenhuma licença encontrada/)).toBeInTheDocument();
+      await montar();
+      expect(await screen.findByText(/Nenhuma licença emitida ainda/)).toBeInTheDocument();
     });
 
     it('falha de carregamento aparece, não fica em branco', async () => {
       apiMock.getLicensingCatalog.mockRejectedValue(new Error('API 500: caiu'));
-      montar();
+      // Sem abas neste estado: a página não chega a montar a barra.
+      render_();
       expect(await screen.findByText(/caiu/)).toBeInTheDocument();
     });
   });
 
-  describe('produtos e edições', () => {
-    /**
-     * Entra na aba Configurações (SPEC-040 §A área).
-     *
-     * O cadastro deixou de ser um bloco no fim da página e virou seção própria:
-     * ele acontece uma vez na vida do workspace, e ocupar espaço na tela de
-     * emissão todo dia era o preço de tê-lo à mão uma vez.
-     */
-    async function irParaConfiguracoes() {
-      montar();
-      await userEvent.click(
-        await screen.findByRole('tab', { name: 'Configurações' }),
-      );
-    }
-
-    it('vem recolhido — o caminho comum é emitir', async () => {
-      // Cadastrar produto acontece uma vez na vida do workspace; aberto,
-      // empurraria a emissão para baixo da dobra todo dia.
-      await irParaConfiguracoes();
-      const botao = await screen.findByRole('button', { name: /Produtos e edições/ });
-      expect(botao).toHaveAttribute('aria-expanded', 'false');
-    });
-
-    it('mostra quantas licenças saíram da edição — o que impede apagá-la', async () => {
-      await irParaConfiguracoes();
-      await userEvent.click(
-        await screen.findByRole('button', { name: /Produtos e edições/ }),
-      );
-      expect(screen.getByText(/3 licenças/)).toBeInTheDocument();
-    });
-
-    it('não oferece botão de remover produto nem edição', async () => {
-      // O `ON DELETE RESTRICT` recusa apagar edição com licença vendida.
-      // Oferecer o botão para depois recusá-lo é pior que não oferecer.
-      await irParaConfiguracoes();
-      await userEvent.click(
-        await screen.findByRole('button', { name: /Produtos e edições/ }),
-      );
-      expect(screen.queryByRole('button', { name: /Remover|Excluir|Apagar/ })).toBeNull();
-    });
-
-    /**
-     * O repositório de código-fonte (SPEC-039), exposto no FIX #212.
-     *
-     * A coluna existia desde o PR-1 daquela fatia e **não tinha caminho pela
-     * interface**: sem ela preenchida o convite não tem destino, e o operador só
-     * descobriria isso no teste de conexão — depois de já ter cadastrado o PAT.
-     */
-    describe('repositório de código-fonte', () => {
-      async function abrir() {
-        await irParaConfiguracoes();
-        await userEvent.click(
-          await screen.findByRole('button', { name: /Produtos e edições/ }),
-        );
-      }
-
-      it('mostra o campo por produto, vazio quando não configurado', async () => {
-        await abrir();
-
-        const campo = screen.getByLabelText(/Repositório de código-fonte de War Room/i);
-        expect(campo).toHaveValue('');
-      });
-
-      it('salva `owner/name`', async () => {
-        apiMock.updateProductSourceRepo.mockResolvedValue({
-          ...CATALOGO.products[0],
-          sourceRepo: 'RodReis/war-room',
-        });
-        await abrir();
-
-        await userEvent.type(
-          screen.getByLabelText(/Repositório de código-fonte de War Room/i),
-          'RodReis/war-room',
-        );
-        await userEvent.click(screen.getByRole('button', { name: /Salvar repo/i }));
-
-        await waitFor(() =>
-          expect(apiMock.updateProductSourceRepo).toHaveBeenCalledWith(
-            'prod-1',
-            'RodReis/war-room',
-          ),
-        );
-      });
-
-      it('o botão fica inerte enquanto o valor não muda', async () => {
-        await abrir();
-
-        // Sem isto, clicar sem alterar nada dispararia um PATCH que não muda nada
-        // — e o toast de sucesso ensinaria que "salvou" é barato.
-        expect(screen.getByRole('button', { name: /Salvar repo/i })).toBeDisabled();
-      });
-    });
-
-    /**
-     * `grantsSourceAccess` na tela (FIX #214).
-     *
-     * É o que o webhook lê para agendar o convite na compra. Sem caminho para
-     * marcá-lo, **não existia forma de vender código-fonte pela interface** — e o
-     * modo de errar é mudo: a venda chega, a licença sai sem agendamento, e o
-     * comprador da edição mais cara nunca recebe o convite.
-     */
-    describe('acesso ao código-fonte por edição', () => {
-      it('mostra o estado atual como checkbox', async () => {
-        await irParaConfiguracoes();
-        await userEvent.click(
-          await screen.findByRole('button', { name: /Produtos e edições/ }),
-        );
-
-        // Checkbox e não botão: a pergunta que a linha responde é "esta edição
-        // vende o código?", e um botão obrigaria a inferir o estado atual pelo
-        // rótulo da ação.
-        expect(screen.getByRole('checkbox', { name: /código-fonte/i })).not.toBeChecked();
-      });
-
-      it('marcar chama o PATCH e diz o efeito nas PRÓXIMAS compras', async () => {
-        apiMock.updateLicEditionLimits.mockResolvedValue({
-          ...CATALOGO.products[0].editions[0],
-          grantsSourceAccess: true,
-        });
-        await irParaConfiguracoes();
-        await userEvent.click(
-          await screen.findByRole('button', { name: /Produtos e edições/ }),
-        );
-
-        await userEvent.click(screen.getByRole('checkbox', { name: /código-fonte/i }));
-
-        await waitFor(() =>
-          expect(apiMock.updateLicEditionLimits).toHaveBeenCalledWith('ed-1', {
-            grantsSourceAccess: true,
-          }),
-        );
-      });
-    });
-  });
 });

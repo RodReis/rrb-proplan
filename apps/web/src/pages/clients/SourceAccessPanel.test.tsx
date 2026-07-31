@@ -5,12 +5,9 @@ import type { SourcePendingItem } from '../../lib/api';
 
 const apiMock = vi.hoisted(() => ({
   listSourcePending: vi.fn(),
-  getSourceSettings: vi.fn(),
   setLicenseGithubUsername: vi.fn(),
   reinviteSource: vi.fn(),
   removeSourceAccess: vi.fn(),
-  setSourcePat: vi.fn(),
-  testSourceConnection: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -21,7 +18,7 @@ vi.mock('../../lib/api', async (importOriginal) => {
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast: toastMock }));
 
-const { SourceOpsPanel } = await import('./SourceOpsPanel');
+const { SourceAccessPanel } = await import('./SourceAccessPanel');
 
 /**
  * A tela do acesso ao source (SPEC-039 PR-5).
@@ -48,12 +45,11 @@ function pendencia(over: Partial<SourcePendingItem> = {}): SourcePendingItem {
 beforeEach(() => {
   vi.clearAllMocks();
   apiMock.listSourcePending.mockResolvedValue([]);
-  apiMock.getSourceSettings.mockResolvedValue({ githubPatSet: true, sourceRepo: 'RodReis/wr' });
 });
 
 describe('lista de pendências', () => {
   it('vazia diz que todo comprador foi convidado', async () => {
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
 
     expect(
       await screen.findByText(/todo comprador com direito ao código-fonte já foi convidado/i),
@@ -63,7 +59,7 @@ describe('lista de pendências', () => {
   it('mostra o comprador, a edição e o motivo', async () => {
     apiMock.listSourcePending.mockResolvedValue([pendencia()]);
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
 
     expect(await screen.findByText('Mario')).toBeInTheDocument();
     expect(screen.getByText('Completa com código-fonte')).toBeInTheDocument();
@@ -75,7 +71,7 @@ describe('lista de pendências', () => {
       pendencia({ reason: 'failed', sourceAccessError: 'token inválido ou expirado' }),
     ]);
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
 
     expect(await screen.findByText('token inválido ou expirado')).toBeInTheDocument();
   });
@@ -86,7 +82,7 @@ describe('lista de pendências', () => {
       pendencia({ licenseId: 'l2', reason: 'invited_not_accepted', githubUsername: 'bob' }),
     ]);
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
 
     // `invited_not_accepted` depende do comprador clicar: contá-lo faria o
     // contador nunca zerar.
@@ -103,7 +99,7 @@ describe('gravar o username', () => {
       previousInviteCanceled: false,
     });
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     await user.type(await screen.findByLabelText(/username do github de/i), 'rodreis');
     await user.click(screen.getByRole('button', { name: /salvar username/i }));
 
@@ -123,7 +119,7 @@ describe('gravar o username', () => {
       previousInviteCanceled: true,
     });
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     const campo = await screen.findByLabelText(/username do github de/i);
     await user.clear(campo);
     await user.type(campo, 'rodreis');
@@ -145,7 +141,7 @@ describe('gravar o username', () => {
       new Error('O usuário "zzz" não existe no GitHub'),
     );
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     await user.type(await screen.findByLabelText(/username do github de/i), 'zzz');
     await user.click(screen.getByRole('button', { name: /salvar username/i }));
 
@@ -161,7 +157,7 @@ describe('botões que só aparecem quando fazem algo', () => {
       pendencia({ reason: 'failed', githubUsername: 'rod', sourceAccess: 'FAILED' }),
     ]);
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
 
     expect(await screen.findByRole('button', { name: /reemitir convite/i })).toBeInTheDocument();
   });
@@ -169,7 +165,7 @@ describe('botões que só aparecem quando fazem algo', () => {
   it('reemitir NÃO aparece sem username', async () => {
     apiMock.listSourcePending.mockResolvedValue([pendencia()]);
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     await screen.findByText('Mario');
 
     // O servidor recusaria com 422 — um botão que sempre falha ensina a ignorar
@@ -180,7 +176,7 @@ describe('botões que só aparecem quando fazem algo', () => {
   it('remover acesso NÃO aparece sem convite emitido', async () => {
     apiMock.listSourcePending.mockResolvedValue([pendencia({ sourceAccess: 'PENDING' })]);
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     await screen.findByText('Mario');
 
     // Oferecer isto sugeriria que existe acesso, e quem clicasse sairia com a
@@ -200,7 +196,7 @@ describe('botões que só aparecem quando fazem algo', () => {
       aguardandoUsername: 0,
     });
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     await user.click(await screen.findByRole('button', { name: /reemitir convite/i }));
 
     // Reemitir dispara a reconciliação do tenant inteiro. Prometer "convite
@@ -221,7 +217,7 @@ describe('remover acesso', () => {
     ]);
     apiMock.removeSourceAccess.mockResolvedValue({ outcome: 'collaborator_removed' });
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     await user.click(await screen.findByRole('button', { name: /remover acesso/i }));
 
     // **A regra do §Objetivo**: o que já foi clonado continua com ele, e o
@@ -241,7 +237,7 @@ describe('remover acesso', () => {
     ]);
     apiMock.removeSourceAccess.mockResolvedValue({ outcome: 'failed' });
 
-    render(<SourceOpsPanel />);
+    render(<SourceAccessPanel />);
     await user.click(await screen.findByRole('button', { name: /remover acesso/i }));
 
     // Sucesso HTTP com fracasso real: a resposta chegou 200, e o acesso continua de
@@ -253,99 +249,3 @@ describe('remover acesso', () => {
   });
 });
 
-describe('PAT write-only e teste de conexão', () => {
-  it('o campo é do tipo password e o valor nunca vem da API', async () => {
-    render(<SourceOpsPanel />);
-
-    const campo = await screen.findByLabelText(/pat do github/i);
-    expect(campo).toHaveAttribute('type', 'password');
-    // O `GET` devolve só `githubPatSet` — não há valor para preencher.
-    expect(campo).toHaveValue('');
-  });
-
-  it('configurado não afirma que funciona — aponta o teste', async () => {
-    render(<SourceOpsPanel />);
-
-    // PAT fine-grained expira; "tudo ok" esconderia a falha que o teste antecipa.
-    expect(await screen.findByText(/expira/)).toBeInTheDocument();
-    expect(screen.getByText(/teste de conexão/)).toBeInTheDocument();
-  });
-
-  it('testar conexão com falha mostra o motivo, sem quebrar', async () => {
-    const user = userEvent.setup();
-    apiMock.testSourceConnection.mockResolvedValue({
-      ok: false,
-      reason: 'o token não tem permissão de administração no repositório',
-    });
-
-    render(<SourceOpsPanel />);
-    await user.click(await screen.findByRole('button', { name: /testar conexão/i }));
-
-    // `ok: false` é o RESULTADO, não uma exceção: um PAT só-leitura enxerga o repo
-    // e não convida ninguém, e é exatamente isso que o teste existe para pegar
-    // antes da primeira venda.
-    expect(
-      await screen.findByText(/Falhou: o token não tem permissão de administração/),
-    ).toBeInTheDocument();
-  });
-
-  it('testar conexão OK nomeia o repo', async () => {
-    const user = userEvent.setup();
-    apiMock.testSourceConnection.mockResolvedValue({ ok: true, repo: 'RodReis/war-room' });
-
-    render(<SourceOpsPanel />);
-    await user.click(await screen.findByRole('button', { name: /testar conexão/i }));
-
-    expect(await screen.findByText(/administra RodReis\/war-room/)).toBeInTheDocument();
-  });
-
-  it('teste bem-sucedido RECARREGA as settings — FIX #214', async () => {
-    const user = userEvent.setup();
-    // Estado do bug: o painel montou antes de o repo ser salvo no bloco de
-    // produtos, então `sourceRepo` está `null` em memória.
-    apiMock.getSourceSettings.mockResolvedValue({ githubPatSet: true, sourceRepo: null });
-    apiMock.testSourceConnection.mockResolvedValue({ ok: true, repo: 'RodReis/war-room' });
-
-    render(<SourceOpsPanel />);
-    await screen.findByRole('button', { name: /testar conexão/i });
-    // Depois do teste, o servidor já sabe do repo.
-    apiMock.getSourceSettings.mockResolvedValue({
-      githubPatSet: true,
-      sourceRepo: 'RodReis/war-room',
-    });
-
-    await user.click(screen.getByRole('button', { name: /testar conexão/i }));
-
-    // **O bug**: a frase dizia "nenhum produto tem repositório configurado" ao
-    // lado de um teste que acabara de administrar aquele repositório. Das duas
-    // afirmações contraditórias, a assustadora era a falsa — e é assim que uma
-    // tela ensina a ser ignorada.
-    await waitFor(() =>
-      expect(screen.queryByText(/nenhum produto tem repositório/i)).not.toBeInTheDocument(),
-    );
-    expect(apiMock.getSourceSettings).toHaveBeenCalledTimes(2);
-  });
-
-  it('testar fica desabilitado sem PAT configurado', async () => {
-    apiMock.getSourceSettings.mockResolvedValue({ githubPatSet: false, sourceRepo: null });
-
-    render(<SourceOpsPanel />);
-
-    expect(await screen.findByRole('button', { name: /testar conexão/i })).toBeDisabled();
-  });
-
-  it('salvar PAT limpa o campo e manda testar', async () => {
-    const user = userEvent.setup();
-    apiMock.setSourcePat.mockResolvedValue({ githubPatSet: true, sourceRepo: 'RodReis/wr' });
-
-    render(<SourceOpsPanel />);
-    const campo = await screen.findByLabelText(/pat do github/i);
-    await user.type(campo, 'github_pat_abc');
-    await user.click(screen.getByRole('button', { name: /salvar pat/i }));
-
-    await waitFor(() => expect(apiMock.setSourcePat).toHaveBeenCalledWith('github_pat_abc'));
-    // Não deixa o segredo no DOM depois de salvo.
-    expect(campo).toHaveValue('');
-    expect(toastMock.success).toHaveBeenCalledWith(expect.stringMatching(/teste de conexão/));
-  });
-});
