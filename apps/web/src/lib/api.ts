@@ -1816,6 +1816,54 @@ export function updateProductSourceRepo(
   });
 }
 
+/**
+ * Releases do produto (SPEC-041) — o **ponteiro** para o artefato, nunca o
+ * artefato. Os bytes vivem na Release privada do GitHub (ADR-028).
+ */
+export interface LicReleaseView {
+  id: string;
+  productId: string;
+  version: string;
+  os: string;
+  releasedAt: string;
+  assetId: string;
+  sha256: string;
+  notes: string | null;
+  published: boolean;
+}
+
+export function listLicReleases(productId?: string): Promise<LicReleaseView[]> {
+  const q = productId ? `?productId=${encodeURIComponent(productId)}` : '';
+  return request(`/licensing/releases${q}`);
+}
+
+export function createLicRelease(input: {
+  productId: string;
+  version: string;
+  os: string;
+  releasedAt: string;
+  assetId: string;
+  sha256: string;
+  notes?: string;
+}): Promise<LicReleaseView> {
+  return request('/licensing/releases', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Despublica: some do `check` E do `download`. **Não apaga** — a trilha de quem
+ * já baixou aponta para a linha, e o artefato segue no GitHub.
+ */
+export function unpublishLicRelease(id: string): Promise<LicReleaseView> {
+  return request(`/licensing/releases/${id}/unpublish`, { method: 'POST' });
+}
+
+export function publishLicRelease(id: string): Promise<LicReleaseView> {
+  return request(`/licensing/releases/${id}/publish`, { method: 'POST' });
+}
+
 export function createLicEdition(
   productId: string,
   input: {

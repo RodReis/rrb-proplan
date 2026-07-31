@@ -6946,6 +6946,69 @@ de release privada) e o ADR-028 fica com **uma** decisão, não duas.
 
 - [x] `build`, `lint` e suíte verdes; `reports/TESTS.md` carimbado
 
+### PR-4 — a tela que registra o ponteiro
+
+Feito **antes do PR-3**, e de propósito: a tela não depende do PAT, então adianta
+a fatia enquanto a validação do Risco #1 espera o PI.
+
+- [x] **`ReleaseAdminService`** — `GET/POST releases`, `POST releases/:id/unpublish`
+      e `.../publish`.
+
+      **Toda validação acontece no servidor, antes do banco** — e não porque os
+      CHECKs do PR-1 não bastem: eles são a última linha. O ponto é o *desfecho*.
+      Uma violação de CHECK sobe como `23514` e vira **`500` na tela**, dizendo
+      *"o ProPlan quebrou"* sobre um erro que é *"você digitou o hash errado"*.
+      Foi exatamente o FIX #216.
+
+      **`releasedAt` é obrigatório e informado** — nunca `now()` por omissão.
+      Registrar uma release antiga com a data de hoje a tornaria indevidamente
+      autorizada para quem já tem a janela vencida.
+
+      **Versão duplicada é recusada nomeando qual**: o `@@unique` recusaria de
+      todo modo, mas com `P2002` — erro genérico na tela. Nomear é o que permite
+      ao operador entender que já registrou aquela versão.
+
+      **`publish` existe além do `unpublish`.** Despublicar por engano é o erro
+      provável de um botão ao lado da lista, e sem volta o operador teria de
+      registrar a mesma versão de novo — que o `@@unique` recusa.
+
+- [x] **`ReleasesPanel`** na aba **Configurações**.
+
+      **Decisão de escopo que a spec não resolve**: o §Escopo item 2 diz *"tela no
+      admin"* sem nomear a seção. Escolhi Configurações, junto de produtos e
+      edições, porque release **pendura no produto** e separá-los obrigaria a ir e
+      voltar entre abas para registrar uma versão do produto recém-criado. Uma 5ª
+      aba seria escopo que ninguém aprovou. **Ressalva registrada**: Configurações
+      é descrita na F29 como *"o que se cadastra uma vez na vida"*, e release é o
+      oposto — entra a cada versão. Se a frequência de publicação crescer, é a aba
+      própria que se justifica.
+
+      **A lista vazia explica a consequência**, não diz só "vazio": sem release
+      registrada o `update` responde *"não há atualização"* **mesmo havendo
+      release no GitHub**. É o estado que parece funcionar e não funciona.
+
+      **"Despublicada" nunca é escrita como "removida"**, e há teste afirmando
+      isso. A linha continua, o artefato segue no GitHub, e o que mudou é que ela
+      sumiu do `check` e do `download` — chamar de remoção seria a mesma classe de
+      mentira que o painel de source é proibido de contar sobre o clone que
+      permanece.
+
+      **O `sha256` é validado na tela e no servidor**, e o aviso aparece enquanto
+      se digita. Hash torto aceito pelos dois lados só apareceria na máquina do
+      cliente, depois de 80 MB baixados, como *"download corrompido"* — mandando o
+      operador caçar problema de rede num erro de digitação.
+
+      **O hash completo vai no `title`** apesar de abreviado na lista: conferir
+      hash é comparar caractere a caractere, e uma tela que só mostra 12 deles
+      torna a conferência impossível.
+
+- [x] **`TENANT_SCOPED_PREFIXES`**: nenhuma linha nova foi necessária — o prefixo
+      `'/licensing/'` da SPEC-036 já cobre as rotas de release. **Mas é
+      exatamente esse tipo de presunção que produziu o FIX #166**, então entrou
+      teste afirmando a cobertura das três rotas novas em vez de supô-la.
+
+- [x] `build`, `lint` e suíte verdes; `reports/TESTS.md` carimbado
+
 ### O Risco #1 continua aberto — e é do PI, não meu
 
 A emenda reescreveu o Risco #1: não é mais *"o installation token alcança asset

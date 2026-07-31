@@ -5,6 +5,7 @@ import { MailModule } from '../mail/mail.module';
 import { LicCatalogService } from './application/lic-catalog.service';
 import { LicenseActivationService } from './application/license-activation.service';
 import { LicenseReleaseService } from './application/license-release.service';
+import { ReleaseAdminService } from './application/release-admin.service';
 import { LicenseAdminService } from './application/license-admin.service';
 import { LicenseExpirySweepService } from './application/license-expiry-sweep.service';
 import { LicenseSigningService } from './application/license-signing.service';
@@ -81,6 +82,7 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     LicenseAdminService,
     LicenseActivationService,
     LicenseReleaseService,
+    ReleaseAdminService,
     LicenseExpirySweepService,
     LicenseSigningService,
     LicensingOpsService,
