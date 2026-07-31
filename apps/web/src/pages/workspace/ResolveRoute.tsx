@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { api, ResolvedRoute, setActiveTenant } from '../../lib/api';
+import { api, clearActiveTenant, ResolvedRoute, setActiveTenant } from '../../lib/api';
 import { ProjectNotFound } from '../ProjectNotFound';
 import { canonicalUrl } from './canonicalUrl';
 
@@ -51,8 +51,12 @@ export function ResolveRoute({
     };
   }, [tenant, project]);
 
-  // Limpa ao sair do workspace: o catálogo é rota global, sem tenant fixo.
-  useEffect(() => () => setActiveTenant(null), []);
+  // Limpa ao sair do workspace — mas só o tenant que ESTA rota fixou (FIX
+  // #230). Ao voltar para o catálogo, o `AppShell` monta e fixa o tenant da
+  // sessão antes deste cleanup rodar; um `null` cru o apagaria, e o item
+  // Dashboard sumia do menu.
+  const idResolvido = state.status === 'ready' ? state.resolved.tenantId : null;
+  useEffect(() => () => clearActiveTenant(idResolvido), [idResolvido]);
 
   // Entrou por UUID ou com caixa diferente → reescreve para a forma canônica.
   // `replace` (não push) para o botão Voltar não cair na URL feia de novo.

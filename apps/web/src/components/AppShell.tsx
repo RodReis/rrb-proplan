@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { setActiveTenant, type SessionUser } from '../lib/api';
+import { clearActiveTenant, setActiveTenant, type SessionUser } from '../lib/api';
 import { useTheme } from '../theme';
 import { GlobalNav } from '../pages/clients/GlobalNav';
 
@@ -40,13 +40,24 @@ export function AppShell({ user, tenant, section, onLogout, children }: Props) {
   // cliente. Some por falta de tenant ativo ≠ some por não ter cliente, que é a
   // única razão que a SPEC-035 §2.12 admite.
   //
-  // Solta ao desmontar, como o `ClientsRoute`: tenant fixo depois de sair faria
-  // uma chamada global seguinte sair escopada por engano.
-  useEffect(() => {
-    if (!membership) return;
-    setActiveTenant(membership.id);
-    return () => setActiveTenant(null);
-  }, [membership]);
+  // **Fixado na RENDER, não num efeito** (2ª rodada do FIX #230): efeito de
+  // filho roda ANTES do efeito do pai, então o `useDashboardNav` — que vive
+  // dentro do `GlobalNav` — já teria disparado `getDashboard()` sem o prefixo.
+  // Essa primeira chamada morria em 404 e nada a repetia: o hook só refaz ao
+  // navegar ou ao voltar o foco da aba. O item continuava sumindo com o tenant
+  // sendo fixado meio milissegundo tarde demais.
+  //
+  // Atribuição direta a um módulo é segura aqui porque `activeTenant` não é
+  // estado de React: ninguém re-renderiza por causa dela, e o valor é o mesmo
+  // em toda render deste shell.
+  if (membership) setActiveTenant(membership.id);
+
+  // Solta ao desmontar, como o `ClientsRoute` — mas só se ninguém tiver
+  // assumido no meio-tempo: ao navegar entre rotas irmãs o React monta a nova
+  // ANTES de desmontar a velha, e um `null` cru aqui apagaria o tenant que a
+  // tela de destino acabou de fixar.
+  const idFixado = membership?.id ?? null;
+  useEffect(() => () => clearActiveTenant(idFixado), [idFixado]);
 
   return (
     <div className="flex h-screen bg-bg text-text max-[720px]:flex-col">

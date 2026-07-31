@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
-import { setActiveTenant, type SessionUser } from '../../lib/api';
+import { clearActiveTenant, setActiveTenant, type SessionUser } from '../../lib/api';
 
 interface Props {
   user: SessionUser;
@@ -36,9 +36,11 @@ export function ClientsRoute({ user, children }: Props) {
     if (!membership) return;
     setActiveTenant(membership.id);
     setReady(true);
-    // Ao sair, solta o tenant: deixá-lo fixo faria uma chamada global seguinte
-    // sair escopada por engano.
-    return () => setActiveTenant(null);
+    // Ao sair, solta o tenant — mas só se ainda for o nosso (FIX #230). Ao
+    // navegar daqui para o Catálogo, o React monta o `AppShell` ANTES de rodar
+    // este cleanup: um `null` cru apagaria o tenant que ele acabou de fixar, e
+    // o item Dashboard sumia do menu.
+    return () => clearActiveTenant(membership.id);
   }, [membership]);
 
   if (!membership) return <Navigate to="/" replace />;
