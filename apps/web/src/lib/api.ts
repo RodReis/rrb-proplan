@@ -34,6 +34,30 @@ export function getActiveTenant(): string | null {
   return activeTenant;
 }
 
+/**
+ * Solta o tenant **só se ele ainda for o que este chamador fixou** (FIX #230).
+ *
+ * ## A corrida que isto fecha
+ *
+ * Ao navegar entre rotas irmãs, o React monta a nova antes de desmontar a
+ * velha. Com `setActiveTenant(null)` cru no cleanup, a ordem real é:
+ *
+ * 1. `AppShell` do Catálogo renderiza e fixa o tenant;
+ * 2. `ClientsRoute` de Licenças desmonta e **zera o tenant recém-fixado**.
+ *
+ * O efeito era o item Dashboard sumindo do menu ao clicar em ProPlan vindo de
+ * qualquer tela de cliente: `/dashboard` saía sem o prefixo `/t/:tenant`, a API
+ * devolvia 404, e o `catch` do `useDashboardNav` deixava `hasClients` em
+ * `false` — indistinguível da regra legítima da SPEC-035 §2.12 ("some sem
+ * cliente nenhum"), que é o que fez o bug sobreviver a duas rodadas de conserto.
+ *
+ * Comparar antes de limpar resolve sem coordenação entre as rotas: quem sai só
+ * apaga o próprio rastro, e quem chegou primeiro continua valendo.
+ */
+export function clearActiveTenant(tenantId: string | null): void {
+  if (activeTenant === tenantId) activeTenant = null;
+}
+
 export interface Repo {
   githubRepoId: number;
   owner: string;

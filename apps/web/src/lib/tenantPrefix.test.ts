@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { setActiveTenant, withTenantPrefix } from './api';
+import {
+  clearActiveTenant,
+  getActiveTenant,
+  setActiveTenant,
+  withTenantPrefix,
+} from './api';
 
 /**
  * Quais caminhos recebem o prefixo `/t/:tenant` (SPEC-022).
@@ -92,5 +97,68 @@ describe('withTenantPrefix: rotas escopadas por tenant', () => {
     // `undefined` produziria uma URL quebrada e um erro pior de diagnosticar.
     setActiveTenant(null);
     expect(withTenantPrefix('/artifacts/a-1/approve')).toBe('/artifacts/a-1/approve');
+  });
+});
+
+/**
+ * `clearActiveTenant` — a corrida entre rotas irmãs (FIX #230).
+ *
+ * Ao navegar de Licenças para o Catálogo, o React monta a rota nova **antes**
+ * de desmontar a velha. Com `setActiveTenant(null)` cru no cleanup, a ordem
+ * real era:
+ *
+ * 1. `AppShell` do Catálogo renderiza e fixa o tenant;
+ * 2. `ClientsRoute` desmonta e zera o tenant recém-fixado.
+ *
+ * O sintoma era o item **Dashboard sumindo do menu** ao clicar em ProPlan: sem
+ * prefixo, `/dashboard` devolvia 404 e o `catch` deixava `hasClients` em
+ * `false` — indistinguível da regra legítima da SPEC-035 §2.12 ("some sem
+ * cliente nenhum"), que é o que fez o bug sobreviver a duas rodadas de conserto.
+ *
+ * Estes testes moram aqui, e não num componente, porque a lição do topo deste
+ * arquivo se aplica inteira: **mockar a fronteira esconde defeitos DA
+ * fronteira**. Os testes de `AppShell` mockam `setActiveTenant` e nunca veriam
+ * a ordem real das chamadas.
+ */
+describe('clearActiveTenant: quem sai não apaga o tenant de quem chegou', () => {
+  const OUTRO = '00000000-0000-4000-8000-000000000002';
+
+  it('limpa quando o tenant ainda é o que o chamador fixou', () => {
+    setActiveTenant(TENANT);
+
+    clearActiveTenant(TENANT);
+
+    expect(getActiveTenant()).toBeNull();
+  });
+
+  it('NÃO limpa quando outra rota já assumiu — o caso do bug', () => {
+    // A sequência exata da navegação Licenças → ProPlan.
+    setActiveTenant(TENANT); // ClientsRoute fixou ao entrar em Licenças
+    setActiveTenant(OUTRO); // AppShell do Catálogo assumiu na render
+
+    clearActiveTenant(TENANT); // cleanup ATRASADO do ClientsRoute
+
+    expect(getActiveTenant()).toBe(OUTRO);
+  });
+
+  it('a URL continua prefixada depois do cleanup atrasado', () => {
+    // O que o operador via: sem esta garantia, `/dashboard` sairia cru, a API
+    // devolveria 404 e o item sumiria do menu.
+    setActiveTenant(TENANT);
+    setActiveTenant(OUTRO);
+
+    clearActiveTenant(TENANT);
+
+    expect(withTenantPrefix('/dashboard')).toBe(`/t/${OUTRO}/dashboard`);
+  });
+
+  it('limpar com `null` só zera se não houver tenant fixado', () => {
+    // Chamador que nunca fixou nada (sessão sem membership) não pode derrubar
+    // o tenant de quem fixou.
+    setActiveTenant(TENANT);
+
+    clearActiveTenant(null);
+
+    expect(getActiveTenant()).toBe(TENANT);
   });
 });

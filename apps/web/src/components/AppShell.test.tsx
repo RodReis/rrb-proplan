@@ -7,6 +7,10 @@ const apiMock = vi.hoisted(() => ({
   getDashboard: vi.fn(),
   getPendingCount: vi.fn(),
   setActiveTenant: vi.fn(),
+  clearActiveTenant: vi.fn(),
+  // O `useDashboardNav` consulta o tenant antes de buscar (FIX #230). Aqui o
+  // shell sempre fixa um, então o mock reflete o estado pós-fixação.
+  getActiveTenant: vi.fn(() => 'tenant-uuid'),
 }));
 
 vi.mock('../lib/api', async (importOriginal) => {
@@ -49,6 +53,7 @@ function renderShell(props: Partial<Parameters<typeof AppShell>[0]> = {}) {
 describe('AppShell — tenant ativo nas telas globais (FIX #230)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMock.getActiveTenant.mockReturnValue('tenant-uuid');
     apiMock.getDashboard.mockResolvedValue({ hasAnyClient: true });
     apiMock.getPendingCount.mockResolvedValue({ count: 2 });
   });
@@ -79,11 +84,12 @@ describe('AppShell — tenant ativo nas telas globais (FIX #230)', () => {
   it('solta o tenant ao desmontar — senão uma chamada global sai escopada', async () => {
     const { unmount } = renderShell();
     await screen.findByRole('button', { name: /Dashboard/ });
-    apiMock.setActiveTenant.mockClear();
 
     unmount();
 
-    expect(apiMock.setActiveTenant).toHaveBeenCalledWith(null);
+    // `clearActiveTenant(id)`, não `setActiveTenant(null)`: o cleanup diz QUAL
+    // tenant está soltando, para não apagar o de quem já assumiu (FIX #230).
+    expect(apiMock.clearActiveTenant).toHaveBeenCalledWith('tenant-uuid');
   });
 
   it('tenant explícito na prop vence o primeiro da sessão', async () => {
@@ -98,6 +104,38 @@ describe('AppShell — tenant ativo nas telas globais (FIX #230)', () => {
 
     expect(apiMock.setActiveTenant).toHaveBeenCalledWith('tenant-uuid');
     await screen.findByRole('button', { name: /Dashboard/ });
+  });
+
+  it('a URL de /dashboard sai COM o prefixo do tenant já na 1ª chamada', async () => {
+    // O teste que faltava na 1ª rodada do FIX. Os outros mockam `getDashboard`,
+    // que é *acima* de `withTenantPrefix` — o prefixo nunca aparecia neles, e
+    // por isso passaram enquanto o bug seguia vivo em tela.
+    //
+    // Efeito de filho roda ANTES do efeito do pai: com o `setActiveTenant` num
+    // `useEffect` do AppShell, o `useDashboardNav` (dentro do GlobalNav) já
+    // tinha disparado a chamada sem prefixo. Ela morria em 404 e nada a
+    // repetia. Aqui a prova é a URL real que o `fetch` recebe.
+    // `getDashboard` E `setActiveTenant` reais: o mock do módulo troca os dois,
+    // e sem o `setActiveTenant` de verdade não há `activeTenant` para o
+    // `withTenantPrefix` real ler — o teste mediria o próprio mock.
+    const real = await vi.importActual<typeof import('../lib/api')>('../lib/api');
+    apiMock.getDashboard.mockImplementation(real.getDashboard as never);
+    apiMock.setActiveTenant.mockImplementation(real.setActiveTenant as never);
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ hasAnyClient: true }), { status: 200 }),
+      );
+
+    try {
+      renderShell();
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+
+      const url = String(fetchSpy.mock.calls[0][0]);
+      expect(url).toContain('/t/tenant-uuid/dashboard');
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('sessão sem tenant nenhum não fixa nada', async () => {
