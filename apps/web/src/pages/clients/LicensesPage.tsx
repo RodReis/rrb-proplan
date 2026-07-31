@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  createLicEdition,
-  createLicProduct,
   deactivateActivation,
   getLicenseDetail,
   getLicensingCatalog,
@@ -11,22 +9,19 @@ import {
   listLicenseEvents,
   listLicenses,
   revokeLicense,
-  updateLicEditionLimits,
-  updateProductSourceRepo,
   type IssuedLicense,
   type LicCatalogResponse,
   type LicEventView,
   type LicenseDetail,
   type LicenseView,
-  type LicEditionView,
-  type LicProductView,
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
+import { CatalogPanel } from './CatalogPanel';
 import { LicenseDangerActions } from './LicenseDangerActions';
+import { LicensingSettingsPanel } from './LicensingSettingsPanel';
 import { MetricsPanel } from './MetricsPanel';
-import { ReleasesPanel } from './ReleasesPanel';
-import { SourceOpsPanel } from './SourceOpsPanel';
 import { WebhookOpsPanel } from './WebhookOpsPanel';
+import { Aviso, Cartao, Etiqueta, LinhaCartao, TituloSecao } from './licensingUi';
 import {
   eventLabel,
   isAtMachineLimit,
@@ -47,18 +42,31 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready' };
 
-type Aba = 'licencas' | 'metricas' | 'pendencias' | 'configuracoes';
+type Aba = 'metricas' | 'licencas' | 'catalogo' | 'pendencias' | 'configuracoes';
 
 /**
- * As quatro seções da área (SPEC-040 §A área).
+ * As cinco seções da área (SPEC-040 §A área, reorganizadas pelo PI em
+ * 2026-07-31).
  *
- * A ordem é a de **uso**, não a da spec: licenças é o dia a dia, métricas se
- * olha de vez em quando, pendências só quando há trabalho, e configurações uma
- * vez na vida do workspace.
+ * A ordem responde à sequência de perguntas de quem abre a área:
+ *
+ * 1. **Métricas** — *"como está?"*. Primeira porque é o que se pergunta ao
+ *    chegar; emitir é a tarefa de quem já sabe o que fazer.
+ * 2. **Licenças** — *"emitir para quem, e o que aconteceu com esta aqui?"*.
+ * 3. **Produtos e Edições** — *"o que existe à venda?"*. O catálogo inteiro num
+ *    lugar: produto, edição, o de-para da oferta e as versões publicadas.
+ * 4. **Pendências** — *"o que falhou?"*. Só o que pede conserto.
+ * 5. **Configurações** — o que se ajusta uma vez na vida do workspace.
+ *
+ * O desenho anterior partia assuntos entre abas: código-fonte tinha contagem em
+ * Métricas e ação em Pendências; o de-para de oferta ficava a duas abas da
+ * edição que referencia; e os três campos de configuração moravam no rodapé de
+ * duas telas de operação. Cada assunto agora tem **um** lugar.
  */
 const ABAS: Array<{ chave: Aba; rotulo: string }> = [
-  { chave: 'licencas', rotulo: 'Licenças' },
   { chave: 'metricas', rotulo: 'Métricas' },
+  { chave: 'licencas', rotulo: 'Licenças' },
+  { chave: 'catalogo', rotulo: 'Produtos e Edições' },
   { chave: 'pendencias', rotulo: 'Pendências' },
   { chave: 'configuracoes', rotulo: 'Configurações' },
 ];
@@ -82,7 +90,7 @@ const ABAS: Array<{ chave: Aba; rotulo: string }> = [
  */
 export function LicensesPage() {
   const { tenant = '' } = useParams();
-  const [aba, setAba] = useState<Aba>('licencas');
+  const [aba, setAba] = useState<Aba>('metricas');
   const [state, setState] = useState<State>({ status: 'loading' });
   const [catalogo, setCatalogo] = useState<LicCatalogResponse | null>(null);
   const [licencas, setLicencas] = useState<LicenseView[]>([]);
@@ -102,7 +110,6 @@ export function LicensesPage() {
   const [detalhe, setDetalhe] = useState<LicenseDetail | null>(null);
 
   // Cadastro de produto/edição (recolhido por padrão: o caminho comum é emitir)
-  const [abrirCadastro, setAbrirCadastro] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -248,7 +255,7 @@ export function LicensesPage() {
       {state.status === 'loading' && <p className="text-[13px] text-body">Carregando…</p>}
 
       {state.status === 'error' && (
-        <p className="text-[13px] text-danger">{state.message}</p>
+        <Aviso tom="erro">{state.message}</Aviso>
       )}
 
       {state.status === 'ready' && catalogo && (
@@ -257,15 +264,18 @@ export function LicensesPage() {
               funciona mas a ativação devolve 503 — e quem descobre é o
               comprador, ao abrir o produto. */}
           {!catalogo.signingConfigured && (
-            <p
-              role="alert"
-              className="rounded-[9px] border border-danger bg-panel px-3.5 py-2.5 text-[12.5px] text-text2"
-            >
-              <strong className="text-danger">Assinatura não configurada.</strong>{' '}
-              O servidor está sem <code>LICENSING_SIGNING_KEY</code>: as chaves
-              emitidas agora <strong>não vão ativar</strong> em máquina nenhuma.
-              Configure antes de vender (ver <code>docs/DEPLOY.md</code> §3.4).
-            </p>
+            // O `border-danger` que estava aqui **não pintava nada**: `danger`
+            // nunca existiu no `@theme` do index.css, então o Tailwind não
+            // gerava a classe e o alerta mais grave da área saía sem vermelho.
+            // O token certo sempre foi `error` — ver `licensingUi.tsx`.
+            <Aviso tom="erro">
+              <strong className="text-error">Assinatura não configurada.</strong>{' '}
+              O servidor está sem <code className="font-mono">LICENSING_SIGNING_KEY</code>:
+              as chaves emitidas agora{' '}
+              <strong className="text-text">não vão ativar</strong> em máquina
+              nenhuma. Configure antes de vender (ver{' '}
+              <code className="font-mono">docs/DEPLOY.md</code> §3.4).
+            </Aviso>
           )}
 
           {/* Sem produto nenhum, a área **ensina em vez de mostrar quatro abas
@@ -285,11 +295,14 @@ export function LicensesPage() {
             />
           ) : (
           <>
-          {/* As quatro seções da área (SPEC-040 §A área). A ordem é a de uso:
-              licenças é o dia a dia, métricas se olha de vez em quando,
-              pendências só quando há trabalho, e configurações uma vez na vida
-              do workspace. */}
-          <div role="tablist" className="flex flex-wrap gap-1.5">
+          {/* As cinco seções da área. O trilho com fundo próprio dá à aba ativa
+              um lugar de onde sair, em vez de um retângulo solto no vazio — e é
+              o mesmo objeto dos filtros de período e de status, para que
+              "selecionado" signifique a mesma coisa em toda a área. */}
+          <div
+            role="tablist"
+            className="flex flex-wrap gap-0.5 self-start rounded-[11px] border border-border2 bg-panel p-1"
+          >
             {ABAS.map(({ chave, rotulo }) => (
               <button
                 key={chave}
@@ -297,10 +310,10 @@ export function LicensesPage() {
                 aria-selected={aba === chave}
                 onClick={() => setAba(chave)}
                 className={
-                  'rounded-[9px] px-3.5 py-1.5 text-[12.5px] transition-colors duration-150 ' +
+                  'rounded-[8px] px-3.5 py-1.5 text-[12.5px] transition-colors duration-150 ' +
                   (aba === chave
                     ? 'bg-card font-semibold text-text'
-                    : 'text-body2 hover:bg-card hover:text-text')
+                    : 'text-body2 hover:bg-card/60 hover:text-text')
                 }
               >
                 {rotulo}
@@ -316,19 +329,26 @@ export function LicensesPage() {
               **Fora do `aba === 'licencas'` de propósito**: trocar de aba com a
               chave na tela a perderia para sempre, e ela não tem segunda via. */}
           {emitida && (
-            <section className="rounded-[14px] border border-accentBorder bg-accentSoft p-5">
-              <h2 className="m-0 text-[15px] font-semibold text-text">
-                Chave de {emitida.customerEmail}
-              </h2>
-              <p className="mt-1 text-[12.5px] text-body">
+            // O momento mais irreversível da área ganha o único bloco com fundo
+            // de acento cheio: quem acabou de emitir precisa ser interrompido,
+            // não informado. `animate-fadeUp` entra uma vez, na aparição —
+            // não é loop parado (DESIGN.md §9).
+            <section className="anim-popIn rounded-[14px] border border-success/45 bg-success/10 p-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span aria-hidden className="h-2 w-2 rounded-full bg-success" />
+                <h2 className="m-0 text-[15px] font-semibold text-text">
+                  Chave de {emitida.customerEmail}
+                </h2>
+              </div>
+              <p className="mt-2 max-w-[70ch] text-[12.5px] leading-relaxed text-body">
                 Copie agora e envie ao comprador.{' '}
-                <strong className="text-text2">
+                <strong className="text-text">
                   Ela não será exibida de novo — nem aqui, nem em lugar nenhum.
                 </strong>{' '}
                 Se perder, será preciso emitir outra.
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <code className="select-all rounded-[9px] border border-border2 bg-panel px-3.5 py-2 font-mono text-[15px] tracking-[0.08em] text-text">
+                <code className="select-all rounded-[9px] border border-border2 bg-bg px-4 py-2.5 font-mono text-[16px] tracking-[0.1em] text-text">
                   {emitida.key}
                 </code>
                 <button
@@ -336,13 +356,13 @@ export function LicensesPage() {
                     void navigator.clipboard?.writeText(emitida.key);
                     toast.success('Chave copiada');
                   }}
-                  className="rounded-[9px] border border-border2 px-3 py-2 text-[12.5px] text-body transition-colors hover:bg-card hover:text-text"
+                  className="rounded-[9px] bg-btnbg px-4 py-2.5 text-[12.5px] font-semibold text-btnfg transition-opacity hover:opacity-90"
                 >
-                  Copiar
+                  Copiar chave
                 </button>
                 <button
                   onClick={() => setEmitida(null)}
-                  className="rounded-[9px] px-3 py-2 text-[12.5px] text-body2 transition-colors hover:text-text"
+                  className="rounded-[9px] px-3 py-2.5 text-[12.5px] text-body2 transition-colors hover:text-text"
                 >
                   Já copiei, fechar
                 </button>
@@ -353,25 +373,32 @@ export function LicensesPage() {
           {aba === 'licencas' && (
             <>
           {/* Emissão */}
-          <section className="rounded-[14px] border border-border bg-panel p-5">
-            <h2 className="m-0 text-[15px] font-semibold text-text">Emitir licença</h2>
+          <Cartao>
+            <TituloSecao
+              titulo="Emitir licença"
+              descricao="A chave aparece uma vez só, logo depois de emitir."
+            />
 
             {edicoes.length === 0 ? (
               // Ausência é informação (ADR-014): sem edição não há o que emitir,
               // e a tela diz o que fazer em vez de mostrar um formulário morto.
-              <p className="mt-2 text-[12.5px] text-body">
-                Nenhum produto cadastrado ainda. Cadastre um produto e uma edição
-                abaixo para começar a emitir.
+              <p className="mt-4 text-[12.5px] text-body">
+                Nenhuma edição cadastrada ainda. Crie uma em{' '}
+                <strong className="text-text2">Produtos e Edições</strong> para
+                começar a emitir.
               </p>
             ) : (
-              <fieldset disabled={ocupado} className="mt-3 grid gap-3 border-0 p-0">
+              <fieldset disabled={ocupado} className="mt-4 grid gap-3 border-0 p-0">
                 <div className="grid gap-3 min-[720px]:grid-cols-3">
                   <label className="grid gap-1 text-[12px] text-body">
                     Edição
                     <select
                       value={edicaoId}
                       onChange={(e) => setEdicaoId(e.target.value)}
-                      className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
+                      // `color-scheme`: sem ela o popup nativo é desenhado pelo
+                      // sistema em tema claro sobre o Carbono (achado do
+                      // dogfooding da SPEC-031, #153).
+                      className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text transition-colors focus:border-accentBorder [color-scheme:dark_light]"
                     >
                       {edicoes.map((e) => (
                         <option key={e.id} value={e.id}>
@@ -388,7 +415,7 @@ export function LicensesPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="comprador@exemplo.com"
-                      className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
+                      className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text transition-colors focus:border-accentBorder"
                     />
                   </label>
 
@@ -397,7 +424,7 @@ export function LicensesPage() {
                     <input
                       value={nome}
                       onChange={(e) => setNome(e.target.value)}
-                      className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
+                      className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text transition-colors focus:border-accentBorder"
                     />
                   </label>
                 </div>
@@ -406,65 +433,67 @@ export function LicensesPage() {
                   <button
                     onClick={() => void emitir()}
                     disabled={!podeEmitir}
-                    className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg transition-opacity disabled:opacity-40"
+                    className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg transition-opacity hover:opacity-90 disabled:opacity-40"
                   >
-                    Emitir e mostrar a chave
+                    {ocupado ? 'Emitindo…' : 'Emitir e mostrar a chave'}
                   </button>
                 </div>
               </fieldset>
             )}
-          </section>
+          </Cartao>
 
           {/* Lista + busca */}
-          <section className="rounded-[14px] border border-border bg-panel p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="m-0 text-[15px] font-semibold text-text">
-                Licenças emitidas
-              </h2>
-              <div className="flex gap-2">
-                <input
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void buscar()}
-                  placeholder="e-mail ou chave"
-                  aria-label="Buscar por e-mail ou chave"
-                  className="rounded-[9px] border border-border2 bg-bg px-3 py-1.5 text-[12.5px] text-text"
-                />
-                <button
-                  onClick={() => void buscar()}
-                  disabled={ocupado}
-                  className="rounded-[9px] border border-border2 px-3 py-1.5 text-[12.5px] text-body transition-colors hover:bg-card hover:text-text"
-                >
-                  Buscar
-                </button>
-              </div>
-            </div>
+          <Cartao>
+            <TituloSecao
+              titulo="Licenças emitidas"
+              etiqueta={
+                licencas.length > 0 ? (
+                  <Etiqueta tom="neutro" ponto={false}>
+                    {licencas.length}
+                  </Etiqueta>
+                ) : undefined
+              }
+              acoes={
+                <>
+                  <input
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void buscar()}
+                    placeholder="e-mail ou chave"
+                    aria-label="Buscar por e-mail ou chave"
+                    className="rounded-[9px] border border-border2 bg-bg px-3 py-1.5 text-[12.5px] text-text transition-colors focus:border-accentBorder"
+                  />
+                  <button
+                    onClick={() => void buscar()}
+                    disabled={ocupado}
+                    className="rounded-[9px] border border-border2 px-3 py-1.5 text-[12.5px] text-body transition-colors hover:border-hoverb hover:text-text"
+                  >
+                    Buscar
+                  </button>
+                </>
+              }
+            />
 
             {licencas.length === 0 ? (
-              <p className="mt-3 text-[12.5px] text-body">
-                Nenhuma licença encontrada.
+              <p className="mt-4 text-[12.5px] text-body">
+                {busca.trim()
+                  ? 'Nenhuma licença bate com essa busca.'
+                  : 'Nenhuma licença emitida ainda. Use o formulário acima para emitir a primeira.'}
               </p>
             ) : (
-              <ul className="mt-3 grid list-none gap-2 p-0">
+              <ul className="mt-4 grid list-none gap-2 p-0">
                 {licencas.map((l) => (
-                  <li
+                  <LinhaCartao
                     key={l.id}
-                    className="rounded-[11px] border border-border2 bg-card px-4 py-3"
+                    tom={statusTone(l.status) === 'ok' ? 'neutro' : 'erro'}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="m-0 truncate text-[13.5px] text-text">
+                        <p className="m-0 flex flex-wrap items-center gap-2 truncate text-[13.5px] text-text">
                           {l.customerName ?? l.customerEmail}
-                          <span
-                            className={
-                              'ml-2 rounded-full border px-2 py-px font-mono text-[10px] ' +
-                              (statusTone(l.status) === 'ok'
-                                ? 'border-accentBorder text-text2'
-                                : 'border-danger text-danger')
-                            }
-                          >
+                          <Etiqueta tom={statusTone(l.status) === 'ok' ? 'ok' : 'erro'}>
                             {statusLabel(l.status)}
-                          </span>
+                          </Etiqueta>
                         </p>
                         <p className="m-0 mt-0.5 text-[11.5px] text-body">
                           {l.productSlug} · {l.editionName} · {machinesLabel(l)}
@@ -492,7 +521,7 @@ export function LicensesPage() {
                           <button
                             onClick={() => void revogar(l)}
                             disabled={ocupado}
-                            className="rounded-[9px] border border-danger px-2.5 py-1 text-[11.5px] text-danger transition-colors hover:bg-panel"
+                            className="rounded-[9px] border border-error/45 px-2.5 py-1 text-[11.5px] text-error transition-colors hover:bg-error/10"
                           >
                             Revogar
                           </button>
@@ -501,18 +530,16 @@ export function LicensesPage() {
                     </div>
 
                     {abertaDe === l.id && (
-                      <div className="mt-2.5 grid gap-3 border-t border-border2 pt-2.5">
+                      <div className="mt-3 grid gap-4 border-t border-border2 pt-3">
                         <div>
-                          <p className="m-0 mb-1.5 text-[11.5px] font-semibold text-text2">
+                          <p className="m-0 mb-2 flex flex-wrap items-center gap-2 text-[11.5px] font-semibold text-text2">
                             Máquinas
                             {/* O sinal de troca só aparece quando há o que
                                 sinalizar: 2 trocas em 30 dias é vida normal, e
                                 um número em toda licença treinaria o olho a
                                 ignorá-lo. É sinal, não limite — nada bloqueia. */}
                             {detalhe && swapSignal(detalhe) && (
-                              <span className="ml-2 rounded-full border border-danger px-2 py-px font-mono text-[10px] font-normal text-danger">
-                                {swapSignal(detalhe)}
-                              </span>
+                              <Etiqueta tom="atencao">{swapSignal(detalhe)}</Etiqueta>
                             )}
                           </p>
 
@@ -604,49 +631,34 @@ export function LicensesPage() {
                         )}
                       </div>
                     )}
-                  </li>
+                  </LinhaCartao>
                 ))}
               </ul>
             )}
-          </section>
+          </Cartao>
 
             </>
           )}
 
-          {/* Pendências: as duas operações que dependem de gente. O webhook
-              vem antes porque venda travada é dinheiro parado; o acesso ao
-              source depende do comprador responder, e espera por natureza. */}
-          {aba === 'pendencias' && (
-            <>
-              <WebhookOpsPanel catalogo={catalogo} />
-              <SourceOpsPanel />
-            </>
+          {/* Produtos e Edições: o catálogo do que se vende. Releases entram
+              aqui (SPEC-041 §Escopo item 2 diz "tela no admin" sem nomear a
+              seção) porque versão publicada pendura no produto — e o de-para de
+              oferta veio de Pendências pelo mesmo motivo: ele aponta para uma
+              edição, que é cadastrada nesta tela. */}
+          {aba === 'catalogo' && (
+            <CatalogPanel catalogo={catalogo} onMudou={() => void carregar()} />
           )}
 
-          {/* Configurações: produtos, edições e o que se cadastra uma vez na
-              vida do workspace. Os painéis de webhook e source trazem a própria
-              configuração junto da operação — separá-la aqui obrigaria a ir e
-              voltar entre abas para ligar um PAT e testá-lo. */}
-          {aba === 'configuracoes' && (
-            <>
-              <CadastroProdutos
-                catalogo={catalogo}
-                aberto={abrirCadastro}
-                onToggle={() => setAbrirCadastro((v) => !v)}
-                onMudou={() => void carregar()}
-              />
-              {/* Releases moram aqui, e não em aba própria (SPEC-041 §Escopo
-                  item 2 diz "tela no admin" sem nomear a seção). Cadastro de
-                  release pendura no produto, que é cadastrado logo acima —
-                  separá-los obrigaria a ir e voltar entre abas para registrar
-                  uma versão do produto recém-criado. Uma 5ª aba seria escopo
-                  que ninguém aprovou; se a frequência de publicação crescer, é
-                  ela que se justifica. */}
-              <div className="mt-4">
-                <ReleasesPanel produtos={catalogo.products} />
-              </div>
-            </>
-          )}
+          {/* Pendências: só o que falhou e pede conserto. O acesso ao
+              código-fonte saiu daqui para Métricas (decisão do PI, 2026-07-31),
+              onde a contagem e a lista acionável passam a viver juntas. */}
+          {aba === 'pendencias' && <WebhookOpsPanel />}
+
+          {/* Configurações: os três ajustes da área, reunidos. Estavam no rodapé
+              de duas telas de operação — o argumento de "configuração junto da
+              operação" não se sustentou, porque configurar é uma vez na vida e
+              operar é diário. */}
+          {aba === 'configuracoes' && <LicensingSettingsPanel />}
           </>
           )}
         </>
@@ -658,9 +670,9 @@ export function LicensesPage() {
 /**
  * A área sem produto nenhum: **explica o que é, e diz quando ignorar**.
  *
- * Substitui as quatro abas vazias — cada uma delas responderia "nada aqui" a
- * uma pergunta que o operador não fez. E substitui o *esconder o item do menu*
- * que a spec pedia, porque esconder tornaria esta tela — a única que cadastra o
+ * Substitui as cinco abas vazias — cada uma delas responderia "nada aqui" a uma
+ * pergunta que o operador não fez. E substitui o *esconder o item do menu* que a
+ * spec pedia, porque esconder tornaria esta tela — a única que cadastra o
  * primeiro produto — inalcançável (decisão do PI, 2026-07-30).
  *
  * **A última linha é a que faz o trabalho da regra original.** Quem não vende
@@ -677,41 +689,64 @@ function PrimeiroProduto({
   const [aberto, setAberto] = useState(false);
 
   return (
-    <section className="rounded-[14px] border border-border bg-panel p-6">
-      <h2 className="m-0 text-[15px] font-semibold text-text">
-        Licenciamento de software
-      </h2>
-      <p className="mt-2 max-w-[62ch] text-[12.5px] leading-relaxed text-body">
-        Esta área emite e administra chaves de licença dos <strong>seus
-        produtos</strong>: ativação por máquina, validade, revogação em caso de
-        reembolso e — quando a edição prevê — convite ao repositório de
-        código-fonte. Ela não tem relação com os contratos de prestação de
-        serviço: um produto licenciado não é um cliente.
+    <Cartao className="!p-6">
+      <TituloSecao titulo="Licenciamento de software" />
+
+      <p className="mt-3 max-w-[68ch] text-[12.5px] leading-relaxed text-body">
+        Esta área emite e administra chaves de licença dos{' '}
+        <strong className="text-text2">seus produtos</strong>: ativação por
+        máquina, validade, revogação em caso de reembolso e — quando a edição
+        prevê — convite ao repositório de código-fonte. Ela não tem relação com
+        os contratos de prestação de serviço:{' '}
+        <strong className="text-text2">
+          um produto licenciado não é um cliente
+        </strong>
+        .
       </p>
-      <p className="mt-2 max-w-[62ch] text-[12.5px] leading-relaxed text-body">
+
+      {/* Os três passos, porque "cadastre um produto" não diz o que vem
+          depois — e o que vem depois é o que faz a venda funcionar. */}
+      <ol className="mt-4 grid list-none gap-2 p-0">
+        {[
+          ['Cadastre o produto', 'nome, identificador e o prefixo que a chave vai carregar'],
+          ['Crie ao menos uma edição', 'é ela que a licença carrega — máquinas, updates e se dá código-fonte'],
+          ['Ligue a oferta da plataforma', 'o de-para que transforma a venda em licença automaticamente'],
+        ].map(([titulo, detalhe], i) => (
+          <li key={titulo} className="flex gap-3 text-[12px] leading-relaxed">
+            <span
+              aria-hidden
+              className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accentBorder font-mono text-[10px] text-text2"
+            >
+              {i + 1}
+            </span>
+            <span className="text-body">
+              <strong className="text-text2">{titulo}</strong> — {detalhe}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      <p className="mt-4 text-[12.5px] text-body">
         Nada acontece aqui até existir um produto cadastrado.
       </p>
 
-      <div className="mt-4">
-        <button
-          onClick={() => setAberto(true)}
-          className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg"
-        >
-          Cadastrar o primeiro produto
-        </button>
-      </div>
+      {!aberto && (
+        <div className="mt-4">
+          <button
+            onClick={() => setAberto(true)}
+            className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg transition-opacity hover:opacity-90"
+          >
+            Cadastrar o primeiro produto
+          </button>
+        </div>
+      )}
 
       {aberto && (
-        <div className="mt-4">
-          <CadastroProdutos
-            catalogo={catalogo}
-            aberto
-            // Já aberto e sem como recolher: nesta tela o cadastro **é** a
-            // tarefa, e um "Ocultar" só devolveria a pessoa ao lugar de onde ela
-            // acabou de sair.
-            onToggle={() => undefined}
-            onMudou={onMudou}
-          />
+        <div className="mt-5 border-t border-border pt-5">
+          {/* Sem como recolher: nesta tela o cadastro **é** a tarefa, e um
+              "Ocultar" só devolveria a pessoa ao lugar de onde ela acabou de
+              sair. */}
+          <CatalogPanel catalogo={catalogo} onMudou={onMudou} />
         </div>
       )}
 
@@ -719,320 +754,6 @@ function PrimeiroProduto({
         Se você não vende software licenciado, pode ignorar esta área — ela não
         afeta projetos, clientes nem contratos.
       </p>
-    </section>
-  );
-}
-
-/**
- * Cadastro mínimo de produto e edição — recolhido por padrão.
- *
- * O caminho comum desta tela é **emitir**; cadastrar produto acontece uma vez
- * na vida do workspace. Deixá-lo aberto empurraria a emissão para baixo da
- * dobra todo dia por causa de uma tarefa que já foi feita.
- *
- * **Não há botão de remover** — nem aqui, nem na SPEC-040 sem decisão do PI: o
- * `ON DELETE RESTRICT` recusa apagar edição com licença vendida, e oferecer um
- * botão para depois recusá-lo é pior que não oferecer.
- */
-/**
- * A edição concede código-fonte? (FIX #214.)
- *
- * **O que o `webhook-processor` lê no momento da venda** para agendar o convite.
- * A coluna nasceu no PR-1 da SPEC-039 e não tinha caminho: uma edição criada pela
- * tela nascia com `false` e não havia como mudar sem SQL — a venda chegava, a
- * licença saía sem agendamento, e o comprador da edição mais cara nunca recebia o
- * convite, **sem erro em lugar nenhum**.
- *
- * Checkbox e não botão porque o estado é binário e precisa ser **legível de
- * relance**: a pergunta que esta linha responde é "esta edição vende o código?",
- * e um botão obrigaria a inferir o estado atual a partir do rótulo da ação.
- */
-function SourceAccessToggle({
-  edicao,
-  onMudou,
-}: {
-  edicao: LicEditionView;
-  onMudou: () => void;
-}) {
-  const [ocupado, setOcupado] = useState(false);
-
-  async function alternar(valor: boolean) {
-    setOcupado(true);
-    try {
-      await updateLicEditionLimits(edicao.id, { grantsSourceAccess: valor });
-      onMudou();
-      // Diz o EFEITO, não "salvo": o que muda é o que acontece nas próximas
-      // compras — licença já emitida carrega o próprio agendamento.
-      toast.success(
-        valor
-          ? `"${edicao.name}" passa a dar acesso ao repositório nas próximas compras`
-          : `"${edicao.name}" deixa de dar acesso ao repositório nas próximas compras`,
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'não foi possível salvar');
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  return (
-    <label className="mt-0.5 flex items-center gap-1.5 text-[11px] text-body2">
-      <input
-        type="checkbox"
-        checked={edicao.grantsSourceAccess}
-        onChange={(ev) => alternar(ev.target.checked)}
-        disabled={ocupado}
-        className="accent-[var(--accent)]"
-      />
-      dá acesso ao código-fonte
-    </label>
-  );
-}
-
-/**
- * O repositório de código-fonte do produto (FIX #212).
- *
- * **Só faz sentido para quem vende código-fonte**, e é por isso que o campo não
- * grita: fica junto do produto, com rótulo que diz o efeito de deixá-lo vazio.
- * Um produto sem edição `grantsSourceAccess` nunca precisa dele.
- */
-function SourceRepoCampo({
-  produto,
-  onMudou,
-}: {
-  produto: LicProductView;
-  onMudou: () => void;
-}) {
-  const [valor, setValor] = useState(produto.sourceRepo ?? '');
-  const [ocupado, setOcupado] = useState(false);
-
-  async function salvar() {
-    setOcupado(true);
-    try {
-      await updateProductSourceRepo(produto.id, valor.trim());
-      onMudou();
-      toast.success(
-        valor.trim()
-          ? `Repositório de código-fonte: ${valor.trim()}`
-          : 'Repositório de código-fonte removido — nenhum convite sairá para este produto',
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'não foi possível salvar');
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  return (
-    <div className="mt-2 grid gap-2 min-[720px]:grid-cols-[1fr_auto]">
-      <input
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        placeholder="repositório do código-fonte (dono/nome) — vazio se não vende source"
-        aria-label={`Repositório de código-fonte de ${produto.name}`}
-        disabled={ocupado}
-        className="rounded-[9px] border border-border2 bg-bg px-3 py-2 font-mono text-[12px] text-text"
-      />
-      <button
-        onClick={salvar}
-        disabled={ocupado || valor.trim() === (produto.sourceRepo ?? '')}
-        className="rounded-[9px] border border-border2 px-3 py-2 text-[12px] text-text2 disabled:opacity-40"
-      >
-        Salvar repo
-      </button>
-    </div>
-  );
-}
-
-function CadastroProdutos({
-  catalogo,
-  aberto,
-  onToggle,
-  onMudou,
-}: {
-  catalogo: LicCatalogResponse;
-  aberto: boolean;
-  onToggle: () => void;
-  onMudou: () => void;
-}) {
-  const [ocupado, setOcupado] = useState(false);
-  const [pSlug, setPSlug] = useState('');
-  const [pNome, setPNome] = useState('');
-  const [pPrefixo, setPPrefixo] = useState('');
-  const [eProduto, setEProduto] = useState('');
-  const [eSlug, setESlug] = useState('');
-  const [eNome, setENome] = useState('');
-
-  async function criarProduto() {
-    setOcupado(true);
-    try {
-      await createLicProduct({ slug: pSlug, name: pNome, keyPrefix: pPrefixo });
-      setPSlug('');
-      setPNome('');
-      setPPrefixo('');
-      onMudou();
-      toast.success('Produto criado');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'não foi possível criar');
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  async function criarEdicao() {
-    setOcupado(true);
-    try {
-      await createLicEdition(eProduto, { slug: eSlug, name: eNome });
-      setESlug('');
-      setENome('');
-      onMudou();
-      toast.success('Edição criada');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'não foi possível criar');
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  return (
-    <section className="rounded-[14px] border border-border bg-panel p-5">
-      <button
-        onClick={onToggle}
-        aria-expanded={aberto}
-        className="flex w-full items-center justify-between gap-2 text-left"
-      >
-        <span className="text-[15px] font-semibold text-text">
-          Produtos e edições
-        </span>
-        <span className="text-[12px] text-body2">{aberto ? 'Ocultar' : 'Mostrar'}</span>
-      </button>
-
-      {aberto && (
-        <div className="mt-4 grid gap-4">
-          <ul className="grid list-none gap-2 p-0">
-            {catalogo.products.length === 0 && (
-              <li className="text-[12.5px] text-body">Nenhum produto ainda.</li>
-            )}
-            {catalogo.products.map((p) => (
-              <li
-                key={p.id}
-                className="rounded-[11px] border border-border2 bg-card px-4 py-3"
-              >
-                <p className="m-0 text-[13.5px] text-text">
-                  {p.name}{' '}
-                  <span className="font-mono text-[11px] text-dim">
-                    {p.slug} · chave {p.keyPrefix}-…
-                  </span>
-                </p>
-                <ul className="mt-1 grid list-none gap-0.5 p-0">
-                  {p.editions.map((e) => (
-                    <li key={e.id} className="text-[11.5px] text-body">
-                      {e.name} · {e.billingModel === 'PERPETUAL' ? 'perpétua' : 'assinatura'}{' '}
-                      · {e.maxMachines} máquinas · {e.updatesMonths} meses de updates
-                      {/* O número que explica por que não há botão de remover. */}
-                      {e.licenseCount > 0 && (
-                        <span className="text-body2">
-                          {' '}
-                          · {e.licenseCount} licença{e.licenseCount > 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {/* O que o webhook lê para agendar o convite (FIX #214).
-                          Sem caminho para marcá-lo, não havia como vender
-                          código-fonte pela interface — e o modo de errar é mudo. */}
-                      <SourceAccessToggle edicao={e} onMudou={onMudou} />
-                    </li>
-                  ))}
-                </ul>
-                {/* O repositório de código-fonte (SPEC-039, exposto no FIX #212).
-                    Sem ele preenchido o convite não tem destino, e o operador só
-                    descobriria isso no teste de conexão — depois de já ter
-                    cadastrado o PAT. */}
-                <SourceRepoCampo produto={p} onMudou={onMudou} />
-              </li>
-            ))}
-          </ul>
-
-          <fieldset disabled={ocupado} className="grid gap-2 border-0 p-0">
-            <legend className="text-[12px] text-body2">Novo produto</legend>
-            <div className="grid gap-2 min-[720px]:grid-cols-4">
-              <input
-                value={pSlug}
-                onChange={(e) => setPSlug(e.target.value)}
-                placeholder="identificador (ex.: warroom)"
-                aria-label="Identificador do produto"
-                className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
-              />
-              <input
-                value={pNome}
-                onChange={(e) => setPNome(e.target.value)}
-                placeholder="nome (ex.: War Room)"
-                aria-label="Nome do produto"
-                className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
-              />
-              <input
-                value={pPrefixo}
-                onChange={(e) => setPPrefixo(e.target.value.toUpperCase())}
-                placeholder="prefixo (ex.: WR)"
-                aria-label="Prefixo da chave"
-                maxLength={6}
-                className="rounded-[9px] border border-border2 bg-bg px-3 py-2 font-mono text-[13px] text-text"
-              />
-              <button
-                onClick={() => void criarProduto()}
-                disabled={!pSlug || !pNome || !pPrefixo || ocupado}
-                className="rounded-[9px] border border-border2 px-3 py-2 text-[12.5px] text-body transition-colors hover:bg-card hover:text-text disabled:opacity-40"
-              >
-                Criar produto
-              </button>
-            </div>
-          </fieldset>
-
-          {catalogo.products.length > 0 && (
-            <fieldset disabled={ocupado} className="grid gap-2 border-0 p-0">
-              <legend className="text-[12px] text-body2">Nova edição</legend>
-              <div className="grid gap-2 min-[720px]:grid-cols-4">
-                <select
-                  value={eProduto}
-                  onChange={(e) => setEProduto(e.target.value)}
-                  aria-label="Produto da edição"
-                  className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
-                >
-                  <option value="">Escolha o produto…</option>
-                  {catalogo.products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={eSlug}
-                  onChange={(e) => setESlug(e.target.value)}
-                  placeholder="identificador (ex.: source)"
-                  aria-label="Identificador da edição"
-                  className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
-                />
-                <input
-                  value={eNome}
-                  onChange={(e) => setENome(e.target.value)}
-                  placeholder="nome (ex.: Com código-fonte)"
-                  aria-label="Nome da edição"
-                  className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[13px] text-text"
-                />
-                <button
-                  onClick={() => void criarEdicao()}
-                  disabled={!eProduto || !eSlug || !eNome || ocupado}
-                  className="rounded-[9px] border border-border2 px-3 py-2 text-[12.5px] text-body transition-colors hover:bg-card hover:text-text disabled:opacity-40"
-                >
-                  Criar edição
-                </button>
-              </div>
-              <p className="text-[11.5px] text-body2">
-                Padrões: perpétua, 2 máquinas, 12 meses de updates.
-              </p>
-            </fieldset>
-          )}
-        </div>
-      )}
-    </section>
+    </Cartao>
   );
 }
