@@ -7133,17 +7133,49 @@ dobrado**.
 
 ### O que o dogfooding encontrou — `[FIX] #228`
 
-A tela registrou `30/07/2026`; o banco gravou **`2026-07-31`**. O
-`<input type="date">` devolve `YYYY-MM-DD` sem fuso, e a conversão para `Date` o
-lê como meia-noite UTC — num servidor em UTC−3, o dia anda.
+**O sintoma era real; a causa registrada na issue estava invertida.** Vale
+anotar as duas, porque a hipótese errada levava a um conserto que quebraria a
+autorização de verdade.
 
-**Não é cosmético.** `releasedAt` é o lado direito de
-`updatesUntil >= releasedAt`: um dia a mais pode deixar **fora da janela** quem
-tinha direito à versão. O PR-1 se preocupou com o lado de conceder demais
-(*"registrar release antiga com a data de hoje a tornaria indevidamente
-autorizada"*); este bug **nega de menos**, que é o lado que gera reclamação de
-cliente pagante. E **a tela mostra a data certa** — quem confere pela interface
-não vê discrepância; o erro só aparece no banco ou na reclamação.
+A issue supunha *"digitei 30/07, o banco gravou 31/07"* — deslocamento na
+**escrita**. Os números não fecham: `new Date('2026-07-30').toISOString()` dá
+`2026-07-30T00:00:00Z`, dia 30. Nenhum caminho da cadeia transforma 30 digitado
+em 31 gravado. O banco tinha `2026-07-31 00:00:00`, e a data digitada foi
+**31/07** (confirmado com o PI).
+
+O deslocamento está na **leitura**. `shortDate` fazia `toLocaleDateString` sobre
+uma data que é **civil**, não instante: `releasedAt` nasce de um
+`<input type="date">` como meia-noite UTC, e a hora não significa nada.
+Convertida para o fuso de quem olha, meia-noite UTC volta um dia atrás em
+qualquer fuso negativo — em `America/Sao_Paulo`, `2026-07-31T00:00:00Z` vira
+`30/07/2026`.
+
+```
+digitou 31/07 -> grava 2026-07-31T00:00:00Z -> tela mostrava 30/07/2026
+```
+
+**Por que o engano é pior que o erro.** A gravação sempre esteve certa, então
+`updatesUntil >= releasedAt` nunca negou update a ninguém. Mas quem confere pela
+interface vê a data um dia atrás e conclui que a **escrita** adiantou — foi
+exatamente o que a issue concluiu. "Consertar" a escrita a partir dessa leitura
+teria introduzido o bug que a issue descrevia: aí sim `releasedAt` sairia
+deslocado e negaria a versão a quem tinha direito.
+
+**O conserto.** `shortCivilDate` em `licensingView.ts`, lendo os campos em UTC —
+o fuso em que a data foi escrita. Separada de `shortDate` porque as duas recebem
+coisas diferentes, e a distinção é o que impede a regressão: `createdAt`,
+`revokedAt` e `updatesUntil` são **instantes reais** (`updatesUntil` deriva de
+`issuedAt`, herdando a hora da emissão), e para esses converter ao fuso local é
+o comportamento certo. Único consumidor civil hoje: `releasedAt`, no
+`ReleasesPanel`.
+
+**A linha da `1.0.0` não foi alterada.** O critério 4 da issue pedia
+`2026-07-31 → 2026-07-30`; como o dia digitado foi 31, o banco já está correto e
+a alteração introduziria o erro.
+
+O teste cobre o dia exato (não `toContain('2026')` — o defeito nunca errou o
+ano) e inclui 01/01, o caso em que um dia de deslocamento também erra o ano.
+Verificado por mutação: revertendo para `toLocaleDateString`, os dois falham.
 
 Comportamento correto já documentado (SPEC-041 §Contratos + os dois trechos do
 `releasedAt` acima), então é `[FIX]` com issue própria, não fatia.

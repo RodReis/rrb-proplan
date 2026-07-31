@@ -50,6 +50,33 @@ export function shortDate(iso: string | null): string {
   return d.toLocaleDateString('pt-BR');
 }
 
+/**
+ * Data **civil** — o dia que o operador digitou, sem passar por fuso.
+ *
+ * Existe separada de `shortDate` porque as duas recebem coisas diferentes.
+ * `shortDate` recebe **instante real** (`createdAt`, `revokedAt`,
+ * `updatesUntil` — que herda a hora de `issuedAt`): converter para o fuso de
+ * quem olha é o comportamento certo. `releasedAt` não é instante: nasce de um
+ * `<input type="date">` como meia-noite UTC, e a hora não significa nada.
+ *
+ * Convertida como instante, meia-noite UTC volta **um dia atrás** em qualquer
+ * fuso negativo — em `America/Sao_Paulo` (UTC−3), `2026-07-31T00:00:00Z` vira
+ * `30/07/2026`. Foi o FIX #228: o banco tinha o dia certo o tempo todo, e a
+ * tela mostrava um a menos. O engano é pior que o erro, porque quem confere
+ * pela interface conclui que a **gravação** adiantou um dia — e "consertar" a
+ * escrita quebraria `updatesUntil >= releasedAt` de verdade.
+ *
+ * Por isso lê os campos em UTC: é o fuso em que a data foi escrita.
+ */
+export function shortCivilDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const dia = String(d.getUTCDate()).padStart(2, '0');
+  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dia}/${mes}/${d.getUTCFullYear()}`;
+}
+
 export function shortDateTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
