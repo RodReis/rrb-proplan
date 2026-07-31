@@ -594,3 +594,31 @@ A outra metade é decisão nova, e ela aparece porque a SPEC-032 quebra duas coi
 - **Deixar no `insight` e o `artifacts` importar de lá.** Zero trabalho hoje. Rejeitado porque instala permanentemente a dependência `artifacts → insight` — dois módulos que não têm nada a ver um com o outro passariam a subir juntos, e a primeira mudança de prompt de resumo viraria risco de regressão no pipeline de cliente.
 - **Mover os arquivos e confiar no `exports` do `@Module`.** É o meio do caminho, e é o mais perigoso dos três: dá a *aparência* de fronteira (o módulo existe, o `exports` está lá) enquanto os imports profundos continuam livres. Fronteira que aparenta existir é pior que fronteira ausente — ninguém audita o que já parece resolvido.
 - **Extrair para pacote separado no monorepo (`packages/llm`).** Fronteira máxima, verificada pelo próprio resolvedor de módulos. Rejeitado por enquanto: o ADR-001 escolheu monolito modular, e pacote publicável traz build, versionamento e tsconfig próprios para resolver um problema que uma regra de lint resolve. Reavaliar se um dia o `llm` for consumido fora desta API.
+
+## ADR-028 — O artefato de release vive em Release privada do GitHub, não no Postgres
+
+**Status**: **aprovado pelo PI em 2026-07-29** (decisão 1 da SPEC-041), redigido pelo Code no PR-1 da Fatia 30 — mesmo caminho dos ADR-026/027. **Não emenda o ADR-025: é o gatilho dele disparando**, no cenário que ele mesmo pré-escreveu.
+
+**Contexto**: o `war-room update` precisa que a máquina licenciada baixe o instalador da versão a que tem direito. O instalador tem **~80 MB**.
+
+O ADR-025 decidiu que binário de cliente vive em `bytea` no Postgres, com teto de **10 MB por arquivo**, e listou cinco gatilhos de revisão. Um artefato de 80 MB dispara **dois** deles ao mesmo tempo: *"arquivo acima de 10 MB"* e *"segundo caso de uso de binário"*. Então esta fatia **não escolhe livremente** — ela chega num ponto que o ADR-025 já tinha marcado, e ele próprio escreveu o que fazer: *"disparado o gatilho, nasce ADR novo escolhendo object storage"*.
+
+O que muda em relação ao caso do ADR-025 é o **dono do arquivo**. Lá, o binário é dado de cliente de um tenant — nasce de um upload no briefing público, não existe em nenhum outro lugar, e o critério que decidiu foi **isolamento**: perdê-lo de vista significaria vazamento entre tenants. Aqui, o binário é **produto do próprio vendedor**, ele já vive num repositório privado do GitHub que o vendedor administra, e o ProPlan nunca chega a possuí-lo.
+
+**Decisão**:
+
+1. **O artefato fica na Release privada do GitHub; o ProPlan guarda só o ponteiro** — `LicRelease` com `assetId`, `sha256`, `version`, `releasedAt`. Nenhum byte do instalador entra no Postgres, e **nenhum byte atravessa a API**: o `releases/download` devolve JSON com URL assinada, e há critério de aceite verificando isso no tráfego, não por afirmação.
+2. **A tabela do ponteiro segue a regra de sempre**: `lic_releases` é raiz com `tenant_id`, `ENABLE`+`FORCE` RLS, como as demais `lic_*`. O ADR-020 continua valendo inteiro para os **metadados** — o que sai do Postgres é o binário, não o isolamento.
+3. **A credencial é o `githubPat` do tenant** (SPEC-039), não uma exceção ao ADR-015. A emenda de 2026-07-30 da SPEC-041 retirou a exceção que a versão original pedia: o PAT já existe, é por tenant, cifrado, e aponta para o mesmo repo. Ler asset é subconjunto do que ele já faz ali.
+4. **O artefato nunca é apagado** (decisão 3 do PI): licença perpétua com `updatesUntil` vencido continua baixando a última versão autorizada. Storage cresce monotonicamente — e cresce **na conta do GitHub do vendedor**, não na nossa.
+
+**Consequência**: o ProPlan passa a depender da disponibilidade do GitHub para entregar update — se ele cair, `check` e `download` falham. Aceitável: o produto inteiro já depende do GitHub para ler documentação (ADR-003) e para o convite ao source (SPEC-039); esta fatia não acrescenta fornecedor, credencial nem linha na fatura. Em troca, 80 MB por versão ficam fora dos dumps do Postgres, e o vendedor publica release pelo fluxo que já usa.
+
+**O que este ADR não decide**: o caso do ADR-025 continua como está. Anexo de briefing segue em `bytea`, com teto de 10 MB e RLS — os dois casos têm donos diferentes e critérios diferentes, e unificá-los agora seria trocar uma decisão que funciona por simetria.
+
+**Alternativas rejeitadas**:
+
+- **Subir o teto do ADR-025 e guardar os 80 MB em `bytea`.** Rejeitado pelo que o próprio ADR-025 previu: cada leitura carrega o arquivo inteiro em memória, `pg_dump` engorda 80 MB por versão publicada, e o artefato **nunca é apagado** (decisão 3) — o crescimento é monotônico por construção. Guardaríamos no banco mais caro uma cópia de um arquivo que já existe de graça no GitHub.
+- **Ativar o Supabase Storage.** Tiraria o Supabase da reserva (ADR-022) e traria um segundo fornecedor ao caminho de dados para hospedar um arquivo que **já está hospedado**. O free tier que pausa após 7 dias sem request é especialmente ruim aqui: update é acesso esporádico por natureza.
+- **Volume do Railway.** Prende a API a uma instância e cria um segundo procedimento de backup no `DEPLOY.md` — os mesmos motivos que o ADR-025 já usou para recusá-lo, agravados por o arquivo ser 8× maior.
+- **Publicação automática pelo CI do War Room.** Fora de escopo por decisão do PI (SPEC-041 §Fora de escopo), não por este ADR: exigiria token de máquina com escrita administrativa dentro do módulo que guarda as licenças. Gatilho de revisão: passar de ~1 release por semana no piloto.

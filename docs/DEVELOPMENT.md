@@ -6778,3 +6778,106 @@ payload na hora de renderizar.
 fatia entrega o **mecanismo** de exclusão a pedido; se o texto dos termos e a
 política de retenção estão corretos é parecer de advogado, não critério de
 aceite de software.
+
+## Fatia 30 (SPEC-041) — Licensing: releases autorizadas por licença — `em andamento`
+
+Issue **#203** (spec `aprovada-pi` 2026-07-29, **emendada em 2026-07-30**). **6ª
+fatia do MVP4** e a peça que falta para o `war-room update` do piloto: a máquina
+licenciada descobre e baixa a versão a que **tem direito**, sem link manual e sem
+um byte do instalador atravessar a API.
+
+**A fatia nasceu bloqueada e foi destravada pelo PI antes do 1º PR.** A versão
+original pedia **exceção estreita ao ADR-015** para ler o asset com *installation
+token*. A emenda de 2026-07-30 retirou a exceção: a credencial já existe —
+`LicSettings.githubPat` (SPEC-039), por tenant, cifrada, apontando para o mesmo
+repo. Com isso **some o Risco #1 original** (se o installation token alcança asset
+de release privada) e o ADR-028 fica com **uma** decisão, não duas.
+
+**Quatro PRs empilhados**, todos com base `main`:
+
+1. **PR-1 — ADR-028, modelo e os dois escopos do PAT** (este)
+2. **PR-2 — `releases/check`** (`a fazer`)
+3. **PR-3 — `releases/download`** (`a fazer`)
+4. **PR-4 — tela do admin** (`a fazer`)
+
+### PR-1 — o ponteiro, e o escopo que falharia calado
+
+- [x] **ADR-028** — artefato de release fora do Postgres. **Não emenda o ADR-025:
+      é o gatilho dele disparando**, no cenário que ele mesmo pré-escreveu
+      (*"disparado o gatilho, nasce ADR novo escolhendo object storage"*). Um
+      instalador de ~80 MB aciona **dois** gatilhos ao mesmo tempo: *arquivo acima
+      de 10 MB* e *segundo caso de uso de binário*.
+
+      O que separa este caso do ADR-025 é o **dono do arquivo**. Lá o binário é
+      dado de cliente, nasce de upload e não existe em outro lugar — o critério
+      foi isolamento. Aqui é **produto do próprio vendedor**, que já vive num
+      repositório privado que ele administra, e o ProPlan nunca chega a possuí-lo.
+      Guardá-lo em `bytea` seria pagar dump e memória por uma cópia de um arquivo
+      que já está hospedado de graça. **O ADR-025 não é tocado**: anexo de briefing
+      continua em `bytea` com teto de 10 MB.
+
+- [x] **`LicRelease` / `lic_releases`** — ponteiro, não arquivo: `assetId`,
+      `sha256`, `version`, `os`, `releasedAt`, `published`.
+
+      **Raiz de tenancy, ao contrário de `LicEdition`.** A edição corta por JOIN
+      no produto porque nada a busca direto; esta é procurada pelo caminho
+      **público** (`check`/`download`) via `(licença → produto, versão)`, sem
+      nenhum id de linha vindo do cliente. Um `where` esquecido ali serviria
+      release de outro tenant — a policy de linha fecha isso sem depender de eu
+      lembrar.
+
+      **`releasedAt` é informado pelo admin, não `now()`**: registrar uma release
+      antiga com a data de hoje a tornaria indevidamente autorizada para quem já
+      tem a janela vencida — o oposto exato da promessa da licença perpétua.
+
+      **`@@unique([productId, version, os])`** — sem ele, `1.2.0/win-x64`
+      registrado duas vezes daria duas respostas possíveis ao `check`, e a
+      escolhida seria a que o banco devolvesse primeiro.
+
+      **CHECK de `sha256` no banco** (64 hex): o hash é conferido pela máquina do
+      cliente **depois** de baixar. Um valor malformado só falharia lá, após 80 MB
+      transferidos, e o operador leria como *"download corrompido"*.
+
+- [x] **Teste de conexão do admin valida os DOIS escopos** —
+      `administration:write` (convite, SPEC-039) **e** `contents:read` (download do
+      asset, esta fatia). Mesmo token, mesmo repo, capacidades independentes na
+      configuração do PAT.
+
+      **É o item mais importante do PR, e o motivo é o modo de errar.** O convite
+      que falha produz pendência `FAILED` visível no admin. O download que falha
+      **não produz nada**: a máquina do cliente para de receber update, não há
+      venda travada, não há erro, ninguém no admin fica sabendo. Descobre-se pela
+      *ausência* de reclamação. Um `false` no teste de conexão é barato; esse
+      silêncio é caro.
+
+      Objeção que considerei e descartei: `admin: true` quase sempre implica
+      `pull: true`, então o check pareceria redundante. Mas o que se testa aqui
+      não é a álgebra das permissões do GitHub — é o que a **resposta afirma**. A
+      redundância custa uma linha; a suposição custa o silêncio acima. O motivo
+      nomeia **qual** escopo falta, senão o operador reemite o token com o mesmo
+      erro.
+
+- [x] **`docs/DEPLOY.md` §3.7 — rotação do PAT.** A spec dizia *"a rotação do PAT
+      no `docs/DEPLOY.md` (SPEC-039) ganha a menção ao novo escopo"*, mas **essa
+      seção não existia**: a SPEC-039 documentou o PAT no `DEVELOPMENT.md`, não no
+      runbook. Criada agora, com a tabela dos dois escopos e a ordem da rotação —
+      **gravar o novo antes de revogar o antigo**, porque o inverso abre uma janela
+      em que convite e download falham juntos.
+
+- [x] `build`, `lint` e suíte verdes; `reports/TESTS.md` regenerado (ADR-019)
+
+### O Risco #1 continua aberto — e é do PI, não meu
+
+A emenda reescreveu o Risco #1: não é mais *"o installation token alcança asset
+privado?"*, é **a ampliação de `contents:read` no mesmo PAT**. Provar o
+`302 → Location` assinado **com PAT fine-grained real** exige duas coisas que não
+são minhas de criar:
+
+1. o PAT do tenant **ampliado** para `contents:read` (hoje ele tem só
+   `administration:write`, foi assim que a SPEC-039 o criou);
+2. uma **Release com asset** em `RodReis/war-room`.
+
+Este PR entrega o que não depende disso. **O PR-3 (`download`) não deve ser
+escrito antes da validação**: se o PAT fine-grained não alcançar asset de release
+privada, o plano B (PAT separado vs. object storage) é decisão do PI e a fatia
+muda de forma — descobrir isso com três PRs prontos é caro.

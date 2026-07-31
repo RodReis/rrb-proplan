@@ -106,6 +106,25 @@ export class GithubSourceClient {
    * enxerga o repositório e não consegue convidar ninguém. `permissions.admin` é
    * o que o convite exige, e descobrir isso na primeira venda seria descobrir
    * tarde.
+   *
+   * ## Dois escopos desde a SPEC-041, e o segundo falha ainda mais calado
+   *
+   * A Fatia 30 acrescentou um segundo uso ao **mesmo** PAT, no **mesmo** repo:
+   * baixar o asset da Release privada (`contents:read`, refletido em
+   * `permissions.pull`). São capacidades independentes na configuração do token
+   * — dá para conceder administração sem conteúdo —, então o teste passa a
+   * exigir as duas.
+   *
+   * **Por que checar `pull` explicitamente, se admin quase sempre o implica**: o
+   * que se testa aqui não é a álgebra das permissões, é o que a resposta do
+   * GitHub **afirma**. Se um dia um token administrar sem ler conteúdo, o
+   * desfecho é o pior que existe neste módulo: a máquina do cliente para de
+   * receber update e **ninguém no admin fica sabendo** — não há venda travada,
+   * não há pendência, não há erro. Um `false` aqui é barato; descobrir pela
+   * ausência de reclamação é caro.
+   *
+   * O motivo nomeia **qual** escopo falta, senão o operador reemite o token com o
+   * mesmo erro.
    */
   async checkRepoAccess(pat: string, repo: string): Promise<RepoAccess> {
     const res = await this.get(`https://api.github.com/repos/${repo}`, pat);
@@ -119,9 +138,18 @@ export class GithubSourceClient {
     }
     if (!res.ok) return { ok: false, reason: `GitHub respondeu ${res.status}` };
 
-    const body = (await res.json()) as { permissions?: { admin?: boolean } };
+    const body = (await res.json()) as {
+      permissions?: { admin?: boolean; pull?: boolean };
+    };
     if (!body.permissions?.admin) {
       return { ok: false, reason: 'o token não tem permissão de administração no repositório' };
+    }
+    if (!body.permissions?.pull) {
+      return {
+        ok: false,
+        reason:
+          'o token não tem permissão de leitura de conteúdo (`contents:read`) — o download de releases falharia sem aviso',
+      };
     }
     return { ok: true };
   }
