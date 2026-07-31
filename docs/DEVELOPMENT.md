@@ -6779,7 +6779,7 @@ fatia entrega o **mecanismo** de exclusão a pedido; se o texto dos termos e a
 política de retenção estão corretos é parecer de advogado, não critério de
 aceite de software.
 
-## Fatia 30 (SPEC-041) — Licensing: releases autorizadas por licença — `em andamento`
+## Fatia 30 (SPEC-041) — Licensing: releases autorizadas por licença — `entregue`
 
 Issue **#203** (spec `aprovada-pi` 2026-07-29, **emendada em 2026-07-30**). **6ª
 fatia do MVP4** e a peça que falta para o `war-room update` do piloto: a máquina
@@ -6795,10 +6795,10 @@ de release privada) e o ADR-028 fica com **uma** decisão, não duas.
 
 **Quatro PRs empilhados**, todos com base `main`:
 
-1. **PR-1 — ADR-028, modelo e os dois escopos do PAT** (este)
-2. **PR-2 — `releases/check`** (`a fazer`)
-3. **PR-3 — `releases/download`** (`a fazer`)
-4. **PR-4 — tela do admin** (`a fazer`)
+1. **PR-1 — ADR-028, modelo e os dois escopos do PAT**
+2. **PR-2 — `releases/check`**
+3. **PR-4 — tela do admin** (feito antes do PR-3, ver abaixo)
+4. **PR-3 — `releases/download`** (este, o último)
 
 ### PR-1 — o ponteiro, e o escopo que falharia calado
 
@@ -7009,18 +7009,102 @@ a fatia enquanto a validação do Risco #1 espera o PI.
 
 - [x] `build`, `lint` e suíte verdes; `reports/TESTS.md` carimbado
 
-### O Risco #1 continua aberto — e é do PI, não meu
+### PR-3 — a URL que o ProPlan cunha sem tocar nos bytes
 
-A emenda reescreveu o Risco #1: não é mais *"o installation token alcança asset
-privado?"*, é **a ampliação de `contents:read` no mesmo PAT**. Provar o
-`302 → Location` assinado **com PAT fine-grained real** exige duas coisas que não
-são minhas de criar:
+**Destravado pelo PI em 2026-07-30, e o motivo é que o Risco #1 mudou de
+natureza.** O bloqueio escrito no PR-1 (*"não escrever antes da validação"*)
+protegia contra uma pergunta de **arquitetura**: se o installation token não
+alcançasse asset privado, o plano B era decisão do PI e a fatia mudaria de forma.
+Com o PAT da SPEC-039 essa pergunta não se coloca — o que resta é uma pergunta de
+**configuração** (*o token tem `contents:read`?*), e ela já tem desfecho definido
+em critério de aceite: erro explícito e pendência no admin. A fatia não muda de
+forma por causa da resposta, então esperar por ela só segurava a entrega.
 
-1. o PAT do tenant **ampliado** para `contents:read` (hoje ele tem só
-   `administration:write`, foi assim que a SPEC-039 o criou);
+- [x] **`GithubSourceClient.assetDownloadUrl`** — `redirect: 'manual'` é a linha
+      que faz a fatia inteira valer.
+
+      Com o `follow` padrão do `fetch`, o Node seguiria o `302` e baixaria os
+      ~80 MB **para dentro da API** — e o critério *"nenhum byte do artefato passa
+      pela API"* deixaria de valer **sem nada quebrar**: a rota continuaria
+      respondendo, só que gorda. É por isso que a asserção do `init.redirect`
+      existe como teste próprio, e não como detalhe de outro caso.
+
+      `Accept: application/octet-stream` é o par obrigatório: sem ele a API
+      devolve o JSON de metadados, não o redirect, e o método entregaria a
+      descrição do arquivo achando que é o arquivo.
+
+      **Tabela de motivos separada da do convite** (`motivoAsset`). O mesmo `403`
+      significa coisas diferentes nos dois caminhos: lá é administração, aqui é
+      `contents:read`. Reaproveitar a mensagem mandaria o operador reemitir o
+      token com a permissão errada — e o sintoma (update que não chega) é mudo,
+      então ele não descobriria pelo uso.
+
+- [x] **`LicenseReleaseService.download`** — reautoriza, nunca confia no `check`.
+
+      **A versão vem do corpo, e quem manda o corpo é um binário na máquina de
+      outra pessoa.** Nada o obriga a devolver a versão que o `check` respondeu;
+      confiar nisso deixaria qualquer um baixar o que a janela não cobre trocando
+      um campo. A autorização é refeita do zero, com a mesma comparação (`>=`
+      contra o `updatesUntil` **da licença**).
+
+      **Despublicada responde `404`, não `403`**: quem despublicou por defeito não
+      deve informar a quem pergunta que a versão existe.
+
+      **O repo vem do produto DA RELEASE**, não do primeiro produto do tenant com
+      `sourceRepo`. O caminho do convite (SPEC-039) resolve por tenant porque o
+      piloto tem um produto só; aqui existe `productId` na mão, e usar o do
+      tenant baixaria o asset do repo errado no dia em que houver dois — com o PAT
+      alcançando os dois, sem erro nenhum.
+
+      **Nada de configuração vira `500`, e nada do GitHub vira status nosso.** PAT
+      ausente, ilegível ou sem escopo respondem `503` com motivo legível. Traduzir
+      o `404` do GitHub (asset fora do alcance do token) num `404` nosso diria ao
+      comprador *"essa release não existe"* sobre uma que existe e está registrada
+      — ele reportaria versão inexistente enquanto o defeito é o escopo do token.
+
+- [x] **`LicEvent` depois da URL cunhada, e só no caminho autorizado.** Registrar
+      antes marcaria como baixado o download que o GitHub recusou, e a trilha
+      passaria a mentir exatamente sobre a pergunta que existe para responder
+      (*quem levou o quê*). **A URL não entra no payload**: ela morre em segundos
+      e guardá-la encheria a trilha de segredo de vida curta.
+
+- [x] **Bug meu, e foi o Postgres que pegou:** escrevi a leitura do PAT **fora**
+      do `runInTenantContext`. `lic_settings` tem RLS, a rota é pública e sem
+      sessão, então o `findUnique` devolve `null` **sem erro** (fail-closed). O
+      sintoma em produção seria todo download respondendo *"o servidor não tem
+      acesso ao repositório"* **com o PAT gravado e correto** — e o operador
+      conferindo repetidamente uma configuração que está certa. O mock unitário
+      passou (o `runInTenantContext` dobrado é passthrough); só o banco real
+      reprovou. É a mesma classe do defeito que o `check` já tratava na busca de
+      releases, e a razão de o int-spec existir.
+
+- [x] **Int-spec estendido (20 casos)** — o `download` toca **duas tabelas a mais
+      sob RLS** que nenhum mock prova: `lic_settings` (o PAT) e `lic_events` (a
+      trilha). Cobre os dois critérios de aceite da emenda: **tenant B não baixa
+      com o PAT do tenant A** (cada tenant semeado com seu PAT cifrado pelo
+      `CryptoService` real, e o cliente do GitHub registra com qual credencial foi
+      chamado) e **dois `download` seguidos devolvem URLs diferentes**.
+
+- [x] **Falha herdada consertada:** a suíte **já estava vermelha na `main`** — o
+      PR-4 acrescentou `ReleaseAdminService` ao construtor do
+      `LicensingAdminController` e não atualizou o `.spec.ts`, que parou de
+      compilar. Uma linha; sem ela nenhum PR desta fatia passaria no CI.
+
+- [x] `build`, `lint` e suíte verdes (2426 API + 677 web); `reports/TESTS.md`
+      carimbado
+
+### O que continua sendo do PI — e não bloqueia mais
+
+O `302 → Location` está provado **contra o contrato do GitHub** (dobrado), não
+contra a rede real. Para o piloto rodar de ponta a ponta ainda faltam duas coisas
+que não são minhas de criar:
+
+1. o PAT do tenant **ampliado** para `contents:read` — hoje ele tem só
+   `administration:write`, foi assim que a SPEC-039 o criou;
 2. uma **Release com asset** em `RodReis/war-room`.
 
-Este PR entrega o que não depende disso. **O PR-3 (`download`) não deve ser
-escrito antes da validação**: se o PAT fine-grained não alcançar asset de release
-privada, o plano B (PAT separado vs. object storage) é decisão do PI e a fatia
-muda de forma — descobrir isso com três PRs prontos é caro.
+**A diferença para o bloqueio anterior é o desfecho de errar.** Antes, resposta
+negativa mudaria a arquitetura da fatia. Agora, se o escopo faltar, o teste de
+conexão do admin **já diz qual escopo falta** (PR-1) e o `download` **já responde
+`503` com motivo** — o caminho de descoberta existe e é o previsto na spec. O que
+resta é dogfooding, não decisão.

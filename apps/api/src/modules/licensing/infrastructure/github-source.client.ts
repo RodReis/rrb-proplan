@@ -274,12 +274,100 @@ export class GithubSourceClient {
     throw new GithubSourceError(this.motivo(res.status), res.status);
   }
 
+  /**
+   * URL assinada de vida curta para o asset da Release privada (SPEC-041 §Notas
+   * técnicas, ADR-028 decisão 2).
+   *
+   * **`redirect: 'manual'` é a linha mais importante do método.** Com o `follow`
+   * padrão do `fetch`, o Node seguiria o `302` e começaria a baixar os ~80 MB
+   * **para dentro da API** — exatamente o que o ADR-028 existe para impedir, e o
+   * critério de aceite *"nenhum byte do artefato passa pela API"* deixaria de
+   * valer sem que nada quebrasse: a rota continuaria respondendo, só que gorda.
+   * O que se quer é o **envelope**, não o conteúdo.
+   *
+   * `Accept: application/octet-stream` é o que faz a API responder com o
+   * redirect em vez do JSON de metadados do asset — sem ele, o `Location` não
+   * existe e o método devolveria a descrição do arquivo achando que é o arquivo.
+   *
+   * **A URL não é cacheável e não é guardada**: expira em segundos a minutos e é
+   * cunhada a cada chamada (é por isso que `check` e `download` são rotas
+   * separadas). Guardá-la em coluna ou memória entregaria ao cliente seguinte um
+   * link já morto — falha que aparece como "download não começa", longe daqui.
+   *
+   * **Nenhum desfecho vira `500`.** Todos os erros saem como `GithubSourceError`
+   * com motivo legível, porque o modo de errar aqui é mudo: PAT sem
+   * `contents:read` responde `404` (o GitHub esconde o que o token não alcança),
+   * e um `500` genérico mandaria o operador procurar defeito no ProPlan em vez de
+   * no escopo do token.
+   */
+  async assetDownloadUrl(pat: string, repo: string, assetId: string): Promise<string> {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/releases/assets/${encodeURIComponent(assetId)}`,
+      {
+        method: 'GET',
+        headers: {
+          // Octet-stream: pede o BINÁRIO. É o que dispara o 302 para o storage.
+          Accept: 'application/octet-stream',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'rrb-proplan',
+          Authorization: `Bearer ${pat}`,
+        },
+        // Sem isto a API baixaria o instalador inteiro. Ver acima.
+        redirect: 'manual',
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      },
+    );
+
+    // 302 é o desfecho ESPERADO — não é erro. O `Location` é a resposta.
+    if (res.status === 302 || res.status === 307) {
+      const location = res.headers.get('location');
+      // `Location` vazio num 302 é contrato quebrado do GitHub, não configuração
+      // do operador. Devolver string vazia daria ao cliente uma URL que falha
+      // como "download corrompido" — o erro precisa dizer o que é.
+      if (!location) {
+        throw new GithubSourceError('o GitHub redirecionou sem endereço de download', 502);
+      }
+      return location;
+    }
+
+    // 200 aqui significa que o asset não redirecionou — sem `Location` não há o
+    // que devolver, e ler o corpo seria justamente puxar os bytes pela API.
+    if (res.ok) {
+      throw new GithubSourceError('o GitHub não devolveu URL de download para o asset', 502);
+    }
+
+    throw new GithubSourceError(this.motivoAsset(res.status), res.status);
+  }
+
   /** Mensagem legível por status — é o que vai para `sourceAccessError`. */
   private motivo(status: number): string {
     if (status === 401) return 'token inválido ou expirado';
     if (status === 403) return 'token sem permissão de administração no repositório';
     if (status === 404) return 'repositório não encontrado ou fora do escopo do token';
     if (status === 422) return 'o GitHub recusou o convite (validação)';
+    return `GitHub respondeu ${status}`;
+  }
+
+  /**
+   * O mesmo status quer dizer outra coisa no caminho do asset — por isso a
+   * segunda tabela, e não um parâmetro no `motivo`.
+   *
+   * `403` no convite é *"falta administração"*; aqui é **`contents:read`**, o
+   * escopo que a SPEC-041 acrescentou ao mesmo PAT. Reaproveitar a mensagem do
+   * convite mandaria o operador reemitir o token com a permissão errada — e o
+   * sintoma (update que não chega) não o corrigiria, porque ele é silencioso.
+   *
+   * `404` continua ambíguo por desenho do GitHub (asset removido *ou* token sem
+   * alcance), então a mensagem diz as duas coisas em vez de escolher a errada.
+   */
+  private motivoAsset(status: number): string {
+    if (status === 401) return 'token inválido ou expirado';
+    if (status === 403) {
+      return 'o token não tem permissão de leitura de conteúdo (`contents:read`) no repositório';
+    }
+    if (status === 404) {
+      return 'asset não encontrado no GitHub ou fora do escopo do token (`contents:read`)';
+    }
     return `GitHub respondeu ${status}`;
   }
 

@@ -1,5 +1,5 @@
 /**
- * `releases/check` (SPEC-041, PR-2) contra Postgres REAL.
+ * `releases/check` (PR-2) e `releases/download` (PR-3) contra Postgres REAL.
  *
  * **Por que int-spec, e não mock.** A rota depende de três coisas que só existem
  * no banco, e um mock afirmaria cada uma sem provar nenhuma:
@@ -20,11 +20,30 @@
  * O caso que mais interessa é a **licença com janela vencida**: ela deve receber
  * a última versão autorizada, não a corrente e não `update: false`. É o critério
  * que prova a promessa da licença perpétua.
+ *
+ * ## O que o PR-3 acrescenta, e por que também aqui
+ *
+ * O `download` toca **duas tabelas a mais sob RLS** (`lic_settings` para o PAT,
+ * `lic_events` para a trilha) e o mock não prova nenhuma das duas:
+ *
+ * - **`Tenant B não baixa asset com o PAT do tenant A`** é critério de aceite
+ *   explícito. A leitura do PAT é por `tenantId` e cada tenant tem o seu — se a
+ *   consulta esquecer o filtro, ou o contexto de tenant não valer, o download de
+ *   um tenant sairia autenticado com a credencial do outro. Nenhum erro
+ *   apareceria: o GitHub responderia normalmente, com o token errado.
+ * - **O `LicEvent` grava sob RLS.** Fora do contexto o `create` falha ou some
+ *   (fail-closed), e a trilha de *"quem levou o quê"* ficaria vazia sem que
+ *   nada quebrasse — o download continuaria funcionando.
+ *
+ * O GitHub em si é dobrado (não se testa a rede aqui). O que **não** é dobrado é
+ * nada do banco.
  */
 import { PrismaClient } from '@prisma/client';
 import { generateKeyPairSync } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ownerClient, applyMigrations, grantAppRole } from '../../../test/int/db-harness';
+import { CryptoService } from '../identity/infrastructure/crypto.service';
+import type { GithubSourceClient } from './infrastructure/github-source.client';
 import { LicenseActivationService } from './application/license-activation.service';
 import { LicenseReleaseService } from './application/license-release.service';
 import { LicenseSigningService } from './application/license-signing.service';
@@ -42,10 +61,17 @@ const CHAVE_ALHEIA = 'WR-RL03-CD45-EF67-GH89';
 
 const FP = 'fp-release-1';
 
-describe('SPEC-041 PR-2: releases/check contra Postgres real', () => {
+/** Os PATs de cada tenant, em claro. O teste do isolamento compara por eles. */
+const PAT_A = 'github_pat_do_tenant_A';
+const PAT_B = 'github_pat_do_tenant_B';
+
+describe('SPEC-041 PR-2/PR-3: releases contra Postgres real', () => {
   let owner: PrismaClient;
   let prisma: PrismaService;
   let releases: LicenseReleaseService;
+  /** O que o cliente do GitHub recebeu na última chamada — PAT, repo, asset. */
+  let ultimaChamada: { pat: string; repo: string; assetId: string } | null;
+  let github: GithubSourceClient;
 
   beforeAll(async () => {
     applyMigrations();
@@ -57,17 +83,37 @@ describe('SPEC-041 PR-2: releases/check contra Postgres real', () => {
       .export({ type: 'pkcs8', format: 'pem' })
       .toString();
     process.env.LICENSING_SIGNING_KID = '2026-07';
+    // 32 bytes em hex — o `CryptoService` real cifra o PAT com esta chave, e é o
+    // mesmo caminho da SPEC-039. Cifrar de verdade importa: um valor plantado em
+    // claro na coluna passaria no mock e falharia em produção.
+    process.env.TOKEN_ENCRYPTION_KEY = 'f'.repeat(64);
 
     process.env.DATABASE_URL =
       process.env.TEST_DATABASE_URL ??
       'postgresql://proplan_app:proplan_app@localhost:5433/proplan_test';
     prisma = new PrismaService();
+
+    // O GitHub é o único dobrado — a rede não é o que se testa aqui. Ele registra
+    // com QUE credencial foi chamado, que é o objeto do teste de isolamento.
+    github = {
+      assetDownloadUrl: async (pat: string, repo: string, assetId: string) => {
+        ultimaChamada = { pat, repo, assetId };
+        return `https://storage.example/${assetId}?sig=fresco-${Math.random()}`;
+      },
+    } as unknown as GithubSourceClient;
+
     releases = new LicenseReleaseService(
       prisma,
       new LicenseActivationService(prisma, new LicenseSigningService()),
+      github,
+      new CryptoService(),
     );
 
     await semear();
+  });
+
+  beforeEach(() => {
+    ultimaChamada = null;
   });
 
   afterAll(async () => {
@@ -165,13 +211,203 @@ describe('SPEC-041 PR-2: releases/check contra Postgres real', () => {
     );
   });
 
+  describe('download (PR-3)', () => {
+    const PEDIDO = {
+      licenseKey: CHAVE_EM_DIA,
+      fingerprint: FP,
+      version: '1.1.0',
+      os: 'win-x64',
+    };
+
+    it('licença em dia baixa a versão corrente e a URL vem com o sha256 registrado', async () => {
+      const r = await releases.download({ ...PEDIDO, version: '2.0.0' });
+
+      expect(r.url).toContain('https://storage.example/');
+      // O `sha256` sai do banco, não do pedido: é o que a máquina do cliente
+      // confere DEPOIS de baixar. Se viesse do corpo, o cliente confirmaria o
+      // arquivo contra o hash que ele mesmo mandou.
+      expect(r.sha256).toBe('a'.repeat(64));
+      expect(r.expiresInSeconds).toBeGreaterThan(0);
+    });
+
+    it('licença com janela VENCIDA baixa a última autorizada', async () => {
+      // É o critério da licença perpétua do outro lado: o `check` já disse
+      // `1.1.0`; aqui o download dela precisa funcionar de fato — senão a
+      // promessa vale só na resposta e não no arquivo.
+      const r = await releases.download({ ...PEDIDO, licenseKey: CHAVE_VENCIDA });
+
+      expect(r.sha256).toBe('a'.repeat(64));
+      expect(ultimaChamada?.assetId).toBe('asset-1');
+    });
+
+    it('licença com janela vencida NÃO baixa a versão de depois — 403', async () => {
+      await expect(
+        releases.download({ ...PEDIDO, licenseKey: CHAVE_VENCIDA, version: '2.0.0' }),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+
+    it('dois downloads seguidos devolvem URLs DIFERENTES', async () => {
+      // §Critérios de aceite — prova de que a URL assinada não é cacheada. Ela
+      // expira em segundos; servir a mesma duas vezes entregaria ao segundo
+      // cliente um link já morto, que ele leria como "download não começa".
+      const a = await releases.download(PEDIDO);
+      const b = await releases.download(PEDIDO);
+
+      expect(a.url).not.toBe(b.url);
+    });
+
+    it('release despublicada some do download — 404, não 403', async () => {
+      await owner.$executeRawUnsafe(
+        `UPDATE lic_releases SET published = false WHERE id = 'rlrel-110'`,
+      );
+
+      // `404` e não `403`: quem despublicou por defeito não deve informar a quem
+      // pergunta que a versão existe.
+      await expect(releases.download(PEDIDO)).rejects.toMatchObject({ status: 404 });
+
+      await owner.$executeRawUnsafe(
+        `UPDATE lic_releases SET published = true WHERE id = 'rlrel-110'`,
+      );
+    });
+
+    it('plataforma inexistente responde 404, mesmo com a versão certa', async () => {
+      // `(version, os)` juntos, não só a versão: sem o `os`, `1.1.0` casaria com
+      // o artefato de outra plataforma e o cliente baixaria o binário errado —
+      // que só falharia ao executar.
+      await expect(
+        releases.download({ ...PEDIDO, os: 'linux-x64' }),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('TENANT B não baixa com o PAT do TENANT A', async () => {
+      // **Critério de aceite explícito da emenda.** A leitura do PAT é por
+      // `tenantId` e cada tenant tem o seu — sem o filtro, ou com o contexto de
+      // tenant errado, o download de um sairia autenticado com a credencial do
+      // outro. E nada apareceria: o GitHub responderia normalmente, com o token
+      // errado.
+      await releases.download({ ...PEDIDO, version: '2.0.0' });
+      expect(ultimaChamada).toMatchObject({ pat: PAT_A, repo: 'RodReis/war-room' });
+
+      await releases.download({
+        licenseKey: CHAVE_ALHEIA,
+        fingerprint: FP,
+        version: '3.0.0',
+        os: 'win-x64',
+      });
+      expect(ultimaChamada).toMatchObject({ pat: PAT_B, repo: 'outro/produto' });
+    });
+
+    it('a release de OUTRO tenant não é alcançável por chave deste', async () => {
+      // A `3.0.0` existe — no outro tenant. O `productId` vem da licença e a
+      // busca roda sob RLS; se qualquer um dos dois falhar, esta licença baixaria
+      // o instalador de um produto que não comprou.
+      await expect(
+        releases.download({ ...PEDIDO, version: '3.0.0' }),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('cada download autorizado grava um LicEvent — e ele grava sob RLS', async () => {
+      const antes = await contarEventos();
+      await releases.download({ ...PEDIDO, version: '2.0.0' });
+      const depois = await contarEventos();
+
+      // Fora do contexto de tenant o `create` falharia ou sumiria (fail-closed),
+      // e a trilha de *quem levou o quê* ficaria vazia sem nada quebrar — o
+      // download continuaria respondendo normalmente.
+      expect(depois).toBe(antes + 1);
+
+      const [evento] = await owner.$queryRawUnsafe<Array<{ type: string; payload: unknown }>>(
+        `SELECT type, payload FROM lic_events WHERE license_id = 'rllic-emdia'
+         ORDER BY created_at DESC LIMIT 1`,
+      );
+      expect(evento.type).toBe('release_downloaded');
+      // A URL NÃO entra no payload: ela morre em segundos e guardá-la encheria a
+      // trilha de segredo de vida curta.
+      expect(evento.payload).toEqual({
+        version: '2.0.0',
+        os: 'win-x64',
+        releaseId: 'rlrel-200',
+      });
+      expect(JSON.stringify(evento.payload)).not.toContain('storage.example');
+    });
+
+    it('download recusado por autorização NÃO grava evento', async () => {
+      const antes = await contarEventos();
+
+      await expect(
+        releases.download({ ...PEDIDO, licenseKey: CHAVE_VENCIDA, version: '2.0.0' }),
+      ).rejects.toMatchObject({ status: 403 });
+
+      // A trilha responde *quem levou o quê*. Registrar a recusa a faria mentir
+      // exatamente sobre a pergunta que existe para responder.
+      expect(await contarEventos()).toBe(antes);
+    });
+
+    it('tenant sem PAT responde 503 com motivo, nunca 500', async () => {
+      await owner.$executeRawUnsafe(
+        `UPDATE lic_settings SET github_pat = NULL WHERE tenant_id = $1`,
+        TENANT,
+      );
+
+      // §Critérios de aceite: erro de configuração explícito. O modo de errar
+      // aqui é mudo por natureza — a máquina do cliente para de receber update e
+      // ninguém no admin fica sabendo —, então o mínimo é que o erro diga o que é.
+      await expect(releases.download(PEDIDO)).rejects.toMatchObject({ status: 503 });
+
+      await owner.$executeRawUnsafe(
+        `UPDATE lic_settings SET github_pat = $2 WHERE tenant_id = $1`,
+        TENANT,
+        new CryptoService().encrypt(PAT_A),
+      );
+    });
+
+    it('chave inexistente, fingerprint inativo e revogada respondem igual ao check', async () => {
+      // O gate é literalmente o mesmo método — o teste existe para provar que a
+      // rota nova não nasceu com uma segunda opinião.
+      await expect(
+        releases.download({ ...PEDIDO, licenseKey: 'WR-ZZZZ-ZZZZ-ZZZZ-ZZZZ' }),
+      ).rejects.toMatchObject({ status: 404 });
+
+      await expect(
+        releases.download({ ...PEDIDO, fingerprint: 'fp-nunca-ativado' }),
+      ).rejects.toMatchObject({ status: 409 });
+
+      await owner.$executeRawUnsafe(
+        `UPDATE licenses SET status = 'REVOKED', revoked_at = now() WHERE id = 'rllic-emdia'`,
+      );
+      await expect(releases.download(PEDIDO)).rejects.toMatchObject({ status: 410 });
+      await owner.$executeRawUnsafe(
+        `UPDATE licenses SET status = 'ACTIVE', revoked_at = NULL WHERE id = 'rllic-emdia'`,
+      );
+    });
+
+    async function contarEventos(): Promise<number> {
+      const [linha] = await owner.$queryRawUnsafe<Array<{ n: bigint }>>(
+        `SELECT count(*) AS n FROM lic_events WHERE tenant_id = ANY($1)`,
+        [TENANT, OUTRO_TENANT],
+      );
+      return Number(linha.n);
+    }
+  });
+
   async function semear() {
-    const tenants: Array<[string, string, string, string, string, string]> = [
-      [TENANT, 'a', 'rlprod-a', 'rledi-a', 'warroom', 'WR'],
-      [OUTRO_TENANT, 'b', 'rlprod-b', 'rledi-b', 'outro', 'OT'],
+    const crypto = new CryptoService();
+
+    const tenants: Array<[string, string, string, string, string, string, string, string]> = [
+      [TENANT, 'a', 'rlprod-a', 'rledi-a', 'warroom', 'WR', 'RodReis/war-room', PAT_A],
+      [OUTRO_TENANT, 'b', 'rlprod-b', 'rledi-b', 'outro', 'OT', 'outro/produto', PAT_B],
     ];
 
-    for (const [tenant, sufixo, produto, edicao, slug, prefixo] of tenants) {
+    for (const [
+      tenant,
+      sufixo,
+      produto,
+      edicao,
+      slug,
+      prefixo,
+      repo,
+      pat,
+    ] of tenants) {
       await owner.$executeRawUnsafe(
         `INSERT INTO tenants (id, installation_id, account_login, account_type, created_at)
          VALUES ($1, NULL, $2, 'User', now()) ON CONFLICT (id) DO NOTHING`,
@@ -179,13 +415,24 @@ describe('SPEC-041 PR-2: releases/check contra Postgres real', () => {
         `rl-${sufixo}`,
       );
       await owner.$executeRawUnsafe(
-        `INSERT INTO lic_products (id, tenant_id, slug, name, key_prefix, created_at, updated_at)
-         VALUES ($1, $2, $3, 'Produto', $4, now(), now())
+        `INSERT INTO lic_products (id, tenant_id, slug, name, key_prefix, source_repo,
+                                   created_at, updated_at)
+         VALUES ($1, $2, $3, 'Produto', $4, $5, now(), now())
          ON CONFLICT (id) DO NOTHING`,
         produto,
         tenant,
         slug,
         prefixo,
+        repo,
+      );
+      // O PAT **cifrado**, pelo mesmo `CryptoService` que o service usa para
+      // abrir. Cada tenant tem o seu — é o par que o teste de isolamento compara.
+      await owner.$executeRawUnsafe(
+        `INSERT INTO lic_settings (id, tenant_id, github_pat, created_at, updated_at)
+         VALUES ($1, $2, $3, now(), now()) ON CONFLICT (tenant_id) DO NOTHING`,
+        `rlset-${sufixo}`,
+        tenant,
+        crypto.encrypt(pat),
       );
       await owner.$executeRawUnsafe(
         `INSERT INTO lic_editions (id, product_id, slug, name, billing_model,
@@ -269,6 +516,7 @@ describe('SPEC-041 PR-2: releases/check contra Postgres real', () => {
     );
     await owner.$executeRawUnsafe(`DELETE FROM licenses WHERE tenant_id = ANY($1)`, ids);
     await owner.$executeRawUnsafe(`DELETE FROM lic_releases WHERE tenant_id = ANY($1)`, ids);
+    await owner.$executeRawUnsafe(`DELETE FROM lic_settings WHERE tenant_id = ANY($1)`, ids);
     await owner.$executeRawUnsafe(`DELETE FROM lic_editions WHERE id = ANY($1)`, [
       'rledi-a',
       'rledi-b',
