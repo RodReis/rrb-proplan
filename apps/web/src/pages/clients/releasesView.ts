@@ -82,3 +82,81 @@ export function ordenarPorData(releases: readonly LicReleaseView[]): LicReleaseV
     (a, b) => new Date(b.releasedAt).getTime() - new Date(a.releasedAt).getTime(),
   );
 }
+
+/**
+ * A data civil no formato do `<input type="date">` (`YYYY-MM-DD`).
+ *
+ * Existe para **preencher o formulário de edição** com o dia que está gravado.
+ * Lê em UTC pela mesma razão do `shortCivilDate` (FIX #228): `releasedAt` nasce
+ * de um `<input type="date">` como meia-noite UTC e a hora não significa nada —
+ * convertida ao fuso local, volta um dia atrás em fuso negativo. Aqui o erro
+ * seria pior que na exibição: abrir a edição de uma release, salvar sem tocar na
+ * data e **gravar o dia anterior** — a tela alterando sozinha o campo que decide
+ * quem tem direito à atualização.
+ */
+export function paraInputDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dia = String(d.getUTCDate()).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${mes}-${dia}`;
+}
+
+/**
+ * Só os campos que **mudaram**, para o `PATCH` (FIX #242).
+ *
+ * O servidor trata ausente como "não tocar" e `notes: ''` como "limpar". Mandar
+ * o formulário inteiro funcionaria, mas faria toda edição reescrever todos os
+ * campos — e um `sha256` reenviado igual dispararia conferência desnecessária no
+ * GitHub. Mandar só o diferente é o que torna "corrigi o id do asset" uma
+ * operação sobre o id do asset.
+ *
+ * `notes` compara contra `null` normalizado: a linha guarda `null` quando vazia,
+ * o formulário guarda `''`, e sem normalizar toda abertura de formulário
+ * pareceria uma alteração da nota.
+ */
+export function camposAlterados(
+  form: { releasedAt: string; assetId: string; sha256: string; notes: string },
+  original: LicReleaseView,
+): { releasedAt?: string; assetId?: string; sha256?: string; notes?: string } {
+  const mudou: { releasedAt?: string; assetId?: string; sha256?: string; notes?: string } = {};
+
+  if (form.releasedAt !== paraInputDate(original.releasedAt)) {
+    mudou.releasedAt = new Date(form.releasedAt).toISOString();
+  }
+  if (form.assetId.trim() !== original.assetId) mudou.assetId = form.assetId.trim();
+  if (form.sha256.trim().toLowerCase() !== original.sha256) {
+    mudou.sha256 = form.sha256.trim();
+  }
+  if (form.notes.trim() !== (original.notes ?? '')) mudou.notes = form.notes.trim();
+
+  return mudou;
+}
+
+/**
+ * Tolera `#Titulo` sem espaço depois do `#`.
+ *
+ * As notas são **coladas** da Release do GitHub, e a cópia perde o espaço com
+ * facilidade — foi o que aconteceu com a `1.0.1` do War Room, cujas seções
+ * (`## Vida da sala`, `## Portas`, `## Correções`) chegaram como `#Vida da
+ * sala`. Por CommonMark isso não é heading, então o changelog inteiro virava uma
+ * lista chapada: **as correções deixavam de se distinguir das novidades**, que é
+ * justamente o que se procura ao ler notas de versão.
+ *
+ * Normaliza na exibição e **não toca no que está gravado** (ADR-014: o ProPlan se
+ * adapta ao que existe, nunca reescreve o texto do dono). Quem editar as notas
+ * continua vendo exatamente o que digitou.
+ *
+ * Só age no início da linha e só até 6 `#` — é a forma do heading. Um `#` no meio
+ * de uma frase (`corrigido #242`) não é tocado, e `#hashtag` no começo de linha
+ * viraria heading pelo mesmo critério que o CommonMark usaria se houvesse o
+ * espaço: aqui o texto é changelog, onde linha começando com `#` é seção.
+ */
+export function normalizarHeadings(markdown: string): string {
+  // `(?!#)` fecha a sequência de `#` antes do lookahead: sem ele, `#{1,6}`
+  // casaria só o primeiro `#` de `## Portas` e o `(?=\S)` veria o segundo como
+  // "texto colado", produzindo `# # Portas` — quebrando o heading que já estava
+  // certo. E `#######Sete` (7 `#`, que não é heading em CommonMark) ficaria
+  // `###### #Sete`, inventando um heading onde não havia.
+  return markdown.replace(/^(#{1,6})(?!#)(?=\S)/gm, '$1 ');
+}

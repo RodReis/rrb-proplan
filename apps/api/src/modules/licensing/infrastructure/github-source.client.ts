@@ -36,6 +36,11 @@ const TIMEOUT_MS = 10_000;
  * `removeCollaborator` desfazem o acesso (PR-4). Todas no mesmo cliente, porque
  * é o mesmo PAT — e concentrá-las aqui é o que mantém `administration:write`
  * num único arquivo.
+ *
+ * `assetDownloadUrl` (SPEC-041) e `getAsset` (FIX #242) entram pelo mesmo PAT,
+ * com `contents:read`: uma cunha a URL assinada do download, a outra descreve o
+ * asset para o cadastro conferir antes de gravar. **Nenhuma das duas move
+ * bytes** — ver o `Accept` de cada uma, que é onde essa promessa vive.
  */
 @Injectable()
 export class GithubSourceClient {
@@ -300,6 +305,64 @@ export class GithubSourceClient {
    * e um `500` genérico mandaria o operador procurar defeito no ProPlan em vez de
    * no escopo do token.
    */
+  /**
+   * Os metadados do asset — o que o **cadastro** confere antes de gravar.
+   *
+   * **Não é o `assetDownloadUrl` com outro nome, e a diferença é o `Accept`.**
+   * Aquele pede `octet-stream`, que faz a API redirecionar para o storage: prova
+   * que o asset existe, mas devolve um `Location` e nada mais. Aqui se pede o
+   * JSON, porque o que se quer é justamente a *descrição* do arquivo — `digest`
+   * para conferir contra o `sha256` digitado, e `name` para o operador
+   * reconhecer o que registrou.
+   *
+   * **Nenhum byte é baixado**: o JSON de metadados pesa menos de 1 KB, e o
+   * redirect não chega a existir sem o `octet-stream`.
+   *
+   * `null` significa **"não existe ou está fora do alcance do PAT"** — os dois
+   * saem como `404` no GitHub, que esconde o que o token não vê, e distingui-los
+   * daqui seria inventar informação. Falha de rede e `401`/`403` **lançam**:
+   * tratá-los como "asset inexistente" mandaria o operador corrigir um id que
+   * está certo.
+   */
+  async getAsset(pat: string, repo: string, assetId: string): Promise<GithubAsset | null> {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/releases/assets/${encodeURIComponent(assetId)}`,
+      {
+        method: 'GET',
+        headers: {
+          // JSON, não `octet-stream`: é o que impede o 302 e devolve a descrição.
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'rrb-proplan',
+          Authorization: `Bearer ${pat}`,
+        },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      },
+    );
+
+    if (res.status === 404) return null;
+    if (!res.ok) throw new GithubSourceError(this.motivoAsset(res.status), res.status);
+
+    const corpo = (await res.json()) as {
+      name?: unknown;
+      size?: unknown;
+      digest?: unknown;
+    };
+
+    // O `digest` vem como `sha256:abc…` e é opcional na API — assets antigos não
+    // o têm. `null` aqui significa "o GitHub não disse", que é diferente de
+    // "não bate": quem chama precisa poder deixar passar em vez de acusar
+    // divergência sobre um hash que ninguém afirmou.
+    const digest = typeof corpo.digest === 'string' ? corpo.digest : null;
+    const sha256 = digest?.startsWith('sha256:') ? digest.slice(7).toLowerCase() : null;
+
+    return {
+      name: typeof corpo.name === 'string' ? corpo.name : '',
+      size: typeof corpo.size === 'number' ? corpo.size : 0,
+      sha256,
+    };
+  }
+
   async assetDownloadUrl(pat: string, repo: string, assetId: string): Promise<string> {
     const res = await fetch(
       `https://api.github.com/repos/${repo}/releases/assets/${encodeURIComponent(assetId)}`,
@@ -433,3 +496,19 @@ export interface GithubUser {
 }
 
 export type RepoAccess = { ok: true } | { ok: false; reason: string };
+
+/** O asset visto pelo cadastro de release — descrição, nunca conteúdo. */
+export interface GithubAsset {
+  /** Nome do arquivo, para o operador reconhecer o que registrou. */
+  name: string;
+  /** Bytes. Só exibição — nada decide por ele. */
+  size: number;
+  /**
+   * Hash do arquivo segundo o GitHub, já sem o prefixo `sha256:`.
+   *
+   * `null` quando o GitHub não informa (o campo é recente; asset antigo não o
+   * tem). Não é "não bate" — é "não foi dito", e confundir os dois faria o
+   * cadastro recusar um hash correto.
+   */
+  sha256: string | null;
+}

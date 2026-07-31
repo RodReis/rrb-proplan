@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { LicReleaseView } from '../../lib/api';
 import {
+  camposAlterados,
   isSha256Valido,
+  normalizarHeadings,
   ordenarPorData,
+  paraInputDate,
   podeRegistrar,
   publishedLabel,
   publishedTone,
@@ -129,5 +132,112 @@ describe('ordenarPorData', () => {
 
     ordenarPorData(lista);
     expect(lista.map((r) => r.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('paraInputDate', () => {
+  it('devolve o dia gravado, lido em UTC', () => {
+    expect(paraInputDate('2026-07-31T00:00:00.000Z')).toBe('2026-07-31');
+  });
+
+  it('não recua um dia em fuso negativo — abrir e salvar não altera a data', () => {
+    // O defeito que este helper evita é pior que o do FIX #228: lá a data errada
+    // só aparecia; aqui ela seria GRAVADA. Abrir a edição de uma release para
+    // corrigir o `assetId` e salvar devolveria o dia anterior em `releasedAt` —
+    // a tela mexendo sozinha no campo que decide quem tem direito à atualização.
+    expect(paraInputDate('2026-01-01T00:00:00.000Z')).toBe('2026-01-01');
+    expect(paraInputDate('2026-03-01T00:00:00.000Z')).toBe('2026-03-01');
+  });
+
+  it('data inválida vira string vazia', () => {
+    expect(paraInputDate('nao-e-data')).toBe('');
+  });
+});
+
+describe('camposAlterados', () => {
+  const original = release({
+    releasedAt: '2026-06-01T00:00:00.000Z',
+    assetId: '12345',
+    sha256: SHA,
+    notes: null,
+  });
+
+  const doFormulario = {
+    releasedAt: '2026-06-01',
+    assetId: '12345',
+    sha256: SHA,
+    notes: '',
+  };
+
+  it('formulário intocado não manda campo nenhum', () => {
+    // **A asserção central.** Se abrir o formulário já contasse como alteração,
+    // toda correção de um campo reescreveria os outros quatro — e um `sha256`
+    // reenviado igual dispararia conferência desnecessária no GitHub.
+    expect(camposAlterados(doFormulario, original)).toEqual({});
+  });
+
+  it('manda só o `assetId` quando só ele mudou — o caso do FIX #242', () => {
+    expect(
+      camposAlterados({ ...doFormulario, assetId: '497099385' }, original),
+    ).toEqual({ assetId: '497099385' });
+  });
+
+  it('`notes` vazia contra `null` não conta como mudança', () => {
+    // A linha guarda `null`, o formulário guarda `''`. Sem normalizar, toda
+    // abertura de formulário pareceria uma alteração da nota.
+    expect(camposAlterados({ ...doFormulario, notes: '' }, original)).toEqual({});
+  });
+
+  it('apagar uma nota existente manda string vazia — é o que limpa no servidor', () => {
+    const comNota = release({ ...original, notes: 'texto antigo' });
+
+    expect(camposAlterados({ ...doFormulario, notes: '' }, comNota)).toEqual({
+      notes: '',
+    });
+  });
+
+  it('`sha256` em maiúsculas igual ao gravado não conta como mudança', () => {
+    expect(
+      camposAlterados({ ...doFormulario, sha256: SHA.toUpperCase() }, original),
+    ).toEqual({});
+  });
+
+  it('data alterada volta como ISO', () => {
+    expect(camposAlterados({ ...doFormulario, releasedAt: '2026-06-02' }, original)).toEqual({
+      releasedAt: '2026-06-02T00:00:00.000Z',
+    });
+  });
+});
+
+describe('normalizarHeadings', () => {
+  it('`#Titulo` sem espaço vira heading', () => {
+    // Foi o caso real da 1.0.1 do War Room: as notas coladas da Release
+    // chegaram como `#Vida da sala`, e sem o espaço o CommonMark não faz
+    // heading — o changelog inteiro virava uma lista chapada, e as correções
+    // deixavam de se distinguir das novidades.
+    expect(normalizarHeadings('#Vida da sala')).toBe('# Vida da sala');
+    expect(normalizarHeadings('##Correções')).toBe('## Correções');
+  });
+
+  it('heading já correto não muda', () => {
+    expect(normalizarHeadings('## Portas')).toBe('## Portas');
+  });
+
+  it('`#` no meio da linha não é tocado', () => {
+    // `corrigido #242` é referência a issue, não título. Normalizar aqui
+    // inventaria uma seção no meio de uma frase.
+    expect(normalizarHeadings('corrigido #242 e #238')).toBe('corrigido #242 e #238');
+  });
+
+  it('age em todas as linhas, não só na primeira', () => {
+    expect(normalizarHeadings('#Um\ntexto\n##Dois')).toBe('# Um\ntexto\n## Dois');
+  });
+
+  it('não passa de 6 `#` — além disso não é heading em CommonMark', () => {
+    expect(normalizarHeadings('#######Sete')).toBe('#######Sete');
+  });
+
+  it('não altera texto sem heading', () => {
+    expect(normalizarHeadings('- item\n- outro')).toBe('- item\n- outro');
   });
 });
