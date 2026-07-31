@@ -8,7 +8,7 @@ import {
   type LicProductView,
   type LicReleaseView,
 } from '../../lib/api';
-import { shortDate } from './licensingView';
+import { shortCivilDate } from './licensingView';
 import {
   isSha256Valido,
   ordenarPorData,
@@ -299,7 +299,11 @@ export function ReleasesPanel({ produtos }: { produtos: LicProductView[] }) {
                   </span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11.5px] text-body">
-                  <span>{shortDate(r.releasedAt)}</span>
+                  {/* `shortCivilDate`, não `shortDate`: a data de publicação é
+                      civil (o dia digitado, meia-noite UTC). Lida como
+                      instante, ela volta um dia atrás em fuso negativo — o
+                      FIX #228. */}
+                  <span>{shortCivilDate(r.releasedAt)}</span>
                   {/* O hash completo no `title`: conferir hash é comparar
                       caractere a caractere, e uma tela que só mostra 12 deles
                       torna a conferência impossível. */}

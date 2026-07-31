@@ -7,6 +7,7 @@ import {
   machineStatus,
   machinesLabel,
   searchTerm,
+  shortCivilDate,
   shortDate,
   shortDateTime,
   statusLabel,
@@ -86,6 +87,35 @@ describe('SPEC-036: apresentação da tela de licenças', () => {
     it('formata em pt-BR', () => {
       expect(shortDate('2026-07-29T12:00:00Z')).toContain('2026');
       expect(shortDateTime('2026-07-29T12:00:00Z')).toMatch(/\d{2}:\d{2}/);
+    });
+  });
+
+  describe('data civil — FIX #228', () => {
+    it('mostra o dia que foi escrito, não o dia do fuso de quem olha', () => {
+      // O caso real da issue: `releasedAt` gravado como `2026-07-31T00:00:00Z`
+      // (o dia que o operador digitou). Lido como instante em `America/Sao_Paulo`
+      // (UTC−3), meia-noite UTC volta para 30/07 — e a lista mostrava um dia a
+      // menos do que o banco tinha.
+      //
+      // A asserção é o dia EXATO, não `toContain('2026')`: o defeito nunca
+      // errou o ano, e um teste que só confere o ano teria passado durante todo
+      // o bug.
+      expect(shortCivilDate('2026-07-31T00:00:00.000Z')).toBe('31/07/2026');
+      expect(shortCivilDate('2026-07-30T00:00:00.000Z')).toBe('30/07/2026');
+    });
+
+    it('não desliza na virada do ano nem em fuso positivo', () => {
+      // 01/01 é o dia em que o deslocamento de um dia também erra o ANO — e
+      // meia-noite UTC é o instante em que fuso negativo puxa para trás e
+      // positivo empurra para frente. Se a leitura voltar a ser local, este
+      // falha em qualquer máquina fora de UTC.
+      expect(shortCivilDate('2026-01-01T00:00:00.000Z')).toBe('01/01/2026');
+      expect(shortCivilDate('2026-12-31T00:00:00.000Z')).toBe('31/12/2026');
+    });
+
+    it('nulo e data inválida viram travessão, como as irmãs', () => {
+      expect(shortCivilDate(null)).toBe('—');
+      expect(shortCivilDate('não-é-data')).toBe('—');
     });
   });
 
