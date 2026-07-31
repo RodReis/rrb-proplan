@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import type { LicenseActivationService } from '../application/license-activation.service';
+import type { LicenseReleaseService } from '../application/license-release.service';
 import type { WebhookIntakeService } from '../application/webhook-intake.service';
 import { LicensingPublicController } from './licensing-public.controller';
 
@@ -21,10 +22,15 @@ function montar() {
     receive: jest.fn(async () => ({ received: true as const })),
   } as unknown as WebhookIntakeService;
 
+  const releases = {
+    check: jest.fn(async () => ({ update: false as const })),
+  } as unknown as LicenseReleaseService;
+
   return {
-    controller: new LicensingPublicController(activation, webhook),
+    controller: new LicensingPublicController(activation, webhook, releases),
     activation,
     webhook,
+    releases,
   };
 }
 
@@ -201,5 +207,81 @@ describe('SPEC-038: rota pública do webhook da Kiwify', () => {
     await expect(
       controller.activate({ key: CHAVE, fingerprint: 'f' }, pedido('10.0.9.1')),
     ).resolves.toBeDefined();
+  });
+});
+
+describe('SPEC-041: rota pública /licensing/v1/releases/check', () => {
+  it('encaminha ao service e devolve a resposta', async () => {
+    const { controller, releases } = montar();
+
+    const resposta = await controller.releasesCheck(
+      { licenseKey: CHAVE, fingerprint: 'fp-1', currentVersion: '1.0.0' },
+      pedido(),
+    );
+
+    expect(releases.check).toHaveBeenCalledWith({
+      licenseKey: CHAVE,
+      fingerprint: 'fp-1',
+      currentVersion: '1.0.0',
+    });
+    expect(resposta).toEqual({ update: false });
+  });
+
+  it('barra a 6ª chamada da mesma CHAVE, mesmo de IPs diferentes', async () => {
+    // **O bug que este teste fecha.** O `enforce` lia só `body.key`, e o
+    // contrato desta rota é `licenseKey` (assim o `war-room update` foi
+    // especificado). Sem o segundo nome, a rota nasceria com METADE da tranca: o
+    // limite por IP valeria, o por chave não — e a falha seria muda, com a
+    // varredura de chaves a partir de IPs variados passando pela porta que o
+    // teto de 5/min existe para fechar.
+    const { controller } = montar();
+
+    for (let i = 0; i < 5; i += 1) {
+      await controller.releasesCheck(
+        { licenseKey: CHAVE, fingerprint: 'f' },
+        pedido(`10.0.4.${i}`),
+      );
+    }
+
+    await expect(
+      controller.releasesCheck({ licenseKey: CHAVE, fingerprint: 'f' }, pedido('10.0.4.99')),
+    ).rejects.toMatchObject({ status: 429 });
+  });
+
+  it('barra a 11ª chamada do mesmo IP com 429', async () => {
+    const { controller } = montar();
+    const req = pedido('10.0.5.9');
+
+    // Chaves diferentes: o limite exercido aqui é o de IP.
+    for (let i = 0; i < 10; i += 1) {
+      await controller.releasesCheck(
+        { licenseKey: `WR-AB23-CD45-EF67-GH${i}9`, fingerprint: 'f' },
+        req,
+      );
+    }
+
+    await expect(
+      controller.releasesCheck({ licenseKey: 'WR-ZZ23-CD45-EF67-GH89', fingerprint: 'f' }, req),
+    ).rejects.toMatchObject({ status: 429 });
+  });
+
+  it('compartilha a janela por chave com /activate', async () => {
+    // A tranca é da CHAVE, não da rota: alternar entre `activate` e
+    // `releases/check` não pode dobrar o teto de quem está varrendo.
+    const { controller } = montar();
+
+    for (let i = 0; i < 3; i += 1) {
+      await controller.activate({ key: CHAVE, fingerprint: 'f' }, pedido(`10.0.6.${i}`));
+    }
+    for (let i = 0; i < 2; i += 1) {
+      await controller.releasesCheck(
+        { licenseKey: CHAVE, fingerprint: 'f' },
+        pedido(`10.0.7.${i}`),
+      );
+    }
+
+    await expect(
+      controller.releasesCheck({ licenseKey: CHAVE, fingerprint: 'f' }, pedido('10.0.7.99')),
+    ).rejects.toMatchObject({ status: 429 });
   });
 });

@@ -67,8 +67,15 @@ export interface DeactivateResult {
   remainingSlots: number;
 }
 
-/** Linha devolvida pela função `resolve_license` (PR-1). */
-interface ResolvedLicenseRow {
+/**
+ * Linha devolvida pela função `resolve_license` (PR-1).
+ *
+ * **Exportada desde a SPEC-041**: o `releases/check` precisa do MESMO gate de
+ * status que `/activate` e `/heartbeat` aplicam, e o caminho para reusá-lo é
+ * receber esta linha já validada (ver `licencaParaUpdate`). Recriar o gate lá
+ * seria a cópia divergente que o comentário do `licencaUtilizavel` alerta.
+ */
+export interface ResolvedLicenseRow {
   id: string;
   tenant_id: string;
   status: string;
@@ -80,6 +87,12 @@ interface ResolvedLicenseRow {
   max_machines: number;
   edition_slug: string;
   billing_model: string;
+  /**
+   * Produto da edição (SPEC-041). É por ele que se chega às releases — a licença
+   * conhece a edição, a edição conhece o produto, e `lic_releases` pendura no
+   * produto.
+   */
+  product_id: string;
 }
 
 /** Limites de tamanho: campos livres que vêm de fora, sem sessão. */
@@ -248,12 +261,53 @@ export class LicenseActivationService {
   }
 
   /**
+   * A licença por trás de uma chave + máquina, para as rotas de release
+   * (SPEC-041) — **o mesmo gate das outras três, sem cópia**.
+   *
+   * Existe porque `releases/check` e `releases/download` precisam exatamente do
+   * que `/heartbeat` já faz antes de agir: resolver a chave, aplicar `404`/`410`
+   * (revogada, expirada, inadimplente) e exigir que o `fingerprint` esteja
+   * **ativo**. Reescrever isso no serviço de releases seria a cópia divergente
+   * que o `licencaUtilizavel` alerta — e aqui a divergência teria efeito
+   * comercial: uma rota servindo update para licença revogada é o reembolsado
+   * continuando a receber versões novas.
+   *
+   * **Não reativa em silêncio**, mesma regra do `heartbeat` (§Critérios de
+   * aceite): fingerprint desativado responde `409`. Sem isso bastaria pular o
+   * `/activate` e pedir update para furar o `maxMachines` — a máquina não
+   * ativada receberia binário novo sem nunca ter ocupado uma vaga.
+   *
+   * **Só lê, não escreve**: nenhum `lastSeenAt`, nenhum evento. Perguntar se há
+   * atualização não é sinal de vida da máquina, e gravar aqui faria o `check`
+   * (barato e idempotente por contrato) mexer no estado que o heartbeat governa.
+   */
+  async licencaParaUpdate(key: string, fingerprint: string): Promise<ResolvedLicenseRow> {
+    const licenca = await this.licencaUtilizavel(key);
+
+    return this.prisma.runInTenantContext([licenca.tenant_id], async () => {
+      const ativacao = await this.prisma.activation.findUnique({
+        where: {
+          licenseId_fingerprint: { licenseId: licenca.id, fingerprint },
+        },
+        select: { id: true, deactivatedAt: true },
+      });
+
+      if (!ativacao || ativacao.deactivatedAt !== null) {
+        throw await this.conflitoDeMaquinas(licenca);
+      }
+
+      return licenca;
+    });
+  }
+
+  /**
    * Resolve a chave e aplica o gate de status — os três códigos que as rotas
    * públicas compartilham.
    *
    * Extraído porque `activate` e `heartbeat` precisam **exatamente** do mesmo
    * gate: uma cópia divergindo (um checando `expiresAt`, o outro não) deixaria
-   * uma das rotas servindo licença vencida.
+   * uma das rotas servindo licença vencida. Desde a SPEC-041 o
+   * `licencaParaUpdate` (acima) o compartilha com as rotas de release.
    */
   private async licencaUtilizavel(key: string): Promise<ResolvedLicenseRow> {
     const licenca = await this.resolve(key);

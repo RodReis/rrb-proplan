@@ -16,6 +16,10 @@ import {
   type DeactivateInput,
   type HeartbeatInput,
 } from '../application/license-activation.service';
+import {
+  LicenseReleaseService,
+  type ReleaseCheckInput,
+} from '../application/license-release.service';
 import { WebhookIntakeService } from '../application/webhook-intake.service';
 import { hashKey } from '../domain/license-key';
 
@@ -63,6 +67,7 @@ export class LicensingPublicController {
   constructor(
     private readonly activation: LicenseActivationService,
     private readonly webhook: WebhookIntakeService,
+    private readonly releases: LicenseReleaseService,
   ) {
     this.pruneTimer = setInterval(() => {
       this.ipLimiter.prune();
@@ -113,6 +118,28 @@ export class LicensingPublicController {
   }
 
   /**
+   * Há versão nova para esta licença? (SPEC-041 §Contratos.)
+   *
+   * `404` chave inexistente · `409` fingerprint não ativo · `410`
+   * revogada/expirada/inadimplente · `429` rate limit — os mesmos das outras
+   * três, porque o gate é literalmente o mesmo código.
+   *
+   * **`update: false` cobre dois casos distintos e responde igual**: "já está na
+   * mais nova autorizada" e "nenhuma release cabe na sua janela". O cliente age
+   * do mesmo jeito nos dois (não baixa nada), e distinguir só serviria para
+   * informar a quem sonda quantas releases existem.
+   *
+   * **Corpo, nunca query string** (§Contratos): a chave em query cairia no log de
+   * acesso do servidor e do proxy — o mesmo vazamento que a decisão de não
+   * persistir a chave existe para impedir.
+   */
+  @Post('releases/check')
+  async releasesCheck(@Body() body: ReleaseCheckInput, @Req() req: Request) {
+    this.enforce(body, req);
+    return this.releases.check(body ?? {});
+  }
+
+  /**
    * Webhook da plataforma de venda — **uma URL por tenant** (decisão PI #1).
    *
    * `200 { received: true }` sempre que a assinatura confere: inclusive para
@@ -156,12 +183,21 @@ export class LicensingPublicController {
    * Duas janelas independentes. A chave entra no limitador **hasheada**: o mapa
    * do limitador vive em memória e aparece em heap dump — guardar a chave em
    * claro ali desfaria, num despejo de memória, a decisão de nunca persistí-la.
+   *
+   * **`key` OU `licenseKey`, e o segundo nome não é descuido**: as três rotas da
+   * SPEC-036/037 recebem `key`; as de release (SPEC-041) recebem `licenseKey`,
+   * porque é assim que o contrato do `war-room update` foi especificado. Ler só
+   * `key` deixaria as rotas novas com **metade da tranca** — o limite por IP
+   * valeria, o por chave não —, e a falha seria muda: nada em log, e a varredura
+   * de chaves a partir de IPs variados passaria pela porta que o teto de 5/min
+   * existe para fechar.
    */
-  private enforce(body: { key?: unknown }, req: Request): void {
+  private enforce(body: { key?: unknown; licenseKey?: unknown }, req: Request): void {
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'desconhecido';
     this.checar(this.ipLimiter, `ip:${ip}`);
 
-    const key = typeof body?.key === 'string' ? body.key.trim() : '';
+    const bruto = typeof body?.key === 'string' ? body.key : body?.licenseKey;
+    const key = typeof bruto === 'string' ? bruto.trim() : '';
     if (key) this.checar(this.keyLimiter, `key:${hashKey(key)}`);
   }
 
