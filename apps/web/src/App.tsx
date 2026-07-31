@@ -5,6 +5,7 @@ import { api, SessionUser, UnauthorizedError } from './lib/api';
 import { useTheme } from './theme';
 import { Login } from './pages/Login';
 import { Catalog } from './pages/Catalog';
+import { EntryRoute } from './pages/EntryRoute';
 import { SettingsPage } from './pages/SettingsPage';
 import { ResolveRoute } from './pages/workspace/ResolveRoute';
 import { WorkspaceRoute } from './pages/workspace/WorkspaceRoute';
@@ -91,6 +92,11 @@ export default function App() {
         ) : (
           <>
         <Route path="/" element={<Catalog user={auth.user} onLogout={logout} />} />
+        {/* Porta de entrada do login (FIX #230): decide entre Dashboard e
+            Catálogo e sai de cena. É para cá que o callback de LOGIN redireciona
+            — não o de conexão do GitHub, que volta ao Catálogo porque o usuário
+            já estava logado e não está "entrando". */}
+        <Route path="/entrar" element={<EntryRoute user={auth.user} />} />
         {/* Configurações fora do shell de workspace (SPEC-025 §1): sem GitHub
             conectado não há workspace, e é justamente aí que se precisa dela. */}
         <Route

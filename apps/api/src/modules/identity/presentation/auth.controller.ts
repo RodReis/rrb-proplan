@@ -32,6 +32,16 @@ const cookieFlags = {
   secure: process.env.NODE_ENV === 'production',
 } as const;
 
+/**
+ * URL absoluta de uma rota da web. O `FRONTEND_URL` é a raiz do app; a barra
+ * final some antes de concatenar para não gerar `//entrar`, que o React Router
+ * não casa com nenhuma rota.
+ */
+function frontendUrl(path: string): string {
+  const base = (process.env.FRONTEND_URL ?? 'http://localhost:5180').replace(/\/+$/, '');
+  return `${base}${path}`;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -75,7 +85,8 @@ export class AuthController {
       ...cookieFlags,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.redirect(process.env.FRONTEND_URL ?? 'http://localhost:5180');
+    // Login sempre — o Google é porta de identidade, não de conexão.
+    res.redirect(frontendUrl('/entrar'));
   }
 
   @Get('github/callback')
@@ -102,7 +113,10 @@ export class AuthController {
       ...cookieFlags,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.redirect(process.env.FRONTEND_URL ?? 'http://localhost:5180');
+    // Só quem estava DESLOGADO está entrando (FIX #230). Com sessão viva, este
+    // callback é a volta de uma **conexão** do GitHub (SPEC-025): a pessoa saiu
+    // do catálogo para conectar e espera voltar para lá, não cair no dashboard.
+    res.redirect(frontendUrl(userId ? '/' : '/entrar'));
   }
 
   /** Estado da conexão GitHub — o catálogo usa para decidir o que mostrar. */
