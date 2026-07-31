@@ -29,6 +29,13 @@ const apiMock = vi.hoisted(() => ({
   updateProductSourceRepo: vi.fn(),
   // FIX #214
   updateLicEditionLimits: vi.fn(),
+  // SPEC-041 PR-4 — o `ReleasesPanel` é filho da aba Configurações e carrega no
+  // mount. Mesmo motivo dos mocks acima: sem ele a chamada cai no `request`
+  // real, sem erro visível no teste, mas fazendo rede em suíte unitária.
+  listLicReleases: vi.fn(),
+  createLicRelease: vi.fn(),
+  unpublishLicRelease: vi.fn(),
+  publishLicRelease: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -124,6 +131,8 @@ describe('SPEC-036: tela de Licenças', () => {
     // O painel de source (SPEC-039 PR-5) também carrega no mount.
     apiMock.listSourcePending.mockResolvedValue([]);
     apiMock.getSourceSettings.mockResolvedValue({ githubPatSet: false, sourceRepo: null });
+    // O painel de releases (SPEC-041 PR-4) carrega ao abrir Configurações.
+    apiMock.listLicReleases.mockResolvedValue([]);
     apiMock.listLicenseEvents.mockResolvedValue([]);
     apiMock.getLicenseDetail.mockResolvedValue({
       ...LICENCA,

@@ -24,6 +24,7 @@ import {
 import { ClientsShell } from './ClientsShell';
 import { LicenseDangerActions } from './LicenseDangerActions';
 import { MetricsPanel } from './MetricsPanel';
+import { ReleasesPanel } from './ReleasesPanel';
 import { SourceOpsPanel } from './SourceOpsPanel';
 import { WebhookOpsPanel } from './WebhookOpsPanel';
 import {
@@ -627,12 +628,24 @@ export function LicensesPage() {
               configuração junto da operação — separá-la aqui obrigaria a ir e
               voltar entre abas para ligar um PAT e testá-lo. */}
           {aba === 'configuracoes' && (
-            <CadastroProdutos
-              catalogo={catalogo}
-              aberto={abrirCadastro}
-              onToggle={() => setAbrirCadastro((v) => !v)}
-              onMudou={() => void carregar()}
-            />
+            <>
+              <CadastroProdutos
+                catalogo={catalogo}
+                aberto={abrirCadastro}
+                onToggle={() => setAbrirCadastro((v) => !v)}
+                onMudou={() => void carregar()}
+              />
+              {/* Releases moram aqui, e não em aba própria (SPEC-041 §Escopo
+                  item 2 diz "tela no admin" sem nomear a seção). Cadastro de
+                  release pendura no produto, que é cadastrado logo acima —
+                  separá-los obrigaria a ir e voltar entre abas para registrar
+                  uma versão do produto recém-criado. Uma 5ª aba seria escopo
+                  que ninguém aprovou; se a frequência de publicação crescer, é
+                  ela que se justifica. */}
+              <div className="mt-4">
+                <ReleasesPanel produtos={catalogo.products} />
+              </div>
+            </>
           )}
           </>
           )}

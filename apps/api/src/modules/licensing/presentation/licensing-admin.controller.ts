@@ -18,6 +18,10 @@ import {
   AuthenticatedRequest,
   JwtAuthGuard,
 } from '../../identity/presentation/jwt-auth.guard';
+import {
+  ReleaseAdminService,
+  type CreateReleaseInput,
+} from '../application/release-admin.service';
 import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { TenantGuard } from '../../identity/presentation/tenant.guard';
 import {
@@ -110,6 +114,7 @@ export class LicensingAdminController {
     private readonly source: SourceAdminService,
     private readonly privacy: LicensePrivacyService,
     private readonly summaries: LicensingSummaryService,
+    private readonly releases: ReleaseAdminService,
   ) {}
 
   /**
@@ -501,5 +506,51 @@ export class LicensingAdminController {
   @Post('source-settings/test')
   testSourceConnection(@Req() req: AuthenticatedRequest) {
     return this.source.testConnection(req.tenantId!);
+  }
+
+  // =========================================================================
+  // Releases (SPEC-041, PR-4) - o registro do PONTEIRO. O binario vive na
+  // Release privada do GitHub (ADR-028); aqui entra o `assetId` que o download
+  // troca por URL assinada e o `sha256` que a maquina do cliente confere.
+  //
+  // **Sem upload de arquivo**, e isso nao e limitacao: o artefato ja esta
+  // hospedado onde nasce. Subi-lo para ca seria pagar dump e memoria por uma
+  // copia - e literalmente a decisao do ADR-028.
+  // =========================================================================
+
+  /** As releases do tenant, mais nova primeiro. Inclui as despublicadas. */
+  @Get('releases')
+  listReleases(@Req() req: AuthenticatedRequest, @Query('productId') productId?: string) {
+    return this.releases.list(req.tenantId!, productId);
+  }
+
+  /**
+   * Registra uma release. Validacao **no servidor**, antes do banco: os CHECKs
+   * do PR-1 sao a ultima linha, mas uma violacao sobe como `23514` e vira `500`
+   * na tela - dizendo "o ProPlan quebrou" sobre um "voce digitou o hash errado"
+   * (FIX #216).
+   */
+  @Post('releases')
+  createRelease(@Req() req: AuthenticatedRequest, @Body() body: CreateReleaseInput) {
+    return this.releases.create(req.tenantId!, body ?? {});
+  }
+
+  /**
+   * Despublica: some do `check` E do `download`. **Nao apaga a linha** - a
+   * trilha de quem ja baixou aponta para ela.
+   */
+  @Post('releases/:id/unpublish')
+  unpublishRelease(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.releases.unpublish(req.tenantId!, id);
+  }
+
+  /**
+   * Republica. Despublicar por engano e o erro provavel de um botao ao lado da
+   * lista, e sem volta o operador teria de registrar a mesma versao de novo -
+   * que o unique do banco recusa.
+   */
+  @Post('releases/:id/publish')
+  publishRelease(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.releases.publish(req.tenantId!, id);
   }
 }

@@ -74,6 +74,19 @@ describe('withTenantPrefix: rotas escopadas por tenant', () => {
     expect(withTenantPrefix(path)).toBe(path);
   });
 
+  it.each([
+    '/licensing/releases',
+    '/licensing/releases/rel-1/unpublish',
+    '/licensing/releases/rel-1/publish',
+  ])('%s recebe o prefixo do tenant (SPEC-041)', (path) => {
+    // As rotas de release do ADMIN vivem sob `/t/:tenant`. O prefixo
+    // `/licensing/` já cobria as da SPEC-036, então nenhuma linha nova foi
+    // precisa — mas o FIX #166 aconteceu justamente por isso ser fácil de
+    // presumir. Aqui a cobertura é afirmada, não suposta.
+    setActiveTenant(TENANT);
+    expect(withTenantPrefix(path)).toBe(`/t/${TENANT}${path}`);
+  });
+
   it('sem tenant ativo, nada é prefixado', () => {
     // O backend responde 401/403 e o app manda para o catálogo. Prefixar com
     // `undefined` produziria uma URL quebrada e um erro pior de diagnosticar.
