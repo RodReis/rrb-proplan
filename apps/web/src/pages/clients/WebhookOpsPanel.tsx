@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
+  createOfferMapping,
   listWebhookEvents,
   reprocessWebhookEvent,
+  type LicCatalogResponse,
   type WebhookEventView,
 } from '../../lib/api';
 import { shortDateTime } from './licensingView';
 import {
   canReprocess,
   pendingCount,
+  produtoDoErro,
   webhookErrorText,
   webhookStatusLabel,
   webhookStatusTone,
@@ -59,7 +62,7 @@ const TOM: Record<'ok' | 'alert' | 'muted', Tom> = {
   muted: 'neutro',
 };
 
-export function WebhookOpsPanel() {
+export function WebhookOpsPanel({ catalogo }: { catalogo: LicCatalogResponse }) {
   // `FAILED` é o filtro inicial: é o único estado que pede ação, e abrir em
   // "todas" enterraria as falhas no histórico de entregas bem-sucedidas.
   const [filtro, setFiltro] = useState('FAILED');
@@ -101,6 +104,9 @@ export function WebhookOpsPanel() {
   }
 
   const falhas = pendingCount(eventos);
+  const edicoes = catalogo.products.flatMap((p) =>
+    p.editions.map((e) => ({ id: e.id, label: `${p.name} · ${e.name}` })),
+  );
 
   return (
     <Cartao tom={falhas > 0 ? 'erro' : 'neutro'}>
@@ -189,19 +195,21 @@ export function WebhookOpsPanel() {
                   </div>
                 </div>
 
-                {/* O motivo da falha é o que diz qual mapeamento cadastrar — e
-                    onde cadastrá-lo, agora que o de-para mora noutra aba. */}
+                {/* O motivo da falha é o que diz qual mapeamento cadastrar. E
+                    quando a causa é oferta sem par, **resolve aqui mesmo**: o id
+                    do produto está no próprio erro, e obrigar a ir a outra aba
+                    para transcrevê-lo era o beco que o dogfooding encontrou. */}
                 {erro && (
                   <div className="m-0 mt-2 rounded-[9px] border border-error/30 bg-error/5 px-3 py-2">
                     <p className="m-0 font-mono text-[11px] leading-relaxed text-error">
                       {erro}
                     </p>
-                    {erro.toLowerCase().includes('oferta') && (
-                      <p className="m-0 mt-1.5 text-[11px] text-body">
-                        Cadastre o par em{' '}
-                        <strong className="text-text2">Produtos e Edições → Oferta →
-                        edição</strong>, depois volte e reprocesse.
-                      </p>
+                    {produtoDoErro(erro) && (
+                      <MapearAqui
+                        produtoId={produtoDoErro(erro)!}
+                        edicoes={edicoes}
+                        onMapeou={() => void carregar()}
+                      />
                     )}
                   </div>
                 )}
@@ -211,5 +219,84 @@ export function WebhookOpsPanel() {
         </ul>
       )}
     </Cartao>
+  );
+}
+
+/**
+ * Resolve a oferta sem par **na própria linha que falhou**.
+ *
+ * O id do produto já está no erro; o que falta é dizer qual edição a venda
+ * entrega. Obrigar a ir a outra aba para transcrever um uuid à mão era o beco
+ * que o dogfooding encontrou (2026-07-31).
+ *
+ * O mapeamento nasce **curinga** (`externalOfferId: null`): a Kiwify não manda
+ * oferta, então o par que resolve esta venda é o do produto inteiro. Quem
+ * precisar de granularidade por oferta cadastra em Produtos e Edições.
+ */
+function MapearAqui({
+  produtoId,
+  edicoes,
+  onMapeou,
+}: {
+  produtoId: string;
+  edicoes: Array<{ id: string; label: string }>;
+  onMapeou: () => void;
+}) {
+  const [edicaoId, setEdicaoId] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+
+  async function mapear() {
+    setOcupado(true);
+    try {
+      await createOfferMapping({
+        externalProductId: produtoId,
+        externalOfferId: null,
+        editionId: edicaoId,
+      });
+      // Diz o próximo passo: o mapeamento sozinho não emite a licença — a
+      // entrega precisa ser reprocessada, e o botão está logo acima.
+      toast.success('Mapeamento criado — agora reprocesse esta entrega');
+      onMapeou();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível mapear');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  if (edicoes.length === 0) {
+    return (
+      <p className="m-0 mt-1.5 text-[11px] text-body">
+        Cadastre uma edição em{' '}
+        <strong className="text-text2">Produtos e Edições</strong> para poder
+        ligar esta venda.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 grid gap-2 min-[720px]:grid-cols-[1fr_auto]">
+      <select
+        value={edicaoId}
+        onChange={(e) => setEdicaoId(e.target.value)}
+        aria-label={`Edição para o produto ${produtoId}`}
+        disabled={ocupado}
+        className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12px] text-text transition-colors focus:border-accentBorder [color-scheme:dark_light]"
+      >
+        <option value="">ligar este produto a uma edição…</option>
+        {edicoes.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.label}
+          </option>
+        ))}
+      </select>
+      <button
+        onClick={() => void mapear()}
+        disabled={!edicaoId || ocupado}
+        className="rounded-[9px] bg-btnbg px-4 py-2 text-[12px] font-semibold text-btnfg transition-opacity disabled:opacity-40"
+      >
+        Mapear
+      </button>
+    </div>
   );
 }

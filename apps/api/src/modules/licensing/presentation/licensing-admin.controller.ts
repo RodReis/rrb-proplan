@@ -404,6 +404,19 @@ export class LicensingAdminController {
     return this.ops.listOfferMappings(req.tenantId!);
   }
 
+  /**
+   * As ofertas que já apareceram nas entregas e ainda não têm mapeamento.
+   *
+   * Existe porque o cadastro pedia um id que **o operador não tem**: ele nasce
+   * dentro do payload da venda e não aparece em tela nenhuma da plataforma que
+   * se copie. Aqui a tela oferece o que já chegou, em vez de pedir um uuid
+   * transcrito à mão da mensagem de erro.
+   */
+  @Get('seen-offers')
+  seenOffers(@Query('take') take?: string) {
+    return this.ops.listSeenOffers(take ? Number(take) : undefined);
+  }
+
   /** Cadastra o mapeamento — o ato que destrava a venda parada em `FAILED`. */
   @Post('offer-mappings')
   createOfferMapping(@Req() req: AuthenticatedRequest, @Body() body: OfferMappingInput) {

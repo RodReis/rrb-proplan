@@ -93,3 +93,21 @@ export function toleranceLabel(days: number | null): string {
 export function pendingCount(eventos: WebhookEventView[]): number {
   return eventos.filter((e) => e.status === 'FAILED').length;
 }
+
+/**
+ * O id do produto dentro da mensagem de falha, quando a causa é oferta sem par.
+ *
+ * O servidor grava `Oferta sem mapeamento: produto <id>, oferta <id|(nenhuma)>`
+ * — e **esse era o único lugar onde o operador via o id**, para transcrevê-lo à
+ * mão noutra aba. Extrair aqui é o que permite oferecer o mapeamento na própria
+ * linha que falhou (FIX do dogfooding, 2026-07-31).
+ *
+ * Devolve `null` para qualquer outro erro: licença não encontrada, assinatura
+ * inválida e o resto não têm o que mapear, e oferecer o seletor ali sugeriria
+ * que o problema é de-para quando não é.
+ */
+export function produtoDoErro(erro: string | null): string | null {
+  if (!erro) return null;
+  const m = /Oferta sem mapeamento: produto ([^\s,]+)/.exec(erro);
+  return m ? m[1] : null;
+}
