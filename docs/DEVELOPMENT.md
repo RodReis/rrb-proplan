@@ -7356,3 +7356,83 @@ mesma coisa de dois jeitos ensinam o operador a reler tudo**.
   só existe no payload de uma venda que já chegou. Decisão do PI: listar as
   ofertas vistas nas entregas **e** oferecer o botão *Mapear* na entrega que
   falhou. Item próprio.
+
+## `[FIX] #238` — o campo que pedia um id impossível
+
+Encontrado no dogfooding logo depois da reorganização das abas, e é o tipo de
+defeito que só o uso revela: **a tela estava correta e inutilizável ao mesmo
+tempo**.
+
+### O que o campo pedia
+
+`Oferta → edição` tinha um input de texto livre chamado *"id do produto na
+plataforma"*. Ele é obrigatório, valida, e o servidor o aceita. O problema é que
+**o operador não tem esse id**:
+
+- ele nasce dentro do **payload da venda** (`Product.product_id`);
+- **não é coluna** do `LicWebhookEvent` — vive dentro do `payload` JSON;
+- não aparece em nenhuma tela da Kiwify que se copie;
+- o **único** lugar onde é visível é a mensagem de erro da entrega que falhou:
+  `Oferta sem mapeamento: produto <uuid>, oferta (nenhuma)`.
+
+Ou seja, o fluxo real era: abrir Pendências → ler o erro → **transcrever um uuid
+à mão** → ir para Produtos e Edições → colar. Um campo que só funcionava por
+transcrição manual entre duas abas.
+
+**A informação sempre esteve no banco.** Toda entrega guarda o payload bruto —
+que é justamente o que torna o reprocessamento possível sem pedir reenvio à
+plataforma. Faltava a tela olhar.
+
+### Os dois caminhos
+
+Decisão do PI: fazer os dois, porque quem chega ao problema chega por caminhos
+diferentes.
+
+1. **Produtos e Edições** — as ofertas já vistas e ainda sem par viram linhas com
+   seletor de edição. A linha diz *o que aconteceu* (quantas vendas, quantas
+   falharam, quando), não só o id: é o contexto que permite escolher a edição
+   certa.
+2. **Pendências** — a entrega que falhou ganha o seletor **na própria linha**,
+   com o id extraído do erro. Conserta onde o problema aparece, e o toast lembra
+   de reprocessar — mapear sozinho não emite a licença.
+
+O cadastro manual continua, **recolhido**: é o escape de quem mapeia antes da
+primeira venda, que é o caso raro.
+
+### O detalhe que mudou o desenho
+
+**A Kiwify não manda id de oferta** — `externalOfferId` é sempre `null` no
+parser. Então o mapeamento que resolve é sempre o **curinga do produto**, e a
+tela diz isso com estas palavras. Deixar o campo vazio faria parecer dado
+faltando, quando é o comportamento correto da plataforma.
+
+### Onde cada regra mora, e por quê
+
+- **`seen-offers.ts`** (função pura) — quais ofertas sobram. O que decide o que a
+  tela **oferece** não deve precisar de banco para ser testado: oferecer uma
+  oferta já coberta manda o operador cadastrar algo que o servidor recusa por
+  unique — um beco criado pela própria tela.
+- **`licensing-seen-offers.int-spec.ts`** — o que só o Postgres prova: leitura do
+  `payload` **jsonb**, **isolamento por RLS** entre tenants (a consulta não tem
+  `where` de tenant — confia na policy, e se ela faltar o vazamento é silencioso)
+  e o casamento do curinga com `null` de verdade, que um mock com `undefined`
+  faria passar por engano.
+
+### Verificação
+
+- [x] **API 2448/2448** · **web 721/721** · `tsc` e lint limpos.
+- [x] **+25 testes**: 12 na regra pura, 6 no int-spec, 7 na tela.
+- [x] Verificado em tela com a API reiniciada — a rota
+      `/t/:tenant/licensing/seen-offers` mapeada, e o estado vazio explicando de
+      onde vem o id em vez de mostrar um campo que ninguém consegue preencher.
+
+### O que o RLS ensinou no meio do caminho
+
+A tentativa de semear um evento de teste à mão foi **recusada pelo Postgres**:
+`new row violates row-level security policy`. Está certo — o RLS é fail-closed
+sem contexto de tenant, e o usuário do `.env` não é o role da aplicação.
+
+Contornar isso para produzir dado de dogfooding seria mexer em segurança por
+conveniência de teste. A validação foi para o int-spec, que roda sob o contexto
+correto contra o banco real — e acabou virando cobertura permanente em vez de um
+seed descartável.
