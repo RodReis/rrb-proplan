@@ -6866,6 +6866,86 @@ de release privada) e o ADR-028 fica com **uma** decisão, não duas.
 
 - [x] `build`, `lint` e suíte verdes; `reports/TESTS.md` regenerado (ADR-019)
 
+### PR-2 — a promessa da licença perpétua vira código
+
+- [x] **`resolve_license` passa a devolver `product_id`.** A licença conhece a
+      edição, a edição conhece o produto, e `lic_releases` pendura no produto —
+      sem essa coluna a rota não tem por onde começar a busca.
+
+      **Segunda consulta não era alternativa**: o `check` roda **sem sessão**, e
+      ler `lic_editions` fora de contexto devolve vazio (RLS fail-closed). O
+      sintoma seria a rota respondendo *"nenhuma atualização"* para toda licença
+      válida — a máquina do cliente nunca mais recebe update e nada aparece em
+      log. É o irmão exato do defeito que a SPEC-038 (PR-4) fechou com
+      `past_due_at`.
+
+      A saída continua **estreita**: `product_id` é atributo da *licença*, não do
+      comprador. Nada de e-mail, nome ou `saleRef` — a função roda com privilégio
+      de owner numa rota pública, e é a estreiteza que mantém isso defensável.
+
+- [x] **`latestAuthorized` / `latestOverall`** — a autorização em função pura.
+
+      **O `updatesUntil` é o DA LICENÇA, nunca o da edição**, e o motivo é
+      comercial: `LicEdition.updatesMonths` é a política *vigente* do catálogo e
+      ela muda; `License.updatesUntil` é o que **aquele comprador** levou,
+      copiado na emissão. Ler a política da edição faria uma mudança de preço de
+      hoje **encurtar a janela de quem comprou ano passado** — e ninguém
+      perceberia até um cliente reclamar que perdeu acesso a um update que já
+      tinha. A função **nem recebe a edição**: o parâmetro que não existe não
+      pode ser lido por engano.
+
+      **`>=`, não `>`**: release publicada no instante exato do vencimento está
+      autorizada. O contrário puniria o cliente por um empate de timestamp.
+
+      **Janela vencida devolve a última autorizada, não `null`** — é o critério
+      que prova a promessa da licença perpétua, e é por isso que o artefato nunca
+      é apagado (decisão 3 do PI). Devolver a corrente daria de graça o que não
+      foi comprado; devolver `null` tiraria o que já era dele.
+
+- [x] **`LicenseReleaseService.check`** — não escreve nada: nenhum `lastSeenAt`,
+      nenhum `LicEvent`. Perguntar se há atualização **não é sinal de vida** (o
+      heartbeat governa isso) e **não é download** (o `LicEvent` de auditoria
+      nasce no PR-3). Registrar aqui encheria a trilha de "perguntou" e afogaria
+      os "baixou", que são os que respondem *quem levou o quê*.
+
+      **`published` é filtrado na consulta, não na decisão**: uma release
+      retirada por defeito não pode virar resposta nem sequer como
+      `last-authorized`.
+
+      **`reason: current | last-authorized`** existe para o cliente oferecer
+      renovação sem mentir — sem ele, *"você está atualizado"* sairia para quem
+      na verdade parou de receber versões.
+
+- [x] **O gate de status é o mesmo do `/heartbeat`, não uma cópia.** Nasceu o
+      `licencaParaUpdate` no `LicenseActivationService`, que reusa o
+      `licencaUtilizavel` (404/410) e a checagem de fingerprint ativo (409).
+      Recriar o gate no serviço de releases seria a cópia divergente que o
+      próprio comentário do `licencaUtilizavel` alerta — e aqui a divergência
+      teria efeito comercial: **uma rota servindo update para licença revogada é
+      o reembolsado continuando a receber versões novas**.
+
+- [x] **Bug meu, achado antes de escrever a rota:** o `enforce` do controller lia
+      só `body.key`, e o contrato destas rotas é **`licenseKey`** (assim o
+      `war-room update` foi especificado). A rota nasceria com **metade da
+      tranca** — o limite por IP valeria, o por chave não —, e a falha seria
+      muda: nada em log, e a varredura de chaves a partir de IPs variados
+      passaria pela porta que o teto de 5/min existe para fechar. Passou a ler
+      `key` **ou** `licenseKey`, com teste provando que a janela por chave é
+      **compartilhada com o `/activate`** (alternar entre rotas não dobra a cota
+      de quem está varrendo).
+
+- [x] **Int-spec contra Postgres real** (8 casos) — porque três coisas desta rota
+      só existem no banco e um mock afirmaria cada uma sem provar nenhuma: o
+      `product_id` vindo da função `SECURITY DEFINER`, o `GRANT EXECUTE` que o
+      `DROP` da migration leva junto, e a busca sob RLS. Inclui o caso do
+      **isolamento**: a release de outro tenant nunca aparece.
+
+      **Erro meu que o banco pegou**: escrevi o teste de revogação com `UPDATE
+      status = 'REVOKED'` sem `revoked_at`, e o CHECK `licenses_revoked_coherent`
+      recusou. A guarda estava certa — é a mesma classe do FIX #216.
+
+- [x] `build`, `lint` e suíte verdes; `reports/TESTS.md` carimbado
+
 ### O Risco #1 continua aberto — e é do PI, não meu
 
 A emenda reescreveu o Risco #1: não é mais *"o installation token alcança asset
