@@ -1854,6 +1854,14 @@ export interface LicReleaseView {
   sha256: string;
   notes: string | null;
   published: boolean;
+  /**
+   * O que a conferência contra o GitHub disse — só na resposta de quem acabou
+   * de gravar (`create`/`update`), nunca no `list`: mostrá-la na lista exigiria
+   * uma ida ao GitHub por linha a cada render.
+   */
+  asset?:
+    | { checked: true; name: string; size: number }
+    | { checked: false; reason: string };
 }
 
 export function listLicReleases(productId?: string): Promise<LicReleaseView[]> {
@@ -1872,6 +1880,23 @@ export function createLicRelease(input: {
 }): Promise<LicReleaseView> {
   return request('/licensing/releases', {
     method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Corrige o ponteiro de uma release já registrada (FIX #242).
+ *
+ * Só `assetId`, `sha256`, `releasedAt` e `notes`. **Versão, plataforma e produto
+ * não entram**: são a identidade da linha, e a trilha de download aponta para
+ * ela. Campo ausente não é tocado; `notes: ''` limpa.
+ */
+export function updateLicRelease(
+  id: string,
+  input: { releasedAt?: string; assetId?: string; sha256?: string; notes?: string },
+): Promise<LicReleaseView> {
+  return request(`/licensing/releases/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(input),
   });
 }

@@ -21,6 +21,7 @@ import {
 import {
   ReleaseAdminService,
   type CreateReleaseInput,
+  type UpdateReleaseInput,
 } from '../application/release-admin.service';
 import { TenantContextInterceptor } from '../../identity/presentation/tenant-context.interceptor';
 import { TenantGuard } from '../../identity/presentation/tenant.guard';
@@ -546,6 +547,23 @@ export class LicensingAdminController {
   @Post('releases')
   createRelease(@Req() req: AuthenticatedRequest, @Body() body: CreateReleaseInput) {
     return this.releases.create(req.tenantId!, body ?? {});
+  }
+
+  /**
+   * Corrige o ponteiro de uma release ja registrada (FIX #242).
+   *
+   * Nao aceita `version`, `os` nem `productId`: sao a identidade da linha
+   * (o unique do banco), e a trilha de download aponta para ela. Sem esta rota,
+   * um `assetId` digitado errado so saia por SQL - o `@@unique` recusa
+   * recadastrar, e despublicar nao libera a chave.
+   */
+  @Patch('releases/:id')
+  updateRelease(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateReleaseInput,
+  ) {
+    return this.releases.update(req.tenantId!, id, body ?? {});
   }
 
   /**

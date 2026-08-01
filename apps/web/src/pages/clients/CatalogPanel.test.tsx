@@ -89,6 +89,19 @@ function montar(catalogo = CATALOGO) {
 }
 
 /**
+ * Monta e abre a sub-aba de ofertas.
+ *
+ * As três seções viraram sub-abas em 2026-07-31 — empilhadas, a aba crescia sem
+ * fim, e as notas de release (o changelog inteiro da versão) agravaram isso.
+ * Produtos é a sub-aba inicial, então tudo que é de oferta exige o clique.
+ */
+async function montarEmOfertas(catalogo = CATALOGO) {
+  const r = montar(catalogo);
+  await userEvent.click(screen.getByRole('tab', { name: /Oferta/i }));
+  return r;
+}
+
+/**
  * A aba **Produtos e Edições** (reorganização do PI, 2026-07-31).
  *
  * Reúne o que estava partido em duas telas: o cadastro vivia atrás de um
@@ -294,7 +307,7 @@ const OFERTA_VISTA: SeenOfferView = {
 describe('ofertas vistas: o caminho sem digitar id', () => {
   it('mostra a oferta que chegou e ainda não tem par', async () => {
     apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
-    montar();
+    await montarEmOfertas();
 
     expect(await screen.findByText('prod-kiwify-1')).toBeInTheDocument();
     // O que aconteceu, não só o id: é o que dá contexto para escolher a edição.
@@ -305,7 +318,7 @@ describe('ofertas vistas: o caminho sem digitar id', () => {
   it('mapear usa o id da própria linha — sem o operador digitar nada', async () => {
     apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
     apiMock.createOfferMapping.mockResolvedValue(MAPEAMENTO);
-    montar();
+    await montarEmOfertas();
 
     await userEvent.selectOptions(
       await screen.findByLabelText(/Edição para o produto prod-kiwify-1/i),
@@ -325,7 +338,7 @@ describe('ofertas vistas: o caminho sem digitar id', () => {
 
   it('sem edição escolhida, o botão não mapeia nada', async () => {
     apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
-    montar();
+    await montarEmOfertas();
 
     expect(await screen.findByRole('button', { name: 'Mapear' })).toBeDisabled();
   });
@@ -333,7 +346,7 @@ describe('ofertas vistas: o caminho sem digitar id', () => {
   it('a linha diz quando a plataforma NÃO manda oferta', async () => {
     // Sem esta frase, o `null` pareceria dado faltando em vez de curinga.
     apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
-    montar();
+    await montarEmOfertas();
 
     expect(
       await screen.findByText(/vale para qualquer oferta deste produto/i),
@@ -342,7 +355,7 @@ describe('ofertas vistas: o caminho sem digitar id', () => {
 
   it('sem venda nenhuma, explica que o id vem dentro da venda', async () => {
     // O estado que mais confundia: campo pedindo um id que não existe ainda.
-    montar();
+    await montarEmOfertas();
 
     expect(
       await screen.findByText(/O id do produto vem dentro da venda/i),
@@ -352,7 +365,7 @@ describe('ofertas vistas: o caminho sem digitar id', () => {
 
 describe('cadastro manual: o escape, recolhido', () => {
   it('não aparece por padrão — o caminho comum é a lista', async () => {
-    montar();
+    await montarEmOfertas();
     await screen.findByRole('button', { name: /Cadastrar manualmente/i });
 
     expect(screen.queryByLabelText('Id do produto na plataforma')).toBeNull();
@@ -360,7 +373,7 @@ describe('cadastro manual: o escape, recolhido', () => {
 
   it('abre e cadastra com oferta vazia como null (curinga), nunca string vazia', async () => {
     apiMock.createOfferMapping.mockResolvedValue(MAPEAMENTO);
-    montar();
+    await montarEmOfertas();
 
     await userEvent.click(
       await screen.findByRole('button', { name: /Cadastrar manualmente/i }),
@@ -382,7 +395,7 @@ describe('cadastro manual: o escape, recolhido', () => {
   });
 
   it('o botão de cadastrar fica travado sem produto e sem edição', async () => {
-    montar();
+    await montarEmOfertas();
 
     await userEvent.click(
       await screen.findByRole('button', { name: /Cadastrar manualmente/i }),
@@ -391,7 +404,7 @@ describe('cadastro manual: o escape, recolhido', () => {
   });
 
   it('diz que normalmente não é o caso — os ids chegam com a venda', async () => {
-    montar();
+    await montarEmOfertas();
 
     await userEvent.click(
       await screen.findByRole('button', { name: /Cadastrar manualmente/i }),
@@ -403,7 +416,7 @@ describe('cadastro manual: o escape, recolhido', () => {
 describe('mapeamentos já cadastrados', () => {
   it('diz curinga por extenso, não com travessão', async () => {
     apiMock.listOfferMappings.mockResolvedValue([MAPEAMENTO]);
-    montar();
+    await montarEmOfertas();
 
     expect(await screen.findByText(/qualquer oferta \(curinga\)/i)).toBeInTheDocument();
   });

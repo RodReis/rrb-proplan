@@ -7468,3 +7468,183 @@ Contornar isso para produzir dado de dogfooding seria mexer em segurança por
 conveniência de teste. A validação foi para o int-spec, que roda sob o contexto
 correto contra o banco real — e acabou virando cobertura permanente em vez de um
 seed descartável.
+
+## `[FIX] #242` — a release errada só saía por SQL
+
+Encontrado no dogfooding de 2026-07-31, ao publicar a `1.0.1` do War Room. Este
+registro cobre o **PR-1 (backend)**; a parte de tela é o `[FIX] #243`.
+
+### O defeito, e por que ele não fez barulho
+
+O `assetId` foi cadastrado como `e234138` — id truncado; o valor real do
+`war-room-setup-1.0.1-win-x64.exe` é `497099385`. O `sha256` estava correto.
+
+**Nada quebrou no cadastro.** O `check` responde só com `version` e `releasedAt`,
+então a máquina licenciada **via a 1.0.1 disponível** e a tela mostrava a versão
+publicada e correta. A falha só apareceria no `download`, que monta
+`https://api.github.com/repos/RodReis/war-room/releases/assets/e234138` e recebe
+**404 do GitHub** — *depois* de a autorização ter passado. Quem confere pela
+interface não tem como suspeitar: tudo está verde.
+
+### O beco: nem editar, nem recadastrar
+
+Ao corrigir pela tela, os dois caminhos estavam fechados:
+
+1. **Não existia edição.** O controller expunha `GET`, `POST`, `publish` e
+   `unpublish`. Nenhum `PATCH` — a linha era imutável pela API.
+2. **Não existia recadastro.** `unpublish` só muda `published`; a linha continua
+   ocupando a chave do `@@unique(productId, version, os)`, e um novo `POST`
+   volta `422 "A versão 1.0.1 (win-x64) já está registrada"`.
+
+Despublicar — a tentativa natural de contorno — **piorava**: tirava a versão do
+cliente sem liberar o recadastro. A correção saiu por `UPDATE` no Postgres de
+produção, contra o que a SPEC-040 §14 define para esta área: *"onde o operador
+resolve o caso de um cliente sem abrir o banco"*.
+
+Vale notar que o comentário do `publish` já antecipava metade disto — ele existe
+porque "despublicar por engano" não teria volta pelo `@@unique`. O desenho previu
+o engano no botão e não previu o engano no formulário.
+
+### `getAsset` não é o `assetDownloadUrl` com outro nome
+
+A validação precisava dos **metadados** do asset, e o método existente não os dá:
+`assetDownloadUrl` pede `Accept: application/octet-stream`, que é justamente o
+que faz a API redirecionar para o storage — devolve um `Location` e mais nada.
+
+`getAsset` pede `application/vnd.github+json` e recebe a *descrição* do arquivo:
+`digest` (para conferir o `sha256` digitado) e `name` (para o operador reconhecer
+o que registrou). **Nenhum byte trafega em nenhum dos dois** — no primeiro por
+causa do `redirect: 'manual'`, no segundo porque sem `octet-stream` não há
+redirect. É o `Accept` de cada um que guarda essa promessa.
+
+### A linha que decide: `404` recusa, o resto avisa
+
+Só o `404` — o GitHub afirmando que não encontra — **recusa o cadastro**. Sem PAT,
+sem `sourceRepo`, rede fora, `401`/`403`, cifra ilegível: **grava e devolve
+`checked: false` com o motivo**.
+
+A assimetria é deliberada e vale nas duas direções. Recusar por rede fora mandaria
+o operador corrigir um `assetId` que está certo — e o id certo continuaria sendo
+recusado. Aceitar em silêncio devolveria o bug original. *"Não sei"* não pode
+virar nem *"está errado"* nem *"está certo"*.
+
+O caso do PAT ausente é **decisão do PI (2026-07-31)**: recusar seria o mesmo tipo
+de bloqueio que o FIX #212 removeu (o PAT exigindo segredo de webhook), e travaria
+quem monta o catálogo antes de configurar o source — ordem legítima, já que
+produto e edição existem antes de haver repositório.
+
+### O que o `PATCH` não edita, e por quê
+
+`version`, `os` e `productId` ficam de fora. Os três são a **identidade** da linha
+(é o que o `@@unique` diz), e a trilha de download (`LicEvent`) aponta para ela.
+Trocá-los faria a linha passar a descrever outra coisa, com downloads antigos
+pendurados no registro errado — destruindo o que a tabela existe para provar.
+
+Duas distinções que os testes fixam:
+
+- **Campo ausente ≠ campo vazio.** Ausente não é tocado; `notes: ''` limpa. Sem
+  isso, corrigir o `assetId` apagaria a nota e a data — perda silenciosa no ato de
+  consertar.
+- **`assetId: ''` é recusado.** Vazio ali não é "limpar": uma release sem ponteiro
+  some do `download` sem sair do `check`, e o cliente veria a versão sem conseguir
+  baixá-la. É o mesmo defeito por outro caminho.
+
+A conferência usa os valores que vão **valer** depois da edição (`campos.assetId ??
+atual.assetId`), não os que vieram no corpo — senão trocar só um dos dois passaria
+sem comparação nenhuma.
+
+### Verificação
+
+- [x] **API 2477/2477** · **web 737/737** · build e lint limpos.
+- [x] **+19 testes**: 8 no cliente do GitHub, 11 no serviço.
+- [x] Vínculo da `1.0.1` conferido campo a campo contra a Release do GitHub em
+      produção: `asset_id = 497099385`, `sha256` idêntico ao `digest` do
+      `war-room-setup-1.0.1-win-x64.exe`, `published = true`.
+
+**O download de ponta a ponta não foi exercitado** — depende de licença ativa numa
+máquina real, e é dogfooding do PI.
+
+## `[FIX] #243` — a aba empilhava três assuntos, e a release escondia o changelog
+
+Pedido do PI na mesma sessão de dogfooding que abriu o `#242`. Entregue no mesmo
+PR: a linha da release foi reescrita inteira, e o botão "Editar" (`#242`) nasceu
+na mesma estrutura que as notas — separá-los produziria um commit intermediário
+que nunca rodou.
+
+### A linha dizia o que a release **é**, não o que ela **traz**
+
+Mostrava versão, plataforma, estado, data e o `sha256` abreviado — e escondia as
+**notas**, que são o changelog inteiro da versão. A pergunta que se faz olhando
+uma versão publicada é *"o que mudou nela?"*; a resposta estava no banco enquanto
+a tela exibia o hash, que ninguém lê de cabeça.
+
+A ordem inverteu: versão em 14px (é o nome próprio da linha — é por ela que se
+procura quando o cliente diz *"estou na 1.0.0"*), data, **as notas**, e `asset` +
+`sha-256` recolhidos no rodapé em mono. Os identificadores são para **conferir**,
+não para ler; o hash completo continua no `title`, porque conferir hash é comparar
+caractere a caractere e uma tela que mostra 12 deles torna a conferência
+impossível.
+
+### `#Titulo` sem espaço não é heading — e isso apagava as seções
+
+As notas da `1.0.1` estão gravadas como `#Vida da sala`, `#Portas`, `#Correções`
+— **sem o espaço depois do `#`**. Por CommonMark isso não é heading; é texto
+literal. O changelog inteiro virava uma lista chapada, onde **"Correções" não se
+distinguia de novidade** — exatamente o destaque que se procura ao ler notas de
+versão.
+
+O texto veio colado da Release do GitHub (lá está `## Vida da sala`) e o espaço se
+perdeu na cópia. `normalizarHeadings` tolera a forma na **exibição** e não toca no
+gravado (ADR-014 — o ProPlan se adapta ao que existe, nunca reescreve o texto do
+dono). Quem abrir a edição continua vendo o que digitou.
+
+**Os dois primeiros testes dessa regex falharam e pegaram bugs reais**: `#{1,6}`
+casava só o primeiro `#` de `## Portas` e o lookahead `(?=\S)` via o segundo como
+texto colado, produzindo `# # Portas` — quebrando o heading que já estava certo. E
+`#######Sete` (7 `#`, que não é heading em CommonMark) virava `###### #Sete`,
+inventando um. O `(?!#)` fecha a sequência antes do lookahead.
+
+### `prose-compact`: por que não deu para reusar o `prose-doc` inteiro
+
+O renderizador é o **`MarkdownView`** já usado em Documentos e Handoff — nenhum
+parser novo. Mas o `prose-doc` é dimensionado para markdown-como-página: `h1` a
+24px sobre corpo de 14px. Dentro de um item da lista de versões, esse mesmo `h1`
+sairia **maior que o número da versão** que titula o item — as seções do changelog
+gritariam mais alto que a release a que pertencem.
+
+A variante só reduz escala e espaçamento (13,5px nos títulos, um degrau acima do
+corpo). Cor, código, tabela e o resto continuam vindo do `prose-doc`, então
+mudanças no design system chegam sozinhas.
+
+### Sub-abas, porque três assuntos não cabem numa página
+
+Produtos, `Oferta → edição` e Versões publicadas são seções irmãs de tarefas
+diferentes, feitas em momentos diferentes. Empilhadas, a aba crescia sem limite —
+e expor as notas agravaria isso, já que cada release passa a ocupar a altura do
+seu changelog.
+
+O trilho é o **mesmo objeto e o mesmo vocabulário** do trilho de cinco abas da
+área, um degrau menor: "selecionado" precisa significar a mesma coisa nos dois
+níveis, e um segundo padrão de navegação na mesma tela faz o operador parar para
+entender a interface em vez da tarefa.
+
+**Some quando não há produto** — as outras duas sub-abas apontariam para algo que
+não existe, e um trilho de três na primeira visita esconderia a única que faz
+alguma coisa. É o mesmo argumento do trilho da área.
+
+Os 10 testes de oferta do `CatalogPanel.test.tsx` passaram a abrir a sub-aba antes
+de procurar. **As falhas foram esperadas, não regressão**: a seção existe, mudou
+de lugar — e é isso que o helper `montarEmOfertas` documenta.
+
+### Verificação
+
+- [x] **API 2477/2477** · **web 737/737** · build e lint limpos.
+- [x] **+9 testes de tela** (6 do normalizador, 3 dos helpers de edição).
+- [x] A linha da release conferida no navegador com as notas reais da `1.0.1`
+      (1345 caracteres, três seções), nos dois estados: publicada e despublicada.
+
+### Pendências que esta entrega deixa
+
+- **A SPEC-040 §A área** descreve a organização anterior desta aba, e **a SPEC-041**
+  descreve o cadastro de release sem edição. As duas precisam do Cowork — o Code
+  não escreve spec.

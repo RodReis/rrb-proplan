@@ -467,3 +467,95 @@ describe('assetDownloadUrl', () => {
     expect(url).toBe('https://api.github.com/repos/o/r/releases/assets/a%20b%2Fc');
   });
 });
+
+describe('getAsset', () => {
+  it('devolve nome, tamanho e o sha256 sem o prefixo `sha256:`', async () => {
+    dobrarFetch([
+      {
+        status: 200,
+        body: {
+          name: 'war-room-setup-1.0.1-win-x64.exe',
+          size: 36_314_455,
+          digest: 'sha256:FF49B965D3AFE55829E12A6FF78C36D8D22B94CD0BA7306C8E9BCF381CE8DF21',
+        },
+      },
+    ]);
+
+    expect(await new GithubSourceClient().getAsset('pat', 'o/r', '497099385')).toEqual({
+      name: 'war-room-setup-1.0.1-win-x64.exe',
+      size: 36_314_455,
+      // Minúsculo: é a forma que o `SHA256` do cadastro exige, e comparar sem
+      // normalizar acusaria divergência entre dois hashes idênticos.
+      sha256: 'ff49b965d3afe55829e12a6ff78c36d8d22b94cd0ba7306c8e9bcf381ce8df21',
+    });
+  });
+
+  it('pede JSON, não `octet-stream` — é o que impede o redirect', async () => {
+    const f = dobrarFetch([{ status: 200, body: { name: 'x', size: 1 } }]);
+
+    await new GithubSourceClient().getAsset('pat', 'o/r', '42');
+
+    const [url, init] = f.mock.calls[0] as [string, RequestInit];
+    // **A asserção que separa este método do `assetDownloadUrl`.** Com
+    // `octet-stream` a API responderia 302 para o storage, e sem `redirect:
+    // 'manual'` o Node seguiria o redirect e baixaria o instalador inteiro para
+    // dentro da API — numa validação de formulário. O `Accept` é o que mantém
+    // esta chamada em menos de 1 KB.
+    expect((init.headers as Record<string, string>).Accept).toBe('application/vnd.github+json');
+    expect(url).toBe('https://api.github.com/repos/o/r/releases/assets/42');
+  });
+
+  it('404 devolve `null` — id errado e fora do alcance do PAT são o mesmo desfecho', async () => {
+    dobrarFetch([{ status: 404 }]);
+
+    // O GitHub esconde o que o token não vê, então "não existe" e "existe e você
+    // não alcança" chegam iguais. Distingui-los daqui seria inventar informação.
+    expect(await new GithubSourceClient().getAsset('pat', 'o/r', 'e234138')).toBeNull();
+  });
+
+  it('401 lança em vez de devolver `null`', async () => {
+    dobrarFetch([{ status: 401 }]);
+
+    // Tratar token expirado como "asset inexistente" mandaria o operador
+    // corrigir um id que está certo — e o id certo continuaria sendo recusado.
+    await expect(new GithubSourceClient().getAsset('pat', 'o/r', '42')).rejects.toThrow(
+      'token inválido ou expirado',
+    );
+  });
+
+  it('403 lança, nomeando a permissão que falta', async () => {
+    dobrarFetch([{ status: 403 }]);
+
+    await expect(new GithubSourceClient().getAsset('pat', 'o/r', '42')).rejects.toThrow(
+      'contents:read',
+    );
+  });
+
+  it('asset sem `digest` devolve sha256 `null`, não vazio', async () => {
+    dobrarFetch([{ status: 200, body: { name: 'antigo.exe', size: 10 } }]);
+
+    const a = await new GithubSourceClient().getAsset('pat', 'o/r', '42');
+
+    // O campo é recente na API e falta em asset antigo. `null` diz "o GitHub não
+    // informou"; string vazia seria comparada com o hash digitado e acusaria
+    // divergência sobre algo que ninguém afirmou.
+    expect(a?.sha256).toBeNull();
+  });
+
+  it('`digest` em formato desconhecido também vira `null`', async () => {
+    dobrarFetch([{ status: 200, body: { name: 'x', size: 1, digest: 'md5:abc' } }]);
+
+    // Só `sha256:` é entendido. Cortar os 7 primeiros caracteres de qualquer
+    // string produziria um hash inventado que nunca bateria.
+    expect((await new GithubSourceClient().getAsset('pat', 'o/r', '42'))?.sha256).toBeNull();
+  });
+
+  it('escapa o `assetId` na URL', async () => {
+    const f = dobrarFetch([{ status: 200, body: { name: 'x', size: 1 } }]);
+
+    await new GithubSourceClient().getAsset('pat', 'o/r', 'a b/c');
+
+    const [url] = f.mock.calls[0] as [string];
+    expect(url).toBe('https://api.github.com/repos/o/r/releases/assets/a%20b%2Fc');
+  });
+});

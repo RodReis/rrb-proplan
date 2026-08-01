@@ -47,6 +47,14 @@ import { Cartao, Etiqueta, LinhaCartao, TituloSecao } from './licensingUi';
  * apagar edição com licença vendida, e oferecer um botão para depois recusá-lo é
  * pior que não oferecer. A contagem de licenças na linha explica o porquê.
  */
+type Secao = 'produtos' | 'ofertas' | 'versoes';
+
+const SECOES: Array<{ chave: Secao; rotulo: string }> = [
+  { chave: 'produtos', rotulo: 'Produtos' },
+  { chave: 'ofertas', rotulo: 'Oferta → edição' },
+  { chave: 'versoes', rotulo: 'Versões' },
+];
+
 export function CatalogPanel({
   catalogo,
   onMudou,
@@ -54,18 +62,55 @@ export function CatalogPanel({
   catalogo: LicCatalogResponse;
   onMudou: () => void;
 }) {
+  const [secao, setSecao] = useState<Secao>('produtos');
+
+  // **Sem produto, não há sub-aba.** As outras duas apontam para algo que ainda
+  // não existe, e um trilho de três abas na primeira visita esconde a única que
+  // faz alguma coisa. Mesmo argumento do trilho de cinco abas da área.
+  if (catalogo.products.length === 0) {
+    return (
+      <div className="grid gap-4">
+        <ProdutosBloco catalogo={catalogo} onMudou={onMudou} />
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4">
-      <ProdutosBloco catalogo={catalogo} onMudou={onMudou} />
-      {/* Oferta e releases só fazem sentido com produto: as duas apontam para
-          algo que ainda não existe, e três cartões vazios na primeira visita
-          escondem o único que importa. */}
-      {catalogo.products.length > 0 && (
-        <>
-          <OfertasBloco catalogo={catalogo} />
-          <ReleasesPanel produtos={catalogo.products} />
-        </>
-      )}
+      {/* **Sub-abas, não três blocos empilhados** (2026-07-31): os três assuntos
+          são independentes — cadastrar produto, mapear oferta, registrar versão —
+          e empilhá-los fazia a aba crescer sem fim, agravado pelas notas de
+          release, que são o changelog inteiro da versão.
+
+          Mesmo objeto do trilho da área, um degrau menor: "selecionado" precisa
+          significar a mesma coisa nos dois níveis, e um segundo vocabulário de
+          navegação na mesma tela é o tipo de estranheza que faz o operador parar
+          para entender a interface em vez da tarefa. */}
+      <div
+        role="tablist"
+        className="flex flex-wrap gap-0.5 self-start rounded-[10px] border border-border2 bg-panel p-1"
+      >
+        {SECOES.map(({ chave, rotulo }) => (
+          <button
+            key={chave}
+            role="tab"
+            aria-selected={secao === chave}
+            onClick={() => setSecao(chave)}
+            className={
+              'rounded-[7px] px-3 py-1 text-[12px] transition-colors duration-150 ' +
+              (secao === chave
+                ? 'bg-card font-semibold text-text'
+                : 'text-body2 hover:bg-card/60 hover:text-text')
+            }
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
+      {secao === 'produtos' && <ProdutosBloco catalogo={catalogo} onMudou={onMudou} />}
+      {secao === 'ofertas' && <OfertasBloco catalogo={catalogo} />}
+      {secao === 'versoes' && <ReleasesPanel produtos={catalogo.products} />}
     </div>
   );
 }

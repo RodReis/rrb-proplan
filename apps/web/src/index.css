@@ -532,3 +532,42 @@ button:active {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+  Variante compacta do `prose-doc`, para markdown que vive DENTRO de um item de
+  lista — hoje as notas de release (FIX #242).
+
+  Existe porque `prose-doc` é dimensionado para a aba Documentos, onde o markdown
+  É a página: `h1` a 24px sobre corpo 14px. Numa linha da lista de versões, esse
+  mesmo `h1` sairia maior que o número da versão (14px) que titula o item — as
+  seções coladas do changelog do GitHub gritariam mais alto que a release a que
+  pertencem, invertendo a hierarquia.
+
+  Só reduz escala e espaçamento. Cor, código, tabela e o resto continuam vindo do
+  `prose-doc`, então mudanças no design system chegam aqui sozinhas.
+*/
+.prose-compact { font-size: 12.5px; line-height: 1.6; }
+/* Um degrau acima do corpo, não quatro. O `prose-doc` sobe até 24px porque lá o
+   markdown É a página; aqui ele é o conteúdo de um item, e um título maior que a
+   versão que titula o item inverteria a hierarquia. 13.5px + peso 600 separa as
+   seções do changelog sem competir com o número da versão (14px). */
+.prose-compact h1,
+.prose-compact h2,
+.prose-compact h3,
+.prose-compact h4 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 1.1em 0 0.4em;
+}
+/* O primeiro título não empurra o bloco para baixo: o rótulo "Notas da versão"
+   já abriu a seção, e a margem de topo aqui abriria um vão duplo. */
+.prose-compact > :first-child { margin-top: 0; }
+.prose-compact p,
+.prose-compact ul,
+.prose-compact ol { margin: 0.45em 0; }
+.prose-compact ul,
+.prose-compact ol { padding-left: 1.15em; }
+.prose-compact li { margin: 0.15em 0; }
+.prose-compact hr { margin: 0.9em 0; }
+.prose-compact blockquote { margin: 0.6em 0; }
