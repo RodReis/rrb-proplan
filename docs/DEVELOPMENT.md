@@ -1079,10 +1079,14 @@ da costura (entidade `Connection`, IdP fake, CTA no catálogo) vem depois.
       (1 row com `github_id` **e** `google_id`), 8 projetos no catálogo. Dois
       erros de config no caminho → FIX **#123** (mergeado, #124) e cadastro do
       redirect URI no Console. Detalhes em *Verificação*.
-- [ ] **Preencher `email` de quem já existe** — ver *Por que o email precisa ser
-      verificado*. Hoje depende de `UPDATE` manual (feito no local e em
-      produção); a solução geral é a issue **#122** — buscar `GET /user/emails`
-      no login GitHub, decidido pelo PI.
+- [x] **Preencher `email` de quem já existe** — ver *Por que o email precisa ser
+      verificado*. Resolvido por `UPDATE` manual no local e em produção, antes
+      do 1º login. A solução geral (issue **#122** — buscar `GET /user/emails`
+      no login GitHub) foi **descartada pelo PI em 2026-07-25**: exigiria a
+      permissão *Account → Email addresses* no GitHub App, contra o "Nada além"
+      do README, e reautorização de cada instalação — em troca de um ganho já
+      obtido. O universo era um usuário, já migrado. Outro caso pré-SPEC-026, se
+      surgir, sai pelo mesmo `UPDATE` pontual.
 
 ### Por que o email precisa ser verificado
 
