@@ -14,7 +14,7 @@ const apiMock = vi.hoisted(() => ({
   deleteOfferMapping: vi.fn(),
   createLicProduct: vi.fn(),
   createLicEdition: vi.fn(),
-  updateProductSourceRepo: vi.fn(),
+  updateLicProduct: vi.fn(),
   updateLicEditionLimits: vi.fn(),
   // O `ReleasesPanel` é filho e carrega no mount; sem o mock a chamada cairia
   // no `request` real — sem erro visível, mas fazendo rede em suíte unitária.
@@ -45,6 +45,10 @@ const CATALOGO: LicCatalogResponse = {
       // `null` é o estado que bloqueava o dogfooding: sem repo, o convite não
       // tem destino (FIX #212).
       sourceRepo: null,
+      // `null` nos dois é o estado de todo produto antes da SPEC-042: o e-mail
+      // da chave sai sem dizer de onde se baixa o que foi comprado.
+      downloadUrl: null,
+      manualUrl: null,
       editions: [
         {
           id: 'ed-1',
@@ -206,7 +210,7 @@ describe('repositório de código-fonte', () => {
   });
 
   it('salva `owner/name`', async () => {
-    apiMock.updateProductSourceRepo.mockResolvedValue({
+    apiMock.updateLicProduct.mockResolvedValue({
       ...CATALOGO.products[0],
       sourceRepo: 'RodReis/war-room',
     });
@@ -219,10 +223,9 @@ describe('repositório de código-fonte', () => {
     await userEvent.click(screen.getByRole('button', { name: /Salvar repo/i }));
 
     await waitFor(() =>
-      expect(apiMock.updateProductSourceRepo).toHaveBeenCalledWith(
-        'prod-1',
-        'RodReis/war-room',
-      ),
+      expect(apiMock.updateLicProduct).toHaveBeenCalledWith('prod-1', {
+        sourceRepo: 'RodReis/war-room',
+      }),
     );
   });
 
@@ -232,6 +235,91 @@ describe('repositório de código-fonte', () => {
     // Sem isto, clicar sem alterar nada dispararia um PATCH que não muda nada —
     // e o toast de sucesso ensinaria que "salvou" é barato.
     expect(await screen.findByRole('button', { name: /Salvar repo/i })).toBeDisabled();
+  });
+});
+
+/**
+ * Os links que o e-mail da chave entrega (SPEC-042).
+ *
+ * O que estes testes prendem não é o formulário — é **quem vê o formulário**.
+ * Posto atrás do gate `vendeSource` por conveniência (é onde o campo irmão
+ * mora), ele sumiria para o produto comum, que é justamente quem mais precisa:
+ * quem compra a edição fechada não tem outro canal para descobrir o download.
+ */
+describe('links do e-mail da chave', () => {
+  it('aparece em produto que NÃO vende código-fonte', async () => {
+    montar();
+
+    // Ao contrário do `sourceRepo`, estes valem para todo produto: a primeira
+    // instalação é problema de qualquer comprador.
+    expect(
+      await screen.findByLabelText(/Link de download de War Room/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Link do manual de War Room/i)).toBeInTheDocument();
+  });
+
+  it('vazio, diz a consequência — não só o nome do campo', async () => {
+    montar();
+
+    expect(
+      await screen.findByText(/recebe a chave sem saber onde baixar/i),
+    ).toBeInTheDocument();
+  });
+
+  it('salva o download mandando SÓ esse campo', async () => {
+    const URL_DOWNLOAD = 'https://github.com/RodReis/war-room-releases/releases/latest';
+    apiMock.updateLicProduct.mockResolvedValue({
+      ...CATALOGO.products[0],
+      downloadUrl: URL_DOWNLOAD,
+    });
+    montar();
+
+    await userEvent.type(
+      await screen.findByLabelText(/Link de download de War Room/i),
+      URL_DOWNLOAD,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Salvar download/i }));
+
+    // **Só `downloadUrl` no corpo.** Mandar os dois faria este save gravar o
+    // manual como está na tela — incluindo o que o operador digitou e ainda não
+    // salvou, ou o vazio de um campo que ele nem tocou.
+    await waitFor(() =>
+      expect(apiMock.updateLicProduct).toHaveBeenCalledWith('prod-1', {
+        downloadUrl: URL_DOWNLOAD,
+      }),
+    );
+  });
+
+  it('salva o manual sem tocar no download', async () => {
+    apiMock.updateLicProduct.mockResolvedValue(CATALOGO.products[0]);
+    montar();
+
+    await userEvent.type(
+      await screen.findByLabelText(/Link do manual de War Room/i),
+      'https://exemplo.com/manual',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Salvar manual/i }));
+
+    await waitFor(() =>
+      expect(apiMock.updateLicProduct).toHaveBeenCalledWith('prod-1', {
+        manualUrl: 'https://exemplo.com/manual',
+      }),
+    );
+  });
+
+  it('mostra o valor já configurado, para poder ser corrigido', async () => {
+    const URL_DOWNLOAD = 'https://github.com/RodReis/war-room-releases/releases/latest';
+    montar({
+      ...CATALOGO,
+      products: [{ ...CATALOGO.products[0], downloadUrl: URL_DOWNLOAD }],
+    });
+
+    // Campo que nasce vazio com valor gravado obrigaria a redigitar a URL
+    // inteira para mudar uma letra — e o botão inerte compara contra o atual.
+    expect(await screen.findByLabelText(/Link de download de War Room/i)).toHaveValue(
+      URL_DOWNLOAD,
+    );
+    expect(screen.getByRole('button', { name: /Salvar download/i })).toBeDisabled();
   });
 });
 

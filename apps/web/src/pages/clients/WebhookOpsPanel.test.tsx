@@ -28,6 +28,8 @@ const CATALOGO: LicCatalogResponse = {
       name: 'War Room',
       keyPrefix: 'WR',
       sourceRepo: null,
+      downloadUrl: null,
+      manualUrl: null,
       editions: [
         {
           id: 'ed-1',

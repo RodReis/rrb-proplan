@@ -77,9 +77,13 @@ interface EditionLimitsBody {
   grantsSourceAccess?: unknown;
 }
 
-interface SourceRepoBody {
+interface ProductBody {
   /** `owner/name`, ou string vazia para limpar. */
   sourceRepo?: unknown;
+  /** URL pública do instalador (SPEC-042), ou string vazia para limpar. */
+  downloadUrl?: unknown;
+  /** URL pública do manual (SPEC-042), ou string vazia para limpar. */
+  manualUrl?: unknown;
 }
 
 interface GithubUsernameBody {
@@ -152,22 +156,24 @@ export class LicensingAdminController {
   }
 
   /**
-   * Define ou limpa o repositório de código-fonte do produto (FIX #212).
+   * Edita os campos configuráveis do produto: repositório de código-fonte
+   * (FIX #212), link de download e link do manual (SPEC-042).
    *
-   * A coluna nasceu no PR-1 da SPEC-039 e não tinha caminho pela interface: sem
-   * ela preenchida o convite não tem destino, e o operador só descobria isso no
-   * teste de conexão — depois de já ter cadastrado o PAT.
+   * **`PATCH` é literal aqui, não convenção**: cada campo ausente do corpo fica
+   * como está. A tela salva um de cada vez, então tratar ausente como "limpar"
+   * faria o primeiro save apagar os outros dois.
    *
-   * `PATCH` pelo mesmo motivo do de edição: é um campo de um recurso existente,
-   * não a substituição do produto.
+   * Uma rota para os três, e não uma por coluna — a `/source-repo` nasceu sozinha
+   * porque era a única, e repetir esse desenho a cada campo novo é como esta área
+   * acumulou três colunas sem caminho pela interface.
    */
-  @Patch('products/:id/source-repo')
-  updateProductSourceRepo(
+  @Patch('products/:id')
+  updateProduct(
     @Req() req: AuthenticatedRequest,
     @Param('id') productId: string,
-    @Body() body: SourceRepoBody,
+    @Body() body: ProductBody,
   ) {
-    return this.catalog.updateProductSourceRepo(req.tenantId!, productId, body?.sourceRepo);
+    return this.catalog.updateProduct(req.tenantId!, productId, body ?? {});
   }
 
   /**

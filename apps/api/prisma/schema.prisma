@@ -1533,6 +1533,13 @@ model LicProduct {
   // sincronizado, não vira card — por isso é texto aqui e não FK para `Project`,
   // que é o vínculo do `projectId` acima.
   sourceRepo String?     @map("source_repo")
+  // Links que o e-mail da chave entrega junto da compra (SPEC-042). Públicos e
+  // por produto — nada de env var: dois tenants vendendo produtos diferentes
+  // precisam de destinos diferentes, e uma variável de ambiente seria uma só
+  // para todos. Opcionais: sem URL o e-mail sai como sempre saiu, e é assim que
+  // um produto entregue por outro canal continua funcionando.
+  downloadUrl String?    @map("download_url")
+  manualUrl  String?     @map("manual_url")
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
   tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)

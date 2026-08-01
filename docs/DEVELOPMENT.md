@@ -7652,3 +7652,105 @@ de lugar — e é isso que o helper `montarEmOfertas` documenta.
 - **A SPEC-040 §A área** descreve a organização anterior desta aba, e **a SPEC-041**
   descreve o cadastro de release sem edição. As duas precisam do Cowork — o Code
   não escreve spec.
+
+## Fatia 31 (SPEC-042) — Licensing: o e-mail da chave entrega a compra — `entregue`
+
+Issue **#247** (spec `aprovada-pi` 2026-08-01). **7ª fatia do MVP4.** O e-mail que
+a compra dispara passa a levar **chave + onde baixar + como instalar + manual**,
+em vez de só a chave.
+
+O que ele fazia antes: entregava a chave e dizia *"cole na tela de ativação do
+aplicativo"* — sem dizer de onde vem o aplicativo. Quem pagava dependia da área de
+membros da plataforma para a primeira instalação, que é uma dependência externa no
+caminho crítico de quem acabou de comprar.
+
+**Um PR, e não três empilhados.** A fatia toca schema, rota, template e tela, mas
+os quatro não funcionam separados: coluna sem rota e sem tela é exatamente o
+padrão que produziu os FIX **#212**, **#214** e **#238** nesta mesma área —
+coluna nasce no schema, é lida pelo backend, e nenhum caminho a escreve. Entregar
+o ciclo inteiro de uma vez é o que impede a quarta ocorrência.
+
+### O que entrou
+
+- [x] `LicProduct.downloadUrl` / `manualUrl` (`String?`) + migration
+- [x] `PATCH /t/:tenant/licensing/products/:id` — **genérica**, absorve o
+      `/source-repo`
+- [x] Template `license_key` **v2**: 3 passos, aviso do SmartScreen, link do
+      manual — todos condicionais
+- [x] `webhook-processor` passa as duas URLs ao `mail.send`
+- [x] Campos por produto na sub-aba **Produtos e Edições**, **fora** do gate de
+      código-fonte
+- [x] **+21 regras · +4 banco · +11 tela**
+
+### Uma rota para os três campos, não uma por coluna
+
+A `PATCH /products/:id/source-repo` nasceu no FIX #212 com o nome preso ao
+assunto, porque era a única. Repetir o desenho a cada campo novo (`/urls`,
+`/manual`, …) é como esta área acumulou três colunas sem caminho pela interface.
+Virou `PATCH /products/:id`, aceitando `sourceRepo`, `downloadUrl` e `manualUrl`.
+
+**`PATCH` é literal aqui, não convenção de verbo.** Campo ausente do corpo **não
+é tocado**; string vazia limpa para `null`. A distinção não é purismo: cada campo
+da tela tem o próprio botão, então salvar o manual manda só `manualUrl` — se
+ausente virasse `null`, esse save apagaria o download que já estava lá, e o e-mail
+da próxima venda sairia sem o link sem ninguém ter pedido isso. Há teste
+afirmando que a chave nem aparece no `data` do `update`.
+
+### Validação de URL: parse com `new URL()`, e `https` obrigatório
+
+Segue o padrão do `http-probe.ts` da ingestão, não uma regex nova — `new URL()` é
+quem sabe o que é uma URL, e uma regex própria seria uma segunda definição que
+diverge da primeira.
+
+**O gate é o esquema, e é o que importa aqui:** o destino deste valor é a caixa de
+entrada de quem acabou de pagar. `javascript:` e `data:` **passam** pelo parse do
+`new URL()` — recusá-los por allowlist (`https:` e ponto) é o que não envelhece
+com o esquema novo da próxima década. `http:` entrega o instalador por canal que
+qualquer intermediário reescreve.
+
+### Os blocos são condicionais, e isso é o ponto da spec
+
+Produto sem URL manda o e-mail **idêntico** ao de antes: nenhum passo apontando
+para lugar nenhum, nenhum aviso de SmartScreen sobre um download que este e-mail
+não ofereceu, nenhum `href=""`. O modo de errar não é a ausência — é o
+meio-termo, o bloco presente com o link vazio.
+
+O aviso do SmartScreen fica **atrás do `downloadUrl`** pela mesma razão: ele
+existe para quem está com a janela azul na frente, e num e-mail que não mandou
+baixar nada ele é texto órfão explicando um susto que não vai acontecer.
+
+**O aviso nomeia os dois botões** (*Mais informações* → *Executar assim mesmo*) e
+diz **por que** o aviso aparece — ausência de assinatura digital paga, não
+problema no arquivo. Sem essa frase, o e-mail estaria mandando ignorar um alerta
+de segurança sem justificar, que é exatamente o que um e-mail de golpe faz.
+
+### O campo aparece para todo produto, e não só para quem vende código-fonte
+
+O `SourceRepoCampo` mora atrás do gate `vendeSource` — correto para ele, porque
+produto sem `grantsSourceAccess` nunca precisa de repositório. Pôr os campos de
+URL no mesmo lugar seria a conveniência óbvia (é onde o campo irmão está) e o
+defeito: eles sumiriam justamente para o produto comum, cujo comprador é quem
+**menos** tem outro canal para descobrir o download. Há teste montando o catálogo
+sem edição de código-fonte e exigindo os dois campos na tela.
+
+### Verificação
+
+- [x] **regras 2231** · **banco 272** · **tela 744** — 3247 verdes, build e lint
+      limpos (0 erros).
+- [x] **4 testes contra Postgres real**: colunas existem, `NULL` é gravável
+      (ausente é estado normal, não erro de escrita) e o RLS de `lic_products`
+      cobre as colunas novas — a policy é da tabela, mas o `downloadUrl` do
+      vizinho é o link do produto que ele vende.
+- [x] Template coberto nas **duas** variantes, com e sem URL, incluindo `''`
+      tratado como ausente e escape de aspas no `href`.
+
+### Pendências que esta entrega deixa
+
+- **O checklist operacional da fatia não é código e continua aberto**: criar o
+  repo público `war-room-releases` e publicar a `1.0.2` (setup.exe + zip +
+  `SHA256SUMS.txt`), depois apontar o `downloadUrl` do produto para
+  `.../releases/latest`. Depende do rebuild com a chave Ed25519 de produção —
+  pendência #5 do PLANO-piloto do war-room, fora deste repo.
+- **Dogfooding do e-mail com venda real**: mesmo gatilho que as fatias 28 e 29
+  esperam. O `POST /licenses` do admin **não serve** — só o caminho do webhook
+  monta este e-mail.

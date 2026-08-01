@@ -220,6 +220,11 @@ export class WebhookProcessorService {
         licenseKey: key,
         productName: edicao.product.name,
         editionName: edicao.name,
+        // SPEC-042: o e-mail entrega a compra, não só a chave. `null` quando o
+        // produto não configurou — e o template omite os blocos, em vez de
+        // mandar link quebrado para quem acabou de pagar.
+        downloadUrl: edicao.product.downloadUrl,
+        manualUrl: edicao.product.manualUrl,
       },
     });
 

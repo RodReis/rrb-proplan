@@ -26,7 +26,7 @@ const apiMock = vi.hoisted(() => ({
   listSourcePending: vi.fn(),
   getSourceSettings: vi.fn(),
   // FIX #212
-  updateProductSourceRepo: vi.fn(),
+  updateLicProduct: vi.fn(),
   // FIX #214
   updateLicEditionLimits: vi.fn(),
   // SPEC-041 PR-4 — o `ReleasesPanel` é filho da aba Configurações e carrega no
@@ -58,6 +58,8 @@ const CATALOGO: LicCatalogResponse = {
       // `null` é o estado que bloqueava o dogfooding: sem repo, o convite não tem
       // destino (FIX #212).
       sourceRepo: null,
+      downloadUrl: null,
+      manualUrl: null,
       editions: [
         {
           id: 'ed-1',

@@ -28,16 +28,20 @@ function montar(
     createProductErro?: Error;
     createEditionErro?: Error;
     sourceRepoAtual?: string | null;
+    downloadUrlAtual?: string | null;
+    manualUrlAtual?: string | null;
     listaVazia?: boolean;
   } = {},
 ) {
-  /** O que `listProducts` devolve — usado pelo retorno do `updateProductSourceRepo`. */
+  /** O que `listProducts` devolve — usado pelo retorno do `updateProduct`. */
   const produtoListado = {
     id: 'prod-1',
     slug: 'warroom',
     name: 'War Room',
     keyPrefix: 'WR',
     sourceRepo: opcoes.sourceRepoAtual ?? null,
+    downloadUrl: opcoes.downloadUrlAtual ?? null,
+    manualUrl: opcoes.manualUrlAtual ?? null,
     editions: [{ ...EDICAO, _count: { licenses: 0 } }],
   };
 
@@ -49,7 +53,13 @@ function montar(
       ),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         if (opcoes.createProductErro) throw opcoes.createProductErro;
-        return { id: 'prod-1', sourceRepo: null, ...data };
+        return {
+          id: 'prod-1',
+          sourceRepo: null,
+          downloadUrl: null,
+          manualUrl: null,
+          ...data,
+        };
       }),
       update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
         id: 'prod-1',
@@ -327,11 +337,13 @@ describe('SPEC-036: catálogo de produtos e edições', () => {
     });
   });
 
-  describe('updateProductSourceRepo', () => {
+  describe('updateProduct — sourceRepo (FIX #212)', () => {
     it('grava `owner/name`', async () => {
       const { service, prisma } = montar({ sourceRepoAtual: 'RodReis/war-room' });
 
-      const p = await service.updateProductSourceRepo('t-1', 'prod-1', 'RodReis/war-room');
+      const p = await service.updateProduct('t-1', 'prod-1', {
+        sourceRepo: 'RodReis/war-room',
+      });
 
       expect((prisma.licProduct.update as jest.Mock).mock.calls[0][0].data).toEqual({
         sourceRepo: 'RodReis/war-room',
@@ -342,7 +354,7 @@ describe('SPEC-036: catálogo de produtos e edições', () => {
     it('string vazia LIMPA o campo', async () => {
       const { service, prisma } = montar();
 
-      await service.updateProductSourceRepo('t-1', 'prod-1', '   ');
+      await service.updateProduct('t-1', 'prod-1', { sourceRepo: '   ' });
 
       // Desconfigurar é ação legítima (o produto deixou de vender código-fonte) e
       // não pode exigir SQL. Diferente do PAT: aqui não há segredo a perder nem
@@ -365,7 +377,7 @@ describe('SPEC-036: catálogo de produtos e edições', () => {
       // não encontrado", mandando o operador procurar problema de permissão num
       // erro de digitação.
       await expect(
-        service.updateProductSourceRepo('t-1', 'prod-1', entrada),
+        service.updateProduct('t-1', 'prod-1', { sourceRepo: entrada }),
       ).rejects.toMatchObject({ status: 422 });
       expect(prisma.licProduct.update).not.toHaveBeenCalled();
     });
@@ -374,8 +386,105 @@ describe('SPEC-036: catálogo de produtos e edições', () => {
       const { service } = montar({ produto: null });
 
       await expect(
-        service.updateProductSourceRepo('t-1', 'prod-de-outro', 'a/b'),
+        service.updateProduct('t-1', 'prod-de-outro', { sourceRepo: 'a/b' }),
       ).rejects.toThrow('Produto não encontrado');
+    });
+  });
+
+  describe('updateProduct — URLs do e-mail da chave (SPEC-042)', () => {
+    const DOWNLOAD = 'https://github.com/RodReis/war-room-releases/releases/latest';
+    const MANUAL = 'https://war-room.rrbtrading.com.br/manual';
+
+    it('grava os dois links', async () => {
+      const { service, prisma } = montar({
+        downloadUrlAtual: DOWNLOAD,
+        manualUrlAtual: MANUAL,
+      });
+
+      const p = await service.updateProduct('t-1', 'prod-1', {
+        downloadUrl: DOWNLOAD,
+        manualUrl: MANUAL,
+      });
+
+      expect((prisma.licProduct.update as jest.Mock).mock.calls[0][0].data).toEqual({
+        downloadUrl: DOWNLOAD,
+        manualUrl: MANUAL,
+      });
+      expect(p.downloadUrl).toBe(DOWNLOAD);
+      expect(p.manualUrl).toBe(MANUAL);
+    });
+
+    it('campo AUSENTE não é tocado', async () => {
+      const { service, prisma } = montar({ downloadUrlAtual: DOWNLOAD });
+
+      await service.updateProduct('t-1', 'prod-1', { manualUrl: MANUAL });
+
+      // A tela salva um campo por vez. Se ausente virasse `null`, salvar o manual
+      // apagaria o download que já estava lá — e o e-mail da próxima venda sairia
+      // sem o link, sem ninguém ter pedido isso.
+      const { data } = (prisma.licProduct.update as jest.Mock).mock.calls[0][0];
+      expect(data).toEqual({ manualUrl: MANUAL });
+      expect(data).not.toHaveProperty('downloadUrl');
+    });
+
+    it.each([
+      ['downloadUrl', { downloadUrl: '  ' }],
+      ['manualUrl', { manualUrl: '' }],
+    ])('string vazia LIMPA %s', async (campo, input) => {
+      const { service, prisma } = montar();
+
+      await service.updateProduct('t-1', 'prod-1', input);
+
+      expect((prisma.licProduct.update as jest.Mock).mock.calls[0][0].data).toEqual({
+        [campo]: null,
+      });
+    });
+
+    it.each([
+      ['http, não https', 'http://exemplo.com/setup.exe'],
+      ['sem esquema', 'exemplo.com/setup.exe'],
+      ['texto solto', 'baixar no site'],
+      ['javascript:', 'javascript:alert(1)'],
+      ['data:', 'data:text/html,<h1>x</h1>'],
+      ['caminho relativo', '/downloads/setup.exe'],
+    ])('recusa %s', async (_rotulo, entrada) => {
+      const { service, prisma } = montar();
+
+      // O destino deste valor é a caixa de entrada de quem acabou de pagar: um
+      // link torto vira 404 silencioso, e `javascript:`/`data:` passam pelo parse
+      // do `new URL()` — por isso o gate é o esquema, não o formato.
+      await expect(
+        service.updateProduct('t-1', 'prod-1', { downloadUrl: entrada }),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(prisma.licProduct.update).not.toHaveBeenCalled();
+    });
+
+    it('listProducts devolve os dois campos', async () => {
+      const { service } = montar({
+        downloadUrlAtual: DOWNLOAD,
+        manualUrlAtual: MANUAL,
+      });
+
+      const [p] = await service.listProducts('t-1');
+
+      // Sem sair na listagem, a tela não teria o valor atual para editar — e
+      // `null` aqui é a causa de o e-mail sair sem link, que de outro modo só
+      // apareceria na reclamação de quem comprou.
+      expect(p.downloadUrl).toBe(DOWNLOAD);
+      expect(p.manualUrl).toBe(MANUAL);
+    });
+
+    it('produto recém-criado nasce sem URLs', async () => {
+      const { service } = montar();
+
+      const p = await service.createProduct('t-1', {
+        slug: 'warroom',
+        name: 'War Room',
+        keyPrefix: 'WR',
+      });
+
+      expect(p.downloadUrl).toBeNull();
+      expect(p.manualUrl).toBeNull();
     });
   });
 });
