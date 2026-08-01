@@ -7750,7 +7750,44 @@ sem edição de código-fonte e exigindo os dois campos na tela.
   repo público `war-room-releases` e publicar a `1.0.2` (setup.exe + zip +
   `SHA256SUMS.txt`), depois apontar o `downloadUrl` do produto para
   `.../releases/latest`. Depende do rebuild com a chave Ed25519 de produção —
-  pendência #5 do PLANO-piloto do war-room, fora deste repo.
+  pendência #5 do PLANO-piloto do war-room, fora deste repo. **Investigado em
+  2026-08-01, e o bloqueio real é outro** — ver abaixo.
+
+### O checklist operacional destravou um achado maior: produção não assina licença
+
+Ao preparar o item acima, o diagnóstico do build fechado do War Room deu em
+outro lugar.
+
+**O build não está quebrado — ele para de propósito.** O commit `d21dc48` do
+war-room esvaziou `PUB_2026_07` e pôs uma guarda em `scripts/build-closed.mjs`
+que falha em ~1 s se ninguém colou a pública de produção. É a guarda funcionando:
+sem ela, um build fechado sairia rejeitando **toda** licença legítima, e o
+comprador veria *"assinatura inválida"* — indistinguível, na máquina dele, de
+licença adulterada.
+
+**O que falta é um dado que nunca existiu.** Listadas as 35 variáveis do serviço
+`@proplan/api` no Railway (ambiente `production`): **`LICENSING_SIGNING_KEY` e
+`LICENSING_SIGNING_KID` não estão lá.** O par Ed25519 do `DEPLOY.md` §3.4 nunca
+foi gerado. Faltam também `RESEND_API_KEY` e `MAIL_FROM`.
+
+**A consequência é maior que o build travado:** hoje, em produção, o `/activate`
+responde **503** e nenhuma licença ativa — todo o MVP4 (fatias 25–31) está
+entregue e inoperante no ambiente real.
+
+**O mecanismo da Fatia 25 pegou.** `signingConfigured: false` avisa na tela antes
+de alguém emitir uma chave que não ativaria (`LicensesPage.tsx`). O aviso estava
+lá e ninguém agiu sobre ele — o que vale registrar é que a detecção funcionou; o
+que faltou foi o passo operacional.
+
+**Não é trabalho do Code.** Gerar o par, pôr as variáveis no Railway e derivar a
+pública para o War Room passa por credencial de produção — a privada não entra
+neste repo nem no transcript. Item próprio no `STATUS.md` → Backlog, com o
+procedimento no `DEPLOY.md` §3.4.
+
+**Uma nota de ordem que só passa a valer na 1ª venda:** publicar o cliente com a
+pública **antes** de trocar a chave no servidor. Hoje o risco é zero porque não
+há binário fechado distribuído; a partir do primeiro comprador, inverter os
+passos emite arquivos que o cliente instalado não sabe verificar.
 - **Dogfooding do e-mail com venda real**: mesmo gatilho que as fatias 28 e 29
   esperam. O `POST /licenses` do admin **não serve** — só o caminho do webhook
   monta este e-mail.
