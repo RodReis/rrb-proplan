@@ -1930,6 +1930,101 @@ export function publishLicRelease(id: string): Promise<LicReleaseView> {
   return request(`/licensing/releases/${id}/publish`, { method: 'POST' });
 }
 
+// === SPEC-043 — relatos de erro do app licenciado. ===
+
+export type LicErrorStatus = 'NEW' | 'TRIAGED' | 'RESOLVED';
+
+/**
+ * Uma linha da lista. **Sem `stack` nem `sessionTail`** — são os campos grandes,
+ * e `sessionTail` é o que carrega o risco de privacidade aceito pelo PI. Quem
+ * precisa deles abre o item.
+ */
+export interface LicErrorReportView {
+  id: string;
+  message: string;
+  appVersion: string;
+  os: string;
+  source: 'CRASH' | 'MANUAL';
+  status: LicErrorStatus;
+  occurredAt: string;
+  receivedAt: string;
+  licenseId: string;
+}
+
+/** Agrupamento por mensagem — *"qual erro acontece mais?"*. */
+export interface LicErrorGroupView {
+  message: string;
+  count: number;
+  lastReceivedAt: string;
+}
+
+/**
+ * O detalhe, com **o e-mail do comprador correlacionado pela licença**.
+ *
+ * `license.customerEmail` é quem comprou (vem do JOIN, o app nunca o mandou);
+ * `contactEmail` é quem digitou um e-mail para retorno no relato manual. Podem
+ * ser pessoas diferentes — a tela mostra os dois separados de propósito.
+ */
+export interface LicErrorReportDetail extends LicErrorReportView {
+  stack: string | null;
+  sessionTail: unknown;
+  userNote: string | null;
+  contactEmail: string | null;
+  license: {
+    id: string;
+    customerEmail: string;
+    customerName: string | null;
+    status: string;
+    edition: { slug: string; product: { id: string; name: string } };
+  };
+}
+
+export interface LicErrorFilters {
+  productId?: string;
+  appVersion?: string;
+  status?: string;
+}
+
+function errorReportQuery(filtros: LicErrorFilters): string {
+  const params = new URLSearchParams();
+  if (filtros.productId) params.set('productId', filtros.productId);
+  if (filtros.appVersion) params.set('appVersion', filtros.appVersion);
+  if (filtros.status) params.set('status', filtros.status);
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+export function listLicErrorReports(
+  filtros: LicErrorFilters = {},
+): Promise<LicErrorReportView[]> {
+  return request(`/licensing/error-reports${errorReportQuery(filtros)}`);
+}
+
+export function listLicErrorGroups(
+  filtros: LicErrorFilters = {},
+): Promise<LicErrorGroupView[]> {
+  return request(`/licensing/error-reports/groups${errorReportQuery(filtros)}`);
+}
+
+export function getLicErrorReport(id: string): Promise<LicErrorReportDetail> {
+  return request(`/licensing/error-reports/${id}`);
+}
+
+export function setLicErrorReportStatus(
+  id: string,
+  status: LicErrorStatus,
+): Promise<{ id: string; status: LicErrorStatus }> {
+  return request(`/licensing/error-reports/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+/** Apaga relatos com mais de 90 dias. Botão, porque não há agendador no repo. */
+export function purgeLicErrorReports(): Promise<{ removed: number }> {
+  return request('/licensing/error-reports/purge', { method: 'POST' });
+}
+
 export function createLicEdition(
   productId: string,
   input: {

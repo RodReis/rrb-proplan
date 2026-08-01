@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  HttpCode,
   HttpException,
   HttpStatus,
   Param,
@@ -21,6 +22,10 @@ import {
   type ReleaseCheckInput,
   type ReleaseDownloadInput,
 } from '../application/license-release.service';
+import {
+  ErrorReportService,
+  type ErrorReportInput,
+} from '../application/error-report.service';
 import { WebhookIntakeService } from '../application/webhook-intake.service';
 import { hashKey } from '../domain/license-key';
 
@@ -38,6 +43,14 @@ const IP_LIMIT = 10;
  * retry — e o laço de retry é justamente o que não deve passar despercebido.
  */
 const KEY_LIMIT = 5;
+/**
+ * Relato de erro tem janela própria (SPEC-043 §Escopo), e mais folgada: um app
+ * quebrando em laço manda vários relatos em segundos, e recusá-los pelo teto das
+ * outras rotas descartaria justamente a evidência do bug mais grave — o que
+ * repete. Continua sendo teto: 30/min por chave barra o cliente em loop infinito
+ * de crash, que encheria a tabela sem acrescentar informação nenhuma.
+ */
+const ERROR_KEY_LIMIT = 30;
 const RATE_WINDOW_MS = 60_000;
 /** Poda o mapa a cada 5 min — ver `prune` no limitador. */
 const PRUNE_INTERVAL_MS = 5 * 60_000;
@@ -63,16 +76,22 @@ const PRUNE_INTERVAL_MS = 5 * 60_000;
 export class LicensingPublicController {
   private readonly ipLimiter = new SlidingWindowRateLimiter(IP_LIMIT, RATE_WINDOW_MS);
   private readonly keyLimiter = new SlidingWindowRateLimiter(KEY_LIMIT, RATE_WINDOW_MS);
+  private readonly errorLimiter = new SlidingWindowRateLimiter(
+    ERROR_KEY_LIMIT,
+    RATE_WINDOW_MS,
+  );
   private readonly pruneTimer: NodeJS.Timeout;
 
   constructor(
     private readonly activation: LicenseActivationService,
     private readonly webhook: WebhookIntakeService,
     private readonly releases: LicenseReleaseService,
+    private readonly errorReports: ErrorReportService,
   ) {
     this.pruneTimer = setInterval(() => {
       this.ipLimiter.prune();
       this.keyLimiter.prune();
+      this.errorLimiter.prune();
     }, PRUNE_INTERVAL_MS);
     // `unref`: um timer ativo seguraria o processo vivo no shutdown e travaria
     // os testes que sobem o módulo.
@@ -161,6 +180,36 @@ export class LicensingPublicController {
   async releasesDownload(@Body() body: ReleaseDownloadInput, @Req() req: Request) {
     this.enforce(body, req);
     return this.releases.download(body ?? {});
+  }
+
+  /**
+   * Relato de erro do app licenciado (SPEC-043 §Contratos) — `202 { received:
+   * true }`.
+   *
+   * `401` para chave inexistente **ou revogada**, sem distinguir: quem reporta
+   * um erro não tem nada a fazer com a diferença, e distinguir só serviria a
+   * quem sonda. `429` no limite próprio da rota.
+   *
+   * **Nunca `413`.** Payload acima do cap é truncado e aceito (§Critérios de
+   * aceite) — recusar por tamanho faria o crash mais interessante, o de stack
+   * fundo e sessão longa, ser o único que não chega.
+   *
+   * **Rate limit por IP compartilhado, por chave dedicado.** O teto por IP
+   * continua sendo o das outras rotas — é a porta da varredura, e ela não muda
+   * de natureza por a rota ser nova. O teto por chave é próprio e mais alto: um
+   * app em laço de crash manda vários relatos em segundos, e barrá-lo em 5/min
+   * descartaria a evidência do bug que mais repete.
+   */
+  @Post('errors')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async errors(@Body() body: ErrorReportInput, @Req() req: Request) {
+    const ip = req.ip ?? req.socket?.remoteAddress ?? 'desconhecido';
+    this.checar(this.ipLimiter, `ip:${ip}`);
+
+    const bruto = typeof body?.licenseKey === 'string' ? body.licenseKey.trim() : '';
+    if (bruto) this.checar(this.errorLimiter, `key:${hashKey(bruto)}`);
+
+    return this.errorReports.receive(body ?? {});
   }
 
   /**

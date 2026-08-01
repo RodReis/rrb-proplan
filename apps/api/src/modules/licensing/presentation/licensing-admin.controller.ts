@@ -35,6 +35,7 @@ import {
   type CreateProductInput,
 } from '../application/lic-catalog.service';
 import { LicenseSigningService } from '../application/license-signing.service';
+import { ErrorReportAdminService } from '../application/error-report-admin.service';
 import {
   LicensingOpsService,
   type OfferMappingInput,
@@ -120,6 +121,7 @@ export class LicensingAdminController {
     private readonly privacy: LicensePrivacyService,
     private readonly summaries: LicensingSummaryService,
     private readonly releases: ReleaseAdminService,
+    private readonly errorReports: ErrorReportAdminService,
   ) {}
 
   /**
@@ -589,5 +591,68 @@ export class LicensingAdminController {
   @Post('releases/:id/publish')
   publishRelease(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.releases.publish(req.tenantId!, id);
+  }
+
+  /**
+   * Relatos de erro do app (SPEC-043), com filtros por produto, versão e status.
+   *
+   * Sem `stack` nem `sessionTail`: são os campos grandes, e `sessionTail` é o
+   * que carrega o risco de privacidade aceito pelo PI. Uma lista que os
+   * trouxesse os exporia a cada abertura da aba, para todo relato — quem precisa
+   * abre o item.
+   */
+  @Get('error-reports')
+  listErrorReports(
+    @Query('productId') productId?: string,
+    @Query('appVersion') appVersion?: string,
+    @Query('status') status?: string,
+    @Query('take') take?: string,
+  ) {
+    return this.errorReports.list({
+      productId,
+      appVersion,
+      status,
+      take: take ? Number(take) : undefined,
+    });
+  }
+
+  /** Agrupamento por mensagem com contagem — *"qual erro acontece mais?"*. */
+  @Get('error-reports/groups')
+  errorReportGroups(
+    @Query('productId') productId?: string,
+    @Query('appVersion') appVersion?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.errorReports.groups({ productId, appVersion, status });
+  }
+
+  /**
+   * Um relato, com stack, sessionTail e **o e-mail do comprador correlacionado**
+   * pela licença (§Critérios de aceite).
+   */
+  @Get('error-reports/:id')
+  errorReport(@Param('id') id: string) {
+    return this.errorReports.detail(id);
+  }
+
+  /** Triagem: `new` → `triaged` → `resolved`. */
+  @Patch('error-reports/:id/status')
+  setErrorReportStatus(@Param('id') id: string, @Body() body: { status?: unknown }) {
+    return this.errorReports.setStatus(id, body?.status);
+  }
+
+  /**
+   * Apaga relatos com mais de 90 dias (§Escopo).
+   *
+   * **Botão, porque o repo não tem agendador** — mesma situação do
+   * `LicenseExpirySweepService` da SPEC-038, e a escolha de um é decisão de
+   * infra que nenhuma spec tomou. A diferença está anotada no `STATUS.md`: um
+   * sweep parado só desatualiza a lista, um purge parado é retenção de LGPD não
+   * cumprida.
+   */
+  @Post('error-reports/purge')
+  async purgeErrorReports(@Req() req: AuthenticatedRequest) {
+    const removed = await this.errorReports.purge(req.tenantId!);
+    return { removed };
   }
 }

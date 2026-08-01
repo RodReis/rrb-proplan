@@ -6,6 +6,7 @@ import type { LicensePrivacyService } from '../application/license-privacy.servi
 import type { LicenseSigningService } from '../application/license-signing.service';
 import type { LicensingOpsService } from '../application/licensing-ops.service';
 import type { LicensingSummaryService } from '../application/licensing-summary.service';
+import type { ErrorReportAdminService } from '../application/error-report-admin.service';
 import type { ReleaseAdminService } from '../application/release-admin.service';
 import type { SourceAdminService } from '../application/source-admin.service';
 import { LicensingAdminController } from './licensing-admin.controller';
@@ -49,6 +50,10 @@ function montar() {
     // nenhum caso deste arquivo chama rota de release; quem as cobre é o
     // `release-admin.service.spec.ts`.
     {} as ReleaseAdminService,
+    // Mesma situação da linha acima, agora com a SPEC-043: nenhum caso deste
+    // arquivo chama rota de relato de erro — quem as cobre é o
+    // `error-report-admin.service.spec.ts` e o int-spec contra o Postgres.
+    {} as ErrorReportAdminService,
   );
 
   return { controller, licenses, privacy, summaries };
