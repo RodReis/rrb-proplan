@@ -93,7 +93,10 @@ O ProPlan lê repositórios por **GitHub App** (ADR-015 / SPEC-008), não OAuth 
 4. **Callback URL**: `http://localhost:3311/auth/github/callback`. Marque **Request user authorization (OAuth) during installation** e **Expire user authorization tokens** (habilita o refresh token).
 4b. **Setup URL (optional)**: `http://localhost:5180` (marque **Redirect on update**). Sem ela, o GitHub deixa o usuário parado na tela dele após instalar, em vez de devolvê-lo ao ProPlan.
 5. **Webhook**: **desmarque Active** (ADR-009 — ambiente 100% local, sem túnel).
-6. **Permissions → Repository**: `Contents` **Read & write**, `Issues` **Read & write**, `Metadata` **Read-only**, `Actions` **Read-only**. Nada além.
+6. **Permissions**:
+   - **Repository**: `Contents` **Read & write**, `Issues` **Read & write**, `Actions` **Read-only** — mais `Metadata` **Read-only**, que o GitHub marca como *mandatory* e não se desmarca.
+   - **Account**: `Email addresses` **Read-only**. Ao contrário das de Repository, permissão de Account é concedida **por usuário no fluxo de autorização** (viaja no user-to-server token), não pela instalação — por isso ela não amplia o que o `proplan[bot]` alcança.
+   - **Nada além.** Alterar esta lista depois obriga **cada instalação existente** a aceitar as novas permissões, então acrescentar aqui não é gratuito.
 7. **Where can this GitHub App be installed?**: *Only on this account*.
 8. Criar. Na página do App:
    - anote **App ID** → `GITHUB_APP_ID`;
