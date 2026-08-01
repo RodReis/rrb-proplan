@@ -1764,6 +1764,16 @@ export interface LicProductView {
    * operador só descobriria isso no teste de conexão, depois de cadastrar o PAT.
    */
   sourceRepo: string | null;
+  /**
+   * URL pública do instalador, ou `null` (SPEC-042).
+   *
+   * `null` é a causa de o e-mail da chave sair sem o passo a passo — sem este
+   * campo na tela, o operador só descobriria pela reclamação de quem comprou e
+   * não achou de onde baixar.
+   */
+  downloadUrl: string | null;
+  /** URL pública do manual, ou `null` (SPEC-042). */
+  manualUrl: string | null;
   editions: LicEditionView[];
 }
 
@@ -1825,18 +1835,25 @@ export function createLicProduct(input: {
 }
 
 /**
- * Define ou limpa o repositório de código-fonte do produto (FIX #212).
+ * Edita os campos configuráveis do produto: repositório de código-fonte
+ * (FIX #212), link de download e link do manual (SPEC-042).
  *
- * String vazia limpa (`null` no banco): desconfigurar é ação legítima — o produto
- * deixou de vender código-fonte — e não pode exigir SQL.
+ * **Mande só o que mudou.** Campo ausente do corpo fica como está no servidor —
+ * é o que permite cada campo da tela ter o próprio botão sem que salvar um
+ * apague o outro. String vazia limpa (`null` no banco): desconfigurar é ação
+ * legítima e não pode exigir SQL.
  */
-export function updateProductSourceRepo(
+export function updateLicProduct(
   productId: string,
-  sourceRepo: string,
+  campos: {
+    sourceRepo?: string;
+    downloadUrl?: string;
+    manualUrl?: string;
+  },
 ): Promise<LicProductView> {
-  return request(`/licensing/products/${productId}/source-repo`, {
+  return request(`/licensing/products/${productId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ sourceRepo }),
+    body: JSON.stringify(campos),
   });
 }
 

@@ -8,7 +8,7 @@ import {
   listOfferMappings,
   listSeenOffers,
   updateLicEditionLimits,
-  updateProductSourceRepo,
+  updateLicProduct,
   type LicCatalogResponse,
   type LicEditionView,
   type LicProductView,
@@ -222,6 +222,11 @@ function ProdutoCard({
         />
       )}
 
+      {/* Os links que o e-mail da chave entrega (SPEC-042). Fora do gate
+          `vendeSource` de propósito: todo produto vendido precisa dizer onde se
+          baixa o que foi comprado, tenha ou não edição com código-fonte. */}
+      <UrlsDoEmailCampos produto={produto} onMudou={onMudou} />
+
       {/* O repositório de código-fonte (SPEC-039, exposto no FIX #212). Só
           aparece quando alguma edição vende source: um produto sem
           `grantsSourceAccess` nunca precisa dele, e um campo a mais em toda
@@ -305,6 +310,134 @@ function EdicaoLinha({
 }
 
 /**
+ * Os links que o e-mail da chave entrega junto da compra (SPEC-042).
+ *
+ * **Aparece para todo produto**, e não só para quem vende código-fonte: a
+ * primeira instalação é problema de qualquer comprador. Enquanto o campo está
+ * vazio, o e-mail sai só com a chave e quem pagou depende da área de membros da
+ * plataforma para descobrir de onde baixa — que é a dependência que esta fatia
+ * existe para cortar.
+ *
+ * **Cada campo salva sozinho.** É o que o `PATCH` do produto permite (ausente
+ * não é tocado) e o que evita o botão único que exigiria ler os dois campos para
+ * mexer num.
+ */
+function UrlsDoEmailCampos({
+  produto,
+  onMudou,
+}: {
+  produto: LicProductView;
+  onMudou: () => void;
+}) {
+  const semNenhuma = !produto.downloadUrl && !produto.manualUrl;
+
+  return (
+    <div className="mt-3 border-t border-border2/60 pt-3">
+      <p className="m-0 mb-2 text-[11.5px] text-body2">
+        Links que o e-mail da chave entrega.{' '}
+        {semNenhuma ? (
+          <strong className="text-text2">
+            Sem eles, o comprador recebe a chave sem saber onde baixar.
+          </strong>
+        ) : (
+          <>Vazio some do e-mail — nada de link quebrado.</>
+        )}
+      </p>
+      <div className="grid gap-2">
+        <UrlCampo
+          produtoId={produto.id}
+          campo="downloadUrl"
+          rotulo={`Link de download de ${produto.name}`}
+          botao="Salvar download"
+          placeholder="https://github.com/dono/repo/releases/latest"
+          atual={produto.downloadUrl}
+          onMudou={onMudou}
+          mensagem={(v) =>
+            v
+              ? 'Link de download salvo — o e-mail passa a levar o passo a passo'
+              : 'Link de download removido — o e-mail volta a sair só com a chave'
+          }
+        />
+        <UrlCampo
+          produtoId={produto.id}
+          campo="manualUrl"
+          rotulo={`Link do manual de ${produto.name}`}
+          botao="Salvar manual"
+          placeholder="https://exemplo.com/manual"
+          atual={produto.manualUrl}
+          onMudou={onMudou}
+          mensagem={(v) =>
+            v
+              ? 'Link do manual salvo'
+              : 'Link do manual removido — o e-mail sai sem ele'
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function UrlCampo({
+  produtoId,
+  campo,
+  rotulo,
+  botao,
+  placeholder,
+  atual,
+  onMudou,
+  mensagem,
+}: {
+  produtoId: string;
+  campo: 'downloadUrl' | 'manualUrl';
+  rotulo: string;
+  botao: string;
+  placeholder: string;
+  atual: string | null;
+  onMudou: () => void;
+  mensagem: (valor: string) => string;
+}) {
+  const [valor, setValor] = useState(atual ?? '');
+  const [ocupado, setOcupado] = useState(false);
+
+  async function salvar() {
+    setOcupado(true);
+    try {
+      // Só este campo no corpo: o `PATCH` deixa os outros como estão, e mandar
+      // os dois faria salvar um sobrescrever o que o operador acabou de digitar
+      // no outro sem ter salvo.
+      await updateLicProduct(produtoId, { [campo]: valor.trim() });
+      onMudou();
+      toast.success(mensagem(valor.trim()));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível salvar');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-2 min-[720px]:grid-cols-[1fr_auto]">
+      <input
+        type="url"
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        placeholder={placeholder}
+        aria-label={rotulo}
+        disabled={ocupado}
+        className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12px] text-text transition-colors focus:border-accentBorder"
+      />
+      <button
+        onClick={salvar}
+        disabled={ocupado || valor.trim() === (atual ?? '')}
+        className="rounded-[9px] border border-border2 px-3 py-2 text-[12px] text-text2 transition-colors hover:border-hoverb hover:text-text disabled:opacity-40"
+      >
+        {botao}
+      </button>
+    </div>
+  );
+}
+
+/**
  * O repositório de código-fonte do produto (FIX #212).
  *
  * Sem ele preenchido o convite não tem destino, e o operador só descobriria isso
@@ -323,7 +456,7 @@ function SourceRepoCampo({
   async function salvar() {
     setOcupado(true);
     try {
-      await updateProductSourceRepo(produto.id, valor.trim());
+      await updateLicProduct(produto.id, { sourceRepo: valor.trim() });
       onMudou();
       toast.success(
         valor.trim()

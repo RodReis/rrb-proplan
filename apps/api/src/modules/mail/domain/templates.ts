@@ -40,6 +40,17 @@ export interface LicenseKeyData {
   productName: string;
   /** Nome da edição ("Com código-fonte"). */
   editionName: string;
+  /**
+   * URL pública do instalador, ou `null` quando o produto não a configurou
+   * (SPEC-042).
+   *
+   * `null` **não** é caso de erro: o e-mail sai sem os passos, exatamente como
+   * saía antes desta spec. É assim que um produto entregue por outro canal
+   * continua funcionando sem ninguém cadastrar nada.
+   */
+  downloadUrl?: string | null;
+  /** URL pública do manual, ou `null` (SPEC-042). */
+  manualUrl?: string | null;
 }
 
 export interface LicenseRevokedData {
@@ -73,10 +84,21 @@ export interface SourceUsernameConfirmedData {
  * `MailDelivery` guarda só o nome do template, nunca o corpo. É por isso que
  * reenviar este e-mail é impossível: reemitir é o caminho, e ele revoga a
  * anterior.
+ *
+ * **v2 (SPEC-042): o e-mail entrega a compra, não só a chave.** Antes ele dizia
+ * *"cole a chave na tela de ativação"* sem dizer de onde vem o aplicativo — quem
+ * comprava dependia da área de membros da plataforma para a primeira instalação.
+ * Com `downloadUrl` configurado, o e-mail passa a carregar os três passos.
+ *
+ * **Os blocos são condicionais, e é o ponto da spec.** Produto sem URL manda o
+ * e-mail idêntico ao de antes: nenhum link quebrado, nenhum passo apontando para
+ * lugar nenhum, nenhum texto órfão sobre um download que este e-mail não ofereceu.
  */
 export function licenseKey(data: LicenseKeyData): RenderedMail {
   const saudacao = data.customerName ? `Olá, ${data.customerName}!` : 'Olá!';
   const produto = `${data.productName} — ${data.editionName}`;
+  const download = data.downloadUrl ?? null;
+  const manual = data.manualUrl ?? null;
 
   return {
     subject: `Sua chave do ${data.productName}`,
@@ -92,7 +114,16 @@ export function licenseKey(data: LicenseKeyData): RenderedMail {
       // de suporte de quem apagou o e-mail sem copiar a chave.
       'Guarde esta mensagem: por segurança, não armazenamos a chave e não conseguimos reenviá-la. Se você perdê-la, precisaremos emitir uma nova.',
       '',
-      'Para ativar, cole a chave na tela de ativação do aplicativo.',
+      ...(download
+        ? [
+            'Como instalar:',
+            '',
+            `1. Baixe o instalador: ${download}`,
+            '2. Execute o instalador. O Windows vai exibir um aviso azul do SmartScreen ("O Windows protegeu o computador"): clique em "Mais informações" e depois em "Executar assim mesmo". O aviso aparece porque o instalador ainda não tem assinatura digital paga, não porque haja algo errado com o arquivo.',
+            `3. Abra o ${data.productName} e cole a chave acima na tela de ativação.`,
+          ]
+        : ['Para ativar, cole a chave na tela de ativação do aplicativo.']),
+      ...(manual ? ['', `Manual do ${data.productName}: ${manual}`] : []),
     ].join('\n'),
     html: envelope([
       `<p>${esc(saudacao)}</p>`,
@@ -103,7 +134,31 @@ export function licenseKey(data: LicenseKeyData): RenderedMail {
         `background:#f4f4f5;padding:16px;border-radius:6px;">${esc(data.licenseKey)}</p>`,
       `<p><strong>Guarde esta mensagem.</strong> Por segurança, não armazenamos a ` +
         `chave e não conseguimos reenviá-la. Se você perdê-la, precisaremos emitir uma nova.</p>`,
-      `<p>Para ativar, cole a chave na tela de ativação do aplicativo.</p>`,
+      ...(download
+        ? [
+            `<p><strong>Como instalar</strong></p>`,
+            `<ol style="padding-left:20px;">`,
+            // `href` escapado como qualquer outro valor: a URL é configurada pelo
+            // operador, mas passa pelo mesmo caminho de um nome vindo da plataforma
+            // — e aspas no meio do atributo quebrariam a tag, não o texto.
+            `<li><a href="${esc(download)}">Baixe o instalador</a>.</li>`,
+            // O aviso do SmartScreen antes do passo de ativação, e não num rodapé:
+            // ele aparece no meio da instalação, e quem já fechou a janela achando
+            // que é vírus não chega ao passo 3.
+            `<li>Execute o instalador. O Windows vai exibir um aviso azul do ` +
+              `<strong>SmartScreen</strong> ("O Windows protegeu o computador"): clique em ` +
+              `<strong>Mais informações</strong> e depois em <strong>Executar assim mesmo</strong>. ` +
+              `O aviso aparece porque o instalador ainda não tem assinatura digital paga, ` +
+              `não porque haja algo errado com o arquivo.</li>`,
+            `<li>Abra o ${esc(data.productName)} e cole a chave acima na tela de ativação.</li>`,
+            `</ol>`,
+          ]
+        : [`<p>Para ativar, cole a chave na tela de ativação do aplicativo.</p>`]),
+      ...(manual
+        ? [
+            `<p><a href="${esc(manual)}">Manual do ${esc(data.productName)}</a></p>`,
+          ]
+        : []),
     ]),
   };
 }

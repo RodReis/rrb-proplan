@@ -40,7 +40,15 @@ describe('WebhookProcessorService', () => {
     // A coluna que decide o agendamento do convite (SPEC-039). Era o slug até o
     // PR-1 daquela fatia.
     grantsSourceAccess: false,
-    product: { keyPrefix: 'WR', name: 'War Room' },
+    product: {
+      keyPrefix: 'WR',
+      name: 'War Room',
+      // SPEC-042: o padrão do fixture é NÃO configurado — é o estado de todo
+      // produto antes de alguém preencher a tela, e o que o e-mail antigo já
+      // esperava.
+      downloadUrl: null,
+      manualUrl: null,
+    },
   };
 
   /** A edição que concede código-fonte — nome diferente de `source` de propósito. */
@@ -112,6 +120,37 @@ describe('WebhookProcessorService', () => {
       expect(email.template).toBe('license_key');
       expect(email.data.licenseKey).toMatch(/^WR-/);
       expect(email.licenseId).toBe('lic_nova');
+    });
+
+    it('passa as URLs do produto ao e-mail (SPEC-042)', async () => {
+      const DOWNLOAD = 'https://github.com/RodReis/war-room-releases/releases/latest';
+      const MANUAL = 'https://war-room.rrbtrading.com.br/manual';
+      findFirstMapeamento.mockResolvedValue({
+        edition: {
+          ...edicao,
+          product: { ...edicao.product, downloadUrl: DOWNLOAD, manualUrl: MANUAL },
+        },
+      });
+
+      await service.process(evento(compra), 't1');
+
+      // Sem estes dois campos o template renderiza a variante sem passos — e o
+      // e-mail sairia igual ao antigo com as URLs cadastradas e ignoradas, que é
+      // uma falha muda: ninguém vê, exceto quem comprou.
+      const { data } = send.mock.calls[0][0];
+      expect(data.downloadUrl).toBe(DOWNLOAD);
+      expect(data.manualUrl).toBe(MANUAL);
+    });
+
+    it('produto sem URLs manda `null`, não `undefined`', async () => {
+      await service.process(evento(compra), 't1');
+
+      // `undefined` some no `JSON.stringify` do job no Redis. O template trata os
+      // dois igual hoje, mas o dado que chega ao worker precisa dizer
+      // explicitamente "não configurado" em vez de não dizer nada.
+      const { data } = send.mock.calls[0][0];
+      expect(data.downloadUrl).toBeNull();
+      expect(data.manualUrl).toBeNull();
     });
 
     it('carimba o evento como PROCESSED com a licença', async () => {

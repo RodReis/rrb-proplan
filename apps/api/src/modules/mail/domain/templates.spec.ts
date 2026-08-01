@@ -65,6 +65,106 @@ describe('template `license_key`', () => {
     // vai buscar meses depois, quando formatar o PC.
     expect(licenseKey(base).subject).toContain('War Room');
   });
+
+  /**
+   * SPEC-042 — o e-mail passa a entregar a compra, e não só a chave.
+   *
+   * As duas variantes são testadas porque a spec não pede um e-mail novo: pede
+   * um e-mail que **cresce quando há o que entregar** e permanece idêntico
+   * quando não há. O modo de errar é o meio-termo — bloco presente com link
+   * ausente, texto órfão sobre um download que este e-mail não ofereceu.
+   */
+  describe('com download e manual configurados (SPEC-042)', () => {
+    const DOWNLOAD = 'https://github.com/RodReis/war-room-releases/releases/latest';
+    const MANUAL = 'https://war-room.rrbtrading.com.br/manual';
+    const comUrls = { ...base, downloadUrl: DOWNLOAD, manualUrl: MANUAL };
+
+    it('leva os dois links nas duas versões', () => {
+      const { html, text } = licenseKey(comUrls);
+
+      expect(html).toContain(DOWNLOAD);
+      expect(text).toContain(DOWNLOAD);
+      expect(html).toContain(MANUAL);
+      expect(text).toContain(MANUAL);
+    });
+
+    it('avisa do SmartScreen, nomeando os dois botões', () => {
+      // O aviso existe para quem já está com a janela azul na frente. Sem os
+      // nomes exatos dos botões, o texto explica o susto sem dizer o que clicar
+      // — e quem fecha a janela achando que é vírus não instala o que comprou.
+      const { html, text } = licenseKey(comUrls);
+
+      for (const corpo of [html, text]) {
+        expect(corpo).toMatch(/SmartScreen/);
+        expect(corpo).toMatch(/Mais informações/);
+        expect(corpo).toMatch(/Executar assim mesmo/);
+      }
+    });
+
+    it('explica que o aviso é ausência de assinatura, não problema no arquivo', () => {
+      // Sem esta frase o e-mail manda ignorar um alerta de segurança sem dizer
+      // por quê — que é exatamente o que um e-mail de golpe faz.
+      const { text } = licenseKey(comUrls);
+      expect(text).toMatch(/assinatura digital/i);
+    });
+
+    it('mantém a chave e o aviso de não-reenvio', () => {
+      // Os blocos novos acrescentam; não substituem. Um passo a passo que
+      // empurrasse a chave para fora do e-mail trocaria um problema por outro.
+      const { html, text } = licenseKey(comUrls);
+
+      expect(html).toContain(base.licenseKey);
+      expect(text).toMatch(/não conseguimos reenviá-la/i);
+    });
+
+    it('escapa a URL no `href`', () => {
+      // O valor é do operador, mas chega pelo mesmo caminho de um nome vindo da
+      // plataforma: aspas no meio do atributo quebrariam a tag, não o texto.
+      const { html } = licenseKey({
+        ...comUrls,
+        downloadUrl: 'https://exemplo.com/a"onmouseover="alert(1)',
+      });
+
+      expect(html).not.toContain('onmouseover="alert(1)"');
+      expect(html).toContain('&quot;');
+    });
+  });
+
+  describe('sem URLs configuradas (SPEC-042)', () => {
+    it('sai idêntico ao e-mail anterior — sem bloco novo nem texto órfão', () => {
+      // O critério da spec: produto sem URL não vê nada disso. Um passo a passo
+      // sem link, ou um aviso de SmartScreen sobre um download que este e-mail
+      // não ofereceu, é pior que a ausência.
+      const { html, text } = licenseKey(base);
+
+      for (const corpo of [html, text]) {
+        expect(corpo).not.toMatch(/SmartScreen/);
+        expect(corpo).not.toMatch(/Como instalar/);
+        expect(corpo).not.toMatch(/Manual do/);
+        expect(corpo).not.toContain('href="null"');
+        expect(corpo).not.toContain('undefined');
+      }
+      // E a frase de ativação que existia antes continua lá — é ela que diz o
+      // que fazer com a chave quando não há passo a passo.
+      expect(text).toMatch(/tela de ativação/);
+    });
+
+    it.each([
+      ['`null` explícito', null],
+      ['string vazia', ''],
+    ])('trata %s como ausente', (_rotulo, valor) => {
+      // `''` não deve nascer do banco (o service grava `null`), mas se nascer,
+      // um `href=""` levaria o comprador de volta à própria caixa de entrada.
+      const { html } = licenseKey({
+        ...base,
+        downloadUrl: valor,
+        manualUrl: valor,
+      });
+
+      expect(html).not.toMatch(/SmartScreen/);
+      expect(html).not.toContain('href=""');
+    });
+  });
 });
 
 describe('template `license_revoked`', () => {

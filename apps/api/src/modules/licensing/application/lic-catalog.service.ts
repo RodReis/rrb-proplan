@@ -57,7 +57,31 @@ export interface ProductView {
    * operador só descobriria pelo teste de conexão.
    */
   sourceRepo: string | null;
+  /**
+   * URL pública de download do instalador, ou `null` (SPEC-042).
+   *
+   * Sai na listagem pelo mesmo motivo do `sourceRepo`: a tela edita o valor
+   * atual, e `null` aqui é a causa de o e-mail da chave sair sem o link — algo
+   * que, sem isto, só se descobriria pela reclamação de quem comprou.
+   */
+  downloadUrl: string | null;
+  /** URL pública do manual, ou `null` (SPEC-042). */
+  manualUrl: string | null;
   editions: EditionView[];
+}
+
+/**
+ * Campos editáveis do produto depois de criado (SPEC-042).
+ *
+ * **Ausente ≠ vazio**, e a distinção é o contrato desta rota: campo ausente não
+ * é tocado (a tela salva um campo por vez), string vazia limpa para `null`.
+ * Confundir os dois tornaria impossível desconfigurar pela interface — o mesmo
+ * defeito que o FIX #214 corrigiu no `grantsSourceAccess`.
+ */
+export interface UpdateProductInput {
+  sourceRepo?: unknown;
+  downloadUrl?: unknown;
+  manualUrl?: unknown;
 }
 
 export interface CreateProductInput {
@@ -126,6 +150,8 @@ export class LicCatalogService {
       name: p.name,
       keyPrefix: p.keyPrefix,
       sourceRepo: p.sourceRepo,
+      downloadUrl: p.downloadUrl,
+      manualUrl: p.manualUrl,
       editions: p.editions.map((e) => ({
         id: e.id,
         slug: e.slug,
@@ -165,7 +191,13 @@ export class LicCatalogService {
       const produto = await this.prisma.licProduct.create({
         data: { tenantId, slug, name, keyPrefix },
       });
-      return { ...produto, sourceRepo: produto.sourceRepo, editions: [] };
+      return {
+        ...produto,
+        sourceRepo: produto.sourceRepo,
+        downloadUrl: produto.downloadUrl,
+        manualUrl: produto.manualUrl,
+        editions: [],
+      };
     } catch (erro) {
       // O unique `(tenant_id, slug)` é quem decide, não uma consulta prévia:
       // duas criações simultâneas passariam as duas por um `findFirst`.
@@ -255,29 +287,33 @@ export class LicCatalogService {
    * viva. Trocar qualquer um dos dois é criar edição nova.
    */
   /**
-   * Define (ou limpa) o repositório de código-fonte do produto — FIX #212.
+   * Edita os campos configuráveis do produto — `sourceRepo` (FIX #212),
+   * `downloadUrl` e `manualUrl` (SPEC-042).
    *
-   * A coluna nasceu no PR-1 da SPEC-039 e **não tinha caminho pela interface**:
-   * sem ela preenchida, o convite não tem destino, e o operador só descobria isso
-   * no teste de conexão — depois de já ter cadastrado o PAT.
+   * **Uma rota para os três, e não uma por coluna.** A `/source-repo` nasceu
+   * sozinha porque era a única; repeti-la por campo novo é o caminho que já
+   * produziu três achados nesta área (`sourceRepo`, `githubPat`,
+   * `grantsSourceAccess`), todos com o mesmo sintoma mudo: coluna no schema,
+   * lida pelo backend, sem caminho pela interface.
    *
-   * **Formato validado aqui, e não só no GitHub.** `owner/name` é o que a API
-   * espera em `PUT /repos/:owner/:repo/collaborators/…`; um valor com barra a
-   * mais, ou uma URL colada inteira (`https://github.com/o/r`), produziria um
-   * `404` no momento do convite — que a lista de pendências mostraria como
-   * *"repositório não encontrado"*, mandando o operador procurar problema de
-   * permissão num erro de digitação.
+   * **Ausente não é tocado; string vazia limpa.** A tela salva um campo por vez,
+   * então mandar só o que mudou precisa significar "não mexa no resto" — senão o
+   * primeiro save apagaria os outros dois. E limpar precisa ser possível pela
+   * interface: desconfigurar é ação legítima (o produto deixou de vender
+   * código-fonte, o download mudou de casa) e não pode exigir SQL.
    *
-   * **String vazia limpa** (`null`), e isso é deliberado: desconfigurar é uma
-   * ação legítima (o produto deixou de vender código-fonte) e não pode exigir
-   * SQL. Diferente do PAT, aqui não há segredo a perder nem entrega que passe a
-   * falhar — só o agendamento de convite, que o próprio job trata como "nada a
-   * fazer".
+   * **Formato validado aqui, e não só no destino.** Para `sourceRepo`, `owner/name`
+   * é o que a API do GitHub espera em `PUT /repos/:owner/:repo/collaborators/…`;
+   * uma URL colada inteira produziria `404` no convite, que a lista de pendências
+   * mostraria como *"repositório não encontrado"* — mandando o operador procurar
+   * problema de permissão num erro de digitação. Para as URLs, o destino é o
+   * e-mail de um comprador: um valor torto vira link quebrado na caixa de entrada
+   * de quem acabou de pagar, e ninguém avisa.
    */
-  async updateProductSourceRepo(
+  async updateProduct(
     tenantId: string,
     productId: string,
-    sourceRepo: unknown,
+    input: UpdateProductInput,
   ): Promise<ProductView> {
     const produto = await this.prisma.licProduct.findFirst({
       where: { id: productId, tenantId },
@@ -285,19 +321,25 @@ export class LicCatalogService {
     });
     if (!produto) throw new NotFoundException('Produto não encontrado');
 
-    const bruto = texto(sourceRepo);
-    const valor = bruto === '' ? null : bruto;
+    const data: Prisma.LicProductUpdateInput = {};
 
-    if (valor !== null && !REPO_RE.test(valor)) {
-      throw new UnprocessableEntityException(
-        'Repositório no formato `dono/nome` (ex.: RodReis/war-room), sem URL',
-      );
+    if (input.sourceRepo !== undefined) {
+      const valor = ouNulo(input.sourceRepo);
+      if (valor !== null && !REPO_RE.test(valor)) {
+        throw new UnprocessableEntityException(
+          'Repositório no formato `dono/nome` (ex.: RodReis/war-room), sem URL',
+        );
+      }
+      data.sourceRepo = valor;
+    }
+    if (input.downloadUrl !== undefined) {
+      data.downloadUrl = this.urlPublica(input.downloadUrl, 'download');
+    }
+    if (input.manualUrl !== undefined) {
+      data.manualUrl = this.urlPublica(input.manualUrl, 'manual');
     }
 
-    await this.prisma.licProduct.update({
-      where: { id: productId },
-      data: { sourceRepo: valor },
-    });
+    await this.prisma.licProduct.update({ where: { id: productId }, data });
 
     // Devolve a listagem do produto atualizado — a tela substitui o item inteiro,
     // e montar um `ProductView` parcial aqui duplicaria o mapeamento do `list`.
@@ -373,6 +415,40 @@ export class LicCatalogService {
     };
   }
 
+  /**
+   * URL absoluta `https`, ou `null` quando vazia (SPEC-042).
+   *
+   * **Parse, não regex** — mesmo padrão do `http-probe.ts` da ingestão: `new URL()`
+   * é quem sabe o que é uma URL, e uma regex própria seria uma segunda definição
+   * que diverge da primeira.
+   *
+   * **`https` obrigatório.** O valor vai por e-mail para um comprador: `http:`
+   * entrega o instalador por canal que qualquer intermediário reescreve, e
+   * esquemas como `javascript:` ou `data:` passariam pelo parse — `new URL()` os
+   * aceita — enquanto o cliente de e-mail os trata de formas que ninguém aqui
+   * controla. O gate é o esquema, não a lista de esquemas ruins: allowlist não
+   * envelhece com o esquema novo da próxima década.
+   */
+  private urlPublica(valor: unknown, rotulo: string): string | null {
+    const bruto = ouNulo(valor);
+    if (bruto === null) return null;
+
+    let url: URL;
+    try {
+      url = new URL(bruto);
+    } catch {
+      throw new UnprocessableEntityException(
+        `Link de ${rotulo}: informe o endereço completo, começando com https://`,
+      );
+    }
+    if (url.protocol !== 'https:') {
+      throw new UnprocessableEntityException(
+        `Link de ${rotulo} precisa ser https://`,
+      );
+    }
+    return bruto;
+  }
+
   private billingModel(valor: unknown): LicBillingModel {
     if (valor === undefined || valor === null || valor === '') return 'PERPETUAL';
     if (valor === 'PERPETUAL' || valor === 'SUBSCRIPTION') return valor;
@@ -406,4 +482,16 @@ export class LicCatalogService {
 /** `unknown` → string aparada. Entrada de rota nunca é confiável de tipo. */
 function texto(valor: unknown): string {
   return typeof valor === 'string' ? valor.trim() : '';
+}
+
+/**
+ * `unknown` → string aparada, ou `null` quando vazia.
+ *
+ * Campo opcional que o operador apagou chega como `''`, e gravar string vazia
+ * criaria um segundo jeito de dizer "não configurado" — que toda leitura teria
+ * de checar duas vezes, e alguma esqueceria.
+ */
+function ouNulo(valor: unknown): string | null {
+  const bruto = texto(valor);
+  return bruto === '' ? null : bruto;
 }

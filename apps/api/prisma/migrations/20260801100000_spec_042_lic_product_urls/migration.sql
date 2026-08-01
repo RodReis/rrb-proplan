@@ -1,0 +1,33 @@
+-- SPEC-042 — `lic_products` ganha `download_url` e `manual_url`.
+--
+-- ## Por que
+--
+-- O e-mail da chave passa a entregar a compra completa: chave, onde baixar e
+-- onde ler o manual. Hoje o comprador recebe só a chave e precisa da área de
+-- membros da plataforma para a primeira instalação — uma dependência externa
+-- no caminho crítico de quem acabou de pagar.
+--
+-- ## Por que POR PRODUTO, e não configuração global
+--
+-- Duas colunas aqui, e não duas variáveis de ambiente: o licenciamento é
+-- multi-tenant, e um tenant pode vender mais de um produto. Env var seria uma
+-- só para todos — o segundo produto entregaria o download do primeiro, que é o
+-- mesmo modo de errar que o `key_prefix` já evita (MVP4 §4).
+--
+-- Ficam no produto e não na edição de propósito: o instalador é o mesmo para
+-- todas as edições (o que muda entre elas é o que a licença autoriza, não o
+-- binário). Repetir a URL por edição criaria duas fontes para o mesmo fato.
+--
+-- ## Por que NULLABLE
+--
+-- Ausente é informação, não pendência: produto sem URL manda o e-mail que
+-- sempre mandou, sem bloco novo, sem placeholder e sem link quebrado. É assim
+-- que um produto entregue por outro canal continua funcionando sem exigir
+-- cadastro nenhum.
+--
+-- ## Sem migração de dados
+--
+-- Colunas novas e opcionais: toda linha existente segue válida com `NULL`, e
+-- `NULL` já tem significado definido (e-mail sem os blocos). Nada a preencher.
+ALTER TABLE "lic_products" ADD COLUMN "download_url" TEXT;
+ALTER TABLE "lic_products" ADD COLUMN "manual_url" TEXT;
