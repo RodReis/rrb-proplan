@@ -7958,3 +7958,42 @@ mesmo erro antes de revelar que são o mesmo erro.
   válida, mas o caminho completo — consentimento, captura de crash,
   `war-room report` — só fecha quando aquele lado for implementado.
 - **O agendador do purge**: hoje é botão. Ver a seção acima; a decisão é do PI.
+
+### O CI barrou duas vezes, e as duas foram a guarda funcionando
+
+**1ª — entrega sem carimbo.** `pnpm test:report` foi rodado sem
+`REPORT_ISSUE`/`REPORT_SPEC`/`REPORT_PR`, então as contagens subiram no
+`reports/TESTS.md` **sem a linha de histórico da issue**. A terceira guarda do
+ADR-019 recusou: *"ENTREGA SEM CARIMBO — a tabela sugere que a entrega não teve
+teste"*. É exatamente o modo de falha que a issue #110 registrou (SPEC-027 e
+SPEC-022 mergearam assim). A mensagem já traz o comando pronto com as variáveis;
+regenerar e commitar resolveu.
+
+**2ª — falso positivo intermitente, e vale registrar para não custar caro na
+próxima.** A guarda anti-drift acusou `Banco | 281 | 250 | 31` contra os
+`281 | 281 | 0` commitados. **31 falhas, todas na mesma suíte**
+(`licensing-webhook-schema.int-spec.ts`), todas com a mesma causa:
+
+```
+thrown: "Exceeded timeout of 5000 ms for a hook."
+  at beforeAll → applyMigrations()
+```
+
+**O sintoma engana, e o `jest.config.js` já avisa disso** — o comentário do
+`testTimeout: 30_000` descreve este caso literalmente, a partir do CI da #194.
+A leitura natural de "31 testes de RLS falharam" é *"o isolamento quebrou"*;
+o que quebrou foi o relógio do setup, sob carga do runner.
+
+Três coisas descartaram a hipótese de regressão antes de qualquer mudança:
+
+1. **O run anterior do mesmo branch passou** nos mesmos 281 testes de banco —
+   o código não mudou entre os dois, só o carimbo do `TESTS.md`.
+2. **Local, com a invocação idêntica do CI** (`jest --selectProjects banco`):
+   281/281 verdes.
+3. **`--showConfig` confirmou `testTimeout: 30000`** efetivo — a config estava
+   valendo; foi o `prisma migrate deploy` que passou dos 30 s naquele runner.
+
+`gh run rerun --failed` deu verde. **Nenhuma linha de código foi alterada para
+"consertar"** — e é esse o ponto: mexer no teste a partir dessa leitura teria
+afrouxado uma asserção de RLS que estava correta, que é a categoria de conserto
+mais cara que existe neste repo.
