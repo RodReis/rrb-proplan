@@ -127,6 +127,9 @@ model Tenant {
   mailDeliveries    MailDelivery[]
   // Coleta de username para o convite ao repo source (SPEC-039).
   licSourceLinks    LicSourceLink[]
+  // Relatos de erro do app licenciado (SPEC-043). Raiz de tenancy: o caminho
+  // público chega por `keyHash → License`, sem id de linha vindo do cliente.
+  licErrorReports   LicErrorReport[]
 
   @@map("tenants")
 }
@@ -1704,6 +1707,9 @@ model License {
   // Links de coleta de username (SPEC-039). Plural: corrigir o username pelo
   // admin invalida o link antigo e emite outro, e a trilha de ambos fica.
   sourceLinks   LicSourceLink[]
+  // Relatos de erro mandados por esta licença (SPEC-043). Cascade: o relato só
+  // existe porque a licença existe, e a exclusão a pedido já os cobre antes.
+  errorReports  LicErrorReport[]
 
   // A busca do admin é por e-mail do comprador (§Contratos), dentro do tenant.
   @@index([tenantId, customerEmail])
@@ -1998,4 +2004,79 @@ model LicSourceLink {
 
   @@index([licenseId])
   @@map("lic_source_links")
+}
+
+// ===========================================================================
+// SPEC-043 — o bug do app licenciado chega aqui com contexto.
+// ===========================================================================
+
+enum LicErrorSource {
+  /// Captura automática de exceção não tratada no app.
+  CRASH
+  /// `war-room report` — o usuário decidiu mandar.
+  MANUAL
+}
+
+enum LicErrorStatus {
+  NEW
+  TRIAGED
+  RESOLVED
+}
+
+// Relato de erro do app licenciado (SPEC-043). Raiz de tenancy.
+//
+// **O e-mail do comprador NÃO está aqui, e isso é o desenho** (§Notas técnicas).
+// O app nem conhece o e-mail da compra; a correlação `keyHash → License →
+// e-mail` acontece no servidor, na leitura do admin. Copiar o e-mail para cá
+// criaria uma segunda cópia do dado pessoal — que a exclusão a pedido teria de
+// lembrar de limpar, e que o purge de 90 dias deixaria viva enquanto o relato
+// vivesse.
+//
+// `contactEmail` é outra coisa: e-mail que o usuário digitou voluntariamente no
+// relato manual, para receber retorno. Por isso é opcional e por isso é dele o
+// campo — não é o comprador, pode nem ser a mesma pessoa.
+model LicErrorReport {
+  id           String         @id @default(uuid())
+  tenantId     String         @map("tenant_id")
+  // NOT NULL: a rota exige chave válida (§Escopo), então todo relato nasce com
+  // licença resolvida. Nullable convidaria o relato órfão que ninguém sabe de
+  // quem é — e o valor do canal é justamente saber a quem responder.
+  licenseId    String         @map("license_id")
+  appVersion   String         @map("app_version")
+  os           String
+  // Quando o erro aconteceu na máquina (relógio do cliente) e quando chegou
+  // aqui (nosso). Os dois, porque a máquina pode estar offline por dias e um
+  // relógio torto do lado de lá não pode bagunçar a ordem da lista do admin.
+  occurredAt   DateTime       @map("occurred_at")
+  receivedAt   DateTime       @default(now()) @map("received_at")
+  message      String
+  stack        String?
+  // Últimas linhas de atividade da sessão. **Risco aceito (PI, 2026-08-01)**:
+  // contém nomes de arquivos e trechos do projeto do usuário. As mitigações são
+  // o consentimento explícito (lado cliente), o cap de tamanho, a retenção de
+  // 90 dias e a exclusão a pedido — todas obrigatórias, nenhuma opcional.
+  sessionTail  Json?          @map("session_tail")
+  source       LicErrorSource
+  userNote     String?        @map("user_note")
+  // Digitado pelo usuário no relato manual. **Dado pessoal** — a exclusão a
+  // pedido (SPEC-040) o cobre, como cobre `customerEmail` da licença.
+  contactEmail String?        @map("contact_email")
+  status       LicErrorStatus @default(NEW)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  license      License        @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  // A lista do admin: os novos primeiro, dentro do tenant.
+  @@index([tenantId, status])
+  // "O que este cliente relatou?" — a pergunta do detalhe da licença.
+  @@index([licenseId])
+  // O agrupamento por mensagem com contagem (§Escopo). Sem o índice, agrupar é
+  // varredura da tabela a cada abertura da aba.
+  @@index([message])
+  // O purge de 90 dias varre por data de chegada, não por `occurredAt`: a
+  // retenção conta do que ESTÁ AQUI, e um relógio adiantado do lado do cliente
+  // não pode empurrar um relato para fora da janela antes da hora.
+  @@index([receivedAt])
+  @@map("lic_error_reports")
 }

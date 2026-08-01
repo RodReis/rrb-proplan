@@ -17,6 +17,7 @@ import {
 } from '../../lib/api';
 import { ClientsShell } from './ClientsShell';
 import { CatalogPanel } from './CatalogPanel';
+import { ErrorReportsPanel } from './ErrorReportsPanel';
 import { LicenseDangerActions } from './LicenseDangerActions';
 import { LicensingSettingsPanel } from './LicensingSettingsPanel';
 import { MetricsPanel } from './MetricsPanel';
@@ -42,11 +43,17 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready' };
 
-type Aba = 'metricas' | 'licencas' | 'catalogo' | 'pendencias' | 'configuracoes';
+type Aba =
+  | 'metricas'
+  | 'licencas'
+  | 'catalogo'
+  | 'pendencias'
+  | 'erros'
+  | 'configuracoes';
 
 /**
- * As cinco seções da área (SPEC-040 §A área, reorganizadas pelo PI em
- * 2026-07-31).
+ * As seis seções da área (SPEC-040 §A área, reorganizadas pelo PI em
+ * 2026-07-31; **Erros** acrescentada pela SPEC-043).
  *
  * A ordem responde à sequência de perguntas de quem abre a área:
  *
@@ -56,18 +63,27 @@ type Aba = 'metricas' | 'licencas' | 'catalogo' | 'pendencias' | 'configuracoes'
  * 3. **Produtos e Edições** — *"o que existe à venda?"*. O catálogo inteiro num
  *    lugar: produto, edição, o de-para da oferta e as versões publicadas.
  * 4. **Pendências** — *"o que falhou?"*. Só o que pede conserto.
- * 5. **Configurações** — o que se ajusta uma vez na vida do workspace.
+ * 5. **Erros** — *"o que está quebrando na máquina de quem comprou?"*.
+ * 6. **Configurações** — o que se ajusta uma vez na vida do workspace.
  *
  * O desenho anterior partia assuntos entre abas: código-fonte tinha contagem em
  * Métricas e ação em Pendências; o de-para de oferta ficava a duas abas da
  * edição que referencia; e os três campos de configuração moravam no rodapé de
  * duas telas de operação. Cada assunto agora tem **um** lugar.
+ *
+ * **Erros fica ao lado de Pendências, não dentro dela.** As duas mostram coisa
+ * que deu errado, e a tentação de fundi-las é real — mas respondem a perguntas
+ * diferentes e o dono da ação é outro: Pendências é *venda que não virou
+ * licença*, resolvida por cadastro no admin; Erros é *app que quebrou na mão do
+ * cliente*, resolvido por código noutro repo. Misturá-las faria a falha
+ * comercial urgente competir por atenção com o crash de um mês atrás.
  */
 const ABAS: Array<{ chave: Aba; rotulo: string }> = [
   { chave: 'metricas', rotulo: 'Métricas' },
   { chave: 'licencas', rotulo: 'Licenças' },
   { chave: 'catalogo', rotulo: 'Produtos e Edições' },
   { chave: 'pendencias', rotulo: 'Pendências' },
+  { chave: 'erros', rotulo: 'Erros' },
   { chave: 'configuracoes', rotulo: 'Configurações' },
 ];
 
@@ -278,7 +294,7 @@ export function LicensesPage() {
             </Aviso>
           )}
 
-          {/* Sem produto nenhum, a área **ensina em vez de mostrar quatro abas
+          {/* Sem produto nenhum, a área **ensina em vez de mostrar abas
               vazias**.
 
               A SPEC-040 §A área mandava o item sumir do menu neste caso. Isso
@@ -654,6 +670,8 @@ export function LicensesPage() {
               onde a contagem e a lista acionável passam a viver juntas. */}
           {aba === 'pendencias' && <WebhookOpsPanel catalogo={catalogo} />}
 
+          {aba === 'erros' && <ErrorReportsPanel catalogo={catalogo} />}
+
           {/* Configurações: os três ajustes da área, reunidos. Estavam no rodapé
               de duas telas de operação — o argumento de "configuração junto da
               operação" não se sustentou, porque configurar é uma vez na vida e
@@ -670,7 +688,7 @@ export function LicensesPage() {
 /**
  * A área sem produto nenhum: **explica o que é, e diz quando ignorar**.
  *
- * Substitui as cinco abas vazias — cada uma delas responderia "nada aqui" a uma
+ * Substitui as abas vazias — cada uma delas responderia "nada aqui" a uma
  * pergunta que o operador não fez. E substitui o *esconder o item do menu* que a
  * spec pedia, porque esconder tornaria esta tela — a única que cadastra o
  * primeiro produto — inalcançável (decisão do PI, 2026-07-30).

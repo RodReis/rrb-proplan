@@ -49,6 +49,13 @@ function montar(
   const webhooks = [
     { id: 'wh-1', licenseId: 'lic-1', payload: PAYLOAD_BRUTO as unknown },
   ];
+  // Relatos de erro (SPEC-043). Ao contrário de entregas e webhooks, estes são
+  // APAGADOS — `sessionTail` é trecho do projeto do titular e `contactEmail` um
+  // endereço que ele digitou; redigir deixaria a linha sem nada além de stack.
+  const relatos = [
+    { id: 'err-1', licenseId: 'lic-1' },
+    { id: 'err-2', licenseId: 'lic-1' },
+  ];
   /** A ordem real das escritas — é o que prova que o carimbo vem por último. */
   const ordem: string[] = [];
 
@@ -87,6 +94,14 @@ function montar(
         },
       ),
     },
+    licErrorReport: {
+      deleteMany: jest.fn(async () => {
+        ordem.push('licErrorReport.deleteMany');
+        const removidos = relatos.length;
+        relatos.length = 0;
+        return { count: removidos };
+      }),
+    },
     licEvent: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         ordem.push('licEvent.create');
@@ -120,6 +135,7 @@ function montar(
     eventos,
     entregas,
     webhooks,
+    relatos,
     ordem,
   };
 }
@@ -221,7 +237,12 @@ describe('SPEC-040: exclusão a pedido', () => {
     expect(entregas.every((e) => e.to === ANONIMO_EMAIL)).toBe(true);
     expect(JSON.stringify(webhooks)).not.toContain('ana@exemplo.com');
     expect(JSON.stringify(webhooks)).not.toContain('123.456.789-00');
-    expect(r).toEqual({ id: 'lic-1', mailDeliveries: 2, webhookEvents: 1 });
+    expect(r).toEqual({
+      id: 'lic-1',
+      mailDeliveries: 2,
+      webhookEvents: 1,
+      errorReports: 2,
+    });
 
     // **Metade feita é o pior desfecho**: o titular recebe a confirmação e o
     // e-mail dele continua no payload porque a segunda escrita falhou.
@@ -339,5 +360,46 @@ describe('SPEC-040: exclusão a pedido', () => {
 
     expect(JSON.stringify(log.mock.calls)).not.toContain('ana@exemplo.com');
     expect(JSON.stringify(log.mock.calls)).not.toContain('Ana Silva');
+  });
+
+  // === SPEC-043: a exclusão a pedido passa a cobrir os relatos de erro. ===
+
+  it('apaga os relatos de erro da licença', async () => {
+    // Critério de aceite da SPEC-043. Sem esta linha, `sessionTail` — nomes de
+    // arquivos do projeto do titular — sobreviveria a um pedido de exclusão.
+    const { service, relatos } = montar();
+
+    const r = await service.anonymize('t-1', 'lic-1', AUTOR, {
+      reason: 'pedido do titular',
+    });
+
+    expect(relatos).toHaveLength(0);
+    expect(r.errorReports).toBe(2);
+  });
+
+  it('conta os relatos apagados no carimbo da trilha', async () => {
+    // O evento conta o que de fato aconteceu — é ele que responde "o que saiu?"
+    // quando o titular ou a autoridade perguntar.
+    const { service, eventos } = montar();
+
+    await service.anonymize('t-1', 'lic-1', AUTOR, { reason: 'pedido do titular' });
+
+    const carimbo = eventos.find((e) => e.type === 'anonymized');
+    expect(carimbo?.payload).toMatchObject({ errorReports: 2 });
+  });
+
+  it('apaga os relatos DENTRO da transação, antes do carimbo', async () => {
+    // Fora da transação, uma falha depois dela deixaria o titular com a
+    // confirmação de exclusão e os relatos apagados sem carimbo nenhum — ou o
+    // inverso. O carimbo continua sendo a última escrita.
+    const { service, ordem } = montar();
+
+    await service.anonymize('t-1', 'lic-1', AUTOR, { reason: 'pedido do titular' });
+
+    expect(ordem).toContain('licErrorReport.deleteMany');
+    expect(ordem.indexOf('licErrorReport.deleteMany')).toBeLessThan(
+      ordem.indexOf('licEvent.create'),
+    );
+    expect(ordem[ordem.length - 1]).toBe('licEvent.create');
   });
 });

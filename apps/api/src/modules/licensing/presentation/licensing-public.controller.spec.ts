@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import type { ErrorReportService } from '../application/error-report.service';
 import type { LicenseActivationService } from '../application/license-activation.service';
 import type { LicenseReleaseService } from '../application/license-release.service';
 import type { WebhookIntakeService } from '../application/webhook-intake.service';
@@ -26,11 +27,21 @@ function montar() {
     check: jest.fn(async () => ({ update: false as const })),
   } as unknown as LicenseReleaseService;
 
+  const errorReports = {
+    receive: jest.fn(async () => ({ received: true as const })),
+  } as unknown as ErrorReportService;
+
   return {
-    controller: new LicensingPublicController(activation, webhook, releases),
+    controller: new LicensingPublicController(
+      activation,
+      webhook,
+      releases,
+      errorReports,
+    ),
     activation,
     webhook,
     releases,
+    errorReports,
   };
 }
 
@@ -282,6 +293,74 @@ describe('SPEC-041: rota pública /licensing/v1/releases/check', () => {
 
     await expect(
       controller.releasesCheck({ licenseKey: CHAVE, fingerprint: 'f' }, pedido('10.0.7.99')),
+    ).rejects.toMatchObject({ status: 429 });
+  });
+});
+
+describe('SPEC-043: rota pública /licensing/v1/errors', () => {
+  const relato = {
+    licenseKey: CHAVE,
+    appVersion: '1.0.2',
+    os: 'win-x64',
+    message: 'Erro ao abrir projeto',
+    source: 'crash',
+  };
+
+  it('encaminha ao service e devolve `received`', async () => {
+    const { controller, errorReports } = montar();
+
+    const r = await controller.errors(relato, pedido('10.1.0.1'));
+
+    expect(errorReports.receive).toHaveBeenCalledWith(relato);
+    expect(r).toEqual({ received: true });
+  });
+
+  it('NÃO consome a janela por chave das outras rotas', async () => {
+    // A decisão da fatia: um app em laço de crash manda vários relatos em
+    // segundos. Se eles gastassem o teto de 5/min compartilhado, o cliente
+    // ficaria sem conseguir ATIVAR ou pedir update — o relato de erro
+    // derrubaria o licenciamento da máquina.
+    const { controller } = montar();
+
+    for (let i = 0; i < 10; i += 1) {
+      await controller.errors(relato, pedido(`10.1.1.${i}`));
+    }
+
+    // A chave continua podendo ativar: a janela dela não foi tocada.
+    await expect(
+      controller.activate({ key: CHAVE, fingerprint: 'f' }, pedido('10.1.2.1')),
+    ).resolves.toBeDefined();
+  });
+
+  it('tem teto próprio — laço infinito de crash não enche a tabela', async () => {
+    // Folgado, mas teto: 30/min por chave. Sem ele, um cliente em loop gravaria
+    // milhares de linhas idênticas, que não acrescentam informação nenhuma.
+    const { controller } = montar();
+
+    for (let i = 0; i < 30; i += 1) {
+      await controller.errors(relato, pedido(`10.1.3.${i}`));
+    }
+
+    await expect(
+      controller.errors(relato, pedido('10.1.3.99')),
+    ).rejects.toMatchObject({ status: 429 });
+  });
+
+  it('o teto por IP continua valendo — a varredura não ganha porta nova', async () => {
+    // O limite por IP é a tranca contra varredura, e ela não muda de natureza
+    // por a rota ser nova. Chaves diferentes, mesmo IP: barra no 11º.
+    const { controller } = montar();
+    const req = pedido('10.1.4.1');
+
+    for (let i = 0; i < 10; i += 1) {
+      await controller.errors(
+        { ...relato, licenseKey: `WR-AB23-CD45-EF67-GH${i}9` },
+        req,
+      );
+    }
+
+    await expect(
+      controller.errors({ ...relato, licenseKey: 'WR-ZZ23-CD45-EF67-GH89' }, req),
     ).rejects.toMatchObject({ status: 429 });
   });
 });

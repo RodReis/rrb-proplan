@@ -38,6 +38,8 @@ export interface AnonymizeResult {
   mailDeliveries: number;
   /** Quantos eventos de webhook tiveram o payload reduzido. */
   webhookEvents: number;
+  /** Quantos relatos de erro foram apagados (SPEC-043 §Escopo). */
+  errorReports: number;
 }
 
 @Injectable()
@@ -194,6 +196,17 @@ export class LicensePrivacyService {
         data: { to: ANONIMO_DESTINATARIO },
       });
 
+      // **Relatos de erro são APAGADOS, não redigidos** (SPEC-043 §Escopo).
+      //
+      // As outras duas linhas anonimizam porque o que fica tem valor sem o dado
+      // pessoal: a entrega prova que o e-mail saiu, o payload prova que a venda
+      // chegou. Um relato de erro é diferente — `sessionTail` são nomes de
+      // arquivos e trechos do projeto do titular, e `contactEmail` é um endereço
+      // que ele digitou. Redigir esses campos deixaria a linha sem nada além de
+      // uma stack órfã, e manter a stack não vale o risco de ter errado a
+      // redação de um campo livre que veio de fora.
+      const relatos = await tx.licErrorReport.deleteMany({ where: { licenseId } });
+
       for (const evento of eventos) {
         await tx.licWebhookEvent.update({
           where: { id: evento.id },
@@ -219,18 +232,24 @@ export class LicensePrivacyService {
             reason: motivo,
             mailDeliveries: entregas.count,
             webhookEvents: eventos.length,
+            errorReports: relatos.count,
           },
         },
       });
 
-      return { mailDeliveries: entregas.count, webhookEvents: eventos.length };
+      return {
+        mailDeliveries: entregas.count,
+        webhookEvents: eventos.length,
+        errorReports: relatos.count,
+      };
     });
 
     // Log sem o e-mail original: registrá-lo aqui manteria o dado pessoal vivo
     // no log da aplicação — o mesmo vazamento por outro caminho.
     this.logger.log(
       `Licença ${licenseId} anonimizada por ${authorId}: ${motivo} ` +
-        `(${resultado.mailDeliveries} entregas, ${resultado.webhookEvents} eventos)`,
+        `(${resultado.mailDeliveries} entregas, ${resultado.webhookEvents} eventos, ` +
+        `${resultado.errorReports} relatos)`,
     );
 
     return { id: licenseId, ...resultado };

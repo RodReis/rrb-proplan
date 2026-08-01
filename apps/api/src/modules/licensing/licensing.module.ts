@@ -2,6 +2,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { MailModule } from '../mail/mail.module';
+import { ErrorReportAdminService } from './application/error-report-admin.service';
+import { ErrorReportService } from './application/error-report.service';
 import { LicCatalogService } from './application/lic-catalog.service';
 import { LicenseActivationService } from './application/license-activation.service';
 import { LicenseReleaseService } from './application/license-release.service';
@@ -123,6 +125,14 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     WebhookIntakeService,
     WebhookProcessorService,
     LicensingWorker,
+    // Relatos de erro do app (SPEC-043). **Dois services, e a separação repete
+    // a dos controllers**: o `ErrorReportService` atende o binário na máquina do
+    // comprador (sem sessão, gate `401`, cap que trunca); o
+    // `ErrorReportAdminService` atende o operador logado (lista, agrupa, triage,
+    // purge). Juntá-los num só poria o método que apaga 90 dias de relatos no
+    // mesmo objeto que uma rota pública instancia.
+    ErrorReportService,
+    ErrorReportAdminService,
   ],
   // `LicensingSummaryService` exportado **antes de haver consumidor** — é o
   // ponto único por onde métrica de licenciamento sai do módulo (MVP4 §3). Sem

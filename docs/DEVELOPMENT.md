@@ -7791,3 +7791,170 @@ passos emite arquivos que o cliente instalado não sabe verificar.
 - **Dogfooding do e-mail com venda real**: mesmo gatilho que as fatias 28 e 29
   esperam. O `POST /licenses` do admin **não serve** — só o caminho do webhook
   monta este e-mail.
+
+## Fatia 32 (SPEC-043) — Licensing: relatos de erro do app (opt-in) — `entregue`
+
+Issue **#248** (spec `aprovada-pi` 2026-08-01). **8ª fatia do MVP4.** Um bug do
+app licenciado em produção passa a chegar ao ProPlan com contexto suficiente
+para diagnóstico **e para responder a quem foi afetado**.
+
+Antes desta fatia não havia canal nenhum: o único tráfego externo do War Room era
+licenciamento. Um crash na máquina de quem pagou só chegava se o comprador
+resolvesse escrever — e quando escrevia, vinha sem versão, sem stack e sem o que
+ele estava fazendo.
+
+Esta fatia é **o lado servidor + admin**. A captura, o consentimento e o comando
+`war-room report` estão pareados em `war-room/docs/specs/SPEC-relatos-de-erro.md`,
+noutro repo.
+
+### O que entrou
+
+- [x] `LicErrorReport` + enums `LicErrorSource`/`LicErrorStatus`, migration com
+      RLS, CHECK de mensagem e 4 índices
+- [x] `POST /licensing/v1/errors` — chave válida obrigatória, `202`, cap que
+      **trunca** e rate limit próprio
+- [x] Aba **Erros** no admin: lista com filtros, agrupamento por mensagem,
+      detalhe com stack + sessão + **e-mail do comprador correlacionado**
+- [x] Triagem `new` → `triaged` → `resolved` (e a volta)
+- [x] Purge de 90 dias, com botão no admin
+- [x] A exclusão a pedido (SPEC-040) passa a **apagar** os relatos da licença
+- [x] **+40 regras · +9 banco · +27 tela** (regras 2276 · banco 281 · tela 771 —
+      **3328 verdes**)
+
+### O gate é `401`, e é o único da área que não distingue os casos
+
+As outras rotas públicas respondem `404` para chave inexistente e `410` para
+revogada, porque o cliente precisa saber **o que fazer**: conferir o que digitou,
+ou renovar. Aqui não há nada a fazer — quem chama está reportando um erro, não
+pedindo acesso. Distinguir os dois só serviria a quem sonda o servidor, então os
+dois respondem igual, e há teste afirmando que as mensagens são idênticas.
+
+**Revogada não relata; expirada e inadimplente relatam.** A licença revogada é a
+do reembolsado, e aceitar o relato dela reabriria um canal de escrita que a
+revogação fechou. Já quem esqueceu de renovar continua sendo cliente, e o bug
+dele continua sendo nosso.
+
+### O cap trunca, nunca recusa — e a ordem do sacrifício é a decisão
+
+`413` transformaria **o relato mais interessante no único que não chega**: o
+crash de verdade tem stack fundo, sessão longa e um usuário que escreveu três
+parágrafos porque estava irritado. A aba mostraria só os casos pequenos, dando a
+impressão de que o app quebra pouco e de leve.
+
+A ordem: `sessionTail` inteiro primeiro (maior, mais barato de perder, e o único
+que carrega o risco de privacidade), depois `stack` cortada, depois `userNote`, e
+**`message` nunca** — sem ela o relato não é agrupável nem legível. `message` tem
+teto próprio de 4 KB aplicado antes do cap global, porque sem ele uma mensagem de
+1 MB deixaria o cap sem nada para sacrificar.
+
+O corte é **por bytes UTF-8, sem partir caractere ao meio**: `slice` por índice
+erraria o tamanho de qualquer texto com acento, e bytes crus produziriam o
+losango preto no meio da stack.
+
+### Rate limit próprio, e o motivo não é folga
+
+Um app em laço de crash manda vários relatos em segundos. No teto compartilhado
+de 5/min por chave, esses relatos **gastariam a cota de ativação e de update** —
+o cliente ficaria sem conseguir usar a licença porque o app dele estava
+quebrando, que é exatamente o pior momento. Por isso a janela por chave é
+dedicada (30/min); a janela **por IP continua a mesma**, porque ela é a tranca
+contra varredura e essa não muda de natureza por a rota ser nova.
+
+Continua sendo teto: sem ele, um loop infinito gravaria milhares de linhas
+idênticas que não acrescentam informação nenhuma.
+
+### O e-mail do comprador não tem coluna, e isso é o desenho
+
+O app **nem conhece** o e-mail da compra — ele nunca trafega do cliente. A
+correlação `keyHash → License → e-mail` acontece no servidor, na leitura do
+admin, por JOIN.
+
+Copiá-lo para `lic_error_reports` teria sido a conveniência óbvia e o defeito:
+criaria uma **segunda morada do dado pessoal**, que a exclusão a pedido teria de
+lembrar de limpar e que o purge manteria viva enquanto o relato vivesse. Uma
+fonte só.
+
+**`contactEmail` é outra coisa**, e aparece separado na tela: é o e-mail que o
+usuário digitou voluntariamente no relato manual, para receber retorno. Pode ser
+outra pessoa que não o comprador — fundir os dois campos faria o operador
+responder ao endereço errado.
+
+### `sessionTail` fica fora da lista, e o aviso está na tela
+
+É o campo do **risco aceito pelo PI (2026-08-01)**: contém nomes de arquivos e
+trechos de atividade do projeto do usuário. As mitigações são obrigatórias, e
+duas delas são desta camada — carregá-lo na lista o exporia a cada abertura da
+aba, para todo relato, sem ninguém ter pedido; então ele só vem no detalhe, e o
+detalhe **diz o que é** antes de mostrar (*"contém nomes de arquivos do projeto
+do usuário"*).
+
+Renderizado em `<pre>` com texto puro, **nunca `dangerouslySetInnerHTML`**: o
+conteúdo vem da máquina de outra pessoa por uma rota pública sem sessão.
+
+### A exclusão a pedido APAGA os relatos, não os anonimiza
+
+As outras duas escritas do `anonymize` redigem porque o que fica tem valor sem o
+dado pessoal: a entrega prova que o e-mail saiu, o payload prova que a venda
+chegou. Um relato de erro é diferente — `sessionTail` é o projeto do titular e
+`contactEmail` é um endereço que ele digitou. Redigir esses dois deixaria a linha
+sem nada além de uma stack órfã, e manter a stack não paga o risco de ter errado
+a redação de um campo livre vindo de fora.
+
+O `deleteMany` roda **dentro da mesma transação**, antes do carimbo — que segue
+sendo a última escrita e agora conta também quantos relatos saíram.
+
+### O purge não tem agendador, e a lacuna é decisão pendente do PI
+
+`ErrorReportAdminService.purge(tenantId, agora)` é método chamável com botão no
+admin — mesmo caminho do `LicenseExpirySweepService` (SPEC-038), porque o repo
+não tem agendador e escolher um é decisão de infra que nenhuma spec tomou.
+
+**A diferença em relação ao sweep importa e está registrada no `STATUS.md`:** um
+sweep parado só deixa a lista do admin desatualizada; um purge parado é a
+**retenção de 90 dias não cumprida**, que é mitigação de LGPD assumida com o PI.
+Por isso o botão existe e o rodapé da aba diz explicitamente que a limpeza é
+manual.
+
+`agora` é **parâmetro, não `new Date()` interno** — é o que torna a retenção
+testável com relógio controlado, que é critério de aceite. E o corte é por
+`receivedAt`, nunca `occurredAt`: a retenção conta do que está aqui, e um relógio
+adiantado na máquina do cliente não pode empurrar um relato para fora da janela
+antes da hora.
+
+### O que só o Postgres provou
+
+Nove testes contra banco real (`licensing-error-reports.int-spec.ts`), e três
+deles cobrem falhas que **passam no mock**:
+
+- **O CHECK de mensagem em branco.** `NOT NULL` deixa passar `'   '`; só o
+  `CHECK` a barra. Mesma classe do FIX **#216**, que passou nos unitários porque
+  o mock do Prisma não tem constraint.
+- **O purge de um tenant não apaga o relato do outro.** O `deleteMany` não tem
+  `tenantId` no `where` — quem isola é a policy. Se ela cair, o purge destrói
+  dado alheio **em massa e sem barulho**.
+- **A gravação sob `runInTenantContext`.** Fora dele o RLS fail-closed grava zero
+  linhas *sem erro*, e a rota responderia `202` para um relato inexistente.
+
+**Um achado do próprio teste:** o seed inicial violou
+`licenses_revoked_coherent` — a guarda que recusa `status = REVOKED` sem
+`revoked_at`. A guarda está certa; o seed é que afirmava um estado impossível.
+
+### Erros é aba própria, não parte de Pendências
+
+A tentação de fundir era real: as duas mostram coisa que deu errado. Mas
+respondem a perguntas diferentes e o dono da ação é outro — **Pendências** é
+*venda que não virou licença*, resolvida por cadastro aqui mesmo; **Erros** é
+*app que quebrou na mão do cliente*, resolvido por código noutro repo. Juntá-las
+faria a falha comercial urgente competir por atenção com o crash de um mês atrás.
+
+Dentro da aba, **o agrupamento vem antes da lista**: quem abre quer saber *o
+que* está quebrando, não *quando*, e uma lista cronológica mostra vinte linhas do
+mesmo erro antes de revelar que são o mesmo erro.
+
+### Pendente
+
+- **Dogfooding com o app real**: depende do lado cliente (spec pareada no repo
+  `war-room`), que ainda não existe. A rota é testável por `curl` com chave
+  válida, mas o caminho completo — consentimento, captura de crash,
+  `war-room report` — só fecha quando aquele lado for implementado.
+- **O agendador do purge**: hoje é botão. Ver a seção acima; a decisão é do PI.
