@@ -28,3 +28,10 @@ apps/web/playwright-report.json
 .codex/hooks.json
 .vscode/tasks.json
 .war-room-runtime/
+
+# Preview local do e-mail transacional + assets de referência visual.
+# Não são usados por código nenhum: o template do `license_key` é deliberadamente
+# sem imagem (decisão PI 2026-08-01 — o Gmail bloqueia imagem de remetente
+# desconhecido, e o 1º e-mail que o comprador recebe é justamente esse), e a
+# identidade fica no monograma desenhado em tabela.
+apps/api/public/
