@@ -1782,6 +1782,10 @@ enum LicWebhookStatus {
   PROCESSED
   FAILED
   IGNORED
+  /// Uma **pessoa** decidiu que esta entrega não vai virar nada (SPEC-045).
+  /// Não confundir com `IGNORED`, que é a máquina dizendo "este tipo não me diz
+  /// respeito" no intake, sem autor: `DISCARDED` tem nome, data e motivo.
+  DISCARDED
 }
 
 // O que a plataforma de venda mandou, gravado ANTES de ser entendido.
@@ -1816,6 +1820,22 @@ model LicWebhookEvent {
   /// Preenchido quando o processamento resolve a licença. Nulo enquanto
   /// PENDING, e nulo para sempre em IGNORED/FAILED sem licença.
   licenseId String? @map("license_id")
+
+  // Carimbo do descarte (SPEC-045). **Colunas, e não `LicEvent`**: aquele exige
+  // `licenseId NOT NULL`, e o evento que mais precisa de descarte é justamente o
+  // que não tem licença nenhuma — a venda que nunca virou nada.
+  //
+  // O `error` original **não** é sobrescrito por nada disto: ele responde "por
+  // que parou", e `discardedReason` responde "por que desistimos". Duas
+  // perguntas, e uma não pode comer a outra.
+  discardedAt     DateTime? @map("discarded_at")
+  /// `userId` de quem descartou — mesmo carimbo de autor que `LicensePrivacyService.extend`.
+  discardedBy     String?   @map("discarded_by")
+  discardedReason String?   @map("discarded_reason")
+  /// Último `Reabrir`. Guarda só o último ato: histórico multi-evento seria
+  /// tabela própria, e nenhuma necessidade a pediu (§Fora de escopo).
+  reopenedAt      DateTime? @map("reopened_at")
+
   tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   /// SetNull e não Cascade: apagar uma licença não pode apagar a prova de que
   /// a venda dela chegou.

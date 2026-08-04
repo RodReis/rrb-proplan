@@ -2,14 +2,19 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   createOfferMapping,
+  discardWebhookEvent,
   listWebhookEvents,
+  reopenWebhookEvent,
   reprocessWebhookEvent,
   type LicCatalogResponse,
   type WebhookEventView,
 } from '../../lib/api';
 import { shortDateTime } from './licensingView';
 import {
+  canDiscard,
+  canReopen,
   canReprocess,
+  discardNote,
   pendingCount,
   produtoDoErro,
   webhookErrorText,
@@ -50,6 +55,9 @@ import { Cartao, Etiqueta, LinhaCartao, TituloSecao, type Tom } from './licensin
 
 const FILTROS: Array<{ valor: string; label: string }> = [
   { valor: 'FAILED', label: 'Falhas' },
+  // Ao lado de *Falhas* de propósito (SPEC-045): quem descartou vai querer
+  // conferir o que tirou da lista, e o payload continua lá para consulta.
+  { valor: 'DISCARDED', label: 'Descartadas' },
   { valor: 'PENDING', label: 'Aguardando' },
   { valor: 'PROCESSED', label: 'Processadas' },
   { valor: '', label: 'Todas' },
@@ -69,6 +77,10 @@ export function WebhookOpsPanel({ catalogo }: { catalogo: LicCatalogResponse }) 
   const [eventos, setEventos] = useState<WebhookEventView[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
+  // Qual linha está com o formulário de descarte aberto. O motivo é obrigatório,
+  // então ele precisa de um campo — e um `window.prompt` não seria testável nem
+  // acessível.
+  const [descartando, setDescartando] = useState<string | null>(null);
 
   async function carregar(statusFiltro = filtro) {
     setCarregando(true);
@@ -98,6 +110,37 @@ export function WebhookOpsPanel({ catalogo }: { catalogo: LicCatalogResponse }) 
       await carregar();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'não foi possível reprocessar');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function descartar(evento: WebhookEventView, motivo: string) {
+    setOcupado(true);
+    try {
+      await discardWebhookEvent(evento.id, motivo);
+      // Diz onde a linha foi parar: ela saiu do filtro atual, e sem esta frase
+      // o sumiço pareceria delete — que é exatamente o que NÃO aconteceu.
+      toast.success('Entrega descartada — continua consultável no filtro Descartadas');
+      setDescartando(null);
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível descartar');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function reabrir(evento: WebhookEventView) {
+    setOcupado(true);
+    try {
+      await reopenWebhookEvent(evento.id);
+      // Mesmo cuidado do reprocessar: o job é assíncrono, e afirmar um desfecho
+      // aqui seria o "fechamento frágil" que este produto existe para detectar.
+      toast.success('Entrega reaberta — recarregue em instantes para ver o resultado');
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível reabrir');
     } finally {
       setOcupado(false);
     }
@@ -192,8 +235,45 @@ export function WebhookOpsPanel({ catalogo }: { catalogo: LicCatalogResponse }) 
                         Reprocessar
                       </button>
                     )}
+                    {canDiscard(ev) && (
+                      <button
+                        onClick={() => setDescartando(descartando === ev.id ? null : ev.id)}
+                        disabled={ocupado}
+                        aria-expanded={descartando === ev.id}
+                        className="rounded-[9px] border border-border2 px-2.5 py-1 text-[11.5px] text-body2 transition-colors hover:border-hoverb hover:text-text disabled:opacity-50"
+                      >
+                        Descartar
+                      </button>
+                    )}
+                    {canReopen(ev) && (
+                      <button
+                        onClick={() => void reabrir(ev)}
+                        disabled={ocupado}
+                        className="rounded-[9px] border border-border2 px-2.5 py-1 text-[11.5px] text-text2 transition-colors hover:border-hoverb hover:text-text disabled:opacity-50"
+                      >
+                        Reabrir
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {/* O carimbo do descarte: quem, quando e por quê. Fica na linha
+                    porque é o que responde "por que esta sumiu das pendências?"
+                    — a pergunta de quem abre o filtro Descartadas. */}
+                {discardNote(ev) && (
+                  <p className="m-0 mt-2 rounded-[9px] border border-border2 bg-panel px-3 py-2 text-[11.5px] text-body2">
+                    {discardNote(ev)}
+                    {ev.discardedAt && ` · ${shortDateTime(ev.discardedAt)}`}
+                  </p>
+                )}
+
+                {descartando === ev.id && (
+                  <FormularioDescarte
+                    ocupado={ocupado}
+                    onCancelar={() => setDescartando(null)}
+                    onConfirmar={(motivo) => void descartar(ev, motivo)}
+                  />
+                )}
 
                 {/* O motivo da falha é o que diz qual mapeamento cadastrar. E
                     quando a causa é oferta sem par, **resolve aqui mesmo**: o id
@@ -219,6 +299,64 @@ export function WebhookOpsPanel({ catalogo }: { catalogo: LicCatalogResponse }) 
         </ul>
       )}
     </Cartao>
+  );
+}
+
+/**
+ * Confirmação do descarte, com o motivo obrigatório (SPEC-045).
+ *
+ * ## Por que um campo, e não um `confirm()`
+ *
+ * O motivo **é** a confirmação. Descartar sem motivo produz o mesmo item
+ * ilegível que a lista de pendências já produzia, só que escondido — então o
+ * servidor recusa com `422`, e um `window.confirm` não teria onde escrevê-lo.
+ *
+ * O botão nasce desabilitado e só liga com texto não-vazio: é o que impede o
+ * clique reflexo, sem precisar de um segundo diálogo por cima.
+ */
+function FormularioDescarte({
+  ocupado,
+  onCancelar,
+  onConfirmar,
+}: {
+  ocupado: boolean;
+  onCancelar: () => void;
+  onConfirmar: (motivo: string) => void;
+}) {
+  const [motivo, setMotivo] = useState('');
+  const valido = motivo.trim().length > 0;
+
+  return (
+    <div className="mt-2 rounded-[9px] border border-border2 bg-panel px-3 py-2.5">
+      <p className="m-0 text-[11.5px] text-body2">
+        A entrega sai das pendências, mas <strong className="text-text2">a linha e o
+        payload continuam</strong> — consultáveis no filtro Descartadas.
+      </p>
+      <div className="mt-2 grid gap-2 min-[720px]:grid-cols-[1fr_auto_auto]">
+        <input
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="por que esta entrega não vai virar nada?"
+          aria-label="Motivo do descarte"
+          disabled={ocupado}
+          className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12px] text-text transition-colors focus:border-accentBorder"
+        />
+        <button
+          onClick={() => onConfirmar(motivo.trim())}
+          disabled={!valido || ocupado}
+          className="rounded-[9px] bg-btnbg px-4 py-2 text-[12px] font-semibold text-btnfg transition-opacity disabled:opacity-40"
+        >
+          Confirmar descarte
+        </button>
+        <button
+          onClick={onCancelar}
+          disabled={ocupado}
+          className="rounded-[9px] border border-border2 px-3 py-2 text-[12px] text-body2 transition-colors hover:text-text disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
   );
 }
 

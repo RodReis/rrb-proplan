@@ -383,6 +383,31 @@ export class LicensingAdminController {
   }
 
   /**
+   * Tira a entrega da lista de pendências **sem apagar a linha** (SPEC-045).
+   *
+   * Para a venda que nunca terá conserto — o caso real foram os disparos de
+   * teste da Kiwify, com `product_id` fictício. O payload continua consultável
+   * no filtro `Descartadas`: apagar é o oposto do que este produto verifica.
+   *
+   * O `reason` é obrigatório, e o autor sai da sessão — nunca do corpo, que o
+   * cliente controla.
+   */
+  @Post('webhook-events/:id/discard')
+  discard(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { reason?: unknown },
+  ) {
+    return this.ops.discard(id, req.tenantId!, req.userId, body?.reason);
+  }
+
+  /** Devolve a entrega descartada à fila. O desfecho quem decide é o job. */
+  @Post('webhook-events/:id/reopen')
+  reopen(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.ops.reopen(id, req.tenantId!);
+  }
+
+  /**
    * Configuração do tenant.
    *
    * **O `webhookSecret` não sai daqui** — só `webhookSecretSet`. O segredo é o

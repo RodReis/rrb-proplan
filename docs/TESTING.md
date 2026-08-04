@@ -235,6 +235,41 @@ Para o Code implementar e o PI conferir:
 - [ ] Registrar a decisão como **ADR** em `docs/DECISIONS.md` (relatório de testes é gerado pelo
       CI, arquivo-registro incremental, categorias Banco/Regras/Tela, guarda anti-drift).
 
+## 8.1. O que o botão *"Testar Webhook"* da Kiwify testa — e o que não testa
+
+> Registrado por exigência da **SPEC-045**, a partir do dogfooding de 2026-08-04
+> (issue [#257](https://github.com/RodReis/rrb-proplan/issues/257)). Vale para
+> qualquer disparo manual de webhook a partir do painel da plataforma.
+
+**O que ele exercita — e é real:**
+
+- **Intake.** A entrega chega, a rota responde e o `LicWebhookEvent` é gravado
+  com o payload bruto.
+- **Assinatura.** Foi ele que provou, na sessão de 2026-08-04, que o `401` tinha
+  acabado depois do acerto do Token no painel da Kiwify. Para essa pergunta —
+  *"o segredo está certo?"* — ele é a ferramenta certa e mais rápida.
+
+**O que ele NÃO exercita:**
+
+- **O fluxo completo.** Cada disparo manda um `product_id` **fictício e
+  diferente** a cada vez (`764cd7eb`, `38316019`, `d972678b`, …). Nenhum
+  corresponde a produto real, então nenhum resolve mapeamento, emite licença ou
+  dispara e-mail. O evento **sempre** termina em `FAILED` com *"oferta sem
+  mapeamento"* — e isso é o comportamento correto, não um defeito.
+- **Portanto: ele não substitui o dogfooding com venda real.** As fatias que
+  dependem de emissão de ponta a ponta continuam pendentes desse teste.
+
+**O custo, que é a parte fácil de esquecer:** cada disparo cria uma pendência
+permanente. Como o `product_id` é diferente a cada vez, seis disparos viraram
+seis ofertas distintas na aba *Oferta → edição* — badge laranja sem conserto,
+porque mapear emitiria licença real para venda que não existe.
+
+**A saída é o descarte** (SPEC-045), não `DELETE` no banco: a linha e o payload
+continuam consultáveis no filtro `Descartadas`, com autor e motivo. **Cada teste
+futuro custa um descarte** — dívida aceita pelo PI (decisão #4), porque
+reconhecer o evento de teste no intake exigiria heurística sobre o payload, e
+heurística que engole venda real é pior que uma lista suja.
+
 ## 9. Decisões operacionais (resolvidas pelo PI em 2026-07-15)
 
 - **Comando:** `pnpm test:report`.
