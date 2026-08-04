@@ -2299,6 +2299,15 @@ export interface OfferMappingView {
 }
 
 /**
+ * O que a oferta **é hoje** (SPEC-046): `PARADA` tem venda esperando desfecho
+ * (`FAILED`/`PENDING`) e pede ação agora; `SEM_DEPARA` já entregou tudo que
+ * chegou, mas segue sem de-para — a **próxima** compra é que vai falhar.
+ *
+ * Derivado no servidor a cada leitura. Nunca é coluna.
+ */
+export type SeenOfferSituacao = 'PARADA' | 'SEM_DEPARA';
+
+/**
  * Uma oferta que **já apareceu** numa entrega e ainda não tem mapeamento.
  *
  * Existe porque o cadastro pedia o id do produto num campo de texto livre — e o
@@ -2313,6 +2322,9 @@ export interface SeenOfferView {
   ocorrencias: number;
   /** Quantas delas falharam — o número que dá urgência à linha. */
   falhas: number;
+  /** Quantas ainda esperam o job (`PENDING`) — contam como parada. */
+  aguardando: number;
+  situacao: SeenOfferSituacao;
   ultimaEm: string;
 }
 

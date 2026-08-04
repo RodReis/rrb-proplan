@@ -8186,3 +8186,87 @@ recusado, e o isolamento por RLS (o `UPDATE` de outro tenant afeta **zero** linh
   mostrar que uma a uma não escala.
 - **Reconhecer evento de teste no intake** — fora de escopo (decisão #4). Cada
   disparo futuro do *Testar Webhook* custa um descarte; dívida aceita.
+
+## Fatia 35 (SPEC-046) — Licensing: a lista separa *venda parada* de *de-para faltando* — `entregue`
+
+Issue **#259** (spec `aprovada-pi` 2026-08-04). Nasce do **dogfooding em produção
+da SPEC-045**, registrado no comentário de encerramento da issue #257.
+
+A aba *Oferta → edição* para de pedir ação sobre venda que já foi entregue — e
+**sem esconder** que aquele produto continua sem de-para.
+
+### O problema, medido
+
+Descartadas as 3 entregas de teste, o badge de Pendências ficou limpo — **nenhum
+`FAILED` sobrou** — e a aba continuou marcando `3 SEM MAPEAMENTO` em laranja. As
+três (`dcec8ed0`, `db097001`, `2567aaf0`) são `PROCESSED` **com licença emitida**.
+
+`ofertasNaoMapeadas` agregava toda entrega não descartada e cruzava com
+`LicOfferMapping`. Sem linha de de-para, a oferta entrava na lista — mesmo com a
+venda já entregue. **A tela pedia uma ação já resolvida**, e mapear ali era
+plausível: o operador não tinha como saber que aquela venda já tinha ido.
+
+Uma linha respondia **duas** perguntas ao mesmo tempo — *"esta venda está
+parada"* e *"este produto não tem de-para"* —, e essa fusão é que produzia o
+alarme mentiroso.
+
+### O que entrou
+
+- [x] `SituacaoOferta` (`PARADA` | `SEM_DEPARA`) e `aguardando` em `OfertaVista`,
+      **derivados na função pura** `domain/seen-offers.ts` — nunca coluna
+- [x] Ordem: `PARADA` antes, depois por falhas, depois pela entrega mais recente
+- [x] Dois blocos na aba: **venda parada agora** (tom de atenção, primeiro) e
+      **sem de-para, nada parado** (tom neutro, com a frase da *próxima* compra)
+- [x] Etiqueta `N sem mapeamento` → `N venda parada` (atenção) + `M sem de-para`
+      (neutro); o tom do cartão segue **só** o primeiro número
+- [x] `Mapear` mantido nos dois blocos, com legenda e toast por situação — no 2º
+      o toast **não** manda reprocessar
+- [x] **Sem delta de schema, sem migration, sem tocar no `WebhookProcessorService`**
+
+### A situação é corrigida DEPOIS do agrupamento
+
+Decidi-la ao criar a linha (`ev.status === 'FAILED' ? 'PARADA' : …`) dependeria da
+**ordem em que os eventos chegaram**: uma oferta com três `PROCESSED` e uma
+`FAILED` nasceria `SEM_DEPARA` e nunca se corrigiria se a falha viesse por último.
+O `map` final recalcula sobre `falhas + aguardando`, quando o par já viu todas as
+suas entregas — e há teste para os dois sentidos da ordem.
+
+### As decisões que o código carrega
+
+- **`PENDING` conta como parada, não como resolvida.** A entrega esperando o job
+  ainda pode falhar por de-para ausente; classificá-la como resolvida afirmaria
+  um desfecho que não houve.
+- **Esconder `PROCESSED` foi recusado** (decisão PI #1): a oferta sumiria do
+  alarme e a **próxima** compra daquele produto falharia sem aviso nenhum.
+- **A linha diz a consequência, não a causa** (decisão PI #2). Curto-circuito por
+  `saleRef`, evento de ciclo (`revoke`/`renew`/`past_due`/`cancel`) e de-para
+  removido depois produzem **o mesmo fato verificável** — não há de-para hoje. Só
+  a remoção já bastaria para quebrar qualquer heurística: ela não deixa rastro.
+- **Mapear continua nos dois blocos** (decisão PI #3). A ação sempre esteve
+  certa; errada estava a legenda. O que mudou foi o texto e o toast.
+- **Nada disto vira estado.** Marcar a oferta como *"já resolvida"* no banco seria
+  a segunda tabela de decisão que a SPEC-045 já recusou — derivada, a verdade
+  nunca desatualiza.
+
+### Testes
+
+**+14 no total**: 9 regras (`seen-offers.spec.ts`, incluindo o caso exato do
+dogfooding — três `PROCESSED` sem de-para) e 5 tela (`CatalogPanel.test.tsx`:
+bloco neutro, convivência dos dois, legenda das próximas, toast sem *reprocesse*,
+e `aguardando` contando como parada). Suíte completa verde — **2603 API** e
+**790 web**, build e lint limpos.
+
+O `licensing-seen-offers.int-spec.ts` **não mudou**: o que a SPEC-046 introduz é
+regra de leitura pura, e o que só o Postgres prova (payload jsonb, RLS, curinga
+`NULL`) continua igual.
+
+### Pendências que esta entrega deixa
+
+- **O dogfooding com as 3 ofertas reais** — conferir em produção que as três
+  aparecem no bloco neutro, que o cartão fica sem laranja e que mapear ali não
+  sugere reprocessar. É o critério de aceite que só a produção fecha.
+- **Aviso no momento do processamento** — fora de escopo (decisão PI #4). O
+  curto-circuito por `saleRef` segue marcando `PROCESSED` em silêncio quando não
+  há de-para; a aposta é que a lista basta, porque é onde o operador já olha.
+- **Trilha de remoção de `LicOfferMapping`** — pré-requisito de qualquer detecção
+  de causa, se um dia ela for pedida.

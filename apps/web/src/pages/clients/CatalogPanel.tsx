@@ -666,18 +666,32 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
     p.editions.map((e) => ({ id: e.id, label: `${p.name} · ${e.name}` })),
   );
 
-  async function criar(entrada: {
-    externalProductId: string;
-    externalOfferId: string | null;
-    editionId: string;
-  }) {
+  /**
+   * `paraFuturas` decide o que o toast promete (SPEC-046).
+   *
+   * No bloco *sem de-para* **não há o que reprocessar** — as vendas que chegaram
+   * já viraram licença. Mandar reprocessar ali seria a mesma legenda mentirosa
+   * que fez a tela pedir ação sobre venda entregue.
+   */
+  async function criar(
+    entrada: {
+      externalProductId: string;
+      externalOfferId: string | null;
+      editionId: string;
+    },
+    paraFuturas = false,
+  ) {
     setOcupado(true);
     try {
       await createOfferMapping(entrada);
       setProdutoId('');
       setOfertaId('');
       await carregar();
-      toast.success('Mapeamento criado — reprocesse a entrega que falhou em Pendências');
+      toast.success(
+        paraFuturas
+          ? 'Mapeamento criado — as próximas compras deste produto passam a resolver sozinhas'
+          : 'Mapeamento criado — reprocesse a entrega que falhou em Pendências',
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'não foi possível criar');
     } finally {
@@ -698,8 +712,15 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
     }
   }
 
+  // A separação que a SPEC-046 introduz. Uma oferta nunca sai nos dois blocos:
+  // `situacao` é exclusiva, e basta uma venda parada para a oferta ser `PARADA`.
+  const paradas = vistas.filter((v) => v.situacao === 'PARADA');
+  const semDepara = vistas.filter((v) => v.situacao === 'SEM_DEPARA');
+
   return (
-    <Cartao tom={vistas.length > 0 ? 'atencao' : 'neutro'}>
+    // Só *venda parada* pinta o cartão. Antes qualquer linha da lista o deixava
+    // laranja — inclusive venda já entregue, que é o alarme mentiroso da #259.
+    <Cartao tom={paradas.length > 0 ? 'atencao' : 'neutro'}>
       <TituloSecao
         titulo="Oferta → edição"
         descricao={
@@ -712,8 +733,15 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
         }
         etiqueta={
           <>
-            {vistas.length > 0 && (
-              <Etiqueta tom="atencao">{vistas.length} sem mapeamento</Etiqueta>
+            {paradas.length > 0 && (
+              <Etiqueta tom="atencao">
+                {paradas.length} {paradas.length === 1 ? 'venda parada' : 'vendas paradas'}
+              </Etiqueta>
+            )}
+            {semDepara.length > 0 && (
+              <Etiqueta tom="neutro" ponto={false}>
+                {semDepara.length} sem de-para
+              </Etiqueta>
             )}
             {mapeamentos.length > 0 && (
               <Etiqueta tom="ok" ponto={false}>
@@ -724,11 +752,10 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
         }
       />
 
-      {/* O caminho principal: o que já chegou e ainda não tem par. Vem antes dos
-          mapeamentos existentes porque é o que pede ação. */}
-      {vistas.length > 0 && (
+      {/* Primeiro o que custa dinheiro parado. */}
+      {paradas.length > 0 && (
         <ul className="mt-4 grid list-none gap-2 p-0">
-          {vistas.map((v) => (
+          {paradas.map((v) => (
             <OfertaVistaLinha
               key={`${v.externalProductId} ${v.externalOfferId ?? ''}`}
               oferta={v}
@@ -744,6 +771,39 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
             />
           ))}
         </ul>
+      )}
+
+      {/* Depois o que não pede ação **agora**, e mesmo assim não pode sumir:
+          escondê-lo faria a próxima compra falhar sem aviso (decisão PI #1). */}
+      {semDepara.length > 0 && (
+        <div className="mt-5 border-t border-border2/60 pt-4">
+          <p className="m-0 max-w-[72ch] text-[12px] leading-relaxed text-body2">
+            <strong className="text-text2">Sem de-para, nada parado.</strong> As
+            vendas que chegaram já foram entregues — sem o de-para, a{' '}
+            <strong className="text-text2">próxima</strong> compra destes produtos
+            vai falhar.
+          </p>
+          <ul className="mt-3 grid list-none gap-2 p-0">
+            {semDepara.map((v) => (
+              <OfertaVistaLinha
+                key={`${v.externalProductId} ${v.externalOfferId ?? ''}`}
+                oferta={v}
+                edicoes={edicoes}
+                ocupado={ocupado}
+                onMapear={(editionId) =>
+                  criar(
+                    {
+                      externalProductId: v.externalProductId,
+                      externalOfferId: v.externalOfferId,
+                      editionId,
+                    },
+                    true,
+                  )
+                }
+              />
+            ))}
+          </ul>
+        </div>
       )}
 
       {mapeamentos.length > 0 && (
@@ -861,6 +921,10 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
  * A linha diz **o que aconteceu** (quantas vendas, quantas falharam, quando) e
  * oferece a única coisa que falta: a edição. O id fica visível em mono, mas
  * ninguém precisa copiá-lo — ele já vai na chamada.
+ *
+ * **Mapear existe nos dois blocos** (SPEC-046, decisão PI #3): a ação sempre
+ * esteve certa, errada estava a legenda. Em `SEM_DEPARA` o botão diz que o
+ * efeito é sobre vendas futuras, e o tom é neutro — a linha não pede socorro.
  */
 function OfertaVistaLinha({
   oferta,
@@ -874,9 +938,10 @@ function OfertaVistaLinha({
   onMapear: (editionId: string) => void;
 }) {
   const [edicaoId, setEdicaoId] = useState('');
+  const parada = oferta.situacao === 'PARADA';
 
   return (
-    <LinhaCartao tom={oferta.falhas > 0 ? 'erro' : 'atencao'}>
+    <LinhaCartao tom={parada ? (oferta.falhas > 0 ? 'erro' : 'atencao') : 'neutro'}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="m-0 truncate font-mono text-[12px] text-text">
@@ -899,11 +964,31 @@ function OfertaVistaLinha({
                 {oferta.falhas} {oferta.falhas === 1 ? 'falhou' : 'falharam'}
               </span>
             )}
+            {/* `PENDING` é dito por extenso: sem ele, a linha parada sem
+                nenhuma falha pareceria estar no bloco errado. */}
+            {oferta.aguardando > 0 && (
+              <>
+                {' · '}
+                {oferta.aguardando} aguardando
+              </>
+            )}
             {' · '}última em {shortDateTime(oferta.ultimaEm)}
           </p>
         </div>
-        {oferta.falhas > 0 && <Etiqueta tom="erro">venda parada</Etiqueta>}
+        {parada ? (
+          <Etiqueta tom={oferta.falhas > 0 ? 'erro' : 'atencao'}>venda parada</Etiqueta>
+        ) : (
+          <Etiqueta tom="neutro" ponto={false}>
+            já entregue
+          </Etiqueta>
+        )}
       </div>
+
+      {!parada && (
+        <p className="m-0 mt-2 text-[11px] leading-relaxed text-body">
+          Esta venda já foi entregue; o de-para vale para as próximas.
+        </p>
+      )}
 
       <div className="mt-3 grid gap-2 min-[720px]:grid-cols-[1fr_auto]">
         <select
@@ -912,7 +997,11 @@ function OfertaVistaLinha({
           aria-label={`Edição para o produto ${oferta.externalProductId}`}
           className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12.5px] text-text transition-colors focus:border-accentBorder [color-scheme:dark_light]"
         >
-          <option value="">escolha a edição que esta venda entrega…</option>
+          <option value="">
+            {parada
+              ? 'escolha a edição que esta venda entrega…'
+              : 'escolha a edição que as próximas compras entregam…'}
+          </option>
           {edicoes.map((e) => (
             <option key={e.id} value={e.id}>
               {e.label}

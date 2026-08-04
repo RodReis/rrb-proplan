@@ -389,7 +389,23 @@ const OFERTA_VISTA: SeenOfferView = {
   externalOfferId: null,
   ocorrencias: 2,
   falhas: 2,
+  aguardando: 0,
+  situacao: 'PARADA',
   ultimaEm: '2026-07-30T12:35:00.000Z',
+};
+
+/**
+ * A oferta do caso do dogfooding (#257/#259): `PROCESSED` com licença emitida e
+ * sem de-para. A tela pedia ação sobre venda que já tinha sido entregue.
+ */
+const OFERTA_ENTREGUE: SeenOfferView = {
+  externalProductId: 'prod-entregue',
+  externalOfferId: null,
+  ocorrencias: 3,
+  falhas: 0,
+  aguardando: 0,
+  situacao: 'SEM_DEPARA',
+  ultimaEm: '2026-08-04T10:00:00.000Z',
 };
 
 describe('ofertas vistas: o caminho sem digitar id', () => {
@@ -448,6 +464,89 @@ describe('ofertas vistas: o caminho sem digitar id', () => {
     expect(
       await screen.findByText(/O id do produto vem dentro da venda/i),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * *Venda parada agora* vs. *sem de-para, nada parado* (SPEC-046).
+ *
+ * O que estes testes prendem é a **pergunta que a linha responde**. Antes, uma
+ * linha só dizia duas coisas ao mesmo tempo — *"esta venda está parada"* e
+ * *"este produto não tem de-para"* —, e a fusão produzia o alarme mentiroso
+ * que o dogfooding de #257 encontrou: três entregas `PROCESSED` com licença
+ * emitida marcavam `3 SEM MAPEAMENTO` em laranja, pedindo uma ação já
+ * resolvida.
+ */
+describe('a lista separa venda parada de de-para faltando', () => {
+  it('só entregue: fica no bloco neutro e NÃO conta como venda parada', async () => {
+    // O caso do dogfooding, exatamente.
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_ENTREGUE]);
+    await montarEmOfertas();
+
+    expect(await screen.findByText('prod-entregue')).toBeInTheDocument();
+    expect(screen.getByText(/Sem de-para, nada parado/i)).toBeInTheDocument();
+    // A frase que importa: o custo é da PRÓXIMA compra, não desta.
+    expect(screen.getByText(/compra destes produtos\s+vai falhar/i)).toBeInTheDocument();
+    expect(screen.queryByText(/venda parada/i)).not.toBeInTheDocument();
+  });
+
+  it('parada e entregue convivem, cada uma no seu bloco', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA, OFERTA_ENTREGUE]);
+    await montarEmOfertas();
+
+    expect(await screen.findByText('prod-kiwify-1')).toBeInTheDocument();
+    expect(screen.getByText('prod-entregue')).toBeInTheDocument();
+    // Etiquetas separadas: uma conta no alarme, a outra não.
+    expect(screen.getByText('1 venda parada')).toBeInTheDocument();
+    expect(screen.getByText('1 sem de-para')).toBeInTheDocument();
+  });
+
+  it('a linha entregue diz que o de-para vale para as PRÓXIMAS', async () => {
+    // A ação sempre esteve certa; errada estava a legenda.
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_ENTREGUE]);
+    await montarEmOfertas();
+
+    expect(
+      await screen.findByText(/já foi entregue; o de-para vale para as próximas/i),
+    ).toBeInTheDocument();
+  });
+
+  it('mapear no bloco entregue cria o MESMO de-para e não manda reprocessar', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_ENTREGUE]);
+    apiMock.createOfferMapping.mockResolvedValue(MAPEAMENTO);
+    await montarEmOfertas();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText(/Edição para o produto prod-entregue/i),
+      'ed-1',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Mapear' }));
+
+    await waitFor(() =>
+      expect(apiMock.createOfferMapping).toHaveBeenCalledWith({
+        externalProductId: 'prod-entregue',
+        externalOfferId: null,
+        editionId: 'ed-1',
+      }),
+    );
+    // Não há o que reprocessar: mandar fazê-lo seria a legenda mentirosa de novo.
+    expect(toastMock.success).toHaveBeenCalledWith(
+      expect.stringMatching(/passam a resolver sozinhas/i),
+    );
+    expect(toastMock.success).not.toHaveBeenCalledWith(
+      expect.stringMatching(/reprocesse/i),
+    );
+  });
+
+  it('entrega aguardando conta como parada — ainda pode falhar', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([
+      { ...OFERTA_ENTREGUE, aguardando: 1, situacao: 'PARADA' as const },
+    ]);
+    await montarEmOfertas();
+
+    expect(await screen.findByText(/1 aguardando/)).toBeInTheDocument();
+    expect(screen.getByText('1 venda parada')).toBeInTheDocument();
+    expect(screen.queryByText(/Sem de-para, nada parado/i)).not.toBeInTheDocument();
   });
 });
 
