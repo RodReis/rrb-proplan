@@ -86,6 +86,18 @@ export class MailWorker extends WorkerHost {
       } catch (erro) {
         const mensagem = erro instanceof Error ? erro.message : String(erro);
 
+        // **O log da falha, com o motivo do provedor.** Sem ele o worker
+        // atravessava as duas saídas mudo: o sucesso o provedor loga, a falha
+        // não logava ninguém — e "o e-mail não chegou" só se investigava abrindo
+        // o detalhe de cada licença, uma a uma. O motivo já ia para
+        // `MailDelivery.error` (SPEC-038 §Escopo: *falha visível no admin, não só
+        // no log*), mas quem lê o log de produção primeiro — que é o caminho
+        // natural de quem investiga — não via nada e concluía que o job nem
+        // rodou. Sem o destinatário: dado pessoal fica na `MailDelivery`, sob RLS.
+        this.logger.warn(
+          `Entrega ${deliveryId} (${template}) falhou na tentativa ${tentativa}: ${mensagem}`,
+        );
+
         await this.prisma.mailDelivery.update({
           where: { id: deliveryId },
           data: {
