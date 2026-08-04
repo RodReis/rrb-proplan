@@ -119,6 +119,9 @@ export function LicensesPage() {
   /** A chave recém-emitida. Existe só aqui, e só até o admin fechar. */
   const [emitida, setEmitida] = useState<IssuedLicense | null>(null);
 
+  // Revogação: id da licença com o painel de confirmação aberto na linha.
+  const [revogando, setRevogando] = useState<string | null>(null);
+
   // Busca e gaveta (máquinas + trilha)
   const [busca, setBusca] = useState('');
   const [abertaDe, setAbertaDe] = useState<string | null>(null);
@@ -170,17 +173,11 @@ export function LicensesPage() {
     }
   }
 
-  async function revogar(licenca: LicenseView) {
-    const motivo = window.prompt(
-      `Revogar a licença de ${licenca.customerEmail}?\n\nMotivo (obrigatório):`,
-    );
-    // `null` = cancelou. String vazia = confirmou sem motivo, que o servidor
-    // recusa — e é ele quem manda, não a tela.
-    if (motivo === null) return;
-
+  async function revogar(licenca: LicenseView, motivo: string) {
     setOcupado(true);
     try {
       await revokeLicense(licenca.id, motivo);
+      setRevogando(null);
       setLicencas(await listLicenses());
       toast.success('Licença revogada');
     } catch (err) {
@@ -535,15 +532,25 @@ export function LicensesPage() {
                         </button>
                         {l.status === 'ACTIVE' && (
                           <button
-                            onClick={() => void revogar(l)}
-                            disabled={ocupado}
+                            onClick={() =>
+                              setRevogando(revogando === l.id ? null : l.id)
+                            }
+                            aria-expanded={revogando === l.id}
                             className="rounded-[9px] border border-error/45 px-2.5 py-1 text-[11.5px] text-error transition-colors hover:bg-error/10"
                           >
-                            Revogar
+                            {revogando === l.id ? 'Cancelar' : 'Revogar'}
                           </button>
                         )}
                       </div>
                     </div>
+
+                    {revogando === l.id && (
+                      <FormRevogar
+                        licenca={l}
+                        ocupado={ocupado}
+                        onConfirmar={(motivo) => void revogar(l, motivo)}
+                      />
+                    )}
 
                     {abertaDe === l.id && (
                       <div className="mt-3 grid gap-4 border-t border-border2 pt-3">
@@ -682,6 +689,69 @@ export function LicensesPage() {
         </>
       )}
     </ClientsShell>
+  );
+}
+
+/**
+ * Confirmação da revogação — **na linha da licença, não num `window.prompt`**.
+ *
+ * O `prompt` do navegador vinha com o cabeçalho do domínio, tipografia e botões
+ * do sistema: um objeto que não é do produto, aparecendo por cima dele. Pior, é
+ * o único diálogo do Carbono que ignora o tema — chega em claro sobre a tela
+ * escura. É a mesma escolha já feita em `LicenseDangerActions`: ação que exige
+ * motivo confirma em formulário próprio, onde o efeito cabe **antes** do campo.
+ *
+ * O motivo é exigido aqui E no servidor. A tela evita a ida inútil; quem garante
+ * é o servidor — revogação sem motivo é a que ninguém explica quando o cliente
+ * cobra por que o produto parou.
+ */
+function FormRevogar({
+  licenca,
+  ocupado,
+  onConfirmar,
+}: {
+  licenca: LicenseView;
+  ocupado: boolean;
+  onConfirmar: (motivo: string) => void;
+}) {
+  const [motivo, setMotivo] = useState('');
+  const pode = Boolean(motivo.trim()) && !ocupado;
+
+  return (
+    <div className="anim-popIn mt-3 grid gap-3 rounded-[9px] border border-error/45 bg-bg p-3.5">
+      <p className="m-0 text-[12px] leading-relaxed text-text2">
+        <strong className="text-error">
+          A licença de {licenca.customerEmail} para de ativar.
+        </strong>{' '}
+        As máquinas já ativadas param na próxima verificação. A trilha e as
+        ativações permanecem — e o motivo abaixo fica registrado nela.
+      </p>
+
+      <label className="grid gap-1 text-[12px] text-body">
+        Motivo (obrigatório)
+        <input
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && pode && onConfirmar(motivo)}
+          placeholder="reembolso pedido em 04/08"
+          autoFocus
+          className="rounded-[9px] border border-border2 bg-panel px-3 py-2 text-[13px] text-text transition-colors focus:border-accentBorder"
+        />
+      </label>
+
+      <div>
+        <button
+          onClick={() => onConfirmar(motivo)}
+          disabled={!pode}
+          className="rounded-[9px] border border-error/45 px-4 py-2 text-[12.5px] font-semibold text-error transition-opacity hover:bg-error/10 disabled:opacity-40"
+        >
+          {/* "Confirmar revogação" e não "Revogar": o botão que ABRE este painel
+              já se chama assim, e dois controles de mesmo rótulo na mesma linha
+              é ambiguidade para quem navega por leitor de tela. */}
+          {ocupado ? 'Revogando…' : 'Confirmar revogação'}
+        </button>
+      </div>
+    </div>
   );
 }
 

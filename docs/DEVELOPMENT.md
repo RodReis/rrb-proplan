@@ -8270,3 +8270,78 @@ regra de leitura pura, e o que só o Postgres prova (payload jsonb, RLS, curinga
   há de-para; a aposta é que a lista basta, porque é onde o operador já olha.
 - **Trilha de remoção de `LicOfferMapping`** — pré-requisito de qualquer detecção
   de causa, se um dia ela for pedida.
+
+---
+
+## `[FIX] #261` — o único diálogo da área desenhado pelo sistema operacional
+
+Achado do PI no dogfooding de 2026-08-04. Em **Licenças → Licenças emitidas**,
+clicar em **Revogar** abria um `window.prompt()`: caixa branca com o cabeçalho
+`proplan.rrbtrading.com.br diz`, tipografia e botões do sistema, por cima do
+Carbono.
+
+### Por que isto é bug, e não preferência de estilo
+
+Não é que o diálogo esteja *mal estilizado* — é que ele **não se estiliza**. Um
+`window.prompt` é do navegador: ignora as tabelas de token do `DESIGN.md` §4, o
+contraste medido do §11, o `outline: 2px solid var(--accent)` que a mesma seção
+exige como foco visível universal, e a alternância Carbono/Claro do §12. O
+`DESIGN.md` se declara *"fonte única de design: tokens, componentes E regras de
+comportamento"* — e este objeto está fora de todas as três.
+
+**O certo já estava escrito duas vezes, no próprio código, a três arquivos de
+distância:**
+
+- `LicenseDangerActions.tsx:10-12` — *"As duas exigem confirmação em formulário
+  próprio, e não `window.prompt`: as duas precisam mostrar um aviso **antes** da
+  confirmação, e um `prompt` do navegador não tem onde colocá-lo."*
+- `WebhookOpsPanel.tsx:308-312` — *"Por que um campo, e não um `confirm()` … um
+  `window.confirm` não teria onde escrevê-lo."*
+
+Ou seja: a mesma tela tinha **dois padrões de confirmação lado a lado**. Estender
+validade e excluir dados a pedido abriam painel na gaveta; revogar — a ação
+intermediária entre as duas, também destrutiva e também com motivo obrigatório —
+saltava para o sistema operacional. O padrão não faltava; faltava aplicá-lo aqui.
+
+### O conserto
+
+`FormRevogar`, no molde do `FormExtender` vizinho:
+
+- **Revogar** vira toggle (`Revogar` ⇄ `Cancelar`), com `aria-expanded`.
+- Painel na própria linha, com **o efeito declarado antes do campo** — *"as
+  máquinas já ativadas param na próxima verificação; a trilha e as ativações
+  permanecem"*. É exatamente o que o `prompt` não tinha onde dizer, e o motivo
+  pelo qual `LicenseDangerActions` já o havia recusado.
+- Motivo obrigatório: `autoFocus`, Enter confirma, botão desabilitado sem texto.
+- **Rótulos distintos entre o botão que abre e o que executa** (`Revogar` ×
+  `Confirmar revogação`), pela razão já registrada em
+  `LicenseDangerActions.tsx:159-163`: dois controles de mesmo nome na mesma linha
+  é ambiguidade para quem navega por leitor de tela, que ouve os dois e não sabe
+  qual executa.
+
+**Sem mudança de API nem de contrato.** `revokeLicense(id, motivo)` está intacta,
+e o servidor continua sendo quem recusa motivo vazio — a tela só evita a ida
+inútil. O `ConfirmDialog.tsx` existente **não serve**: ele confirma sim/não e não
+tem campo de texto, e revogação sem motivo é a que ninguém explica quando o
+cliente cobra por que o produto parou.
+
+### Testes
+
+**Os dois testes que provavam a revogação testavam o `prompt`** — `vi.spyOn(window,
+'prompt')` devolvendo `null` e `'chargeback'`. Reescritos para o fluxo real, e
+**+1**: (1) o clique só abre a confirmação e **não** chama a API; (2) sem motivo,
+o botão de confirmar fica desabilitado; (3) o motivo digitado chega em
+`revokeLicense`. A garantia é a mesma de antes — revogar por engano é
+irreversível, a licença não volta a `ACTIVE` — testada onde a ação agora mora.
+
+Suíte completa verde: **2603 regras · 290 banco · 791 tela — 3684**, build e lint
+limpos (3 warnings pré-existentes, em arquivos não tocados).
+
+### Pendência que esta entrega deixa
+
+- **`border-danger` / `text-danger` em `LicenseDangerActions.tsx`** — tokens que
+  **não existem** no `@theme` do `index.css`; o Tailwind não gera a classe e os
+  botões de *Excluir dados a pedido* saem sem vermelho nenhum. O próprio
+  `licensingUi.tsx:21-27` documenta a armadilha, e o FIX #232 já a corrigiu numa
+  parte da área — este arquivo ficou de fora. Fora do escopo deste FIX; pede item
+  próprio.
