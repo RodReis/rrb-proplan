@@ -246,25 +246,43 @@ describe('SPEC-036: tela de Licenças', () => {
       expect(screen.getByText(/reembolso/)).toBeInTheDocument();
     });
 
-    it('cancelar o prompt não chama a API', async () => {
-      // `null` do prompt = cancelou. Revogar por engano é irreversível: a
-      // licença não volta a ACTIVE.
-      vi.spyOn(window, 'prompt').mockReturnValue(null);
+    it('o clique só abre a confirmação — não chama a API', async () => {
+      // Revogar por engano é irreversível: a licença não volta a ACTIVE. Por
+      // isso o botão da lista **abre** o painel; quem executa é o de dentro.
       await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: 'Revogar' }));
 
       expect(apiMock.revokeLicense).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole('button', { name: 'Confirmar revogação' }),
+      ).toBeInTheDocument();
+    });
+
+    it('sem motivo, o botão de confirmar fica desabilitado', async () => {
+      await montar();
+
+      await screen.findByText('Comprador');
+      await userEvent.click(screen.getByRole('button', { name: 'Revogar' }));
+
+      expect(screen.getByRole('button', { name: 'Confirmar revogação' })).toBeDisabled();
+      expect(apiMock.revokeLicense).not.toHaveBeenCalled();
     });
 
     it('envia o motivo digitado', async () => {
-      vi.spyOn(window, 'prompt').mockReturnValue('chargeback');
       apiMock.revokeLicense.mockResolvedValue({ ...LICENCA, status: 'REVOKED' });
       await montar();
 
       await screen.findByText('Comprador');
       await userEvent.click(screen.getByRole('button', { name: 'Revogar' }));
+      await userEvent.type(
+        screen.getByRole('textbox', { name: /motivo/i }),
+        'chargeback',
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Confirmar revogação' }),
+      );
 
       await waitFor(() =>
         expect(apiMock.revokeLicense).toHaveBeenCalledWith('lic-1', 'chargeback'),
