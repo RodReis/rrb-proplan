@@ -199,7 +199,7 @@ export function TenantCapsSection() {
     return (
       <section>
         <h3 className="mb-1 text-sm font-medium">Teto de gasto de IA</h3>
-        <p className="text-xs text-danger">{error}</p>
+        <p className="text-xs text-error">{error}</p>
       </section>
     );
   }
@@ -252,7 +252,7 @@ export function TenantCapsSection() {
         {field('Alerta (âmbar)', caps.llmAlertUsdMonthly, 'llmAlertUsdMonthly')}
         {field('Teto (bloqueia)', caps.llmHardCapUsdMonthly, 'llmHardCapUsdMonthly')}
       </div>
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {error && <p className="mt-2 text-xs text-error">{error}</p>}
     </section>
   );
 }

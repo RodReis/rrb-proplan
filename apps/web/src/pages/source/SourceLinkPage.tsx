@@ -263,7 +263,7 @@ export function SourceLinkPage() {
             </div>
 
             {erro && (
-              <p role="alert" className="mt-3 text-sm leading-relaxed text-danger">
+              <p role="alert" className="mt-3 text-sm leading-relaxed text-error">
                 {erro}
               </p>
             )}
@@ -315,7 +315,7 @@ export function SourceLinkPage() {
             </div>
 
             {erro && (
-              <p role="alert" className="mt-3 text-sm leading-relaxed text-danger">
+              <p role="alert" className="mt-3 text-sm leading-relaxed text-error">
                 {erro}
               </p>
             )}
