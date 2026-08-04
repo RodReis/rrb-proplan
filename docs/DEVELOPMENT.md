@@ -7997,3 +7997,93 @@ Três coisas descartaram a hipótese de regressão antes de qualquer mudança:
 "consertar"** — e é esse o ponto: mexer no teste a partir dessa leitura teria
 afrouxado uma asserção de RLS que estava correta, que é a categoria de conserto
 mais cara que existe neste repo.
+
+---
+
+## FIX #253 (SPEC-038) — Mail: envio por SMTP, e a falha do worker vira log — `em andamento`
+
+O primeiro envio real de produção não saiu. A investigação levou uma sessão
+inteira, e o que a alongou não foi o defeito — foi a ausência de sinal.
+
+### O que quebrou, em ordem
+
+O comprador pagou e não recebeu a chave. A cadeia tinha **quatro** elos rompidos,
+descobertos um a um, cada um escondendo o seguinte:
+
+1. **Webhook em `401`.** Dois webhooks na Kiwify (um por produto), cada um com
+   seu Token — e `LicSettings.webhookSecret` é 1:1 com o tenant. Só um dos dois
+   podia valer; o outro respondia `401` para sempre. Resolvido no painel da
+   plataforma ("Todos que sou produtor" → um webhook, um token), **sem código**:
+   o esquema por tenant é decisão da SPEC-038 (decisão PI #1) e continua certa.
+2. **Oferta sem mapeamento.** Os `LicOfferMapping` cadastrados apontavam para
+   `product_id` que nenhuma venda usava. Cadastro no admin, sem código.
+3. **Links de entrega vazios.** `downloadUrl`/`manualUrl` nulos — o template
+   omite os blocos (SPEC-042), então o e-mail sairia sem dizer onde baixar.
+   Resolvido publicando release pública e preenchendo no admin.
+4. **O provedor não podia enviar.** `MAIL_FROM` aponta para o domínio do
+   produto; a conta do Resend tem outro domínio verificado, e o plano gratuito
+   verifica **um**. Este exigiu código.
+
+Os três primeiros são configuração. O quarto mudou uma decisão.
+
+### A decisão PI #4 foi revista, e o pressuposto é o motivo
+
+A SPEC-038 escolheu **subdomínio dedicado via Resend**, para isolar a reputação
+do transacional do domínio principal. O argumento continua bom; o **pressuposto**
+caiu: o plano gratuito verifica um domínio, o da conta já está em uso por outro
+produto, e o segundo custa US$20/mês.
+
+**Decisão do PI (2026-08-04): SMTP da Hostinger**, caixa já paga — e cujas
+variáveis `SMTP_*` **já estavam no Railway**, sem nenhuma linha de código a
+lê-las. O ambiente estava pronto para um adapter que não existia.
+
+O trade-off aceito está em `docs/DEPLOY.md` §3.5 e não é gratuito: a reputação
+do transacional passa a compartilhar o domínio principal, e caixa comum tem
+limite diário na ordem de centenas. Para o volume do piloto nenhum dos dois
+morde — os dois voltam a morder se o volume crescer.
+
+**O `ResendClient` fica.** Está testado, custa zero manter, e a volta é
+`MAIL_PROVIDER=resend` em vez de um PR. Foi a primeira vez que a fronteira
+`MailProvider` (SPEC-038 §Escopo: *"a interface é a fronteira"*) foi cobrada — e
+ela pagou: nenhum chamador mudou.
+
+### O defeito que custou a sessão não foi nenhum dos quatro
+
+`MailWorker` gravava `FAILED` + motivo na `MailDelivery` e relançava para o
+BullMQ — **sem logar**. O sucesso quem loga é o `ResendClient`; a falha não
+logava ninguém.
+
+O log de produção mostrava `E-mail license_key enfileirado` e **nada depois**.
+Nem sucesso, nem erro. A leitura natural desse silêncio é *"o worker não
+consumiu o job"*, que manda investigar fila, Redis e registro do `@Processor` —
+tudo saudável. O motivo verdadeiro estava gravado no banco o tempo todo,
+alcançável só abrindo o detalhe de uma licença por vez.
+
+A SPEC-038 §Escopo já pedia *"falha visível no admin, **não só no log**"*. A
+metade do admin foi entregue; a do log faltava. E a ordem em que se investiga é
+a inversa da que foi construída: **o log vem primeiro**, porque é o que se lê
+sem saber ainda qual licença olhar.
+
+Uma linha de `logger.warn` teria transformado uma sessão em trinta segundos.
+
+### O que entrou
+
+- `SmtpClient implements MailProvider` — `nodemailer`, transporter reusado entre
+  envios, `secure` derivado da porta (465 implícito · 587 STARTTLS) com
+  `SMTP_SECURE` podendo vencer. Falta de variável falha **antes da rede**, com o
+  nome dela na mensagem — mesma decisão do `ResendClient`, pelo mesmo motivo:
+  `MailDelivery.error` é o que o admin lê.
+- `MAIL_PROVIDER` escolhe o adapter; padrão `smtp`.
+- `MailWorker` loga a falha com motivo, tentativa e template — **sem o
+  destinatário**: dado pessoal fica na `MailDelivery`, sob RLS.
+- `docs/DEPLOY.md` §3.5 reescrita: variáveis, trade-off e o caminho de volta.
+
+79 testes no módulo `mail` (eram 65), 27 nas arch-specs, lint e `tsc` limpos.
+
+### Pendências que esta entrega deixa
+
+- **SPF/DKIM/DMARC da caixa Hostinger** — a troca de provedor não os dispensa.
+  Sem eles o sintoma é o pior: `SENT` gravado, comprador sem receber.
+- **#254** — entrega de e-mail falhada continua invisível na aba Pendências.
+  Aparece só dentro do detalhe da licença, ou seja: é preciso já saber a
+  resposta para achar a pergunta.

@@ -110,8 +110,10 @@ Base em `.env.example`. **Nenhum secret entra no repo** — todos vivem nas
 | `GITHUB_WEBHOOK_SECRET` | secret do webhook (só quando a fatia de webhook existir) | GitHub App |
 | `LICENSING_SIGNING_KEY` | PEM da privada **Ed25519** em base64 (uma linha) — assina o license file (SPEC-036) | gerado (§3.4) |
 | `LICENSING_SIGNING_KID` | identificador da chave vigente, ex. `2026-07` | escolhido (§3.4) |
-| `RESEND_API_KEY` | chave da API do Resend — envio transacional (SPEC-038) | painel do Resend |
-| `MAIL_FROM` | remetente, em **subdomínio dedicado**: `nao-responda@mail.<domínio>` (§3.5) | escolhido (§3.5) |
+| `MAIL_PROVIDER` | `smtp` (padrão) ou `resend` — escolhe o adapter de envio (§3.5) | decidido (§3.5) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | caixa da Hostinger — envio transacional em uso (§3.5) | painel da Hostinger |
+| `RESEND_API_KEY` | chave da API do Resend — **só se `MAIL_PROVIDER=resend`** (§3.5) | painel do Resend |
+| `MAIL_FROM` | remetente; fallback do `SMTP_FROM` e remetente do Resend (§3.5) | escolhido (§3.5) |
 
 ### 3.4 Chave de assinatura do licenciamento (SPEC-036)
 
@@ -157,29 +159,38 @@ verificar — e o produto para na máquina de quem pagou.
 
 ### 3.5 E-mail transacional (SPEC-038)
 
-**Remetente em subdomínio dedicado** (decisão PI #4): `nao-responda@mail.<domínio>`.
-O ponto é isolar a reputação do transacional do domínio principal — se um
-disparo qualquer queimar a reputação de `mail.<domínio>`, o e-mail humano de
-`<domínio>` continua entregando. O inverso também vale, e é o que mais importa
-aqui: a chave que o comprador pagou não pode cair no spam por causa de outro
-envio.
+**O provedor é SMTP (caixa da Hostinger) desde 2026-08-04.** A decisão PI #4 da
+SPEC-038 escolhera o Resend com subdomínio dedicado (`nao-responda@mail.<domínio>`),
+para isolar a reputação do transacional do domínio principal. **O pressuposto
+caiu na operação**: o plano gratuito do Resend verifica **um** domínio, o da
+conta já estava em uso por outro produto, e acrescentar `rrbtrading.com.br`
+custa US$20/mês. **Decisão do PI (2026-08-04): usar a caixa SMTP já paga.**
 
-> **PENDENTE — o domínio concreto não foi definido.** Bloqueia **apenas o
-> primeiro envio real em produção**; implementação e testes usam fixtures e não
-> dependem dele. Decidir antes de ligar a integração com a plataforma de venda.
+| variável | o que é |
+|---|---|
+| `MAIL_PROVIDER` | `smtp` (padrão) ou `resend`. Trocar de volta é esta variável, não um deploy de código. |
+| `SMTP_HOST` | `smtp.hostinger.com` |
+| `SMTP_PORT` | `465` (TLS implícito) ou `587` (STARTTLS) |
+| `SMTP_SECURE` | opcional — derivado da porta quando ausente (`465` → `true`) |
+| `SMTP_USER` / `SMTP_PASS` | credenciais da caixa |
+| `SMTP_FROM` | remetente; cai para `MAIL_FROM` se ausente |
 
-Ao definir, na ordem:
+**O que se perdeu, e quando volta a doer.** A reputação do transacional passa a
+compartilhar o domínio principal: um disparo que queime `rrbtrading.com.br`
+atinge a chave que o comprador pagou, e vice-versa. Caixa comum também tem
+**limite diário** (na ordem de centenas). Para o volume do piloto nenhum dos dois
+morde — mas os dois voltam a morder se o volume crescer, e é aí que a decisão #4
+merece ser relida. O `ResendClient` **continua no código e testado**: a volta é
+`MAIL_PROVIDER=resend` mais um domínio verificado.
 
-1. Verificar o domínio no painel do Resend (ele gera os registros).
-2. Publicar **SPF**, **DKIM** e **DMARC** no DNS (Hostinger).
-3. Só então preencher `MAIL_FROM` e `RESEND_API_KEY` no Railway.
+**SPF, DKIM e DMARC continuam obrigatórios** — a troca de provedor não os
+dispensa. Sem eles o Gmail marca como spam ou recusa, e o sintoma é o pior
+possível: o `MailDelivery` fica `SENT` (o servidor aceitou) e o comprador não
+recebe nada. A Hostinger publica os registros da própria caixa; conferir no DNS
+antes de considerar o envio bom.
 
-Sem SPF/DKIM, o Gmail marca como spam ou recusa — e o sintoma é o pior possível:
-o `MailDelivery` fica `SENT` (o Resend aceitou) e o comprador não recebe nada.
-A checagem é operacional daquele primeiro envio, não desta fatia.
-
-**Sem as duas variáveis, o envio falha antes da rede**, com o nome da variável
-na mensagem, e a entrega fica `FAILED` no admin com esse texto. **A licença
+**Sem as variáveis, o envio falha antes da rede**, com o nome da que falta na
+mensagem, e a entrega fica `FAILED` no admin com esse texto. **A licença
 permanece emitida** — falha de envio nunca desfaz o que já foi gravado. Isso é
 desenho, não tolerância: a plataforma de pagamento não reenvia o evento de
 compra por causa de um erro nosso, então perder a licença seria perder a venda.

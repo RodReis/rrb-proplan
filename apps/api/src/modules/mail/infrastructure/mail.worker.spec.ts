@@ -127,6 +127,20 @@ describe('MailWorker', () => {
       await expect(worker.process(job())).rejects.toThrow();
       expect(update.mock.calls[0][0].data.error.length).toBe(500);
     });
+
+    it('loga a falha com o motivo do provedor', async () => {
+      // O defeito real que este teste tranca: o worker atravessava as duas
+      // saídas mudo. O sucesso quem loga é o provedor; a falha não logava
+      // ninguém — e quem investigava "o e-mail não chegou" pelo log de produção
+      // via o job ser enfileirado e nada depois, concluindo que o worker nem
+      // rodou. Sem o destinatário: dado pessoal fica na `MailDelivery`.
+      const aviso = jest.spyOn(worker['logger'], 'warn').mockImplementation();
+
+      await expect(worker.process(job())).rejects.toThrow();
+
+      expect(aviso).toHaveBeenCalledWith(expect.stringContaining('Resend respondeu 500'));
+      expect(aviso.mock.calls[0][0]).not.toContain('comprador@exemplo.com');
+    });
   });
 
   it('não reenvia uma entrega já SENT', async () => {
