@@ -19,6 +19,10 @@ export function webhookStatusLabel(status: WebhookStatus): string {
   if (status === 'PENDING') return 'Aguardando';
   if (status === 'PROCESSED') return 'Processada';
   if (status === 'FAILED') return 'Falhou';
+  // "Descartada" e não "Ignorada": `IGNORED` é a máquina dizendo que o tipo não
+  // lhe diz respeito; `DISCARDED` é uma pessoa dizendo que a entrega não vai
+  // virar nada. Dois rótulos iguais apagariam a pergunta *quem*.
+  if (status === 'DISCARDED') return 'Descartada';
   return 'Ignorada';
 }
 
@@ -46,9 +50,43 @@ export function webhookStatusTone(status: WebhookStatus): 'ok' | 'alert' | 'mute
  * `IGNORED` **pode** ser reprocessado: se um tipo de evento passar a ser
  * suportado numa versão nova, o que ficou ignorado é exatamente o que se quer
  * reprocessar.
+ *
+ * `DISCARDED` fica de fora porque **reprocessar não ressuscita** (SPEC-045): o
+ * caminho de volta é o *Reabrir*, com carimbo próprio. Dois atos deliberados.
  */
 export function canReprocess(evento: WebhookEventView): boolean {
-  return evento.status !== 'PROCESSED';
+  return evento.status !== 'PROCESSED' && evento.status !== 'DISCARDED';
+}
+
+/**
+ * `true` quando descartar é oferecido.
+ *
+ * `PROCESSED` fica de fora: a entrega que virou licença é o elo entre a venda e
+ * a chave emitida, e escondê-la quebraria a pergunta *"de onde veio esta
+ * licença"*. Ela nem aparece em pendências — não há problema a resolver.
+ *
+ * `DISCARDED` fica de fora porque já está descartada.
+ */
+export function canDiscard(evento: WebhookEventView): boolean {
+  return evento.status !== 'PROCESSED' && evento.status !== 'DISCARDED';
+}
+
+/** `true` só na linha descartada — é o único caminho de volta. */
+export function canReopen(evento: WebhookEventView): boolean {
+  return evento.status === 'DISCARDED';
+}
+
+/**
+ * O carimbo do descarte, pronto para a linha: quem, quando e por quê.
+ *
+ * Devolve `null` fora de entrega descartada. O motivo é o que responde *"por que
+ * desistimos"* — e é distinto do `error`, que responde *"por que parou"*.
+ */
+export function discardNote(evento: WebhookEventView): string | null {
+  if (evento.status !== 'DISCARDED' || !evento.discardedAt) return null;
+  const autor = evento.discardedBy?.trim();
+  const motivo = evento.discardedReason?.trim() || 'sem motivo registrado';
+  return autor ? `${motivo} — descartada por ${autor}` : motivo;
 }
 
 /**

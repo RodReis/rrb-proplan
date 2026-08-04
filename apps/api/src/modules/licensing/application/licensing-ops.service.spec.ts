@@ -128,6 +128,175 @@ describe('LicensingOpsService', () => {
         status: 404,
       });
     });
+
+    /**
+     * **Reprocessar não ressuscita** (SPEC-045). O caminho de volta é o
+     * *Reabrir*, com carimbo próprio: descartar e reabrir são dois atos
+     * deliberados. Deixar o reprocess desfazer o descarte apagaria o segundo.
+     */
+    it('recusa reprocessar entrega DISCARDED, apontando o Reabrir', async () => {
+      const { service, add } = montar({
+        licWebhookEvent: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'ev-d', status: 'DISCARDED' }),
+          update: jest.fn(),
+          findMany: jest.fn(),
+        },
+      });
+
+      await expect(service.reprocess('ev-d', 'tenant-1')).rejects.toMatchObject({
+        status: 409,
+      });
+      expect(add).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * O descarte da SPEC-045 — tirar da lista de pendências **sem apagar a
+   * trilha**. O que estes testes protegem:
+   *
+   * 1. **Descarte sem motivo.** Produz o mesmo item ilegível que a lista já
+   *    produzia, só que escondido.
+   * 2. **`processedAt` esquecido.** É a armadilha do #216 espelhada: sem o
+   *    carimbo, o CHECK do banco recusa e a tela recebe `500`. O mock não tem
+   *    CHECK, então o teste olha o `data` do update.
+   * 3. **`error` sobrescrito.** Ele responde "por que parou"; o motivo do
+   *    descarte responde "por que desistimos". Uma não pode comer a outra.
+   */
+  describe('discard', () => {
+    it('grava o carimbo completo e NÃO toca no `error` original', async () => {
+      const { service, prisma } = montar();
+
+      await service.discard('ev-1', 'tenant-1', 'user-7', 'disparo de teste da Kiwify');
+
+      const { data } = (prisma.licWebhookEvent.update as jest.Mock).mock.calls[0][0];
+      expect(data.status).toBe('DISCARDED');
+      expect(data.discardedBy).toBe('user-7');
+      expect(data.discardedReason).toBe('disparo de teste da Kiwify');
+      expect(data.discardedAt).toBeInstanceOf(Date);
+      // `DISCARDED` é desfecho, não espera — sem esta data o CHECK recusa.
+      expect(data.processedAt).toBeInstanceOf(Date);
+      // O motivo da falha original sobrevive ao descarte.
+      expect(data.error).toBeUndefined();
+      // Descartar de novo um reaberto zera o `reopenedAt`.
+      expect(data.reopenedAt).toBeNull();
+    });
+
+    it.each([
+      ['ausente', undefined],
+      ['vazio', ''],
+      ['só espaços', '   '],
+      ['não-texto', 42],
+    ])('recusa descarte com motivo %s, sem gravar nada', async (_caso, motivo) => {
+      const { service, prisma } = montar();
+
+      await expect(
+        service.discard('ev-1', 'tenant-1', 'user-7', motivo),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(prisma.licWebhookEvent.update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A entrega que virou licença é o elo entre a venda e a chave emitida.
+     * Escondê-la quebraria a pergunta "de onde veio esta licença" — e ela nem
+     * aparece em pendências, então não há problema a resolver.
+     */
+    it('recusa descartar entrega PROCESSED', async () => {
+      const { service, prisma } = montar({
+        licWebhookEvent: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'ev-p', status: 'PROCESSED' }),
+          update: jest.fn(),
+          findMany: jest.fn(),
+        },
+      });
+
+      await expect(
+        service.discard('ev-p', 'tenant-1', 'user-7', 'quero limpar a lista'),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(prisma.licWebhookEvent.update).not.toHaveBeenCalled();
+    });
+
+    it('404 em entrega inexistente', async () => {
+      const { service } = montar({
+        licWebhookEvent: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          update: jest.fn(),
+          findMany: jest.fn(),
+        },
+      });
+
+      await expect(
+        service.discard('ev-x', 'tenant-1', 'user-7', 'motivo'),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+  });
+
+  describe('reopen', () => {
+    it('volta a PENDING, limpa `processedAt`/`error`, e enfileira', async () => {
+      const { service, prisma, add } = montar({
+        licWebhookEvent: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'ev-d', status: 'DISCARDED' }),
+          update: jest.fn().mockResolvedValue({}),
+          findMany: jest.fn(),
+        },
+      });
+
+      await service.reopen('ev-d', 'tenant-1');
+
+      const { data } = (prisma.licWebhookEvent.update as jest.Mock).mock.calls[0][0];
+      expect(data.status).toBe('PENDING');
+      // FIX #216: o carimbo do desfecho anterior não sobrevive à volta.
+      expect(data.processedAt).toBeNull();
+      expect(data.error).toBeNull();
+      expect(data.reopenedAt).toBeInstanceOf(Date);
+      // A trilha do descarte PERMANECE — é a prova de que já foi descartada.
+      expect(data.discardedAt).toBeUndefined();
+      expect(data.discardedReason).toBeUndefined();
+
+      // Quem decide o desfecho é o job, nunca a rota.
+      expect(add).toHaveBeenCalledWith('webhook', {
+        webhookEventId: 'ev-d',
+        tenantId: 'tenant-1',
+      });
+    });
+
+    it.each(['FAILED', 'PENDING', 'PROCESSED', 'IGNORED'])(
+      'recusa reabrir entrega %s — não há o que reabrir',
+      async (status) => {
+        const { service, prisma, add } = montar({
+          licWebhookEvent: {
+            findUnique: jest.fn().mockResolvedValue({ id: 'ev-1', status }),
+            update: jest.fn(),
+            findMany: jest.fn(),
+          },
+        });
+
+        await expect(service.reopen('ev-1', 'tenant-1')).rejects.toMatchObject({
+          status: 409,
+        });
+        expect(prisma.licWebhookEvent.update).not.toHaveBeenCalled();
+        expect(add).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  /**
+   * O agrupamento *Oferta → edição* (SPEC-045, decisão PI #3).
+   *
+   * É o critério que faz as 6 ofertas do dogfooding sumirem: descartados os
+   * eventos, a aba fica vazia e o badge apaga — **sem `DELETE` no banco**. E o
+   * filtro é no `where` de propósito: incluir descartadas gastaria linhas do
+   * `take` com o que a regra jogaria fora adiante, e uma oferta ativa poderia
+   * ficar de fora da página por causa de eventos já resolvidos.
+   */
+  describe('listSeenOffers', () => {
+    it('não conta entregas DISCARDED ao agregar as ofertas vistas', async () => {
+      const { service, prisma } = montar();
+
+      await service.listSeenOffers();
+
+      const { where } = (prisma.licWebhookEvent.findMany as jest.Mock).mock.calls[0][0];
+      expect(where).toEqual({ status: { not: 'DISCARDED' } });
+    });
   });
 
   describe('settings', () => {

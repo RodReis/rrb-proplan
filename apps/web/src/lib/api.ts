@@ -2204,11 +2204,16 @@ export interface WebhookEventView {
   platform: string;
   eventType: string;
   externalEventId: string;
-  status: 'PENDING' | 'PROCESSED' | 'FAILED' | 'IGNORED';
+  status: 'PENDING' | 'PROCESSED' | 'FAILED' | 'IGNORED' | 'DISCARDED';
   error: string | null;
   receivedAt: string;
   processedAt: string | null;
   licenseId: string | null;
+  /** Carimbo do descarte (SPEC-045). Nulos em entrega nunca descartada. */
+  discardedAt: string | null;
+  discardedBy: string | null;
+  discardedReason: string | null;
+  reopenedAt: string | null;
 }
 
 /** A entrega com o corpo bruto que a plataforma mandou. */
@@ -2227,6 +2232,27 @@ export function getWebhookEvent(id: string): Promise<WebhookEventDetail> {
 
 export function reprocessWebhookEvent(id: string): Promise<{ enqueued: true }> {
   return request(`/licensing/webhook-events/${id}/reprocess`, { method: 'POST' });
+}
+
+/**
+ * Tira a entrega da lista de pendências sem apagar a linha (SPEC-045).
+ *
+ * O `reason` é obrigatório no servidor: descarte sem motivo é o mesmo item
+ * ilegível que a lista já produzia, só que escondido.
+ */
+export function discardWebhookEvent(
+  id: string,
+  reason: string,
+): Promise<{ discarded: true }> {
+  return request(`/licensing/webhook-events/${id}/discard`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** Devolve a entrega descartada à fila. O desfecho quem decide é o job. */
+export function reopenWebhookEvent(id: string): Promise<{ enqueued: true }> {
+  return request(`/licensing/webhook-events/${id}/reopen`, { method: 'POST' });
 }
 
 /**

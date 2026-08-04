@@ -8087,3 +8087,102 @@ Uma linha de `logger.warn` teria transformado uma sessão em trinta segundos.
 - **#254** — entrega de e-mail falhada continua invisível na aba Pendências.
   Aparece só dentro do detalhe da licença, ou seja: é preciso já saber a
   resposta para achar a pergunta.
+
+## Fatia 34 (SPEC-045) — Licensing: descartar evento de webhook sem apagar a trilha — `entregue`
+
+Issue **#257** (spec `aprovada-pi` 2026-08-04). Refina a **SPEC-038** (Fatia 27,
+finalizada). Nasce do dogfooding de 2026-08-04.
+
+A lista de pendências volta a significar *"tem coisa para fazer"*. O operador tira
+da lista a entrega que **nunca** terá conserto, sem apagar a linha nem o payload
+que explicam por que aquela venda não virou licença.
+
+### O problema, medido
+
+A aba **Pendências → Oferta → edição** acumulou **6 ofertas sem mapeamento**,
+todas de disparos do botão *"Testar Webhook"* da Kiwify. Cada disparo manda um
+`product_id` fictício **e diferente** (`764cd7eb`, `38316019`, `d972678b`,
+`307974cd`, …). Nenhum corresponde a produto real, e nenhum jamais terá
+mapeamento.
+
+O badge laranja era permanente e **sem conserto possível**: quem abria o admin via
+seis vendas paradas e não tinha ação que as resolvesse. Mapear seria pior —
+emitiria licença real para venda fictícia.
+
+**`DELETE` foi descartado antes da spec, em duas formas** (SQL direto e rota de
+delete no admin): o `LicWebhookEvent` guarda o payload bruto justamente para
+responder *"por que esta venda não virou licença"*. Apagar para a tela ficar limpa
+é o oposto do que este produto verifica — e o `CLAUDE.md` já fixa o princípio no
+board (*"issue nunca é deletada"*).
+
+### O que entrou
+
+- [x] `DISCARDED` em `LicWebhookStatus` + 4 colunas de carimbo (`discardedAt`,
+      `discardedBy`, `discardedReason`, `reopenedAt`), nullable
+- [x] CHECKs `discard_explained` (motivo obrigatório e não-vazio) e
+      `reopen_after_discard` (reabrir exige ter sido descartado)
+- [x] `POST /webhook-events/:id/discard` (`reason` obrigatório) e
+      `POST /webhook-events/:id/reopen`
+- [x] *Reprocessar* recusa linha `DISCARDED` com `409`, apontando o *Reabrir*
+- [x] `listSeenOffers` ignora `DISCARDED` — a oferta some do agrupamento e do badge
+- [x] Filtro **Descartadas** no painel, ao lado de *Falhas*; carimbo (quem/quando/
+      por quê) visível na linha
+- [x] `docs/TESTING.md` §8.1 — o que o botão *Testar Webhook* testa e o que não testa
+
+### A migration teve de virar duas — e foi o Postgres que ensinou
+
+A primeira versão punha `ALTER TYPE ... ADD VALUE 'DISCARDED'` e os CHECKs que
+comparam com `'DISCARDED'` no **mesmo arquivo**. O `migrate deploy` falhou com
+**`55P04` — *"unsafe use of new value"***: Postgres recusa referenciar um valor de
+enum na mesma transação que o criou, e o Prisma roda cada migration em uma.
+
+Ficaram duas: `..._webhook_discard` (enum + colunas) e
+`..._webhook_discard_checks` (os dois CHECKs). **O teste unitário não pegaria** —
+mock de Prisma não tem enum nem transação. Foi o int-spec contra Postgres real que
+transformou um erro de produção em erro de desenvolvimento.
+
+### As decisões que o código carrega
+
+- **`DISCARDED` carimba `processedAt`.** O CHECK `processed_coherent` afirma
+  `(status = 'PENDING') = (processed_at IS NULL)` — descartar sem a data viola o
+  CHECK e devolve `500` na tela. É **exatamente o #216 espelhado**, e o par de
+  testes de banco daquela correção se repete aqui: um provando que `DISCARDED`
+  **com** data é aceito, outro provando que **sem** data é recusado.
+- **O `error` original não é sobrescrito.** Ele responde *"por que parou"*; o
+  `discardedReason` responde *"por que desistimos"*. Duas perguntas, e uma não
+  pode comer a outra. O `error` só é limpo no **reabrir**, porque aí a tentativa
+  antiga deixou de descrever o estado atual.
+- **Descartar ≠ `IGNORED`.** `IGNORED` é a máquina dizendo *"este tipo não me diz
+  respeito"* no intake, sem autor. `DISCARDED` é uma pessoa dizendo *"esta entrega
+  não vai virar nada"*, com nome e motivo. Reaproveitar `IGNORED` apagaria a
+  pergunta *quem*.
+- **Colunas, não `LicEvent`.** Aquele exige `licenseId NOT NULL`, e o evento que
+  mais precisa de descarte é justamente o **sem licença nenhuma**.
+- **`PROCESSED` não se descarta** (`409`): a entrega que virou licença é o elo
+  entre a venda e a chave emitida, e ela nem aparece em pendências.
+- **`409` só no que é novo** (decisão do PI nesta sessão). O `reprocess` já
+  respondia `422` em *"entrega já processada"*, com teste travando o contrato da
+  SPEC-038. Padronizar tudo em `409` mudaria contrato entregue e tocaria código
+  fora do escopo — os dois convivem, e a divergência fica registrada aqui.
+
+### Testes
+
+**+51 no total**: 22 regras (service), 9 banco (`licensing-webhook-discard.int-spec.ts`,
+contra Postgres real), 20 tela (view helpers + painel). Suíte completa verde —
+**2595 API** (regras + banco) e **783 web**, build e lint limpos.
+
+O int-spec é o que prova as guardas: `DISCARDED` sem `processed_at` recusado,
+motivo ausente/vazio/só-espaços recusado, `reopened_at` sem `discarded_at`
+recusado, e o isolamento por RLS (o `UPDATE` de outro tenant afeta **zero** linhas
+— o modo silencioso, por isso a asserção conta linhas em vez de esperar exceção).
+
+### Pendências que esta entrega deixa
+
+- **O dogfooding das 6 ofertas reais** — descartar as seis em produção e conferir
+  que a aba *Oferta → edição* esvazia, o badge apaga e os 6 payloads continuam
+  consultáveis no filtro `Descartadas`. É o critério de aceite que só a produção
+  fecha.
+- **Descarte em lote** — fora de escopo (decisão #2). Volta se a operação real
+  mostrar que uma a uma não escala.
+- **Reconhecer evento de teste no intake** — fora de escopo (decisão #4). Cada
+  disparo futuro do *Testar Webhook* custa um descarte; dívida aceita.

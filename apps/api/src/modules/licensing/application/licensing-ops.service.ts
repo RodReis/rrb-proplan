@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UnprocessableEntityException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -49,6 +49,11 @@ export interface WebhookEventListItem {
   receivedAt: Date;
   processedAt: Date | null;
   licenseId: string | null;
+  /** Carimbo do descarte (SPEC-045). Nulos em entrega nunca descartada. */
+  discardedAt: Date | null;
+  discardedBy: string | null;
+  discardedReason: string | null;
+  reopenedAt: Date | null;
 }
 
 export interface LicSettingsView {
@@ -104,6 +109,10 @@ export class LicensingOpsService {
         receivedAt: true,
         processedAt: true,
         licenseId: true,
+        discardedAt: true,
+        discardedBy: true,
+        discardedReason: true,
+        reopenedAt: true,
       },
       orderBy: { receivedAt: 'desc' },
       take: Math.min(Math.max(1, take), MAX_PAGE),
@@ -141,6 +150,16 @@ export class LicensingOpsService {
       );
     }
 
+    // **Reprocessar não ressuscita** (SPEC-045). Descartado só volta pelo
+    // *Reabrir*, que tem carimbo próprio: descartar e reabrir são dois atos
+    // deliberados, simétrico ao Finalizado/Descartado do board. Deixar o
+    // reprocess desfazer o descarte em silêncio apagaria o segundo ato.
+    if (evento.status === 'DISCARDED') {
+      throw new ConflictException(
+        'Entrega descartada — use Reabrir para voltar a processá-la',
+      );
+    }
+
     // Volta para `PENDING` antes de enfileirar: se o processo cair entre as duas
     // linhas, o estado na tela é "esperando", não "falhou" — e o dono reprocessa
     // de novo. O inverso (enfileirar e depois marcar) deixaria um evento
@@ -166,6 +185,126 @@ export class LicensingOpsService {
 
     await this.queue.add('webhook', { webhookEventId: id, tenantId });
     this.logger.log(`Entrega ${id} reenfileirada pelo admin`);
+    return { enqueued: true };
+  }
+
+  /**
+   * Tira a entrega da lista de pendências **sem apagar a trilha** (SPEC-045).
+   *
+   * ## O que este método existe para resolver
+   *
+   * Uma venda que nunca terá conserto — o caso real foram os disparos do botão
+   * *"Testar Webhook"* da Kiwify, cada um com um `product_id` fictício e
+   * diferente. Mapear seria pior que deixar: emitiria licença real para venda
+   * que não existe. O badge laranja ficava permanente, sem ação possível.
+   *
+   * ## O que **não** acontece aqui
+   *
+   * A linha e o payload continuam no banco, consultáveis pelo filtro
+   * `Descartadas`. E o `error` original **não é sobrescrito**: ele responde *"por
+   * que parou"*, enquanto `discardedReason` responde *"por que desistimos"*. São
+   * duas perguntas e uma não pode comer a outra.
+   */
+  async discard(
+    id: string,
+    tenantId: string,
+    userId: string,
+    reason: unknown,
+  ): Promise<{ discarded: true }> {
+    const motivo = texto(reason);
+    // Descarte sem motivo é o mesmo item ilegível que a lista de pendências já
+    // produzia, só que escondido. O CHECK do banco também recusa — aqui a
+    // recusa é `422` com mensagem, em vez de `500` de constraint.
+    if (!motivo) {
+      throw new UnprocessableEntityException(
+        '`reason` é obrigatório — descarte sem motivo esconde o problema em vez de resolvê-lo',
+      );
+    }
+
+    const evento = await this.prisma.licWebhookEvent.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!evento) throw new NotFoundException('Entrega não encontrada');
+
+    // **`PROCESSED` não se descarta.** A entrega que virou licença é o elo entre
+    // a venda e a chave emitida; escondê-la quebraria a pergunta "de onde veio
+    // esta licença". E ela nem aparece em pendências — não há o que resolver.
+    if (evento.status === 'PROCESSED') {
+      throw new ConflictException(
+        'Entrega já virou licença — descartá-la perderia o elo com a venda',
+      );
+    }
+
+    await this.prisma.licWebhookEvent.update({
+      where: { id },
+      data: {
+        status: 'DISCARDED',
+        discardedAt: new Date(),
+        discardedBy: userId,
+        discardedReason: motivo,
+        // **`processedAt` junto — a armadilha do CHECK.**
+        // `lic_webhook_events_processed_coherent` afirma
+        // `(status = 'PENDING') = (processed_at IS NULL)`. Descartar um evento
+        // que estava `PENDING` sem carimbar a data viola o CHECK e devolve
+        // `500` na tela — exatamente o defeito do #216, espelhado.
+        // `DISCARDED` é desfecho, não espera.
+        processedAt: new Date(),
+        // Descartar de novo um evento reaberto zera o `reopenedAt`: as colunas
+        // guardam o ÚLTIMO ato, e um `reopenedAt` sobrevivente diria que a
+        // entrega está aberta quando ela acabou de ser descartada.
+        reopenedAt: null,
+      },
+    });
+
+    this.logger.log(`Entrega ${id} descartada por ${userId} (tenant ${tenantId})`);
+    return { discarded: true };
+  }
+
+  /**
+   * Devolve a entrega descartada para a fila — o caminho de volta (SPEC-045).
+   *
+   * **Passa pelo job, como o reprocessar.** A rota não decide desfecho: devolve a
+   * `PENDING` e enfileira. Quem decide se vira licença ou volta a `FAILED` é o
+   * processamento, conforme o mapeamento exista ou não. Processar dentro da
+   * request foi recusado na SPEC-038 (*"receber ≠ processar"*) e a razão não
+   * mudou.
+   */
+  async reopen(id: string, tenantId: string): Promise<{ enqueued: true }> {
+    const evento = await this.prisma.licWebhookEvent.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!evento) throw new NotFoundException('Entrega não encontrada');
+
+    // Reabrir o que nunca foi descartado não é estado possível — e o CHECK
+    // `lic_webhook_events_reopen_after_discard` é a rede de segurança do banco
+    // para o mesmo fato.
+    if (evento.status !== 'DISCARDED') {
+      throw new ConflictException('Entrega não está descartada — não há o que reabrir');
+    }
+
+    await this.prisma.licWebhookEvent.update({
+      where: { id },
+      data: {
+        status: 'PENDING',
+        // `processedAt: null` pela mesma razão do reprocess (FIX #216): o
+        // carimbo do desfecho anterior não pode sobreviver à volta para
+        // `PENDING`, ou o CHECK recusa o update.
+        processedAt: null,
+        // O `error` é limpo aqui, e não no descarte: agora a entrega vai ser
+        // processada de novo, e o motivo antigo passaria a descrever uma
+        // tentativa que não é mais a atual.
+        error: null,
+        reopenedAt: new Date(),
+        // `discardedAt`/`By`/`Reason` PERMANECEM: são a trilha de que esta
+        // entrega já foi descartada uma vez, e o CHECK de reabertura depende do
+        // `discardedAt` estar lá.
+      },
+    });
+
+    await this.queue.add('webhook', { webhookEventId: id, tenantId });
+    this.logger.log(`Entrega ${id} reaberta e reenfileirada`);
     return { enqueued: true };
   }
 
@@ -283,6 +422,16 @@ export class LicensingOpsService {
   async listSeenOffers(take = MAX_PAGE): Promise<OfertaVista[]> {
     const [eventos, mapeamentos] = await Promise.all([
       this.prisma.licWebhookEvent.findMany({
+        // **Descartadas não contam** (SPEC-045). O agrupamento é derivado: a
+        // oferta cujos eventos foram todos descartados some da lista e do badge
+        // sem que nada de estado novo nasça na oferta. E se um evento novo do
+        // mesmo produto chegar, ela reaparece sozinha — descartar decide sobre
+        // entregas, não sobre produtos.
+        //
+        // O filtro é no `where`, não depois: incluí-las aqui gastaria linhas do
+        // `take` com o que a regra descartaria adiante, e uma oferta ativa
+        // poderia ficar de fora da página por causa de eventos já resolvidos.
+        where: { status: { not: 'DISCARDED' } },
         select: { payload: true, receivedAt: true, status: true, platform: true },
         orderBy: { receivedAt: 'desc' },
         take: Math.min(Math.max(1, take), MAX_PAGE),

@@ -7,6 +7,8 @@ const apiMock = vi.hoisted(() => ({
   listWebhookEvents: vi.fn(),
   createOfferMapping: vi.fn(),
   reprocessWebhookEvent: vi.fn(),
+  discardWebhookEvent: vi.fn(),
+  reopenWebhookEvent: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -57,6 +59,10 @@ function evento(over: Partial<WebhookEventView> = {}): WebhookEventView {
     receivedAt: '2026-07-29T12:00:00.000Z',
     processedAt: null,
     licenseId: null,
+    discardedAt: null,
+    discardedBy: null,
+    discardedReason: null,
+    reopenedAt: null,
     ...over,
   };
 }
@@ -221,5 +227,117 @@ describe('mapear a oferta na entrega que falhou', () => {
 
     expect(await screen.findByText(/Cadastre uma edição em/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mapear' })).toBeNull();
+  });
+
+  /**
+   * O descarte da SPEC-045 — o caso do dogfooding: seis disparos do botão
+   * *"Testar Webhook"* da Kiwify, cada um com `product_id` fictício, que nunca
+   * teriam mapeamento e faziam o badge laranja ficar permanente.
+   */
+  describe('descarte', () => {
+    it('exige motivo: o botão de confirmar nasce desabilitado', async () => {
+      apiMock.listWebhookEvents.mockResolvedValue([evento()]);
+      render(<WebhookOpsPanel catalogo={CATALOGO} />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Descartar' }));
+
+      // O motivo É a confirmação: descarte sem ele produz o mesmo item ilegível
+      // da lista de pendências, só que escondido.
+      const confirmar = screen.getByRole('button', { name: /Confirmar descarte/i });
+      expect(confirmar).toBeDisabled();
+      expect(apiMock.discardWebhookEvent).not.toHaveBeenCalled();
+
+      await userEvent.type(
+        screen.getByLabelText(/Motivo do descarte/i),
+        'disparo do botão Testar Webhook',
+      );
+      expect(confirmar).toBeEnabled();
+    });
+
+    it('descarta com o motivo e diz que a linha continua consultável', async () => {
+      apiMock.listWebhookEvents.mockResolvedValue([evento()]);
+      apiMock.discardWebhookEvent.mockResolvedValue({ discarded: true });
+      render(<WebhookOpsPanel catalogo={CATALOGO} />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Descartar' }));
+      await userEvent.type(screen.getByLabelText(/Motivo do descarte/i), 'venda de teste');
+      await userEvent.click(screen.getByRole('button', { name: /Confirmar descarte/i }));
+
+      await waitFor(() =>
+        expect(apiMock.discardWebhookEvent).toHaveBeenCalledWith('ev-1', 'venda de teste'),
+      );
+      // Sem esta frase, o sumiço da linha pareceria delete — que é exatamente o
+      // que NÃO aconteceu.
+      expect(toastMock.success).toHaveBeenCalledWith(
+        expect.stringMatching(/continua consultável/i),
+      );
+    });
+
+    /** A entrega que virou licença é o elo entre a venda e a chave emitida. */
+    it('não oferece descartar o que já virou licença', async () => {
+      apiMock.listWebhookEvents.mockResolvedValue([
+        evento({ status: 'PROCESSED', error: null, licenseId: 'lic-1' }),
+      ]);
+      render(<WebhookOpsPanel catalogo={CATALOGO} />);
+
+      await screen.findByText('Processada');
+      expect(screen.queryByRole('button', { name: 'Descartar' })).toBeNull();
+    });
+
+    /**
+     * **Reprocessar não ressuscita.** O caminho de volta é o *Reabrir*, com
+     * carimbo próprio — dois atos deliberados.
+     */
+    it('na linha descartada mostra Reabrir, não Reprocessar, e exibe o carimbo', async () => {
+      apiMock.listWebhookEvents.mockResolvedValue([
+        evento({
+          status: 'DISCARDED',
+          discardedAt: '2026-08-04T10:00:00.000Z',
+          discardedBy: 'rodrigo',
+          discardedReason: 'disparo do botão Testar Webhook',
+        }),
+      ]);
+      render(<WebhookOpsPanel catalogo={CATALOGO} />);
+
+      await screen.findByText('Descartada');
+      expect(screen.queryByRole('button', { name: 'Reprocessar' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Reabrir' })).toBeInTheDocument();
+      // Quem, quando e por quê — a trilha que o descarte existe para manter.
+      expect(
+        screen.getByText(/disparo do botão Testar Webhook — descartada por rodrigo/i),
+      ).toBeInTheDocument();
+    });
+
+    it('reabrir enfileira e não afirma desfecho que ainda não existe', async () => {
+      apiMock.listWebhookEvents.mockResolvedValue([
+        evento({
+          status: 'DISCARDED',
+          discardedAt: '2026-08-04T10:00:00.000Z',
+          discardedBy: 'rodrigo',
+          discardedReason: 'engano',
+        }),
+      ]);
+      apiMock.reopenWebhookEvent.mockResolvedValue({ enqueued: true });
+      render(<WebhookOpsPanel catalogo={CATALOGO} />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Reabrir' }));
+
+      await waitFor(() => expect(apiMock.reopenWebhookEvent).toHaveBeenCalledWith('ev-1'));
+      // O job é assíncrono: afirmar "reprocessada" aqui seria o "fechamento
+      // frágil" que este produto existe para detectar.
+      expect(toastMock.success).toHaveBeenCalledWith(
+        expect.stringMatching(/recarregue em instantes/i),
+      );
+    });
+
+    it('oferece o filtro Descartadas ao lado de Falhas', async () => {
+      render(<WebhookOpsPanel catalogo={CATALOGO} />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Descartadas' }));
+
+      await waitFor(() =>
+        expect(apiMock.listWebhookEvents).toHaveBeenCalledWith('DISCARDED'),
+      );
+    });
   });
 });

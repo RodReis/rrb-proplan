@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   produtoDoErro,
+  canDiscard,
+  canReopen,
   canReprocess,
+  discardNote,
   offerLabel,
   pendingCount,
   toleranceLabel,
@@ -22,16 +25,37 @@ function evento(over: Partial<WebhookEventView> = {}): WebhookEventView {
     receivedAt: '2026-07-29T12:00:00.000Z',
     processedAt: '2026-07-29T12:00:01.000Z',
     licenseId: 'lic-1',
+    discardedAt: null,
+    discardedBy: null,
+    discardedReason: null,
+    reopenedAt: null,
     ...over,
   };
 }
 
+/** Uma entrega descartada, com o carimbo completo (SPEC-045). */
+function descartada(over: Partial<WebhookEventView> = {}): WebhookEventView {
+  return evento({
+    status: 'DISCARDED',
+    error: 'Oferta sem mapeamento: produto 764cd7eb',
+    licenseId: null,
+    discardedAt: '2026-08-04T10:00:00.000Z',
+    discardedBy: 'rodrigo',
+    discardedReason: 'disparo do botão Testar Webhook',
+    ...over,
+  });
+}
+
 describe('webhookStatusLabel / webhookStatusTone', () => {
-  it('nomeia os quatro estados em português', () => {
+  it('nomeia os cinco estados em português', () => {
     expect(webhookStatusLabel('PENDING')).toBe('Aguardando');
     expect(webhookStatusLabel('PROCESSED')).toBe('Processada');
     expect(webhookStatusLabel('FAILED')).toBe('Falhou');
     expect(webhookStatusLabel('IGNORED')).toBe('Ignorada');
+    // "Descartada" ≠ "Ignorada": `IGNORED` é a máquina dizendo que o tipo não
+    // lhe diz respeito; `DISCARDED` é uma pessoa dizendo que a entrega não vai
+    // virar nada. Rótulos iguais apagariam a pergunta *quem*.
+    expect(webhookStatusLabel('DISCARDED')).toBe('Descartada');
   });
 
   /**
@@ -65,8 +89,66 @@ describe('canReprocess', () => {
     expect(canReprocess(evento({ status: 'IGNORED' }))).toBe(true);
   });
 
+  /**
+   * **Reprocessar não ressuscita** (SPEC-045). O caminho de volta é o *Reabrir*,
+   * com carimbo próprio — dois atos deliberados, simétrico ao
+   * Finalizado/Descartado do board.
+   */
+  it('NÃO oferece reprocessar o que foi descartado', () => {
+    expect(canReprocess(descartada())).toBe(false);
+  });
+
   it('oferece para PENDING (entrega presa numa fila que morreu)', () => {
     expect(canReprocess(evento({ status: 'PENDING' }))).toBe(true);
+  });
+});
+
+describe('canDiscard / canReopen', () => {
+  it('descartar é oferecido no que falhou — o caso que originou a fatia', () => {
+    expect(canDiscard(evento({ status: 'FAILED' }))).toBe(true);
+    expect(canDiscard(evento({ status: 'PENDING' }))).toBe(true);
+    expect(canDiscard(evento({ status: 'IGNORED' }))).toBe(true);
+  });
+
+  /**
+   * A entrega que virou licença é o elo entre a venda e a chave emitida:
+   * escondê-la quebraria a pergunta "de onde veio esta licença".
+   */
+  it('NÃO oferece descartar o que já virou licença', () => {
+    expect(canDiscard(evento({ status: 'PROCESSED' }))).toBe(false);
+  });
+
+  it('NÃO oferece descartar o que já está descartado', () => {
+    expect(canDiscard(descartada())).toBe(false);
+  });
+
+  it('reabrir aparece só na linha descartada — é o único caminho de volta', () => {
+    expect(canReopen(descartada())).toBe(true);
+    for (const status of ['FAILED', 'PENDING', 'PROCESSED', 'IGNORED'] as const) {
+      expect(canReopen(evento({ status }))).toBe(false);
+    }
+  });
+});
+
+describe('discardNote', () => {
+  it('diz o motivo e quem descartou — a trilha que o descarte existe para manter', () => {
+    expect(discardNote(descartada())).toBe(
+      'disparo do botão Testar Webhook — descartada por rodrigo',
+    );
+  });
+
+  it('não inventa carimbo em entrega que não foi descartada', () => {
+    expect(discardNote(evento({ status: 'FAILED' }))).toBeNull();
+  });
+
+  /**
+   * O CHECK do banco impede motivo vazio, mas a tela lê dados que já existiam.
+   * "sem motivo registrado" é informação real; um campo em branco pareceria bug.
+   */
+  it('diz que falta o motivo em vez de mostrar vazio', () => {
+    expect(discardNote(descartada({ discardedReason: '  ' }))).toBe(
+      'sem motivo registrado — descartada por rodrigo',
+    );
   });
 });
 
