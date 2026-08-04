@@ -252,10 +252,16 @@ Para o Code implementar e o PI conferir:
 **O que ele NÃO exercita:**
 
 - **O fluxo completo.** Cada disparo manda um `product_id` **fictício e
-  diferente** a cada vez (`764cd7eb`, `38316019`, `d972678b`, …). Nenhum
-  corresponde a produto real, então nenhum resolve mapeamento, emite licença ou
-  dispara e-mail. O evento **sempre** termina em `FAILED` com *"oferta sem
-  mapeamento"* — e isso é o comportamento correto, não um defeito.
+  diferente** a cada vez (`38316019`, `d972678b`, …). Nenhum corresponde a
+  produto real, então nenhum resolve mapeamento, emite licença ou dispara
+  e-mail. O evento **sempre** termina em `FAILED` com *"oferta sem mapeamento"* —
+  e isso é o comportamento correto, não um defeito.
+  > **Emenda de 2026-08-04** (commit `cfba2cf`): `764cd7eb` **não** era id de
+  > teste — era **venda real**, `PROCESSED`, com licença emitida e mapeada como
+  > *"Sem código Fonte"*. Estava nesta lista por semelhança de formato, herdada
+  > do corpo original de #257 e propagada sem conferência contra o banco.
+  > **Descartar por semelhança de id é exatamente o modo de errar que a SPEC-045
+  > cria** — o motivo obrigatório existe para forçar a conferência antes.
 - **Portanto: ele não substitui o dogfooding com venda real.** As fatias que
   dependem de emissão de ponta a ponta continuam pendentes desse teste.
 
@@ -269,6 +275,40 @@ continuam consultáveis no filtro `Descartadas`, com autor e motivo. **Cada test
 futuro custa um descarte** — dívida aceita pelo PI (decisão #4), porque
 reconhecer o evento de teste no intake exigiria heurística sobre o payload, e
 heurística que engole venda real é pior que uma lista suja.
+
+## 8.2. `PROCESSED` sem de-para: por que a lista continua mostrando
+
+> Registrado pela **SPEC-046** (issue
+> [#259](https://github.com/RodReis/rrb-proplan/issues/259)), a partir do
+> dogfooding em produção da SPEC-045.
+
+Descartadas as entregas de teste da §8.1, o badge de Pendências ficou limpo — e a
+aba *Oferta → edição* **continuou** marcando três ofertas. As três eram
+`PROCESSED` **com licença emitida**, e mesmo assim sem `LicOfferMapping`.
+
+**Não é defeito, e há três caminhos legítimos para chegar lá:**
+
+1. **Curto-circuito por `saleRef`.** `emitir()` procura licença com o mesmo
+   `saleRef` **antes** de `resolverEdicao()`; achando, sai. É a guarda
+   anti-emissão-dupla. Licença emitida à mão com o `saleRef` da venda ⇒ a
+   entrega processa **sem nunca olhar o mapeamento**.
+2. **Evento que não é compra.** `revoke`, `renew`, `past_due` e `cancel`
+   resolvem por `encontrar()` (`saleRef` → assinatura → e-mail) e **nunca**
+   tocam no de-para.
+3. **De-para removido depois** de a entrega ter processado — e este **não deixa
+   rastro nenhum**.
+
+**Como conferir qual é o caso:** não dá, e a SPEC-046 decidiu não tentar
+(decisão PI #2). O que a tela afirma é a **consequência**, verdadeira nos três:
+*não há de-para hoje, logo a próxima compra por webhook deste produto vai
+falhar*. Por isso a oferta aparece no bloco **neutro** — fora do badge, mas
+visível: escondê-la faria a próxima venda falhar sem aviso.
+
+**Ao testar a aba:** oferta com pelo menos uma entrega `PENDING`/`FAILED` é
+*venda parada agora* e conta no badge; oferta com todas `PROCESSED`/`IGNORED` é
+*sem de-para, nada parado*, em tom neutro. Uma oferta **nunca** sai nos dois
+blocos. Mapear funciona em ambos e cria o mesmo `LicOfferMapping` — no bloco
+neutro o efeito é sobre **vendas futuras**, e o toast não sugere reprocessar.
 
 ## 9. Decisões operacionais (resolvidas pelo PI em 2026-07-15)
 

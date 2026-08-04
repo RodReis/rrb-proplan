@@ -117,7 +117,116 @@ describe('ofertasNaoMapeadas', () => {
     });
   });
 
+  /**
+   * A separação que a SPEC-046 introduz. O que se testa é a pergunta que cada
+   * linha responde: *"esta venda está parada"* é diferente de *"este produto
+   * não tem de-para"*, e fundir as duas foi o que fez a tela pedir ação sobre
+   * venda já entregue.
+   */
+  describe('situação: venda parada vs. só sem de-para', () => {
+    it('entrega FAILED deixa a oferta PARADA', () => {
+      const r = ofertasNaoMapeadas([evento({ status: 'FAILED' })], []);
+
+      expect(r[0].situacao).toBe('PARADA');
+      expect(r[0].falhas).toBe(1);
+    });
+
+    it('entrega PENDING também deixa PARADA — ainda pode falhar', () => {
+      // Classificá-la como resolvida afirmaria um desfecho que não houve.
+      const r = ofertasNaoMapeadas([evento({ status: 'PENDING' })], []);
+
+      expect(r[0].situacao).toBe('PARADA');
+      expect(r[0].aguardando).toBe(1);
+      expect(r[0].falhas).toBe(0);
+    });
+
+    it('só PROCESSED deixa SEM_DEPARA — o caso do dogfooding', () => {
+      // As três entregas de #257: `PROCESSED` com licença emitida e sem de-para.
+      // A tela pedia ação sobre venda já entregue.
+      const r = ofertasNaoMapeadas(
+        [
+          evento({ status: 'PROCESSED' }),
+          evento({ status: 'PROCESSED' }),
+          evento({ status: 'PROCESSED' }),
+        ],
+        [],
+      );
+
+      expect(r).toHaveLength(1);
+      expect(r[0].situacao).toBe('SEM_DEPARA');
+      expect(r[0].ocorrencias).toBe(3);
+      expect(r[0].falhas).toBe(0);
+      expect(r[0].aguardando).toBe(0);
+    });
+
+    it('IGNORED agrupa com PROCESSED — não cria bloco novo', () => {
+      const r = ofertasNaoMapeadas([evento({ status: 'IGNORED' })], []);
+
+      expect(r[0].situacao).toBe('SEM_DEPARA');
+    });
+
+    it('uma FAILED entre três PROCESSED deixa a oferta PARADA', () => {
+      // Uma oferta nunca sai nos dois blocos: basta uma venda parada.
+      const r = ofertasNaoMapeadas(
+        [
+          evento({ status: 'PROCESSED' }),
+          evento({ status: 'PROCESSED' }),
+          evento({ status: 'FAILED' }),
+          evento({ status: 'PROCESSED' }),
+        ],
+        [],
+      );
+
+      expect(r).toHaveLength(1);
+      expect(r[0].situacao).toBe('PARADA');
+      expect(r[0].ocorrencias).toBe(4);
+    });
+
+    it('a FAILED vindo por último ainda deixa PARADA', () => {
+      // A situação é corrigida depois do agrupamento: decidi-la na primeira
+      // entrega dependeria da ordem em que os eventos chegaram.
+      const r = ofertasNaoMapeadas(
+        [evento({ status: 'PROCESSED' }), evento({ status: 'FAILED' })],
+        [],
+      );
+
+      expect(r[0].situacao).toBe('PARADA');
+    });
+
+    it('oferta mapeada não sai em nenhuma das duas situações', () => {
+      const r = ofertasNaoMapeadas(
+        [evento({ status: 'PROCESSED' }), evento({ status: 'FAILED' })],
+        [mapeamento()],
+      );
+
+      expect(r).toEqual([]);
+    });
+  });
+
   describe('ordem: o que custa mais caro primeiro', () => {
+    it('PARADA vem antes de SEM_DEPARA, mesmo sendo mais antiga', () => {
+      const r = ofertasNaoMapeadas(
+        [
+          evento({
+            externalProductId: 'entregue-hoje',
+            status: 'PROCESSED',
+            receivedAt: new Date('2026-08-04T12:00:00Z'),
+          }),
+          evento({
+            externalProductId: 'parada-antiga',
+            status: 'FAILED',
+            receivedAt: new Date('2026-07-01T12:00:00Z'),
+          }),
+        ],
+        [],
+      );
+
+      expect(r.map((o) => o.externalProductId)).toEqual([
+        'parada-antiga',
+        'entregue-hoje',
+      ]);
+    });
+
     it('mais falhas vem antes', () => {
       const r = ofertasNaoMapeadas(
         [
