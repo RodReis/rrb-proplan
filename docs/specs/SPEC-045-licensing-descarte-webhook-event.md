@@ -20,11 +20,23 @@ que explicam por que aquela venda não virou licença.
 
 ## O problema, medido
 
-A aba **Pendências → Oferta → edição** acumulou **6 ofertas sem mapeamento**,
-todas de disparos do botão *"Testar Webhook"* da Kiwify. Cada disparo manda um
-`product_id` fictício **e diferente** (`764cd7eb`, `38316019`, `d972678b`,
-`307974cd`, …). Nenhum corresponde a produto real, e nenhum jamais terá
-mapeamento.
+A aba **Pendências → Oferta → edição** acumulou **6 ofertas sem mapeamento**.
+**Três** vêm de disparos do botão *"Testar Webhook"* da Kiwify — cada disparo
+manda um `product_id` fictício **e diferente** (`38316019`, `d972678b`,
+`307974cd`). Nenhum corresponde a produto real, e nenhum jamais terá mapeamento.
+
+> **Emenda de 2026-08-04 (dogfooding em produção).** A redação original desta
+> spec listava **`764cd7eb`** entre os ids fictícios. **Não era.** Aquele produto
+> está `PROCESSED`, com licença emitida e mapeado como *"Sem código Fonte"* —
+> **venda real**. O erro veio do corpo da issue [#257](https://github.com/RodReis/rrb-proplan/issues/257)
+> e foi propagado para cá sem conferência contra o banco. Fica corrigido antes de
+> virar folclore: **descartar por semelhança de id é o modo de errar que esta
+> fatia cria**, e o motivo obrigatório no descarte existe justamente para forçar
+> a conferência.
+>
+> As outras **três** ofertas da lista (`dcec8ed0`, `db097001`, `2567aaf0`)
+> também **não** eram teste: são `PROCESSED` com licença. O que fazer com elas no
+> agrupamento é escopo da fatia seguinte — ver `SPEC-046`.
 
 O badge laranja é permanente e **não tem conserto possível**: quem abre o admin vê
 seis vendas paradas e não tem ação que as resolva. Mapear seria pior — emitiria
@@ -139,9 +151,12 @@ exatamente o evento **sem licença nenhuma**.
       segurança do banco).
 - [ ] Descartar de novo um evento reaberto **zera `reopenedAt`** e regrava o
       carimbo de descarte.
-- [ ] **As 6 ofertas do dogfooding somem**: descartados os eventos, a aba
-      *Oferta → edição* fica vazia e o badge laranja apaga — **sem `DELETE` no
-      banco**, e com os 6 payloads ainda consultáveis no filtro `Descartadas`.
+- [ ] **As ofertas de teste do dogfooding somem**: descartados os eventos, elas
+      saem da aba *Oferta → edição* — **sem `DELETE` no banco**, e com os payloads
+      ainda consultáveis no filtro `Descartadas`. *(Emenda 2026-08-04: o critério
+      dizia "as 6 ofertas" e "a aba fica vazia". Eram **3** de teste; as outras 3
+      são vendas reais já entregues, e o esvaziamento da aba passou a ser escopo
+      da `SPEC-046`.)*
 - [ ] Um evento novo do **mesmo `externalProductId`** de uma oferta já esvaziada
       faz a oferta **reaparecer** na lista.
 - [ ] Descartar **não** toca em licença nenhuma: entrega `PROCESSED` que já emitiu
