@@ -52,12 +52,33 @@ describe('template `license_key`', () => {
     expect(html).toContain('&lt;script&gt;');
   });
 
-  it('usa estilo inline, não bloco `<style>`', () => {
+  it('põe toda a formatação no atributo `style`, não num bloco `<style>`', () => {
     // Gmail remove `<style>` do `<head>`: um e-mail que depende dele chega sem
     // formatação nenhuma no cliente mais usado do mundo.
+    //
+    // O único `<style>` permitido é a media query de largura, e ela existe
+    // porque `width="600"` não cede em tela estreita — sem ela o cartão fica
+    // cortado à direita no celular. É a exceção certa porque **degrada
+    // sozinha**: onde o bloco é removido, sobra a largura fixa, que é o
+    // comportamento de sempre. Este teste falha se alguém puser no bloco
+    // qualquer regra que não seja `@media` — aí a formatação passaria a
+    // depender dele, e o e-mail chegaria quebrado no Gmail.
     const { html } = licenseKey(base);
     expect(html).toContain('style="');
-    expect(html).not.toContain('<style');
+
+    const blocos = html.match(/<style>([\s\S]*?)<\/style>/g) ?? [];
+    expect(blocos).toHaveLength(1);
+    expect(blocos[0]).toMatch(/^<style>@media only screen and \(max-width:\d+px\)\{/);
+  });
+
+  it('deixa o cartão encolher em tela estreita', () => {
+    // O defeito real que este teste tranca (medido no navegador a 375px de
+    // largura: o documento saía com 624px e forçava rolagem horizontal).
+    // Mais da metade dos e-mails é lida no celular, e um cartão cortado
+    // esconde justamente a borda direita da chave.
+    const { html } = licenseKey(base);
+    expect(html).toMatch(/\.envelope\{width:100% !important;\}/);
+    expect(html).toContain('class="envelope"');
   });
 
   it('nomeia o produto no assunto', () => {

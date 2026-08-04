@@ -125,38 +125,98 @@ export function licenseKey(data: LicenseKeyData): RenderedMail {
         : ['Para ativar, cole a chave na tela de ativação do aplicativo.']),
       ...(manual ? ['', `Manual do ${data.productName}: ${manual}`] : []),
     ].join('\n'),
-    html: envelope([
-      `<p>${esc(saudacao)}</p>`,
-      `<p>Sua compra do <strong>${esc(produto)}</strong> foi confirmada. Esta é a sua chave de licença:</p>`,
-      // A chave em bloco monoespaçado e selecionável: ela vai ser copiada e
-      // colada, e quebra de linha no meio faria o comprador colar errado.
-      `<p style="font-family:monospace;font-size:18px;letter-spacing:1px;` +
-        `background:#f4f4f5;padding:16px;border-radius:6px;">${esc(data.licenseKey)}</p>`,
-      `<p><strong>Guarde esta mensagem.</strong> Por segurança, não armazenamos a ` +
-        `chave e não conseguimos reenviá-la. Se você perdê-la, precisaremos emitir uma nova.</p>`,
+    html: envelope(`Sua chave do ${esc(data.productName)}`, [
+      p(`${esc(saudacao)} Sua compra do <strong>${esc(produto)}</strong> foi confirmada.`),
+
+      // ---- A chave: o único conteúdo irrecuperável deste e-mail ----
+      // Ela ganha moldura e rótulo próprios porque é o que a pessoa volta aqui
+      // para buscar meses depois. Como parágrafo entre outros, ela some na
+      // leitura rápida — e o custo de perdê-la é reemissão.
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+        ` style="background-color:${COR.realce};border:1px solid ${COR.borda};border-radius:10px;">`,
+      `<tr><td style="padding:18px 20px;">`,
+      `<div style="font-family:${FONTE_MONO};font-size:10px;letter-spacing:1.4px;` +
+        `color:${COR.tintaFosca};line-height:14px;mso-line-height-rule:exactly;">` +
+        `CHAVE DE LICENÇA</div>`,
+      `<div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>`,
+      // Monoespaçada e sem quebra: a chave vai ser copiada, e uma quebra no meio
+      // faria o comprador colar errado e achar que a chave é inválida.
+      `<div style="font-family:${FONTE_MONO};font-size:19px;letter-spacing:1px;` +
+        `color:${COR.tintaForte};line-height:28px;mso-line-height-rule:exactly;` +
+        `word-break:break-all;">${esc(data.licenseKey)}</div>`,
+      `</td></tr></table>`,
+
+      espaco(20),
+
+      // O aviso ganha bloco próprio: em negrito no meio de um parágrafo ele
+      // desaparece na leitura rápida, e é o único aviso cuja consequência é
+      // irreversível para quem apagar o e-mail.
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+        ` style="background-color:${COR.realce};border-radius:10px;">`,
+      `<tr><td style="padding:16px 20px;font-family:${FONTE};font-size:14px;` +
+        `line-height:23px;mso-line-height-rule:exactly;color:${COR.tinta};">` +
+        `<strong>Guarde esta mensagem.</strong> Por segurança, não armazenamos a chave ` +
+        `e não conseguimos reenviá-la. Se você perdê-la, precisaremos emitir uma nova.` +
+        `</td></tr></table>`,
+
+      espaco(28),
+
       ...(download
         ? [
-            `<p><strong>Como instalar</strong></p>`,
-            `<ol style="padding-left:20px;">`,
-            // `href` escapado como qualquer outro valor: a URL é configurada pelo
-            // operador, mas passa pelo mesmo caminho de um nome vindo da plataforma
-            // — e aspas no meio do atributo quebrariam a tag, não o texto.
-            `<li><a href="${esc(download)}">Baixe o instalador</a>.</li>`,
+            `<div style="font-family:${FONTE};font-size:16px;font-weight:bold;` +
+              `color:${COR.tintaForte};line-height:22px;mso-line-height-rule:exactly;">` +
+              `Como instalar</div>`,
+            espaco(16),
+            // Numeração em tabela, não `<ol>`: o recuo padrão da lista varia
+            // entre clientes e o Outlook ignora `padding-left`. Aqui a coluna do
+            // número tem largura fixa e o alinhamento é o mesmo em todo lugar.
+            // A sequência é real (baixar → executar → ativar), não decoração.
+            `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+              ` style="font-family:${FONTE};font-size:14.5px;line-height:23px;` +
+              `mso-line-height-rule:exactly;color:${COR.tinta};">`,
+            `<tr><td width="26" style="width:26px;vertical-align:top;font-family:${FONTE_MONO};` +
+              `font-size:11px;color:${COR.tintaFosca};padding:2px 0 16px;">01</td>`,
+            `<td style="padding:0 0 16px;">Baixe o instalador do ${esc(data.productName)}.</td></tr>`,
+            `<tr><td style="vertical-align:top;font-family:${FONTE_MONO};font-size:11px;` +
+              `color:${COR.tintaFosca};padding:2px 0 16px;">02</td>`,
             // O aviso do SmartScreen antes do passo de ativação, e não num rodapé:
             // ele aparece no meio da instalação, e quem já fechou a janela achando
             // que é vírus não chega ao passo 3.
-            `<li>Execute o instalador. O Windows vai exibir um aviso azul do ` +
-              `<strong>SmartScreen</strong> ("O Windows protegeu o computador"): clique em ` +
-              `<strong>Mais informações</strong> e depois em <strong>Executar assim mesmo</strong>. ` +
-              `O aviso aparece porque o instalador ainda não tem assinatura digital paga, ` +
-              `não porque haja algo errado com o arquivo.</li>`,
-            `<li>Abra o ${esc(data.productName)} e cole a chave acima na tela de ativação.</li>`,
-            `</ol>`,
+            `<td style="padding:0 0 16px;">Execute o instalador. O Windows vai exibir um ` +
+              `aviso azul do <strong>SmartScreen</strong> ("O Windows protegeu o computador"): ` +
+              `clique em <strong>Mais informações</strong> e depois em ` +
+              `<strong>Executar assim mesmo</strong>. O aviso aparece porque o instalador ainda ` +
+              `não tem assinatura digital paga, não porque haja algo errado com o arquivo.</td></tr>`,
+            `<tr><td style="vertical-align:top;font-family:${FONTE_MONO};font-size:11px;` +
+              `color:${COR.tintaFosca};padding:2px 0 0;">03</td>`,
+            `<td>Abra o ${esc(data.productName)} e cole a chave acima na tela de ativação.</td></tr>`,
+            `</table>`,
+            espaco(26),
+            // Botão em `<td bgcolor>` com o `<a>` preenchendo a célula: cor de
+            // fundo em `<a>` não pinta no Outlook, e um botão sem fundo vira
+            // texto azul sublinhado no meio do e-mail.
+            `<table role="presentation" cellpadding="0" cellspacing="0" border="0">`,
+            `<tr><td bgcolor="${COR.carbono}" style="border-radius:9px;">`,
+            // `href` escapado como qualquer outro valor: a URL é configurada pelo
+            // operador, mas passa pelo mesmo caminho de um nome vindo da plataforma
+            // — e aspas no meio do atributo quebrariam a tag, não o texto.
+            `<a href="${esc(download)}" style="display:block;padding:13px 26px;` +
+              `font-family:${FONTE};font-size:14.5px;font-weight:bold;color:#ffffff;` +
+              `text-decoration:none;border-radius:9px;">Baixar o ${esc(data.productName)}</a>`,
+            `</td></tr></table>`,
           ]
-        : [`<p>Para ativar, cole a chave na tela de ativação do aplicativo.</p>`]),
+        : [p('Para ativar, cole a chave na tela de ativação do aplicativo.')]),
+
       ...(manual
         ? [
-            `<p><a href="${esc(manual)}">Manual do ${esc(data.productName)}</a></p>`,
+            espaco(26),
+            `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+              ` style="border-top:1px solid #e5e5e1;">`,
+            `<tr><td style="height:20px;line-height:20px;font-size:0;">&nbsp;</td></tr>`,
+            `<tr><td style="font-family:${FONTE};font-size:14px;line-height:23px;` +
+              `mso-line-height-rule:exactly;color:${COR.tintaFosca};">` +
+              `Guia de uso: <a href="${esc(manual)}" style="color:${COR.tintaForte};">` +
+              `Manual do ${esc(data.productName)}</a></td></tr></table>`,
           ]
         : []),
     ]),
@@ -184,12 +244,19 @@ export function licenseRevoked(data: LicenseRevokedData): RenderedMail {
       '',
       'Se você acredita que isto é um engano, responda a esta mensagem que verificamos.',
     ].join('\n'),
-    html: envelope([
-      `<p>${esc(saudacao)}</p>`,
-      `<p>Sua licença do <strong>${esc(data.productName)}</strong> foi desativada. ` +
-        `Motivo: ${esc(data.reason)}.</p>`,
-      `<p>O aplicativo deixará de ativar novas máquinas com esta chave.</p>`,
-      `<p>Se você acredita que isto é um engano, responda a esta mensagem que verificamos.</p>`,
+    html: envelope(`Licença desativada`, [
+      p(`${esc(saudacao)} Sua licença do <strong>${esc(data.productName)}</strong> foi ` +
+        `desativada. Motivo: ${esc(data.reason)}.`),
+      p('O aplicativo deixará de ativar novas máquinas com esta chave.'),
+      // O convite ao contato em bloco destacado: num e-mail que dá má notícia,
+      // é a única linha acionável — e chargeback pode ser fraude de terceiro no
+      // cartão do próprio comprador, que precisa achar o caminho de volta.
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+        ` style="background-color:${COR.realce};border-radius:10px;">`,
+      `<tr><td style="padding:16px 20px;font-family:${FONTE};font-size:14px;` +
+        `line-height:23px;mso-line-height-rule:exactly;color:${COR.tinta};">` +
+        `Se você acredita que isto é um engano, responda a esta mensagem que verificamos.` +
+        `</td></tr></table>`,
     ]),
   };
 }
@@ -229,20 +296,31 @@ export function sourceUsernameRequest(data: SourceUsernameRequestData): Rendered
       '',
       'O link funciona uma única vez. Se você ainda não tem conta no GitHub, crie uma em github.com e depois use o link acima.',
     ].join('\n'),
-    html: envelope([
-      `<p>${esc(saudacao)}</p>`,
-      `<p>Sua compra do <strong>${esc(produto)}</strong> inclui acesso ao repositório com o código-fonte.</p>`,
-      `<p>Para liberar esse acesso, precisamos do seu <strong>nome de usuário do GitHub</strong> — ` +
-        `é com ele que enviamos o convite ao repositório privado.</p>`,
-      `<p><a href="${esc(data.url)}" style="display:inline-block;background:#18181b;` +
-        `color:#fafafa;padding:12px 20px;border-radius:6px;text-decoration:none;">` +
-        `Informar meu usuário do GitHub</a></p>`,
+    html: envelope(`Falta um passo para o código-fonte`, [
+      p(`${esc(saudacao)} Sua compra do <strong>${esc(produto)}</strong> inclui acesso ao ` +
+        `repositório com o código-fonte.`),
+      p(`Para liberar esse acesso, precisamos do seu <strong>nome de usuário do GitHub</strong> — ` +
+        `é com ele que enviamos o convite ao repositório privado.`),
+      espaco(4),
+      // Botão em `<td bgcolor>`: fundo em `<a>` não pinta no Outlook, e este
+      // e-mail existe para ser clicado — sem clique, nada acontece.
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0">`,
+      `<tr><td bgcolor="${COR.carbono}" style="border-radius:9px;">`,
+      `<a href="${esc(data.url)}" style="display:block;padding:13px 26px;font-family:${FONTE};` +
+        `font-size:14.5px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:9px;">` +
+        `Informar meu usuário do GitHub</a>`,
+      `</td></tr></table>`,
+      espaco(20),
       // A URL em texto, além do botão: cliente que estiliza mal o link deixaria a
       // ação invisível, e este e-mail sem clique não faz nada.
-      `<p style="font-size:13px;color:#52525b;">Se o botão não funcionar, abra este endereço:<br>` +
-        `<a href="${esc(data.url)}">${esc(data.url)}</a></p>`,
-      `<p>O link funciona uma única vez. Se você ainda não tem conta no GitHub, ` +
-        `crie uma em github.com e depois use o link acima.</p>`,
+      `<div style="font-family:${FONTE};font-size:13px;line-height:21px;` +
+        `mso-line-height-rule:exactly;color:${COR.tintaFosca};">` +
+        `Se o botão não funcionar, abra este endereço:<br>` +
+        `<a href="${esc(data.url)}" style="color:${COR.tintaForte};word-break:break-all;">` +
+        `${esc(data.url)}</a></div>`,
+      espaco(20),
+      p(`O link funciona uma única vez. Se você ainda não tem conta no GitHub, ` +
+        `crie uma em github.com e depois use o link acima.`),
     ]),
   };
 }
@@ -281,15 +359,24 @@ export function sourceUsernameConfirmed(data: SourceUsernameConfirmedData): Rend
       // recibo — e recibo não impede que um estranho entre no repositório.
       'Se esse não é o seu usuário, responda a esta mensagem agora que corrigimos antes de enviar o convite.',
     ].join('\n'),
-    html: envelope([
-      `<p>${esc(saudacao)}</p>`,
-      `<p>Registramos o seu usuário do GitHub para o convite ao repositório do ` +
-        `<strong>${esc(data.productName)}</strong>:</p>`,
-      `<p style="font-family:monospace;font-size:18px;background:#f4f4f5;padding:16px;` +
-        `border-radius:6px;">@${esc(data.githubUsername)}</p>`,
-      `<p>${esc(previsao)}</p>`,
-      `<p><strong>Se esse não é o seu usuário</strong>, responda a esta mensagem agora ` +
-        `que corrigimos antes de enviar o convite.</p>`,
+    html: envelope(`Convite confirmado para @${esc(data.githubUsername)}`, [
+      p(`${esc(saudacao)} Registramos o seu usuário do GitHub para o convite ao ` +
+        `repositório do <strong>${esc(data.productName)}</strong>:`),
+      // O login em destaque, não no meio do texto: este e-mail é a última chance
+      // de pegar um username errado antes que ele vire acesso ao repositório.
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+        ` style="background-color:${COR.realce};border:1px solid ${COR.borda};border-radius:10px;">`,
+      `<tr><td style="padding:18px 20px;font-family:${FONTE_MONO};font-size:19px;` +
+        `color:${COR.tintaForte};line-height:26px;mso-line-height-rule:exactly;` +
+        `word-break:break-all;">@${esc(data.githubUsername)}</td></tr></table>`,
+      espaco(20),
+      p(esc(previsao)),
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+        ` style="background-color:${COR.realce};border-radius:10px;">`,
+      `<tr><td style="padding:16px 20px;font-family:${FONTE};font-size:14px;` +
+        `line-height:23px;mso-line-height-rule:exactly;color:${COR.tinta};">` +
+        `<strong>Se esse não é o seu usuário</strong>, responda a esta mensagem agora ` +
+        `que corrigimos antes de enviar o convite.</td></tr></table>`,
     ]),
   };
 }
@@ -326,19 +413,157 @@ function formatarData(iso: string): string {
 }
 
 /**
- * Casca do HTML: largura legível e fonte de sistema.
+ * Paleta do e-mail — os mesmos valores do tema Carbono (`docs/DESIGN.md` §1),
+ * repetidos aqui porque e-mail não lê `tokens.css`: o cliente de e-mail não
+ * carrega CSS externo nem entende `var(--token)`.
+ *
+ * **Repetição consciente, não descuido.** É a única superfície do produto que
+ * não pode importar os tokens, e por isso a única onde valor de cor literal é
+ * permitido — a regra do CLAUDE.md ("nenhum valor de cor hardcoded em
+ * componente") vale para `apps/web`, onde existe token para usar.
+ */
+const COR = {
+  /** Fundo da página, fora do cartão. */
+  fundo: '#e9e9e6',
+  /** Carbono do header — `--bg` do tema escuro. */
+  carbono: '#0e0f12',
+  /** Linha divisória dentro do carbono. */
+  carbonoBorda: '#1e2025',
+  /** Prata: o acento do produto (`--accent`). Não é azul, não é roxo. */
+  prata: '#c9ced8',
+  /** Texto secundário sobre carbono. */
+  prataFosca: '#8b8e96',
+  /** Cartão. */
+  papel: '#ffffff',
+  /** Borda do cartão e das divisórias claras. */
+  borda: '#dcdcd8',
+  /** Texto principal. Contraste 12.6:1 sobre branco. */
+  tinta: '#26282d',
+  /** Títulos. */
+  tintaForte: '#16171b',
+  /** Texto de apoio. Contraste 5.4:1 sobre branco — acima do mínimo AA. */
+  tintaFosca: '#5f6268',
+  /** Fundo dos blocos de destaque. */
+  realce: '#f6f6f4',
+  /** Rodapé. */
+  rodape: '#fafaf8',
+} as const;
+
+const FONTE = `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,Helvetica,sans-serif`;
+const FONTE_MONO = `'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace`;
+
+/**
+ * Casca do HTML: cartão sobre fundo neutro, com header e rodapé do ProPlan.
+ *
+ * **Tabelas, não `<div>` com flex ou grid.** O Outlook para Windows renderiza
+ * e-mail com a engine do Word, que não implementa nem flexbox nem grid nem
+ * `max-width`. Tabela aninhada com largura fixa é o que funciona em todo lugar
+ * — é por isso que e-mail transacional parece HTML de 2005 mesmo em 2026.
  *
  * **Estilo inline, não `<style>`.** Gmail remove blocos `<style>` do `<head>`,
  * e um e-mail que depende deles chega sem formatação nenhuma no cliente mais
- * usado do mundo. É a razão de todo e-mail transacional parecer HTML de 2005.
+ * usado do mundo. A única exceção é a media query do fim, que degrada sozinha:
+ * onde ela é removida, o e-mail continua legível na largura fixa.
+ *
+ * **Sem imagem nenhuma, de propósito** (decisão do PI, 2026-08-01). O Gmail
+ * bloqueia imagem de remetente desconhecido por padrão — e o primeiro e-mail
+ * que alguém recebe de nós é justamente este. Um cabeçalho que depende de logo
+ * chegaria quebrado na única entrega que não pode falhar. A identidade fica em
+ * tipografia, cor e composição, que nenhum cliente bloqueia.
+ *
+ * @param titulo    Faixa escura sob o header. É o assunto visível ao abrir.
+ * @param paragrafos Corpo do cartão, já em HTML.
  */
-function envelope(paragrafos: string[]): string {
+function envelope(titulo: string, paragrafos: string[]): string {
   return [
-    `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;` +
-      `font-size:15px;line-height:1.6;color:#18181b;max-width:560px;">`,
+    `<!DOCTYPE html><html lang="pt-BR"><head>`,
+    `<meta charset="utf-8">`,
+    `<meta name="viewport" content="width=device-width,initial-scale=1">`,
+    // Sem isto o Outlook desktop escala tudo a 120% e a largura de 600px estoura.
+    `<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch>` +
+      `</o:OfficeDocumentSettings></xml><![endif]-->`,
+    // A ÚNICA regra fora do inline, e ela é obrigatória: `width="600"` no
+    // atributo não cede em tela estreita, e sem isto o cartão fica cortado à
+    // direita no celular — onde mais da metade dos e-mails é lida. Degrada
+    // sozinha: cliente que remove `<style>` (Gmail) fica com a largura fixa,
+    // que é o comportamento de antes; quem a respeita ganha o encaixe.
+    `<style>@media only screen and (max-width:620px){`,
+    `.envelope{width:100% !important;}`,
+    `.px{padding-left:22px !important;padding-right:22px !important;}`,
+    `.titulo{font-size:21px !important;line-height:28px !important;}`,
+    `}</style>`,
+    `</head>`,
+    `<body style="margin:0;padding:0;background-color:${COR.fundo};">`,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+      ` style="background-color:${COR.fundo};"><tr>`,
+    `<td align="center" style="padding:30px 12px;">`,
+    `<table role="presentation" class="envelope" cellpadding="0" cellspacing="0" border="0"` +
+      ` width="600" style="width:600px;max-width:600px;background-color:${COR.papel};` +
+      `border:1px solid ${COR.borda};border-radius:16px;overflow:hidden;">`,
+
+    // ---- Header: quem está falando ----
+    `<tr><td class="px" style="background-color:${COR.carbono};padding:26px 36px 0;">`,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>`,
+    // Monograma desenhado em tabela: um quadrado prata com a inicial. Faz o
+    // trabalho de um logo sem depender de imagem carregar.
+    `<td width="34" style="width:34px;vertical-align:middle;">`,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>`,
+    `<td width="34" height="34" align="center" bgcolor="${COR.prata}"` +
+      ` style="width:34px;height:34px;border-radius:9px;font-family:${FONTE};font-size:16px;` +
+      `font-weight:bold;color:${COR.tintaForte};line-height:34px;mso-line-height-rule:exactly;">P</td>`,
+    `</tr></table></td>`,
+    `<td style="vertical-align:middle;padding-left:12px;font-family:${FONTE};">`,
+    `<div style="font-size:15px;font-weight:bold;color:#f5f4f1;line-height:19px;` +
+      `mso-line-height-rule:exactly;">ProPlan</div>`,
+    `<div style="font-family:${FONTE_MONO};font-size:10px;letter-spacing:1.4px;` +
+      `color:${COR.prataFosca};line-height:14px;mso-line-height-rule:exactly;">` +
+      `GOVERNANÇA DE PROJETOS</div>`,
+    `</td></tr></table></td></tr>`,
+
+    // ---- Faixa do título ----
+    `<tr><td class="px" style="background-color:${COR.carbono};padding:22px 36px 26px;">`,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"` +
+      ` style="border-top:1px solid ${COR.carbonoBorda};"><tr>`,
+    `<td style="height:22px;line-height:22px;font-size:0;">&nbsp;</td></tr><tr>`,
+    `<td class="titulo" style="font-family:${FONTE};font-size:24px;line-height:32px;` +
+      `mso-line-height-rule:exactly;font-weight:bold;letter-spacing:-0.3px;color:#f5f4f1;">` +
+      `${titulo}</td>`,
+    `</tr></table></td></tr>`,
+
+    // ---- Corpo ----
+    `<tr><td class="px" style="padding:34px 36px 30px;background-color:${COR.papel};` +
+      `font-family:${FONTE};font-size:15px;line-height:24px;mso-line-height-rule:exactly;` +
+      `color:${COR.tinta};">`,
     ...paragrafos,
-    `</div>`,
+    `</td></tr>`,
+
+    // ---- Rodapé: identifica o remetente, sem link morto ----
+    // Sem "cancelar recebimento": e-mail transacional não tem o que cancelar —
+    // quem comprou não pode descadastrar-se da entrega da própria chave.
+    `<tr><td class="px" style="padding:20px 36px 24px;background-color:${COR.rodape};` +
+      `border-top:1px solid #e5e5e1;font-family:${FONTE};">`,
+    `<div style="font-size:12px;line-height:19px;mso-line-height-rule:exactly;` +
+      `color:#8a8d93;">Mensagem automática do ProPlan. Para falar com uma pessoa, ` +
+      `basta responder — respostas chegam à nossa caixa.</div>`,
+    `<div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>`,
+    `<div style="font-family:${FONTE_MONO};font-size:10px;letter-spacing:0.6px;` +
+      `color:#9a9da1;">RRB TRADING · SÃO PAULO/SP</div>`,
+    `</td></tr>`,
+
+    `</table></td></tr></table>`,
+    `</body></html>`,
   ].join('');
+}
+
+/** Espaçador vertical. Margem em `<div>` é ignorada por vários clientes. */
+function espaco(altura: number): string {
+  return `<div style="height:${altura}px;line-height:${altura}px;font-size:0;">&nbsp;</div>`;
+}
+
+/** Parágrafo do corpo. */
+function p(html: string): string {
+  return `<p style="margin:0 0 18px;font-family:${FONTE};font-size:15px;line-height:24px;` +
+    `mso-line-height-rule:exactly;color:${COR.tinta};">${html}</p>`;
 }
 
 /**
