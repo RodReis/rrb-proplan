@@ -44,7 +44,7 @@ export function LicenseDangerActions({
             <button
               onClick={() => setAberta(aberta === 'anonymize' ? null : 'anonymize')}
               aria-expanded={aberta === 'anonymize'}
-              className="rounded-[9px] border border-danger px-3 py-1.5 text-[12px] text-danger transition-colors hover:bg-card"
+              className="rounded-[9px] border border-error/45 px-3 py-1.5 text-[12px] text-error transition-colors hover:bg-error/10"
             >
               Excluir dados a pedido
             </button>
@@ -204,10 +204,10 @@ function FormAnonimizar({
   }
 
   return (
-    <div className="mt-3 grid gap-3 rounded-[9px] border border-danger bg-bg p-3.5">
+    <div className="mt-3 grid gap-3 rounded-[9px] border border-error/45 bg-bg p-3.5">
       <div className="text-[12px] leading-relaxed text-text2">
         <p className="m-0">
-          <strong className="text-danger">Isto não tem volta.</strong> Saem o
+          <strong className="text-error">Isto não tem volta.</strong> Saem o
           e-mail, o nome e o username do GitHub — da licença, dos envios e do
           conteúdo dos eventos da plataforma.
         </p>
@@ -251,7 +251,7 @@ function FormAnonimizar({
         <button
           onClick={() => void confirmar()}
           disabled={!confere || !reason.trim() || ocupado}
-          className="rounded-[9px] border border-danger px-4 py-2 text-[12.5px] font-semibold text-danger transition-opacity disabled:opacity-40"
+          className="rounded-[9px] border border-error/45 px-4 py-2 text-[12.5px] font-semibold text-error transition-opacity hover:bg-error/10 disabled:opacity-40"
         >
           Excluir os dados desta licença
         </button>

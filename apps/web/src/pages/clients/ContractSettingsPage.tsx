@@ -197,7 +197,7 @@ export function ContractSettingsPage() {
       )}
 
       {state.status === 'error' && (
-        <p className="text-[13px] text-danger">{state.message}</p>
+        <p className="text-[13px] text-error">{state.message}</p>
       )}
 
       {state.status === 'ready' && (
@@ -261,7 +261,7 @@ export function ContractSettingsPage() {
                   <label key={key} className="grid gap-1.5">
                     <span className="text-[11.5px] text-body">
                       {label}
-                      {required && <span className="text-danger"> *</span>}
+                      {required && <span className="text-error"> *</span>}
                     </span>
                     <input
                       value={form[key]}

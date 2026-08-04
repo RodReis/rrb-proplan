@@ -8345,3 +8345,90 @@ limpos (3 warnings pré-existentes, em arquivos não tocados).
   `licensingUi.tsx:21-27` documenta a armadilha, e o FIX #232 já a corrigiu numa
   parte da área — este arquivo ficou de fora. Fora do escopo deste FIX; pede item
   próprio.
+
+---
+
+## `[FIX] #263` — a cor que o Tailwind nunca gerou, e a guarda que passou a exigi-la
+
+Achado ao ler `LicenseDangerActions.tsx` como referência de padrão durante o
+[FIX #261]. `text-danger`, `border-danger` e `bg-danger/10` **não produzem CSS
+nenhum**: no Tailwind 4 a classe só existe se o token estiver no `@theme`, e o
+`apps/web/src/index.css` define `--color-error` — **nunca `--color-danger`**.
+
+Prova, antes de qualquer edição: `grep -c danger apps/web/dist/assets/*.css` → **0**.
+
+### Por que sobreviveu meses
+
+O modo de falha é **silêncio em todas as camadas que olhamos**. O build passa (é
+classe válida sintaticamente), o lint passa (não é erro de JS), o teste de
+componente passa (ninguém asserta cor computada — e nem deveria). Só o navegador
+mostra: o texto de erro herda a cor do pai e vira cinza indistinguível de
+conteúdo normal; a borda de aviso simplesmente não aparece.
+
+O FIX #232 já havia corrigido isto **numa parte** da área de Licenças e registrado
+no `STATUS.md` que era *"falha silenciosa numa camada que teste de componente não
+olha"*. Oito arquivos ficaram fora daquela varredura.
+
+### Alcance real — 23 classes, 8 arquivos
+
+18 `-danger` + 5 `bg-bg2` (`--bg2` também não existe; a guarda o encontrou depois,
+e é a mesma família de bug noutro token).
+
+O pior caso é o `LicenseDangerActions.tsx`: confirmação de **exclusão de dados
+pessoais a pedido do titular** (LGPD, SPEC-040). Ação irreversível cujo aviso
+*"Isto não tem volta"* saía na cor do texto comum, e cujo painel inteiro perdia a
+moldura vermelha que o separa do resto da gaveta.
+
+### Troca explícita, não apelido
+
+O `@theme` já apelida duas vezes — `--color-brand: var(--accent)` e
+`--color-warning-strong: var(--warning)` — justamente para não quebrar classes
+herdadas de paleta antiga. Uma linha `--color-danger: var(--error)` resolveria as
+18 de uma vez.
+
+**Recusado.** O `licensingUi.tsx:21-27` documenta que o objetivo era **encerrar** o
+nome duplicado; revivê-lo por conveniência desfaria a decisão e deixaria dois
+nomes para a mesma cor — com o próximo desenvolvedor escolhendo por sorteio. O
+apelido só se justificaria para classe vinda de fonte que não controlamos.
+
+### A guarda — e por que refiná-la foi o trabalho
+
+`scripts/check-color-tokens.mjs`, ligado ao CI entre o lint e os testes. Lê os
+`--color-*` do `@theme`, varre os `.tsx`/`.ts` e recusa classe de cor sem token.
+
+Duas correções de rumo, ambas encontradas rodando antes de confiar:
+
+1. **1ª versão: 649 falsos positivos.** `text-` também dimensiona (`text-xs`) e
+   alinha (`text-center`); `border-` também escolhe lado (`border-b`) e estilo
+   (`border-dashed`); `shadow-` tem tamanhos nomeados. Uma guarda que grita em
+   tudo é pior que nenhuma — se aprende a ignorá-la, e aí ela não protege nada.
+2. **2ª versão: 30 falsos positivos em `border-accentBorder`.** Aqui quase
+   "consertei" o que funcionava: **o Tailwind 4 normaliza camelCase↔kebab-case**,
+   então `border-accentBorder` resolve por `--color-accent-border`. Confirmado no
+   CSS compilado (`accentBorder` → 1 ocorrência) **antes** de mexer. Sem essa
+   conferência, o conserto teria sido reescrever ~30 classes boas.
+
+Também ficaram de fora, por serem texto que casa com o padrão sem nunca ter sido
+classe: caminho de URL (`/board/import-from-status` casava como `from-status`),
+propriedade CSS citada em `transition` (`border-color`) e largura de borda
+(`border-b-0`).
+
+**Verificada por mutação**, que é o único jeito de saber se guarda funciona:
+reintroduzi `text-danger` no `ReleasesPanel.tsx:350` → acusou e saiu `1`;
+restaurei → verde.
+
+### Testes
+
+**Nenhum teste novo.** É troca de classe CSS: o que prova o conserto é o CSS
+compilado (`grep -c danger` → deixa de ser 0 porque a classe deixa de existir) e
+a própria guarda no CI, que falha se qualquer uma voltar. Um teste de componente
+assertando cor computada seria frágil e testaria o Tailwind, não o nosso código.
+
+Suíte inalterada e verde: **2313 regras · 290 banco · 791 tela = 3394**.
+
+### Pendência que esta entrega deixa
+
+- **Dogfooding visual das 8 telas** — a guarda prova que a classe existe; que a
+  cor está *legível nos dois temas* (DESIGN.md §11, AA) só o navegador diz. As
+  proporções usadas (`border-error/45`, `bg-error/10`) são as que o
+  `licensingUi.tsx` já emprega, mas não foram medidas nestes contextos.

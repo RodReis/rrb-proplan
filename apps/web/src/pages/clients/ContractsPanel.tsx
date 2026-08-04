@@ -149,7 +149,7 @@ export function ContractsPanel({ projectId, projectTitle, onClose, onCardMoved }
 
   if (state.status === 'error') {
     return <Gaveta onClose={onClose} titulo={projectTitle}>
-      <p className="text-[13px] text-danger">{state.message}</p>
+      <p className="text-[13px] text-error">{state.message}</p>
     </Gaveta>;
   }
 
@@ -239,7 +239,7 @@ export function ContractsPanel({ projectId, projectTitle, onClose, onCardMoved }
         </section>
 
         {erroAcao && (
-          <p className="rounded-[9px] border border-danger px-3.5 py-2.5 text-[12.5px] text-danger">
+          <p className="rounded-[9px] border border-error/45 px-3.5 py-2.5 text-[12.5px] text-error">
             {erroAcao}
           </p>
         )}

@@ -148,7 +148,7 @@ export function ArtifactsPanel({ projectId, projectTitle, onClose, onCardMoved }
           <button
             type="button"
             onClick={onClose}
-            className="rounded-[8px] px-2 py-1 text-sm text-text2 hover:bg-bg2"
+            className="rounded-[8px] px-2 py-1 text-sm text-text2 hover:bg-card"
             aria-label="Fechar"
           >
             ✕
@@ -159,7 +159,7 @@ export function ArtifactsPanel({ projectId, projectTitle, onClose, onCardMoved }
           {state.status === 'loading' && <p className="text-sm text-text2">Carregando…</p>}
 
           {state.status === 'error' && (
-            <p className="text-sm text-danger">{state.message}</p>
+            <p className="text-sm text-error">{state.message}</p>
           )}
 
           {state.status === 'ready' && (
@@ -217,7 +217,7 @@ function Conteudo(p: ConteudoProps) {
 
   return (
     <>
-      <section className="mb-4 rounded-[10px] border border-border2 bg-bg2 px-4 py-3">
+      <section className="mb-4 rounded-[10px] border border-border2 bg-card px-4 py-3">
         <p className="text-sm text-text">
           <strong>
             {prog.approved} de {prog.required}
@@ -249,7 +249,7 @@ function Conteudo(p: ConteudoProps) {
                 <button
                   type="button"
                   onClick={() => p.onAbrir(a, a.versions[0].id)}
-                  className="rounded-[8px] border border-border2 px-3 py-1 text-sm text-text hover:bg-bg2"
+                  className="rounded-[8px] border border-border2 px-3 py-1 text-sm text-text hover:bg-card"
                 >
                   Ver
                 </button>
@@ -257,7 +257,7 @@ function Conteudo(p: ConteudoProps) {
             </div>
 
             {a.state === 'REJECTED' && a.rejectionReason && (
-              <p className="mt-2 text-xs text-danger">Rejeitado: {a.rejectionReason}</p>
+              <p className="mt-2 text-xs text-error">Rejeitado: {a.rejectionReason}</p>
             )}
 
             {a.versions.length > 1 && (
@@ -328,7 +328,7 @@ function Detalhe(p: DetalheProps) {
       {/* O parecer do revisor. Aparece SEMPRE que existe, e nunca desabilita o
           botão de aprovar (§2.9, decisão 1 do PI): anota, nunca bloqueia. */}
       {detalhe.verdicts.length > 0 && (
-        <aside className="mt-3 rounded-[8px] border border-border2 bg-bg2 px-3 py-2">
+        <aside className="mt-3 rounded-[8px] border border-border2 bg-card px-3 py-2">
           <p className="text-xs font-semibold text-text">
             Revisor: {detalhe.verdicts[0].verdict}
           </p>
@@ -375,12 +375,12 @@ function Detalhe(p: DetalheProps) {
           </div>
         </div>
       ) : (
-        <pre className="mt-3 max-h-64 overflow-auto rounded-[8px] bg-bg2 px-3 py-2 font-mono text-xs text-text">
+        <pre className="mt-3 max-h-64 overflow-auto rounded-[8px] bg-card px-3 py-2 font-mono text-xs text-text">
           {JSON.stringify(detalhe.content, null, 2)}
         </pre>
       )}
 
-      {p.erroAcao && <p className="mt-2 text-xs text-danger">{p.erroAcao}</p>}
+      {p.erroAcao && <p className="mt-2 text-xs text-error">{p.erroAcao}</p>}
 
       {!p.editando && (
         <div className="mt-3 flex flex-wrap items-center gap-2">

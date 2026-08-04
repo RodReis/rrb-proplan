@@ -122,6 +122,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Classe de cor cujo token não existe no @theme não gera CSS, e nem o
+      # build nem o lint reclamam: a cor some da tela em silêncio. Foi assim que
+      # 18 classes `-danger` sobreviveram meses (issue #263).
+      - name: Guarda — toda classe de cor tem token no @theme?
+        run: pnpm check:tokens
+
       - name: Instalar navegador do Playwright
         run: pnpm --filter @proplan/web exec playwright install --with-deps chromium
 

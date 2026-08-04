@@ -347,7 +347,7 @@ export function ReleasesPanel({ produtos }: { produtos: LicProductView[] }) {
               // Avisar aqui, e não depois do POST: hash torto aceito pelos dois
               // lados só apareceria na máquina do cliente, depois de 80 MB
               // baixados, como "download corrompido".
-              <span className="text-[11px] text-danger">
+              <span className="text-[11px] text-error">
                 O hash precisa ter 64 dígitos hexadecimais.
               </span>
             )}

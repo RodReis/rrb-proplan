@@ -127,7 +127,7 @@ export function EstimatePanel({ projectId, projectTitle, onClose, onCardMoved }:
   if (state.status === 'error') {
     return (
       <Moldura titulo={projectTitle} onClose={onClose}>
-        <p className="text-sm text-danger">{state.message}</p>
+        <p className="text-sm text-error">{state.message}</p>
       </Moldura>
     );
   }
@@ -139,7 +139,7 @@ export function EstimatePanel({ projectId, projectTitle, onClose, onCardMoved }:
   return (
     <Moldura titulo={projectTitle} onClose={onClose}>
       {erroAcao && (
-        <p className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+        <p className="mb-3 rounded-md border border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
           {erroAcao}
         </p>
       )}
