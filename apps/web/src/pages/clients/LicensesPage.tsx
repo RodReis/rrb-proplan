@@ -721,10 +721,11 @@ function FormRevogar({
     <div className="anim-popIn mt-3 grid gap-3 rounded-[9px] border border-error/45 bg-bg p-3.5">
       <p className="m-0 text-[12px] leading-relaxed text-text2">
         <strong className="text-error">
-          A licença de {licenca.customerEmail} para de ativar.
+          {licenca.customerEmail} perde o acesso ao produto.
         </strong>{' '}
-        As máquinas já ativadas param na próxima verificação. A trilha e as
-        ativações permanecem — e o motivo abaixo fica registrado nela.
+        A chave deixa de ativar em máquina nova, e as já ativadas param na
+        próxima verificação. A trilha e as ativações permanecem — e o motivo
+        abaixo fica registrado nela.
       </p>
 
       <label className="grid gap-1 text-[12px] text-body">
