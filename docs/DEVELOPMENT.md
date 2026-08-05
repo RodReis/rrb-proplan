@@ -7998,6 +7998,15 @@ Três coisas descartaram a hipótese de regressão antes de qualquer mudança:
 afrouxado uma asserção de RLS que estava correta, que é a categoria de conserto
 mais cara que existe neste repo.
 
+> **Emenda (FIX #266, 2026-08-05): o passo 3 acima está errado, e foi ele que
+> encerrou a investigação cedo demais.** O `--showConfig` mostra o valor **lido
+> do arquivo**, não o que o runner aplica — e o Jest 30 **ignora `testTimeout`
+> vindo do config**. A prova está no próprio erro citado aqui: ele diz
+> *"Exceeded timeout of **5000** ms"*, o default, e não 30000. Duas linhas do
+> mesmo bloco se contradiziam, e a que tranquilizava venceu. O timeout mudou
+> para `jest.setTimeout` num `setupFilesAfterEnv` — ver `#266` no fim deste
+> arquivo.
+
 ---
 
 ## FIX #253 (SPEC-038) — Mail: envio por SMTP, e a falha do worker vira log — `em andamento`
@@ -8958,3 +8967,61 @@ enquanto a produção varria zero.
 - **A primeira rodada em produção precisa ser conferida no log** (`4 h` e `5 h`):
   a contagem de tenants deixa de ser zero, e é isso que prova o `[FIX]` da Fatia
   36 no ambiente real.
+
+---
+
+## FIX #266 (INFRA) — O `testTimeout` de 30 s nunca valeu — `entregue`
+
+**Uma linha de config que existia, era lida, aparecia no `--showConfig` e não
+tinha efeito nenhum.** O flake de migration que o #194 acreditou ter consertado
+seguiu vivo por 4 meses, cobrando investigação toda vez que o Postgres do CI
+ficava lento.
+
+### O que provou a causa
+
+A issue já trazia o experimento; refiz antes de aceitar, porque a correção
+proposta (flag CLI duplicada em dois arquivos) tinha um custo que valia
+questionar. Sonda descartável — um `.int-spec.ts` com `beforeAll` de **7 s**,
+acima do default de 5 s e abaixo dos 30 s configurados:
+
+| `testTimeout: 30_000` em | resultado |
+|---|---|
+| dentro de `projects[]` (como estava) | ❌ `Exceeded timeout of **5000** ms` |
+| `--testTimeout=30000` na CLI | ✅ passa |
+| **`jest.setTimeout(30_000)` em `setupFilesAfterEnv`** | ✅ **passa** |
+
+**O Jest 30 ignora `testTimeout` vindo do arquivo de config.** O erro sempre
+disse **5000**, não 30000 — o número estava na mensagem desde o #194, ao lado
+de um comentário afirmando que 30 s valiam.
+
+### Por que `setupFilesAfterEnv` e não a flag CLI
+
+A issue propunha `--testTimeout=30000` nos scripts e no `scripts/test-report.mjs`.
+Funciona, mas **vale só onde alguém lembrou de escrever**: `pnpm test` direto,
+IDE e `npx jest` continuariam nos 5 s, e o número passaria a morar em dois
+lugares que divergem em silêncio. O setup file fica **no config** — vale para
+toda invocação, sem duplicar o valor. `scripts/test-report.mjs` não foi tocado.
+
+### O que ficou registrado, e por quê
+
+O comentário do `jest.config.js` foi para dentro do setup file, com o diagnóstico
+do #194 preservado (ele estava certo) e a parte falsa corrigida. No lugar dele
+ficou uma nota curta dizendo **para não trocar de volta por `testTimeout`** — sem
+ela, alguém "limpa" o setup file achando redundante e o flake volta calado.
+
+**A emenda mais cara está no relato do #194, acima**: aquele passo 3 usou
+`--showConfig` como prova de que a config valia. Ela mostra o que foi **lido**,
+nunca o que é **aplicado** — e foi por causa dela que a investigação parou.
+Duas linhas do mesmo bloco se contradiziam (`5000 ms` no erro, `30000` na
+conclusão) e a que tranquilizava venceu.
+
+**Verificado por mutação:** sem o setup file a sonda estoura em 5000 ms; com ele
+passa. Suíte **2385 regras · 298 banco · 830 tela**; build, lint e
+`test:report:selfcheck` (17 checks) verdes.
+
+#### O que continua em aberto
+
+- **A prova final é o CI sob carga**, que é onde o defeito aparece — local o
+  setup leva ~2 s e nunca chegava perto dos 5 s. Um verde aqui não distingue
+  "corrigido" de "runner estava tranquilo"; o sinal real é o flake **parar de
+  reaparecer** nos próximos PRs de banco.
