@@ -13,8 +13,8 @@ Totais da última execução (regenerado, não acumulado):
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
 | — | — | — | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
-| — | — | — | Banco | 290 | 290 | 0 | 60.1 | — | — |
-| — | — | — | Tela | 830 | 830 | 0 | 62.9 | — | — |
+| — | — | — | Banco | 298 | 298 | 0 | 60.1 | — | — |
+| — | — | — | Tela | 830 | 830 | 0 | — | — | — |
 
 ## Histórico por entrega
 
@@ -343,3 +343,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #276 | SPEC-048 | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
 | — | #276 | SPEC-048 | Banco | 290 | 290 | 0 | 60.1 | — | — |
 | — | #276 | SPEC-048 | Tela | 830 | 830 | 0 | 62.9 | — | — |
+| — | #276 | SPEC-048 | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
+| — | #276 | SPEC-048 | Banco | 298 | 298 | 0 | 60.1 | — | — |
+| — | #276 | SPEC-048 | Tela | 830 | 830 | 0 | — | — | — |

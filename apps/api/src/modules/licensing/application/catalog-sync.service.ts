@@ -61,17 +61,25 @@ export class CatalogSyncService {
    * **A única leitura desta fatia que atravessa tenants**, e ela devolve só ids.
    * A pergunta é justamente *"quais tenants?"*; o `runInTenantContext` entra
    * depois, uma vez por tenant, para tudo o que lê ou escreve dado.
+   *
+   * ## Corrigido em 2026-08-05 (SPEC-048, ADR-030)
+   *
+   * Isto era um `licSettings.findMany` — **e devolvia zero linhas em produção
+   * desde que o job foi ligado**. `proplan_app` é `NOBYPASSRLS` e a política de
+   * `lic_settings` compara com `app.tenant_ids`; fora de contexto,
+   * `current_setting(..., true)` é NULL, `x = ANY(NULL)` é NULL, e nada passa —
+   * **sem erro**. O sync diário rodava, varria ninguém e reportava sucesso.
+   *
+   * O defeito atravessou a Fatia 36 inteira porque **mock de Prisma não tem
+   * RLS**: o teste unitário afirmava o `where` e passava. Quem o pegou foi a
+   * emenda da SPEC-048, ao mandar não copiar este modelo — e o que o prova agora
+   * é int-spec contra Postgres real.
    */
   async tenantsConfigurados(): Promise<string[]> {
-    const linhas = await this.prisma.licSettings.findMany({
-      where: {
-        kiwifyClientId: { not: null },
-        kiwifyClientSecret: { not: null },
-        kiwifyAccountId: { not: null },
-      },
-      select: { tenantId: true },
-    });
-    return linhas.map((l) => l.tenantId);
+    const linhas = await this.prisma.$queryRaw<
+      { tenant_id: string }[]
+    >`SELECT tenant_id FROM lic_tenants_with_kiwify_credentials()`;
+    return linhas.map((l) => l.tenant_id);
   }
 
   /**

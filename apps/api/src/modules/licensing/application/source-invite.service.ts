@@ -130,13 +130,20 @@ export class SourceInviteService {
    *
    * Atravessa tenants e devolve só ids — a pergunta é *"quais tenants?"*; o
    * `runInTenantContext` entra depois, uma vez por tenant (ADR-029, decisão 4).
+   *
+   * **Passa pela função `SECURITY DEFINER`, e não por `licSettings.findMany`**
+   * (ADR-030). A pergunta atravessa a fronteira do tenant por definição, e
+   * `proplan_app` é `NOBYPASSRLS`: um `findMany` aqui devolveria **zero linhas
+   * sem erro**, e a rodada reportaria sucesso tendo varrido ninguém. Foi
+   * exatamente esse o defeito do `tenantsConfigurados()` do sync do catálogo,
+   * corrigido no mesmo PR — e **mock de Prisma não tem RLS**, por isso o que
+   * prova isto é um int-spec contra Postgres real.
    */
   async tenantsComSource(): Promise<string[]> {
-    const linhas = await this.prisma.licSettings.findMany({
-      where: { githubPat: { not: null } },
-      select: { tenantId: true },
-    });
-    return linhas.map((l) => l.tenantId);
+    const linhas = await this.prisma.$queryRaw<
+      { tenant_id: string }[]
+    >`SELECT tenant_id FROM lic_tenants_with_source_pat()`;
+    return linhas.map((l) => l.tenant_id);
   }
 
   /**

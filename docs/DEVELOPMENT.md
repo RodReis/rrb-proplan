@@ -8876,3 +8876,85 @@ isolamento de falha entre tenants.
 - **Ligar o purge de 90 dias da SPEC-043** (#271) continua aberto. Esta fatia
   não o empacotou de propósito, e agora há **três** exemplos do padrão para ele
   copiar.
+
+### PR-2 — a enumeração de tenants (emenda de 2026-08-05)
+
+**O PR-1 ligou o motor e ele não encontrava ninguém.** A emenda da SPEC-048
+chegou à `main` (`c0399bb`, 13:35) **durante** a implementação do PR-1, e o PR
+foi mergeado sem ela — falha de processo minha: com dois atores escrevendo na
+`main`, a spec tem de ser relida imediatamente antes do PR, não no início.
+
+#### O defeito
+
+As rodadas precisam responder *"quais tenants?"* **antes** de existir contexto de
+tenant — a pergunta atravessa a fronteira por definição. O PR-1 respondeu com
+`licSettings.findMany` / `license.findMany`, copiando o `tenantsConfigurados()`
+do sync do catálogo, **como a spec original mandava copiar**.
+
+`proplan_app` é `NOBYPASSRLS` (o `bootstrap-app-role.mjs` falha de propósito se
+`rolbypassrls` estiver ligado) e a política das `lic_*` compara com
+`app.tenant_ids`. Fora de contexto, `current_setting(..., true)` é `NULL`,
+`x = ANY(NULL)` é `NULL`, e **nenhuma linha passa — sem erro**.
+
+Verificado contra o Postgres real antes de escrever qualquer linha:
+
+```
+owner ve lic_settings: 1        proplan_app sem contexto: 0
+owner ve licenses: 2            proplan_app sem contexto: 0
+```
+
+**Consequência fora desta fatia:** o sync diário do catálogo (Fatia 36) tem o
+mesmo defeito e **enumera zero tenants em produção** desde que foi ligado. A
+emenda o declara `[FIX]` do Code e pré-requisito desta fatia — corrigir só as
+duas rodadas novas deixaria de pé, ao lado delas, o exemplo que ensina o erro.
+
+**Por que nenhum teste pegou:** o unitário dobra o Prisma, e **mock não tem
+RLS**. O teste do `tenantsConfigurados()` afirmava o `where` e passava — provava
+a intenção da consulta, nunca o efeito. Mesma classe do FIX #216.
+
+#### O que entrou
+
+**Três funções `SECURITY DEFINER`** (migration
+`20260805150000_spec_048_tenant_enumeration`), no padrão das seis `resolve_*`:
+`search_path` fixo, `REVOKE ALL ... FROM PUBLIC`, `GRANT EXECUTE` só para
+`proplan_app`.
+
+| função | devolve | consumidor |
+|---|---|---|
+| `lic_tenants_with_source_pat()` | tenants com `github_pat` | `source-reconcile` |
+| `lic_tenants_with_expiring_licenses()` | tenants com licença `ACTIVE` e `expires_at` não nulo | `expiry-sweep` |
+| `lic_tenants_with_kiwify_credentials()` | tenants com as 3 credenciais | `catalog-sync` (**o `[FIX]` da Fatia 36**) |
+
+**`ADR-030` — enumerar tenants passa por função, nunca por leitura direta.**
+Redigido aqui: a emenda deixou a decisão a meu critério (*"se o Code julgar que a
+primeira função enumerante do repo é decisão estrutural"*), e julguei que sim. As
+seis `resolve_*` recebem uma chave que o chamador **já tem** e devolvem **uma**
+linha; estas recebem nada e devolvem um **conjunto** — categoria nova. E a regra
+vale além desta fatia: o purge da SPEC-043 (#271) vai precisar da mesma
+enumeração, e decisão que a próxima fatia herda mora em ADR, não em spec fechada.
+
+**Prova: `licensing-tenant-enumeration.int-spec.ts`, contra Postgres real** — 8
+casos. O primeiro é a âncora: prova que a **leitura direta devolve zero sem
+erro**; sem ele, os demais passariam mesmo com o RLS desligado. Os outros provam
+que a função enumera onde a leitura não enumera (mesma role, sem contexto), que
+tenant com PAT e sem Kiwify é varrido, que PERPETUAL fica fora do sweep, que as
+três devolvem `TABLE(tenant_id text)` e **nada mais** (lido do catálogo do
+Postgres, não por inspeção visual), que `PUBLIC` não executa, e que **o RLS das
+tabelas continua de pé** — a correção não podia ser afrouxar a policy.
+
+**Teste de mutação, porque guarda não verificada não é guarda:** revertidas as
+chamadas para leitura direta, **2 dos 8 falham**. Restaurado e verde.
+
+Os três testes unitários que dobravam o Prisma foram reescritos para afirmar a
+**forma** (qual função é chamada) e para provar que o `findMany` **não** é
+chamado — com o comentário dizendo por que o unitário não basta aqui. O do
+`tenantsConfigurados()` ficou como registro do defeito: é o teste que passava
+enquanto a produção varria zero.
+
+#### O que continua em aberto
+
+- **O dogfooding do 8º dia** segue sendo o único critério que a produção fecha —
+  agora com a enumeração funcionando, que era o pré-requisito silencioso.
+- **A primeira rodada em produção precisa ser conferida no log** (`4 h` e `5 h`):
+  a contagem de tenants deixa de ser zero, e é isso que prova o `[FIX]` da Fatia
+  36 no ambiente real.
