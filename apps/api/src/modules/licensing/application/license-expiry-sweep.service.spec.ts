@@ -14,14 +14,30 @@ import type { PrismaService } from '../../../prisma/prisma.service';
 describe('LicenseExpirySweepService', () => {
   function montar(count = 0) {
     const updateMany = jest.fn().mockResolvedValue({ count });
+    // Dobrado para o teste provar que **não** é chamado: a enumeração passa pela
+    // função `SECURITY DEFINER` (ADR-030), não por leitura direta.
     const findMany = jest.fn().mockResolvedValue([{ tenantId: 'tn-1' }, { tenantId: 'tn-2' }]);
+    const sqlCapturado: string[] = [];
+    const queryRaw = jest.fn(async (frag: TemplateStringsArray) => {
+      sqlCapturado.push(frag.join('?'));
+      return [{ tenant_id: 'tn-1' }, { tenant_id: 'tn-2' }];
+    });
     const prisma = {
       license: { updateMany, findMany },
+      $queryRaw: queryRaw,
       // Repassa o callback, mas registra que foi chamado: rodar FORA do
       // contexto é o modo silencioso de falhar.
       runInTenantContext: jest.fn((_ids: string[], fn: () => unknown) => fn()),
     } as unknown as PrismaService;
-    return { prisma, updateMany, findMany, service: new LicenseExpirySweepService(prisma) };
+    return {
+      prisma,
+      updateMany,
+      findMany,
+      service: new LicenseExpirySweepService(prisma),
+      get sqlEnumeracao() {
+        return sqlCapturado.join(' | ');
+      },
+    };
   }
 
   it('marca EXPIRED só o que já venceu e está ACTIVE', async () => {
@@ -74,18 +90,18 @@ describe('LicenseExpirySweepService', () => {
    * licença vencida como `ACTIVE` na tela de todo tenant sem aquela credencial —
    * exatamente o desencontro que este job existe para fechar.
    */
-  it('varre TODO tenant com licença, sem exigir credencial', async () => {
-    const { service, findMany } = montar();
+  it('enumera pela função `SECURITY DEFINER`, nunca por leitura direta', async () => {
+    const c = montar();
 
-    const tenants = await service.tenantsComLicenca();
+    const tenants = await c.service.tenantsComLicenca();
 
+    // **O que este teste NÃO prova é o ponto** (ADR-030): mock de Prisma não tem
+    // RLS, então nenhum unitário distingue a função da leitura direta pelo
+    // efeito — foi assim que o defeito atravessou a Fatia 36 inteira. Aqui se
+    // afirma a FORMA; o efeito é do
+    // `licensing-tenant-enumeration.int-spec.ts`, contra Postgres real.
+    expect(c.sqlEnumeracao).toMatch(/lic_tenants_with_expiring_licenses\(\)/);
+    expect(c.findMany).not.toHaveBeenCalled();
     expect(tenants).toEqual(['tn-1', 'tn-2']);
-    expect(findMany).toHaveBeenCalledWith({
-      distinct: ['tenantId'],
-      select: { tenantId: true },
-    });
-    // A ausência de `where` é a asserção: qualquer filtro aqui esconderia
-    // licenças vencidas de quem não usa a credencial filtrada.
-    expect(findMany.mock.calls[0][0]).not.toHaveProperty('where');
   });
 });

@@ -44,17 +44,22 @@ export class LicenseExpirySweepService {
    * credencial deixaria licença vencida como `ACTIVE` na tela de todo tenant que
    * não vende pela Kiwify — o desencontro exato que este job existe para fechar.
    *
-   * `distinct` em vez de varrer `Tenant`: quem nunca emitiu licença não tem o que
-   * expirar, e a lista sai da tabela que o job realmente escreve. Atravessa
-   * tenants e devolve só ids — o `runInTenantContext` entra por tenant, dentro do
-   * `sweep` (ADR-029, decisão 4).
+   * A lista sai da tabela que o job realmente escreve, e não de `Tenant`: quem
+   * nunca emitiu licença não tem o que expirar. Atravessa tenants e devolve só
+   * ids — o `runInTenantContext` entra por tenant, dentro do `sweep` (ADR-029,
+   * decisão 4).
+   *
+   * **Passa pela função `SECURITY DEFINER`, e não por `license.findMany`**
+   * (ADR-030). `proplan_app` é `NOBYPASSRLS` e a política das `lic_*` compara com
+   * `app.tenant_ids`: fora de contexto o `findMany` devolve **zero linhas sem
+   * erro** — a rodada varreria ninguém e reportaria sucesso. O que prova isto é
+   * int-spec contra Postgres real; **mock de Prisma não tem RLS**.
    */
   async tenantsComLicenca(): Promise<string[]> {
-    const linhas = await this.prisma.license.findMany({
-      distinct: ['tenantId'],
-      select: { tenantId: true },
-    });
-    return linhas.map((l) => l.tenantId);
+    const linhas = await this.prisma.$queryRaw<
+      { tenant_id: string }[]
+    >`SELECT tenant_id FROM lic_tenants_with_expiring_licenses()`;
+    return linhas.map((l) => l.tenant_id);
   }
 
   /**

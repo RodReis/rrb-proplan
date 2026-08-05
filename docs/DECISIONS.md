@@ -654,3 +654,42 @@ Duas demandas com o mesmo formato — *"rode isto de tempos em tempos"* — é o
 - **Cron do Railway (serviço agendado separado).** Traria um segundo processo a manter, com o mesmo `DATABASE_URL` e as mesmas migrations, para disparar o que uma fila já dispara. Também tiraria a rodada da observabilidade da fila: hoje um job que falha é inspecionável como qualquer outro job do repo.
 - **`setInterval` no `onModuleInit`.** Além do problema de múltiplas instâncias, morre em silêncio com o processo e não sobrevive a restart no meio de uma rodada. Sem retry, sem histórico, sem visibilidade.
 - **Não agendar; deixar tudo no botão** (o estado atual). É a alternativa mais barata e foi a decisão certa até esta fatia. Deixa de ser: o botão exige que alguém **saiba que precisa clicar**, e a SPEC-047 nasceu justamente do caso em que ninguém sabia — a lacuna só apareceu quando um cliente pagou.
+
+## ADR-030 — Enumerar tenants para uma rodada recorrente passa por função `SECURITY DEFINER`, nunca por leitura direta
+
+**Status**: **decidido pelo Code** em 2026-08-05, no PR-2 da Fatia 37 — a emenda da SPEC-048 deixou explicitamente a meu critério ser ADR ou seção de spec (*"se o Code julgar que a primeira função enumerante do repo é decisão estrutural, ela vira ADR próprio"*). Julguei que sim: é categoria nova de travessia do RLS, e o repo tem seis exemplos da categoria antiga que não a cobrem.
+
+**Contexto**: um job recorrente precisa responder *"quais tenants?"* **antes** de existir contexto de tenant — a pergunta atravessa a fronteira por definição. O ADR-020 pôs RLS fail-closed nas `lic_*`, e o `bootstrap-app-role.mjs` cria `proplan_app` como `NOSUPERUSER`, falhando explicitamente se `rolbypassrls` estiver ligado.
+
+A consequência é a pior forma de erro que este repo conhece:
+
+```sql
+USING (tenant_id = ANY (NULLIF(current_setting('app.tenant_ids', true), '')::text[]))
+```
+
+Fora de contexto, `current_setting(..., true)` devolve `NULL`, `x = ANY(NULL)` é `NULL`, e nenhuma linha passa. **Zero linhas, sem erro.** A rodada varre ninguém e reporta sucesso.
+
+**Não é hipótese.** O `tenantsConfigurados()` da SPEC-047 nasceu assim e **enumerava zero tenants em produção** desde que o sync diário foi ligado — verificado contra o Postgres real em 2026-08-05: o owner enxerga 1 `lic_settings` e 2 `licenses`; `proplan_app` sem contexto enxerga 0 e 0. A Fatia 37 copiou o modelo, porque a SPEC-048 mandava copiá-lo; a emenda do Cowork pegou os dois.
+
+**O que deixou passar** merece registro, porque é a lição transferível: **mock de Prisma não tem RLS**. O teste unitário afirmava o `where` da consulta e passava — provava a intenção, não o efeito. É a mesma classe do FIX #216.
+
+**Decisão**:
+
+1. **Toda enumeração de tenants para trabalho recorrente passa por função `SECURITY DEFINER`** com `search_path` fixo, `REVOKE ALL ... FROM PUBLIC` e `GRANT EXECUTE` só para `proplan_app` — o padrão das seis `resolve_*` existentes. Leitura direta (`findMany` sem contexto) é proibida para esse fim.
+2. **A função devolve `tenant_id` e nada mais.** Nunca `github_pat`, `kiwify_client_secret`, `webhook_secret` ou qualquer coluna de dado. Uma função com privilégio de owner que devolvesse segredo daria a qualquer chamador o poder de forjar entrega assinada — a razão já fixada no comentário da `resolve_past_due_tolerance`.
+3. **O RLS das tabelas não muda.** `proplan_app` continua sem enxergar `lic_settings` e `licenses` fora de contexto; a função é o único caminho. Afrouxar a política resolveria o sintoma abrindo a tabela inteira.
+4. **O filtro da função é economia, não regra.** Quem decide continua no service: o `reconcile` sai cedo sem PAT ou sem `sourceRepo`, e o `updateMany` do sweep é inócuo num tenant sem licença vencida. Um filtro errado desperdiça uma volta de laço; ele **não** pode ser a razão pela qual um convite sai ou não sai.
+5. **Cada tenant roda dentro do seu `runInTenantContext`, com `try/catch` próprio.** A enumeração cruza a fronteira; o trabalho, não.
+6. **Prova é int-spec contra Postgres real, nunca mock.** Sem `app.tenant_ids` definido, a função devolve os tenants esperados — e é essa asserção que teria pego o defeito original.
+
+**O que muda em relação às seis `resolve_*`**: elas recebem uma chave que o chamador **já tem** e devolvem **uma** linha; estas recebem nada e devolvem um **conjunto**. É a primeira vez que o repo enumera atravessando o RLS, e é por isso que existe este ADR em vez de mais um comentário de migration.
+
+**Por que não reabre o ADR-020**: o que sai da fronteira é a **existência de um tenant e o fato de ele ter configuração** — não dado de tenant. Nenhuma licença, nenhum comprador, nenhum segredo. É a informação mínima para o processo saber a quem servir, e da mesma natureza do que o operador já vê ao administrar a instalação. Ainda assim é alargamento, e o registro aqui é o que o impede de entrar em silêncio.
+
+**Alternativas rejeitadas**:
+
+- **Dar `BYPASSRLS` a `proplan_app`.** Resolve as três enumerações e abre **todas** as tabelas do repo para a role da aplicação, apagando o ADR-020 como efeito colateral de um job diário. O `bootstrap-app-role.mjs` falha de propósito se detectar isso.
+- **Uma role separada só para os jobs, com `BYPASSRLS`.** Mais contida, mas cria uma segunda conexão e uma segunda identidade a manter, e qualquer código que rodasse por engano nela perderia o isolamento inteiro sem nada acusar. A função nomeia exatamente o que pode atravessar; a role nomeia *"tudo"*.
+- **Guardar a lista de tenants ativos numa tabela sem RLS.** Cria fonte de verdade duplicada que precisa ser mantida em sincronia — e o modo de errar é o silencioso: um tenant que some da tabela para de ser servido sem nada acusar.
+- **Passar a lista por variável de ambiente.** Funcionaria no piloto de um tenant e quebraria no segundo, exigindo deploy para cada cliente novo.
+- **Deixar como seção da SPEC-048**, sem ADR. Era a alternativa que a emenda ofereceu. Rejeitada porque a regra vale além desta fatia: o purge da SPEC-043 (#271) vai precisar da mesma enumeração, e uma decisão que a próxima fatia precisa herdar mora em ADR, não numa spec fechada.

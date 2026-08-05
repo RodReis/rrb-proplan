@@ -28,14 +28,21 @@ function montar(over: {
   const upsert = jest.fn().mockResolvedValue({});
   const update = jest.fn().mockResolvedValue({});
   const create = jest.fn().mockResolvedValue({});
+  const sqlCapturado: string[] = [];
 
   const prisma = {
     licSettings: {
       findUnique: jest.fn().mockResolvedValue(
         over.settings === undefined ? CREDENCIAIS_OK : over.settings,
       ),
+      // Dobrado para o teste provar que **não** é chamado — ver o describe de
+      // `tenantsConfigurados` no fim do arquivo.
       findMany: jest.fn().mockResolvedValue([{ tenantId: 't-1' }]),
     },
+    $queryRaw: jest.fn(async (frag: TemplateStringsArray) => {
+      sqlCapturado.push(frag.join('?'));
+      return [{ tenant_id: 't-1' }];
+    }),
     licCatalogSnapshot: {
       findUnique: jest.fn().mockResolvedValue(over.snapshot ?? null),
       upsert,
@@ -64,6 +71,9 @@ function montar(over: {
     upsert,
     update,
     create,
+    get sqlEnumeracao() {
+      return sqlCapturado.join(' | ');
+    },
   };
 }
 
@@ -214,17 +224,27 @@ describe('CatalogSyncService', () => {
   });
 
   describe('tenantsConfigurados', () => {
-    it('filtra pelos três campos não nulos', async () => {
-      const { service, prisma } = montar();
+    /**
+     * **Este teste é o cadáver do defeito, e vale ler como aviso.**
+     *
+     * Ele existia antes, afirmava o `where` do `licSettings.findMany` e passava
+     * — enquanto em produção a consulta devolvia **zero linhas** desde que o job
+     * foi ligado: `proplan_app` é `NOBYPASSRLS` e a enumeração roda fora de
+     * `runInTenantContext`. **Mock de Prisma não tem RLS**, então ele provava a
+     * intenção da consulta, nunca o efeito dela.
+     *
+     * Agora afirma a FORMA — que a enumeração passa pela função
+     * `SECURITY DEFINER` (ADR-030). O EFEITO é do
+     * `licensing-tenant-enumeration.int-spec.ts`, contra Postgres real, que é o
+     * único lugar onde este defeito era detectável.
+     */
+    it('enumera pela função `SECURITY DEFINER`, nunca por leitura direta', async () => {
+      const c = montar();
 
-      await expect(service.tenantsConfigurados()).resolves.toEqual(['t-1']);
+      await expect(c.service.tenantsConfigurados()).resolves.toEqual(['t-1']);
 
-      const { where } = (prisma.licSettings.findMany as jest.Mock).mock.calls[0][0];
-      expect(where).toEqual({
-        kiwifyClientId: { not: null },
-        kiwifyClientSecret: { not: null },
-        kiwifyAccountId: { not: null },
-      });
+      expect(c.sqlEnumeracao).toMatch(/lic_tenants_with_kiwify_credentials\(\)/);
+      expect(c.prisma.licSettings.findMany).not.toHaveBeenCalled();
     });
   });
 });

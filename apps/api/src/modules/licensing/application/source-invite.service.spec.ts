@@ -56,7 +56,8 @@ function montar(
       findFirst: jest.fn(async () => ({
         githubPat: opcoes.pat === undefined ? 'cifrado' : opcoes.pat,
       })),
-      // A varredura de tenants da rodada diária (SPEC-048).
+      // Continua dobrado para o teste provar que **não** é chamado: a enumeração
+      // passa pela função `SECURITY DEFINER` (ADR-030), não por aqui.
       findMany: jest.fn(async () => [{ tenantId: TENANT }]),
     },
     licProduct: {
@@ -93,6 +94,16 @@ function montar(
     }),
   } as unknown as CryptoService;
 
+  // `$queryRaw` é template tag: o Prisma recebe o array de fragmentos. Juntar é
+  // o que permite afirmar QUAL função a enumeração chama (ADR-030).
+  const sqlCapturado: string[] = [];
+  (prisma as unknown as Record<string, unknown>).$queryRaw = jest.fn(
+    async (frag: TemplateStringsArray) => {
+      sqlCapturado.push(frag.join('?'));
+      return [{ tenant_id: TENANT }];
+    },
+  );
+
   const enfileirados: Array<{ nome: string; dados: unknown }> = [];
   const fila = {
     add: jest.fn(async (nome: string, dados: unknown) => {
@@ -110,6 +121,9 @@ function montar(
     updates,
     fila,
     enfileirados,
+    get sqlEnumeracao() {
+      return sqlCapturado.join(' | ');
+    },
   };
 }
 
@@ -524,16 +538,21 @@ describe('SPEC-048: rodada automática e gatilho por evento', () => {
     await expect(c.service.agendarReconciliacao(TENANT)).resolves.toBeUndefined();
   });
 
-  it('varre tenants por PAT configurado, não por credencial da Kiwify', async () => {
+  it('enumera pela função `SECURITY DEFINER`, nunca por leitura direta', async () => {
     const c = montar();
 
-    await c.service.tenantsComSource();
+    const tenants = await c.service.tenantsComSource();
 
-    // Filtrar por Kiwify aqui pularia o tenant que tem source e vende por outro
-    // canal — e o convite dele nunca sairia, que é o defeito desta fatia de volta.
-    expect(c.prisma.licSettings.findMany).toHaveBeenCalledWith({
-      where: { githubPat: { not: null } },
-      select: { tenantId: true },
-    });
+    // **O que este teste NÃO prova é o ponto** (ADR-030): mock de Prisma não tem
+    // RLS, então nenhum teste unitário distingue a função da leitura direta pelo
+    // efeito. O que dá para afirmar aqui é a FORMA — que a consulta é a função
+    // nomeada —, e quem prova o efeito é o
+    // `licensing-tenant-enumeration.int-spec.ts`, contra Postgres real.
+    //
+    // A leitura direta (`licSettings.findMany` sem contexto) devolveria zero
+    // linhas **sem erro**, e a rodada reportaria sucesso tendo varrido ninguém.
+    expect(c.sqlEnumeracao).toMatch(/lic_tenants_with_source_pat\(\)/);
+    expect(c.prisma.licSettings.findMany).not.toHaveBeenCalled();
+    expect(tenants).toEqual([TENANT]);
   });
 });
