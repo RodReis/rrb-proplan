@@ -174,6 +174,23 @@ export class MailService {
     this.logger.log(`Entrega ${deliveryId} reenfileirada pelo admin`);
   }
 
+  /**
+   * Uma entrega do tenant, ou `null` (§Admin).
+   *
+   * Existe separado do `list` porque aquele trunca em 200: procurar ali a
+   * entrega que se quer reenfileirar acharia só as recentes, e uma falha antiga
+   * responderia "não encontrada" — o mesmo beco que o FIX #254 veio fechar.
+   *
+   * `tenantId` no `where` além do RLS, como no `retry`: mesma resposta para
+   * "não existe" e "é de outro tenant".
+   */
+  async find(tenantId: string, deliveryId: string): Promise<MailDeliveryView | null> {
+    const e = await this.prisma.mailDelivery.findFirst({
+      where: { id: deliveryId, tenantId },
+    });
+    return e ? paraView(e) : null;
+  }
+
   /** Entregas do tenant, mais recentes primeiro (§Admin). */
   async list(tenantId: string, status?: string): Promise<MailDeliveryView[]> {
     const filtro = ['PENDING', 'SENT', 'FAILED'].includes(status ?? '')
@@ -186,18 +203,40 @@ export class MailService {
       take: 200,
     });
 
-    return entregas.map((e) => ({
-      id: e.id,
-      to: e.to,
-      template: e.template,
-      subject: e.subject,
-      status: e.status,
-      attempts: e.attempts,
-      error: e.error,
-      providerMessageId: e.providerMessageId,
-      licenseId: e.licenseId,
-      createdAt: e.createdAt.toISOString(),
-      sentAt: e.sentAt ? e.sentAt.toISOString() : null,
-    }));
+    return entregas.map(paraView);
   }
+}
+
+/**
+ * Linha do banco → o que o admin vê. Um lugar só porque `find` e `list`
+ * devolvem o mesmo contrato, e duas cópias divergiriam no dia em que uma coluna
+ * nova entrasse — com a divergência aparecendo como campo que some conforme a
+ * tela que o pediu.
+ */
+function paraView(e: {
+  id: string;
+  to: string;
+  template: string;
+  subject: string;
+  status: string;
+  attempts: number;
+  error: string | null;
+  providerMessageId: string | null;
+  licenseId: string | null;
+  createdAt: Date;
+  sentAt: Date | null;
+}): MailDeliveryView {
+  return {
+    id: e.id,
+    to: e.to,
+    template: e.template,
+    subject: e.subject,
+    status: e.status,
+    attempts: e.attempts,
+    error: e.error,
+    providerMessageId: e.providerMessageId,
+    licenseId: e.licenseId,
+    createdAt: e.createdAt.toISOString(),
+    sentAt: e.sentAt ? e.sentAt.toISOString() : null,
+  };
 }

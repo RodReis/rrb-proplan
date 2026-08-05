@@ -124,6 +124,37 @@ describe('MailService', () => {
     });
   });
 
+  describe('find', () => {
+    it('busca por id dentro do tenant e devolve a view', async () => {
+      // Existe separado do `list` porque aquele trunca em 200: procurar ali a
+      // entrega a reenfileirar acharia só as recentes (FIX #254).
+      findFirst.mockResolvedValue({
+        id: 'entrega-1',
+        to: 'comprador@exemplo.com',
+        template: 'license_revoked',
+        subject: 'assunto',
+        status: 'FAILED',
+        attempts: 5,
+        error: 'timeout',
+        providerMessageId: null,
+        licenseId: 'lic-1',
+        createdAt: new Date('2026-08-04T10:00:00.000Z'),
+        sentAt: null,
+      });
+
+      const entrega = await service.find('t1', 'entrega-1');
+
+      expect(findFirst.mock.calls[0][0].where).toEqual({ id: 'entrega-1', tenantId: 't1' });
+      expect(entrega?.createdAt).toBe('2026-08-04T10:00:00.000Z');
+      expect(entrega?.sentAt).toBeNull();
+    });
+
+    it('devolve null para entrega de outro tenant', async () => {
+      findFirst.mockResolvedValue(null);
+      expect(await service.find('t1', 'alheia')).toBeNull();
+    });
+  });
+
   describe('list', () => {
     beforeEach(() => findMany.mockResolvedValue([]));
 

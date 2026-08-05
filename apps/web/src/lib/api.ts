@@ -2255,6 +2255,51 @@ export function reopenWebhookEvent(id: string): Promise<{ enqueued: true }> {
   return request(`/licensing/webhook-events/${id}/reopen`, { method: 'POST' });
 }
 
+// ===========================================================================
+// Entregas de e-mail em Pendências (FIX #254)
+// ===========================================================================
+
+/**
+ * Uma entrega de e-mail na aba Pendências, com o veredito de reenvio já
+ * resolvido pelo servidor.
+ *
+ * **`canRetry` vem de lá, não é derivado aqui**: a regra depende de saber que a
+ * chave em claro não é persistida, e duas cópias divergiriam — com a
+ * divergência aparecendo como botão que existe e sempre falha.
+ */
+export interface MailDeliveryOpsView {
+  id: string;
+  to: string;
+  template: string;
+  subject: string;
+  status: string;
+  attempts: number;
+  error: string | null;
+  providerMessageId: string | null;
+  licenseId: string | null;
+  createdAt: string;
+  sentAt: string | null;
+  canRetry: boolean;
+  /** Por que não dá, com o caminho que resolve. `null` quando `canRetry`. */
+  retryBlockedReason: string | null;
+}
+
+export function listMailDeliveries(status?: string): Promise<MailDeliveryOpsView[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return request(`/licensing/mail-deliveries${query}`);
+}
+
+/**
+ * Reenfileira uma entrega de e-mail.
+ *
+ * O servidor remonta os dados do template a partir da licença — eles nunca
+ * foram persistidos. O `license_key` responde `422`: a chave não existe mais, e
+ * reenviar mandaria a mensagem com o campo vazio.
+ */
+export function retryMailDelivery(id: string): Promise<{ enqueued: true }> {
+  return request(`/licensing/mail-deliveries/${id}/retry`, { method: 'POST' });
+}
+
 /**
  * Configuração do webhook do tenant.
  *
