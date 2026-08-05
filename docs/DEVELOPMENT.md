@@ -8627,11 +8627,44 @@ e 2.
 
 Suíte completa verde: **2354 regras · 290 banco · 805 tela = 3449**.
 
+### PR-4 — a tela de configuração, que os três PRs esqueceram
+
+**O achado veio de uma pergunta do PI, não de um teste**: *"onde ficam essas
+informações?"*. Os PRs 1–3 criaram as colunas, o backend e o bloco 3 — e
+**nenhum criou o formulário**. A rota `PUT /licensing/settings` aceitava os três
+campos desde o PR-1, mas não havia como chegar até ela pela tela.
+
+É o mesmo padrão dos três achados anteriores desta área (`sourceRepo`,
+`githubPat`, `grantsSourceAccess`): coluna no schema, lida pelo backend, sem
+caminho pela interface. E o sintoma teria sido **mudo** — o bloco *"Nunca
+vendeu, sem de-para"* nunca apareceria, `getKiwifyCatalog` rejeitaria em
+silêncio, e ninguém saberia por quê.
+
+**Nenhuma verificação do piso pegaria isso.** Build, lint e 3449 testes passavam:
+cada peça funciona isolada, e o que faltava era a **ligação** — que só aparece
+quando alguém tenta usar. Fica como lição de fatiamento: ao dividir uma fatia em
+PRs, *"existe caminho pela interface para cada campo novo?"* é pergunta do
+fatiamento, não do último PR.
+
+**Tom neutro, nunca `erro`.** Ao contrário do segredo do webhook, a ausência aqui
+não quebra nada: o job pula o tenant, as vendas seguem entrando. Pintar de
+vermelho o que é opcional treinaria o operador a ignorar vermelho — e é o
+vermelho do webhook (esse sim, venda parada com `401`) que perderia o efeito.
+
+**Dois campos comuns e um write-only**, com `client_id`/`account_id` preenchendo
+os campos de volta e o secret nunca. É a assimetria da própria dashboard da
+Kiwify. E o botão exige os três **antes** de habilitar: o servidor recusaria de
+qualquer forma (`422`), mas descobrir depois do clique é pior que ver o botão
+apagado.
+
+8 testes novos (22 no arquivo). Suíte: **2354 regras · 290 banco · 813 tela**.
+
 ### O que a Fatia 36 deixa em aberto
 
-- **O dogfooding com o catálogo real** (herdado do PR-2) — configurar as três
-  credenciais no painel e provar que o uuid do produto no webhook e na API
-  pública são o mesmo. É o único critério de aceite que só a produção fecha.
+- **O dogfooding com o catálogo real** (herdado do PR-2, **destravado pelo
+  PR-4**) — colar as três credenciais no painel, clicar em *Buscar ofertas da
+  Kiwify* e provar que o uuid do produto no webhook e na API pública são o
+  mesmo. É o único critério de aceite que só a produção fecha.
 - **O texto da SPEC-047 sobre `externalOfferId` "nunca nulo"** — a doc oficial
   da Kiwify o desmente, o comportamento já foi decidido pelo PI e implementado,
   mas **corrigir a spec é do Cowork**.
