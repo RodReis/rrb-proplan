@@ -268,9 +268,11 @@ export class KiwifyCatalogClient {
     try {
       return await fetch(url, { ...init, signal: ctrl.signal });
     } catch (erro) {
-      // A URL entra na mensagem; o corpo (com as credenciais) nunca.
+      // A URL entra na mensagem; o corpo (com as credenciais) nunca. O `cause`
+      // preserva o erro original (abort por timeout, DNS, TLS) para o log —
+      // sem ele, "falha de rede" seria tudo o que sobraria para diagnosticar.
       const causa = erro instanceof Error ? erro.message : String(erro);
-      throw new Error(`Falha de rede ao falar com a Kiwify: ${causa}`);
+      throw new Error(`Falha de rede ao falar com a Kiwify: ${causa}`, { cause: erro });
     } finally {
       clearTimeout(t);
     }
