@@ -9159,3 +9159,43 @@ SP ao escolher "São Paulo". Sem erro de console.
   catálogo padrão nos tenants existentes, é decisão dele, não conserto de bug.
 - **O agendamento de reseed** quando o IBGE mudar. Hoje atualizar a lista é
   reseed manual (trocar o JSON versionado); nada expira sozinho. Não era o bug.
+
+---
+
+## Catálogo de serviços semeado em produção (SPEC-031 §3) — `operacional`
+
+Ato operacional a pedido do PI em 2026-08-05, logo após o FIX #284. **Nenhuma
+mudança de código** — o `seedServiceCatalog` já existia; o que faltava era ele
+ter rodado contra produção alguma vez.
+
+Estado antes: **1 tenant** (`RodReis`), `service_catalog_items` **vazia**. Nada
+a sobrescrever, o que reduziu o risco do seed ao mínimo — a ressalva do
+`skipDuplicates` (*"item que o dono apagou volta"*) só morde quando há o que
+apagar.
+
+Depois: 27 itens, 10 segmentos com lista. Na API pública, `services` deixou de
+ser `{}`; na tela, o campo *Produtos e serviços* passou a exibir os chips do
+segmento escolhido (verificado com segmento J → *Blog e conteúdo*, *Landing page
+de campanha*, *Sistema web interno*, *Site institucional*).
+
+### O que isto expôs: metade da spec não existe
+
+A SPEC-031 §3 pede a lista *"com seed inicial **e edição no workspace**"*, e a
+§8 especifica `GET/POST/PATCH/DELETE /t/:tenant/service-catalog`. **A rota não
+foi implementada** — busca por `service-catalog` no `apps/api/src` não devolve
+controller nenhum, e `ServiceCatalogItem` só aparece sendo **lido** pelo
+`BriefingReferenceService`.
+
+O efeito é que agora existe dado em produção que **a interface não consegue
+remover**. É pouco hoje (um tenant, ninguém tentou editar) e não bloqueia o
+briefing — mas é dívida real, e ela cresce por tenant.
+
+Registrado no Backlog do `STATUS.md` como **fatia**, não FIX: são 4 endpoints
+mais tela, com decisões que o Code não pode tomar sozinho (onde a tela vive, se
+o recorte de papéis de 2026-07-26 ainda vale, o que fazer com item já usado numa
+resposta quando o dono o desativa). Spec é do Cowork.
+
+**Armadilha para quem escrever essa spec:** o seed do catálogo **não** está no
+`preDeployCommand` — ao contrário do seed de referência (`DEPLOY.md` §7.2). Se
+alguém o pendurar lá sem que a curadoria respeite `active=false`, cada deploy
+desfaz a curadoria do dono em silêncio.
