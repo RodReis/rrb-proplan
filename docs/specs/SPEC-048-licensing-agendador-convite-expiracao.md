@@ -3,7 +3,7 @@ proplan: v1
 spec: SPEC-048
 fatia: 37
 status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi — aprovado pelo PI em 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-05 # emendada 2026-08-05 (§A enumeração de tenants)
 ---
 # SPEC-048 — Licensing: o convite ao repo e a expiração deixam de depender de alguém clicar
 
@@ -79,6 +79,8 @@ desenho inteiro; só liga o motor.
 2. **`LicenseExpirySweepService` passa a rodar sozinho**, recorrente diário.
 3. **Ambos entram pelo mecanismo do ADR-029** — repeatable na fila `licensing`,
    roteado por `job.name`, registro idempotente por chave estável.
+4. **A enumeração de tenants de cada rodada** — ver §*A enumeração de tenants*.
+   Não é detalhe de implementação: sem ela as duas rodadas varrem zero tenants.
 
 ## Fora de escopo
 
@@ -99,6 +101,98 @@ desenho inteiro; só liga o motor.
 - **O purge de 90 dias da SPEC-043** — já é `[FIX]` próprio (#271), destravado
   pelo mesmo ADR-029. Não entra aqui para não empacotar duas coisas num card.
 - **Frequência do sync do catálogo** — é da SPEC-047 e não se altera.
+- **Consertar a enumeração do próprio sync do catálogo** — é `[FIX]` do Code
+  (comportamento documentado no ADR-029 decisão 4), e é **pré-requisito** desta
+  fatia. Ver §*A enumeração de tenants*.
+
+## A enumeração de tenants (emenda de 2026-08-05)
+
+**A frase original desta spec estava errada e é minha.** Ela dizia *"o mecanismo
+é o do ADR-029, sem variação"* e apontava o `CatalogSyncScheduler` como modelo
+inteiro. O modelo serve para o **agendamento**; **não serve para a enumeração**,
+e copiá-la produziria duas rodadas que não fazem nada.
+
+### O defeito do modelo
+
+`CatalogSyncService.tenantsConfigurados()` faz `prisma.licSettings.findMany`
+**fora** de `runInTenantContext` — o `LicensingWorker` só abre contexto dentro do
+laço, depois da lista pronta. E a política de `lic_settings` é:
+
+```sql
+CREATE POLICY "tenant_isolation" ON "lic_settings"
+  USING ("tenant_id" = ANY (NULLIF(current_setting('app.tenant_ids', true), '')::text[]));
+```
+
+Sem contexto, `current_setting(..., true)` devolve `NULL`, `x = ANY(NULL)` é
+`NULL`, e a linha não passa. **Zero linhas, sem erro** — e `proplan_app` não
+escapa: o `bootstrap-app-role.mjs` cria a role `NOSUPERUSER` e **falha
+explicitamente** se `rolbypassrls` estiver ligado.
+
+É exatamente a decisão 4 do ADR-029 sendo violada pelo seu primeiro consumidor.
+
+**Consequência fora desta fatia:** o sync diário do catálogo (Fatia 36) enumera
+zero tenants e não sincroniza nada. É `[FIX]` do Code — comportamento correto já
+documentado (ADR-029 decisão 4 e o comentário do próprio `LicensingWorker`) — e é
+**pré-requisito desta fatia**: sem ele, a Fatia 37 nasce sobre um mecanismo que
+não roda.
+
+### A decisão
+
+Enumerar tenants exige **sair do RLS de propósito**, e o repo já tem o padrão:
+funções `SECURITY DEFINER` com `search_path` fixo, `REVOKE ALL ... FROM PUBLIC` e
+`GRANT EXECUTE` só para `proplan_app` — `resolve_license`,
+`resolve_past_due_tolerance`, `resolve_source_link`, `resolve_briefing_link`,
+`resolve_contract_link`, `resolve_briefing_draft`.
+
+**Esta é diferente de todas elas, e a diferença precisa ser dita.** As seis
+existentes recebem uma chave que o chamador **já tem** e devolvem **uma** linha.
+As duas novas recebem nada e devolvem um **conjunto**. É a primeira vez que o
+repo enumera atravessando o RLS.
+
+| função | devolve | usada por |
+|---|---|---|
+| `lic_tenants_with_source_pat()` | `tenant_id` de `lic_settings` com `github_pat IS NOT NULL` | `source-reconcile` |
+| `lic_tenants_with_expiring_licenses()` | `tenant_id` distinto de `licenses` com `status = 'ACTIVE'` e `expires_at IS NOT NULL` | `expiry-sweep` |
+
+Regras que valem para as duas:
+
+- **Devolvem `tenant_id` e nada mais.** Nunca `github_pat`, nunca
+  `kiwify_client_secret`, nunca `webhook_secret`. É a mesma regra que o
+  comentário da `resolve_past_due_tolerance` já fixou: *"uma função com
+  privilégio de owner que devolvesse o segredo daria a qualquer chamador o poder
+  de forjar entrega assinada"*.
+- **O RLS das tabelas não muda.** `proplan_app` continua sem enxergar
+  `lic_settings` e `licenses` fora de contexto; a função é o único caminho.
+- **O filtro é economia, não regra.** A guarda de verdade continua no service:
+  `reconcile` sai cedo sem PAT ou sem `sourceRepo`, e o `updateMany` do sweep é
+  inócuo num tenant sem licença vencida. Um filtro errado desperdiça uma volta de
+  laço; ele **não** pode ser a razão pela qual um convite sai ou não sai.
+- **Cada tenant roda dentro do seu `runInTenantContext`**, com `try/catch`
+  próprio — a enumeração cruza a fronteira, o trabalho não.
+
+### Por que isto não reabre o ADR-020
+
+O que sai da fronteira é a **existência de um tenant e o fato de ele ter
+configuração**, não dado de tenant. Nenhuma licença, nenhum comprador, nenhum
+segredo. É a informação mínima para o processo saber a quem servir — e é a mesma
+natureza do que o operador já vê ao administrar a instalação.
+
+**Ainda assim é alargamento, e alargamento não entra em silêncio.** Se o Code
+julgar que a primeira função enumerante do repo é decisão estrutural, ela vira
+**ADR próprio, redigido no PR-1** — mesmo caminho dos ADR-026/027/028/029.
+
+### O filtro de cada rodada, e por que não é o do catálogo
+
+`tenantsConfigurados()` filtra pelas três credenciais da Kiwify. Nenhuma das duas
+rodadas novas pode herdar esse filtro:
+
+- **`source-reconcile`** precisa de `githubPat`, não de Kiwify. Um tenant com
+  Kiwify e sem PAT seria varrido à toa; **um com PAT e sem Kiwify seria pulado, e
+  o convite nunca sairia** — falha muda, do tipo que esta fatia existe para
+  acabar.
+- **`expiry-sweep`** não precisa de credencial nenhuma: é `updateMany` local.
+  Filtrar por qualquer credencial deixaria licença vencida aparecendo como
+  `ACTIVE` no admin de todo tenant sem Kiwify.
 
 ## Critérios de aceite
 
@@ -123,6 +217,19 @@ Idempotência e resiliência (ADR-029, decisões 3 e 4):
 - [ ] Toda a execução recorrente roda dentro de `runInTenantContext` — sem ele o
       RLS fail-closed devolveria zero linhas **sem erro**, e a rodada reportaria
       sucesso tendo feito nada.
+
+Enumeração (emenda de 2026-08-05):
+
+- [ ] **Teste de banco contra Postgres real** (`int-spec`, nunca mock de Prisma)
+      provando que cada função de enumeração devolve os tenants esperados
+      **sem** `app.tenant_ids` definido. Mock de Prisma não tem RLS — foi o que
+      deixou o `tenantsConfigurados()` passar, e é a mesma lição do FIX #216.
+- [ ] Cada função devolve **somente** `tenant_id`; nenhum teste consegue extrair
+      `github_pat`, `webhook_secret` ou credencial da Kiwify por ela.
+- [ ] `REVOKE ALL ... FROM PUBLIC` + `GRANT EXECUTE` só para `proplan_app`, como
+      as seis `resolve_*` existentes.
+- [ ] Um tenant com `githubPat` e **sem** credenciais da Kiwify **é varrido** pelo
+      `source-reconcile` (o caso que o filtro do catálogo pularia).
 
 Expiração:
 
