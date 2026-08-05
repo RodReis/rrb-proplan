@@ -12,8 +12,8 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 2319 | 2319 | 0 | 82.5 | — | — |
-| — | — | — | Banco | 290 | 290 | 0 | 63.5 | — | — |
+| — | — | — | Regras de Negócio | 2354 | 2354 | 0 | 82.2 | — | — |
+| — | — | — | Banco | 290 | 290 | 0 | 63.6 | — | — |
 | — | — | — | Tela | 791 | 791 | 0 | 61.9 | — | — |
 
 ## Histórico por entrega
@@ -325,3 +325,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #267 | SPEC-047 | Regras de Negócio | 2319 | 2319 | 0 | 82.5 | #268 | [#268](https://github.com/RodReis/rrb-proplan/pull/268) |
 | — | #267 | SPEC-047 | Banco | 290 | 290 | 0 | 63.5 | #268 | [#268](https://github.com/RodReis/rrb-proplan/pull/268) |
 | — | #267 | SPEC-047 | Tela | 791 | 791 | 0 | 61.9 | #268 | [#268](https://github.com/RodReis/rrb-proplan/pull/268) |
+| — | #267 | SPEC-047 | Regras de Negócio | 2354 | 2354 | 0 | 82.2 | #269 | [#269](https://github.com/RodReis/rrb-proplan/pull/269) |
+| — | #267 | SPEC-047 | Banco | 290 | 290 | 0 | 63.6 | #269 | [#269](https://github.com/RodReis/rrb-proplan/pull/269) |
+| — | #267 | SPEC-047 | Tela | 791 | 791 | 0 | 61.9 | #269 | [#269](https://github.com/RodReis/rrb-proplan/pull/269) |
