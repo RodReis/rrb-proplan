@@ -259,6 +259,16 @@ export class SourceAdminService {
       `Licença ${licenseId}: username ${usuario.login} gravado pelo admin` +
         (previousInviteCanceled ? ' (convite anterior cancelado)' : ''),
     );
+
+    // Gatilho por evento (SPEC-048): se o 8º dia já passou, o convite sai em
+    // segundos em vez de esperar a rodada da madrugada. Se não passou, a rodada
+    // não encontra nada — o prazo continua sendo do filtro, não daqui.
+    //
+    // **Depois do update, e sem `await` que possa falhar a operação**: o método
+    // não lança por Redis fora, e é essa garantia que permite chamá-lo aqui sem
+    // arriscar o `username` que acabou de ser gravado.
+    await this.invites.agendarReconciliacao(tenantId);
+
     return { username: usuario.login, previousInviteCanceled };
   }
 

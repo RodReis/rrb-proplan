@@ -1,10 +1,13 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
+import type { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CryptoService } from '../../identity/infrastructure/crypto.service';
 import {
   GithubSourceError,
   GithubSourceClient,
 } from '../infrastructure/github-source.client';
+import { LICENSING_QUEUE, SOURCE_RECONCILE_JOB } from '../licensing.constants';
 
 /** O que uma rodada de reconciliação fez. Devolvido para o log e para o admin. */
 export interface ReconcileResult {
@@ -42,12 +45,22 @@ export interface ReconcileResult {
  * aceita ficaria `INVITED` para sempre, e o PR-4 tentaria cancelar uma invitation
  * que já não existe.
  *
- * ## Sem agendador, e isso é deliberado
+ * ## Roda sozinho desde a SPEC-048 — por dois gatilhos, não um
  *
- * Não há `@nestjs/schedule` nem `repeat` de BullMQ no repo, e a spec diz "job
- * diário" sem dizer como dispara. Escolher isso é decisão de infra, não minha —
- * o mesmo tratamento que o job de `EXPIRED` da SPEC-038 recebeu. O que existe
- * aqui é um método **chamável**: testável, e disparável pelo admin (PR-5).
+ * Até a Fatia 36 o repo **não tinha agendador**, e o método era só chamável
+ * (pelo botão do admin). O ADR-029 criou o mecanismo, e esta fatia ligou os dois
+ * caminhos que se cobrem:
+ *
+ * - **Recorrente diário** (`SourceReconcileScheduler`, 4 h) — a rede de
+ *   segurança, e o único caminho que atende o caso mais comum: quem compra e
+ *   informa o username no **dia 0** não produz evento nenhum no dia 8, só o
+ *   relógio.
+ * - **Por evento** (`agendarReconciliacao`, abaixo) — quem responde **depois**
+ *   do 8º dia entra em segundos, em vez de esperar até 24 h.
+ *
+ * **Nenhum dos dois tem consulta própria**: ambos caem no `reconcile`, com o
+ * filtro `sourceInviteAt <= agora` intacto. É isso que faz o prazo de 8 dias ser
+ * verdade por construção, e não por disciplina de quem chama.
  *
  * **Nada de acesso depende de este job rodar na hora.** Atraso não concede nem
  * revoga nada — só adia um convite. É a mesma regra da validação: o que decide
@@ -61,7 +74,70 @@ export class SourceInviteService {
     private readonly prisma: PrismaService,
     private readonly github: GithubSourceClient,
     private readonly crypto: CryptoService,
+    @InjectQueue(LICENSING_QUEUE) private readonly fila: Queue,
   ) {}
+
+  /**
+   * Antecipa a rodada porque o username acabou de ser gravado (SPEC-048).
+   *
+   * Chamado pelos dois caminhos que gravam username — o link público e o admin.
+   * Serve a quem responde **depois** do 8º dia: sem isto, o convite esperaria até
+   * 24 h pela rodada diária; com isto, sai em segundos. Antes do 8º dia não faz
+   * nada visível, porque o filtro `sourceInviteAt <= agora` do `convidarPendentes`
+   * não encontra a licença — **é ele a guarda do prazo, e este atalho não a
+   * contorna.**
+   *
+   * ## Nunca lança
+   *
+   * Esta é a razão de o método existir em vez de um `fila.add` solto nos dois
+   * chamadores. Se o Redis estiver fora, o username **tem de ficar gravado assim
+   * mesmo** — a rodada diária o pega depois. Propagar a falha transformaria uma
+   * indisponibilidade de Redis em *"o comprador não consegue informar o
+   * username"*, que é bem pior do que esperar a próxima rodada.
+   *
+   * ## Não é um segundo agendador
+   *
+   * É um `add` comum, disparado por ação do usuário — exatamente como o webhook
+   * já enfileira o processamento de uma venda. O que o ADR-029 concentra num
+   * mecanismo só é *"rode isto de tempos em tempos"*, e isto aqui não diz isso.
+   * O `job.name` é o mesmo do recorrente de propósito: o worker roteia para a
+   * mesma execução, e não existe um segundo lugar sabendo convidar.
+   */
+  async agendarReconciliacao(tenantId: string): Promise<void> {
+    try {
+      await this.fila.add(SOURCE_RECONCILE_JOB, { tenantId });
+    } catch (erro) {
+      const motivo = erro instanceof Error ? erro.message : String(erro);
+      this.logger.warn(
+        `Não foi possível antecipar a reconciliação do tenant ${tenantId}: ${motivo} ` +
+          '— a rodada diária cobre',
+      );
+    }
+  }
+
+  /**
+   * Os tenants que a rodada diária varre (SPEC-048).
+   *
+   * **Não reusa o `tenantsConfigurados` do sync de catálogo**, e a diferença
+   * importa nos dois sentidos: aquele filtra credenciais da **Kiwify**, então um
+   * tenant com PAT e sem Kiwify seria pulado — e o convite nunca sairia, que é o
+   * defeito desta fatia de volta. Na direção oposta, varrer quem tem Kiwify e
+   * não tem PAT gastaria uma rodada para o `reconcile` sair na primeira linha.
+   *
+   * O filtro é **economia, não regra**: quem decide é o `configuracao()` lá
+   * dentro, que já devolve `null` sem PAT ou sem produto com `sourceRepo`.
+   * Duplicar a decisão aqui criaria dois lugares para acertar a mesma coisa.
+   *
+   * Atravessa tenants e devolve só ids — a pergunta é *"quais tenants?"*; o
+   * `runInTenantContext` entra depois, uma vez por tenant (ADR-029, decisão 4).
+   */
+  async tenantsComSource(): Promise<string[]> {
+    const linhas = await this.prisma.licSettings.findMany({
+      where: { githubPat: { not: null } },
+      select: { tenantId: true },
+    });
+    return linhas.map((l) => l.tenantId);
+  }
 
   /**
    * Uma rodada para um tenant. Chamada **já dentro** do contexto de tenant.

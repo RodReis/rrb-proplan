@@ -24,8 +24,14 @@ import { MailService, type MailDeliveryView } from '../../mail/application/mail.
  * arch-spec de lá varre exatamente isso. Mas reenfileirar exige os dados do
  * template de novo (eles nunca foram persistidos), e quem sabe remontá-los a
  * partir da licença é este módulo. Então a leitura e a escrita continuam sendo
- * do `MailService` (nada aqui toca `prisma.mailDelivery`), e o que vive aqui é a
- * decisão de **quais entregas podem voltar à fila** e com que dados.
+ * do `MailService` (nada aqui escreve na tabela de entregas), e o que vive aqui
+ * é a decisão de **quais entregas podem voltar à fila** e com que dados.
+ *
+ * **A frase acima não escreve o acessor do Prisma de propósito** (escrevia, até
+ * 2026-08-05): os dois arch-specs que guardam esta fronteira — o daqui e o do
+ * `mail` — varrem linha a linha e **não distinguem código de comentário**, então
+ * a menção literal fazia as duas guardas acusarem justamente o parágrafo que
+ * afirma o contrário.
  */
 
 /** Uma entrega, com o veredito de reenvio já resolvido para a tela. */

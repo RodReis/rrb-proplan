@@ -12,8 +12,8 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 2367 | 2367 | 0 | 82.2 | — | — |
-| — | — | — | Banco | 290 | 290 | 0 | 63.4 | — | — |
+| — | — | — | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
+| — | — | — | Banco | 290 | 290 | 0 | 60.1 | — | — |
 | — | — | — | Tela | 830 | 830 | 0 | 62.9 | — | — |
 
 ## Histórico por entrega
@@ -337,3 +337,9 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #254 | SPEC-038 | Regras de Negócio | 2367 | 2367 | 0 | 82.2 | #278 | [#278](https://github.com/RodReis/rrb-proplan/pull/278) |
 | — | #254 | SPEC-038 | Banco | 290 | 290 | 0 | 63.4 | #278 | [#278](https://github.com/RodReis/rrb-proplan/pull/278) |
 | — | #254 | SPEC-038 | Tela | 830 | 830 | 0 | 62.9 | #278 | [#278](https://github.com/RodReis/rrb-proplan/pull/278) |
+| — | #276 | SPEC-048 | Regras de Negócio | 2385 | 2383 | 2 | 82.3 | — | — |
+| — | #276 | SPEC-048 | Banco | 290 | 290 | 0 | 60.1 | — | — |
+| — | #276 | SPEC-048 | Tela | 830 | 830 | 0 | 62.9 | — | — |
+| — | #276 | SPEC-048 | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
+| — | #276 | SPEC-048 | Banco | 290 | 290 | 0 | 60.1 | — | — |
+| — | #276 | SPEC-048 | Tela | 830 | 830 | 0 | 62.9 | — | — |

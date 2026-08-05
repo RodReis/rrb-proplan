@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { MailService } from '../../mail/application/mail.service';
 import { GithubSourceClient } from '../infrastructure/github-source.client';
+import { SourceInviteService } from './source-invite.service';
 import {
   generateToken,
   hashToken,
@@ -95,6 +96,10 @@ export class SourceLinkService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly github: GithubSourceClient,
+    // Só para antecipar a rodada quando o username é gravado (SPEC-048). Este
+    // service **não convida ninguém** — quem convida é o `reconcile`, pelo
+    // worker. A dependência é do gatilho, não da lógica de convite.
+    private readonly invites: SourceInviteService,
   ) {}
 
   /**
@@ -317,6 +322,17 @@ export class SourceLinkService {
         });
       }
     });
+
+    // Gatilho por evento (SPEC-048). Este é o caminho que mais precisa dele: o
+    // comprador que abre o link **depois** do 8º dia entra em segundos, em vez
+    // de esperar até 24 h pela rodada da madrugada.
+    //
+    // **Fora do `runInTenantContext`, e depois da transação.** Enfileirar é ato
+    // de infraestrutura, não leitura de dado de tenant; e antecipar a rodada
+    // antes do commit correria contra a própria gravação — o worker leria a
+    // licença sem o username. O método não lança por Redis fora: a gravação do
+    // username não pode falhar por causa da fila (§Notas técnicas).
+    await this.invites.agendarReconciliacao(row.tenant_id);
 
     this.logger.log(`Username gravado para a licença ${row.license_id}`);
     return { username: usuario.login };

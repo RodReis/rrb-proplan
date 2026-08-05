@@ -22,15 +22,18 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * pessoas diferentes, e fundi-los num campo só faria o operador responder ao
  * endereço errado.
  *
- * ## O purge mora aqui, e não tem agendador
+ * ## O purge mora aqui, e ainda não é agendado
  *
- * Método chamável, como o `LicenseExpirySweepService` da SPEC-038 — o repo não
- * tem agendador e escolher um é decisão de infra que nenhuma spec tomou. **A
- * diferença em relação ao sweep vale registrar**: lá, o job parado só deixa a
- * lista do admin desatualizada; aqui, ele parado significa retenção de 90 dias
- * não cumprida, que é mitigação de LGPD assumida com o PI. Por isso existe botão
- * no admin — e por isso a lacuna está anotada no `STATUS.md` como decisão
- * pendente, não como detalhe de implementação.
+ * Método chamável. O repo **passou a ter agendador** no ADR-029 (Fatia 36), e o
+ * `LicenseExpirySweepService` — que estava exatamente nesta situação — virou
+ * recorrente na SPEC-048. Este não entrou junto para não empacotar duas coisas
+ * num card: é o `[FIX]` **#271**, com o comportamento correto já escrito (90
+ * dias, o que apagar, o mecanismo) e três exemplos de scheduler a copiar.
+ *
+ * **A diferença de gravidade em relação ao sweep vale registrar**: lá, o job
+ * parado só deixa a lista do admin desatualizada; aqui, ele parado significa
+ * retenção de 90 dias não cumprida, que é mitigação de LGPD assumida com o PI.
+ * Por isso existe botão no admin enquanto o card não é feito.
  */
 
 const MAX_PAGE = 100;

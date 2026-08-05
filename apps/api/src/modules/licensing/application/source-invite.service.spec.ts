@@ -1,3 +1,4 @@
+import type { Queue } from 'bullmq';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import type { CryptoService } from '../../identity/infrastructure/crypto.service';
 import {
@@ -43,6 +44,8 @@ function montar(
     convite?: InviteResult | Error;
     ehColaborador?: boolean | Error;
     cifraQuebrada?: boolean;
+    /** Redis fora do ar — o `add` do gatilho da SPEC-048 lança. */
+    filaFora?: boolean;
   } = {},
 ) {
   const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
@@ -53,6 +56,8 @@ function montar(
       findFirst: jest.fn(async () => ({
         githubPat: opcoes.pat === undefined ? 'cifrado' : opcoes.pat,
       })),
+      // A varredura de tenants da rodada diária (SPEC-048).
+      findMany: jest.fn(async () => [{ tenantId: TENANT }]),
     },
     licProduct: {
       findFirst: jest.fn(async () => ({
@@ -88,12 +93,23 @@ function montar(
     }),
   } as unknown as CryptoService;
 
+  const enfileirados: Array<{ nome: string; dados: unknown }> = [];
+  const fila = {
+    add: jest.fn(async (nome: string, dados: unknown) => {
+      if (opcoes.filaFora) throw new Error('Redis indisponível');
+      enfileirados.push({ nome, dados });
+      return {};
+    }),
+  } as unknown as Queue;
+
   return {
-    service: new SourceInviteService(prisma, github, crypto),
+    service: new SourceInviteService(prisma, github, crypto, fila),
     prisma,
     github,
     crypto,
     updates,
+    fila,
+    enfileirados,
   };
 }
 
@@ -431,5 +447,93 @@ describe('configuração ausente', () => {
     // pendências diria "token inválido" sobre um token perfeitamente válido.
     expect(c.crypto.decrypt).toHaveBeenCalledWith('cifrado');
     expect(c.github.invite).toHaveBeenCalledWith('pat-em-claro:cifrado', REPO, 'RodReis');
+  });
+});
+
+/**
+ * O agendamento e o gatilho por evento (SPEC-048).
+ *
+ * Três coisas que falham em silêncio se quebrarem:
+ *
+ * 1. **O prazo de 8 dias vive no filtro `sourceInviteAt <= agora`.** Ele é a
+ *    única guarda, e nenhum gatilho pode contorná-lo — furar o prazo entregaria
+ *    o código-fonte dentro da janela de reembolso do CDC art. 49.
+ * 2. **O gatilho não pode derrubar a gravação do username.** Redis fora do ar
+ *    tem de custar uma espera até a rodada diária, nunca "o comprador não
+ *    consegue informar o username".
+ * 3. **A varredura de tenants é a do PAT, não a da Kiwify.** Reusar o filtro do
+ *    sync do catálogo pularia justamente quem tem source e não vende por lá.
+ */
+describe('SPEC-048: rodada automática e gatilho por evento', () => {
+  it('a rodada disparada pelo gatilho passa pelo MESMO filtro de prazo', async () => {
+    const c = montar({
+      licencas: [{ id: 'lic-1', sourceAccess: 'PENDING', githubUsername: 'RodReis' }],
+    });
+
+    // O gatilho enfileira; quem executa é o worker, chamando este mesmo
+    // `reconcile`. Não existe caminho "convidar agora" que pule a consulta.
+    await c.service.agendarReconciliacao(TENANT);
+    await c.service.reconcile(TENANT);
+
+    const where = (c.prisma.license.findMany as jest.Mock).mock.calls.find(
+      (ch) => ch[0].where.sourceAccess === 'PENDING',
+    )?.[0].where;
+    // **É isto que faz "o prazo fica" ser verdade por construção**, e não por
+    // disciplina de quem chama: o atalho por evento não tem consulta própria,
+    // então não há onde furar os 8 dias.
+    expect(where.sourceInviteAt).toHaveProperty('lte');
+    expect(c.enfileirados).toHaveLength(1);
+  });
+
+  it('`FAILED` não entra na rodada — nenhuma chamada ao GitHub por licença falhada', async () => {
+    const c = montar({
+      licencas: [
+        { id: 'lic-1', sourceAccess: 'FAILED', githubUsername: 'RodReis' },
+        { id: 'lic-2', sourceAccess: 'FAILED', githubUsername: 'Outro' },
+      ],
+    });
+
+    const r = await c.service.reconcile(TENANT);
+
+    // Decisão PI: `FAILED` exige ação humana. Retentar sozinho martelaria o
+    // GitHub a cada rodada, sempre falhando, e esvaziaria de sentido a lista de
+    // pendências — que existe justamente para pedir a correção da configuração.
+    expect(c.github.invite).not.toHaveBeenCalled();
+    expect(r.convidados).toBe(0);
+  });
+
+  it('o gatilho enfileira a rodada com o nome que o worker roteia', async () => {
+    const c = montar();
+
+    await c.service.agendarReconciliacao(TENANT);
+
+    // Mesmo `job.name` do recorrente, de propósito: o worker roteia os dois para
+    // a mesma execução. Um nome próprio criaria um segundo lugar sabendo
+    // convidar — e é aí que as duas guardas divergiriam.
+    expect(c.enfileirados).toEqual([
+      { nome: 'source-reconcile', dados: { tenantId: TENANT } },
+    ]);
+  });
+
+  it('Redis fora do ar NÃO propaga — a gravação do username sobrevive', async () => {
+    const c = montar({ filaFora: true });
+
+    // Não lança. Se lançasse, o `setUsername` que o chama estouraria e o
+    // comprador veria erro ao informar o username — trocando uma espera de até
+    // 24 h por uma falha na cara dele.
+    await expect(c.service.agendarReconciliacao(TENANT)).resolves.toBeUndefined();
+  });
+
+  it('varre tenants por PAT configurado, não por credencial da Kiwify', async () => {
+    const c = montar();
+
+    await c.service.tenantsComSource();
+
+    // Filtrar por Kiwify aqui pularia o tenant que tem source e vende por outro
+    // canal — e o convite dele nunca sairia, que é o defeito desta fatia de volta.
+    expect(c.prisma.licSettings.findMany).toHaveBeenCalledWith({
+      where: { githubPat: { not: null } },
+      select: { tenantId: true },
+    });
   });
 });

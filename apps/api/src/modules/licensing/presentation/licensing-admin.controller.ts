@@ -750,11 +750,14 @@ export class LicensingAdminController {
   /**
    * Apaga relatos com mais de 90 dias (§Escopo).
    *
-   * **Botão, porque o repo não tem agendador** — mesma situação do
-   * `LicenseExpirySweepService` da SPEC-038, e a escolha de um é decisão de
-   * infra que nenhuma spec tomou. A diferença está anotada no `STATUS.md`: um
-   * sweep parado só desatualiza a lista, um purge parado é retenção de LGPD não
-   * cumprida.
+   * **Ainda só botão — e agora é o único job do módulo que não roda sozinho.**
+   * O `LicenseExpirySweepService`, que estava na mesma situação, passou a ser
+   * recorrente na SPEC-048; este não entrou junto de propósito, para não
+   * empacotar duas coisas num card (é o `[FIX]` #271). O mecanismo já existe e
+   * há três exemplos a copiar — o que falta é o card.
+   *
+   * A diferença de gravidade continua valendo: um sweep parado só desatualiza a
+   * lista, um purge parado é retenção de LGPD não cumprida.
    */
   @Post('error-reports/purge')
   async purgeErrorReports(@Req() req: AuthenticatedRequest) {

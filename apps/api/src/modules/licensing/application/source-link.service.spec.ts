@@ -1,6 +1,7 @@
 import type { PrismaService } from '../../../prisma/prisma.service';
 import type { MailService } from '../../mail/application/mail.service';
 import type { GithubSourceClient } from '../infrastructure/github-source.client';
+import type { SourceInviteService } from './source-invite.service';
 import { hashToken } from '../domain/source-token';
 import {
   GithubUnavailableError,
@@ -117,11 +118,23 @@ function montar(
     }),
   } as unknown as GithubSourceClient;
 
+  // O gatilho da SPEC-048: gravar o username antecipa a rodada do convite. O que
+  // ele faz de verdade (enfileirar com o nome certo, e não lançar por Redis
+  // fora) tem teste próprio no spec do `SourceInviteService`.
+  const reconciliacoes: string[] = [];
+  const invites = {
+    agendarReconciliacao: jest.fn(async (tenantId: string) => {
+      reconciliacoes.push(tenantId);
+    }),
+  } as unknown as SourceInviteService;
+
   return {
-    service: new SourceLinkService(prisma, mail, github),
+    service: new SourceLinkService(prisma, mail, github, invites),
     prisma,
     mail,
     github,
+    invites,
+    reconciliacoes,
     enviados,
     eventos,
     updatesLicenca,
@@ -442,5 +455,26 @@ describe('gravar o username confirmado', () => {
     // e a correção passaria a exigir o admin.
     expect(c.linksInvalidados).toEqual([]);
     expect(c.updatesLicenca).toEqual([]);
+  });
+
+  it('antecipa a rodada com o tenant DO TOKEN (SPEC-048)', async () => {
+    const c = montar();
+
+    await c.service.setUsername(TOKEN, 'RodReis', true);
+
+    // Aqui não há sessão: o tenant vem da resolução do token. Passar o errado
+    // faria a rodada varrer outro tenant, e o convite deste comprador nunca
+    // sairia — sem erro em lugar nenhum.
+    expect(c.reconciliacoes).toEqual([TENANT]);
+  });
+
+  it('não antecipa nada quando a gravação falhou', async () => {
+    const c = montar({ githubLanca: true });
+
+    await expect(c.service.setUsername(TOKEN, 'RodReis', true)).rejects.toThrow();
+
+    // Enfileirar aqui gastaria uma rodada para procurar um username que não foi
+    // gravado — e, pior, sugeriria na fila que algo mudou quando nada mudou.
+    expect(c.reconciliacoes).toEqual([]);
   });
 });

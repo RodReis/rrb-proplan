@@ -8765,3 +8765,114 @@ e `test:report:check` verdes.
 - **O reenfileirar não foi exercido em produção** — depende de uma entrega que
   falhe de verdade. Os três caminhos de recusa e o de sucesso estão cobertos por
   teste; o que falta é o SMTP cair uma vez.
+
+## Fatia 37 (SPEC-048) — Licensing: o convite ao repo e a expiração deixam de depender de alguém clicar — `entregue`
+
+Issue **#276**. Nasce do preparo do dogfooding da compra **source** do War Room
+(2026-08-05): ao conferir o caminho antes de comprar, apareceu que o convite ao
+repositório **não sai sozinho em momento nenhum**, e que o sweep de expiração
+**não é chamado por ninguém**.
+
+**PR único.** A fatia não cria mecanismo: acrescenta dois consumidores ao
+repeatable que a Fatia 36 (ADR-029) já entregou e ligou em produção. Sem delta
+de schema, sem migration, sem rota nova.
+
+### O achado
+
+Duas coisas diferentes, com o mesmo sintoma de "existe e não roda":
+
+- **`SourceInviteService.reconcile`** só rodava por botão do admin — e **o botão
+  não fura o prazo de 8 dias**, porque chama a mesma rodada, que filtra
+  `sourceInviteAt <= agora`. Comprar hoje significava que no 8º dia alguém
+  precisava lembrar de clicar.
+- **`LicenseExpirySweepService.sweep`** existe desde a SPEC-038, é testado com
+  relógio controlado, e **nenhum código o chamava**. O admin lia `ACTIVE` em
+  linha que as rotas já recusavam com `410`.
+
+O ADR-029 previu esta fatia por nome: *"nem transforma em recorrente o que hoje
+é acionado por botão. O `SourceInviteService` continua como está — passar a
+agendá-lo é decisão da fatia que provar a necessidade"*.
+
+### O que entrou
+
+**Dois schedulers no molde do `CatalogSyncScheduler`** —
+`SourceReconcileScheduler` (`0 4 * * *`) e `ExpirySweepScheduler` (`0 5 * * *`),
+cada um um provider com `OnModuleInit` que chama `upsertJobScheduler` com id
+fixo e **não sabe executar nada**. Manter a forma é o que mantém verificável a
+promessa do ADR-029: quem perguntar *"o que roda sozinho neste repo?"* acha a
+resposta procurando por `upsertJobScheduler`, não por um `repeat:` escondido
+dentro de um service de negócio.
+
+**Roteamento por `job.name` no `LicensingWorker` que já existia.** Fila nova
+custaria conexão Redis e worker a mais para rodar uma vez por dia. São agora
+quatro tipos de job na mesma fila (`webhook`, `catalog-sync`,
+`source-reconcile`, `expiry-sweep`), e o `concurrency: 1` serializa todos.
+
+**Gatilho por evento ao gravar o username** — nos dois caminhos que gravam:
+`SourceLinkService.setUsername` (link público) e `SourceAdminService.setUsername`
+(admin). Quem responde depois do 8º dia entra em **segundos** em vez de esperar
+até 24 h. É um `add` comum na fila, **com o mesmo `job.name` do recorrente** — o
+worker roteia os dois para a mesma execução, e não existe um segundo lugar
+sabendo convidar.
+
+**Duas varreduras de tenant, e elas são diferentes de propósito:**
+
+| job | quem varre | por quê |
+|---|---|---|
+| `source-reconcile` | `LicSettings.githubPat != null` | filtrar por Kiwify (como faz o sync do catálogo) **pularia** quem tem source e vende por outro canal |
+| `expiry-sweep` | todo tenant com licença (`distinct`) | não fala com ninguém de fora; exigir credencial esconderia licença vencida de quem não usa aquela credencial |
+
+O filtro do convite é **economia, não regra** — quem decide continua sendo o
+`configuracao()` do service, que já devolve `null` sem PAT ou sem produto com
+`sourceRepo`.
+
+### As decisões que a fatia não podia errar
+
+**O prazo de 8 dias fica** (decisão PI, reafirma a #5 do MVP4 — CDC art. 49). O
+filtro `sourceInviteAt <= agora` é a **única** guarda, e nenhum gatilho a
+contorna: o atalho por evento não tem consulta própria, então não há onde furar
+o prazo. Isso está travado por teste — a rodada disparada pelo gatilho passa
+pelo mesmo `findMany`.
+
+**O gatilho não pode derrubar a gravação do username.**
+`agendarReconciliacao` **nunca lança**: se o Redis estiver fora, o username fica
+gravado e a rodada diária o pega depois. Propagar a falha transformaria uma
+indisponibilidade de Redis em *"o comprador não consegue informar o username"*.
+
+**`FAILED` sem retentativa automática** (decisão PI). A causa é quase sempre
+configuração — PAT expirado, `sourceRepo` errado; martelar o GitHub a cada
+rodada esvaziaria de sentido a lista de pendências, que existe para pedir a ação
+humana que resolve. Já era o comportamento (`convidarPendentes` filtra
+`PENDING`); o que entrou foi o **teste** que o trava.
+
+**`runInTenantContext` por tenant, e a assimetria entre os dois jobs.** O
+`reconcile` documenta que é chamado **já dentro** do contexto — quem o abre é o
+worker. O `sweep` abre o **próprio**. Envolver os dois igual aninharia contexto;
+não envolver o `reconcile` faria o RLS fail-closed devolver zero linhas **sem
+erro**, e a rodada reportaria sucesso tendo feito nada.
+
+### Verificação
+
+`pnpm build` e `pnpm lint` verdes (3 warnings preexistentes, em arquivos não
+tocados). **+21 testes**: prazo intacto sob o gatilho, `FAILED` sem retentativa,
+nome do job enfileirado, Redis fora não propaga, varredura por PAT, varredura do
+sweep sem filtro, registro idempotente dos dois schedulers, crons distintos,
+boot que sobrevive a Redis fora, roteamento dos dois jobs, contexto por tenant e
+isolamento de falha entre tenants.
+
+### O que a Fatia 37 deixa em aberto
+
+- **O dogfooding do caminho completo** — comprar a edição source de verdade,
+  informar o username e ver o convite sair sozinho no 8º dia. É o único critério
+  de aceite que só a produção fecha, e ele leva 8 dias por construção.
+- **O 8º dia vira promessa operacional** — nem o e-mail da compra nem o checkout
+  avisam o comprador dessa espera. A SPEC-048 registra a lacuna e a põe fora de
+  escopo; escrever esses textos é fatia própria.
+- **`licensing-boundaries.arch.spec.ts` falha na `main`** desde antes desta
+  fatia: o varredor de `prisma.mailDelivery` casa com um **comentário** do
+  `mail-ops.service.ts:27` que diz justamente *"nada aqui toca
+  `prisma.mailDelivery`"*. Falso positivo herdado do #278, não tocado aqui —
+  vira `[FIX]` próprio.
+- **Ligar o purge de 90 dias da SPEC-043** (#271) continua aberto. Esta fatia
+  não o empacotou de propósito, e agora há **três** exemplos do padrão para ele
+  copiar.

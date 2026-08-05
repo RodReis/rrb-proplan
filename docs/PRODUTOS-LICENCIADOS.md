@@ -206,20 +206,45 @@ Use **"Todos que sou produtor"** no campo *Produtos* do webhook.
 
 Registro honesto do que depende de gente hoje.
 
-### O convite ao repositório espera um clique
+### ~~O convite ao repositório espera um clique~~ — resolvido na Fatia 37
 
-A compra da edição com código-fonte **agenda** o convite para `compra + 8 dias`
-(prazo de arrependimento do CDC, decisão do MVP4) — mas o `SourceInviteService`
-**não tem agendador**: ele é acionado pelo botão do admin.
+**Deixou de ser verdade em 2026-08-05** (SPEC-048, issue #276). O convite agora
+sai sozinho por dois caminhos: rodada diária às **4 h** (`source-reconcile`) e
+gatilho **por evento** ao gravar o username — quem responde depois do 8º dia
+entra em segundos. O sweep de expiração (`expiry-sweep`, **5 h**) idem: até
+então ele existia, era testado, e **nenhum código o chamava**.
 
-O código registra a lacuna explicitamente. O **ADR-029** (Fatia 36) criou o
-mecanismo que faltava — BullMQ repeatable —, então ligá-lo é possível hoje.
+**O prazo de 8 dias continua valendo, e nenhum dos dois gatilhos o fura.** Quem
+compra hoje só entra no repositório em 8 dias — inclusive clicando no botão do
+admin, que sempre chamou a mesma rodada. O filtro `sourceInviteAt <= agora` é a
+única guarda, e é deliberado que seja uma só.
 
-**O que falta é decisão, não código:** o purge da SPEC-043 tem a regra escrita
-(90 dias), mas **nenhuma spec diz com que frequência reconciliar o convite**.
-Escolher isso é do PI. Enquanto não for decidido, o convite depende de alguém
-lembrar de clicar depois dos 8 dias — o que é aceitável no volume atual (2
-licenças source), e deixa de ser quando não for.
+**O que continua dependendo de gente:** licença em `FAILED` **não é retentada
+automaticamente** (decisão PI, SPEC-048). A causa é quase sempre configuração —
+PAT expirado, `sourceRepo` errado —, e retentar sozinho martelaria o GitHub a
+cada rodada, sempre falhando, esvaziando de sentido a lista de pendências. O
+botão *reemitir* é o caminho, e ele devolve `FAILED → PENDING`.
+
+### O comprador não é avisado de que espera 8 dias
+
+Com o convite automático, *"sai no dia 8"* virou **promessa operacional** — e
+hoje **nem o e-mail da compra nem o checkout dizem isso ao comprador**. Antes o
+atraso era invisível porque não havia promessa; agora um job parado por uma
+semana é falha percebida pelo cliente.
+
+A SPEC-048 registra a lacuna e a põe **fora de escopo**: escrever esses textos é
+fatia própria. Mitigação que já existe: a lista de pendências do admin mostra
+`PENDING` vencido — ela deixa de ser o único caminho e passa a ser o alarme.
+
+### Cancelar assinatura não remove o colaborador do repositório
+
+**Lacuna conhecida, registrada aqui por decisão do PI (2026-08-05).** O
+`cancelar()` grava o evento do ciclo, e o colaborador **permanece no
+repositório**. Não virou fatia porque **assinatura é outro produto** — o War
+Room é compra única, e o piloto não vende source por assinatura.
+
+Volta como fatia própria **se e quando** algum produto vender código-fonte em
+regime de assinatura. Até lá, o caminho é a revogação manual pelo admin.
 
 ### A tela não distingue de-para vivo de resíduo
 
