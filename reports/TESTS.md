@@ -12,8 +12,8 @@ Totais da última execução (regenerado, não acumulado):
 
 | Data | Issue | SPEC | Categoria | Testes | Pass | Falha | Cobertura % | PR | Link PR |
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
-| — | — | — | Regras de Negócio | 2313 | 2313 | 0 | 82.5 | — | — |
-| — | — | — | Banco | 290 | 290 | 0 | 64.2 | — | — |
+| — | — | — | Regras de Negócio | 2319 | 2319 | 0 | 82.5 | — | — |
+| — | — | — | Banco | 290 | 290 | 0 | 63.5 | — | — |
 | — | — | — | Tela | 791 | 791 | 0 | 61.9 | — | — |
 
 ## Histórico por entrega

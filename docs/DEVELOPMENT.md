@@ -8432,3 +8432,92 @@ Suíte inalterada e verde: **2313 regras · 290 banco · 791 tela = 3394**.
   cor está *legível nos dois temas* (DESIGN.md §11, AA) só o navegador diz. As
   proporções usadas (`border-error/45`, `bg-error/10`) são as que o
   `licensingUi.tsx` já emprega, mas não foram medidas nestes contextos.
+
+---
+
+## Fatia 36 (SPEC-047) — Licensing: o catálogo da Kiwify expõe a oferta sem de-para **antes** da primeira venda — `em-implementacao`
+
+Issue **#267**. Nasce do dogfooding da compra real do War Room (2026-08-04): a
+venda da oferta *Sem código Fonte* falhou porque o de-para não existia. A
+SPEC-046 (Fatia 35) conserta o que a lista diz sobre ofertas que **já venderam**;
+esta faz a lista enxergar as que **ainda não venderam**.
+
+**Três PRs empilhados** (decisão do PI, 2026-08-04):
+
+| PR | escopo | estado |
+|---|---|---|
+| PR-1 | schema + migration + **ADR-029** + as 3 credenciais no `LicSettings` | **feito** |
+| PR-2 | client HTTP da Kiwify, snapshot, job repeatable, rotas `GET`/`refresh` | a fazer |
+| PR-3 | 3º bloco na aba + etiqueta do cartão somando blocos 2+3 | a fazer |
+
+### PR-1 — o que entrou
+
+**`ADR-029` — o agendador do repo é BullMQ repeatable job.** Redigido aqui, como
+os ADR-026/027/028. Até esta fatia o repo **não tinha agendador nenhum**, e a
+ausência era deliberada e documentada (comentário do `SourceInviteService`).
+Duas fatias chegaram ao mesmo ponto por caminhos independentes — o sync diário
+desta e o purge de 90 dias da SPEC-043 —, e duas demandas do mesmo formato é o
+ponto em que escolher deixa de ser prematuro. `@nestjs/schedule` foi rejeitado
+por ser in-process: com duas instâncias no Railway o cron dispara **duas vezes**,
+e nada no código acusa — num purge de 90 dias isso é escrita destrutiva
+duplicada.
+
+**Três credenciais no `LicSettings`, todas opcionais** — mesma lição do FIX #212:
+propósitos independentes não se bloqueiam. Sem as três, nada muda.
+
+**O secret é cifrado; os outros dois não** (decisão do PI). A spec dizia "padrão
+dos segredos existentes", mas `webhookSecret` (texto plano) e `githubPat`
+(cifrado) **não são o mesmo padrão** — a pergunta foi ao PI antes de codificar.
+A natureza do `kiwifyClientSecret` é a do PAT: credencial de API externa que dá
+leitura do catálogo comercial inteiro. Mesmo `CryptoService`, mesma
+`TOKEN_ENCRYPTION_KEY` — um segundo mecanismo de cifragem seria uma segunda
+chave a rotacionar.
+
+**`client_id` e `account_id` saem de volta na leitura; o secret nunca.** Não é
+inconsistência: é a assimetria da própria dashboard da Kiwify, onde os dois
+primeiros aparecem em claro e o terceiro mascarado. Write-only num valor que o
+operador lê na outra aba do navegador só tiraria dele a chance de conferir o que
+configurou.
+
+**`kiwifyConfigurado` é exportada** porque o job do PR-2 precisa da mesma regra.
+Duplicá-la lá criaria duas definições de "configurado" que divergem no dia em que
+a API deles pedir um quarto campo.
+
+**`LicCatalogSnapshot` é cache com carimbo, não tabela de decisão** — a distinção
+que as SPEC-045/046 policiam. Guarda o que a Kiwify **disse**, com `fetchedAt`;
+nunca guarda conclusão (`coberta`, `situacao`, "resolvida"). O cruzamento com
+`LicOfferMapping` é derivado na leitura, na função pura, como a `situacao` da
+SPEC-046 — derivado, nunca desatualiza. `tenantId` é `@unique` no banco, e não só
+na intenção do `upsert`: duas rodadas concorrentes (job de madrugada + clique no
+botão) não podem produzir dois retratos e deixar a leitura escolher um por
+`orderBy`. RLS `ENABLE`+`FORCE` como as demais `lic_*` (ADR-020).
+
+**Falha de fetch não apaga o retrato anterior**: grava `fetchError` e mantém o
+`payload` bom, com o `fetchedAt` antigo dizendo a idade. Zerar a lista porque a
+Kiwify caiu faria a aba afirmar *"não falta de-para nenhum"* — mentira
+tranquilizadora, a pior classe de erro nesta área.
+
+### Testes do PR-1
+
+Cinco casos novos no `licensing-ops.service.spec.ts`, todos sobre o que pode
+vazar ou mentir: o secret não sai nem em claro nem cifrado; `client_id`/
+`account_id` saem; **duas das três credenciais NÃO é configurado** (com duas, o
+job rodaria para falhar com `401` toda madrugada, indistinguível de credencial
+revogada); o secret chega cifrado ao banco; e vazio recusado nos três campos
+(`it.each`), porque gravar `''` criaria um segundo jeito de dizer *não
+configurado* com sintoma mudo.
+
+Os três `toEqual` antigos de `settings` foram estendidos — não afrouxados para
+`objectContaining`: `toEqual` é o que faz um campo novo vazar aparecer como
+falha.
+
+Suíte completa verde: **2319 regras · 290 banco · 791 tela = 3400**, e2e
+incluído. Build e lint limpos.
+
+### O que o PR-1 deliberadamente NÃO faz
+
+Nenhuma chamada à Kiwify, nenhum job registrado, nenhuma mudança de tela. As
+colunas nascem alcançáveis pela rota `PUT /settings` que já existia — o padrão
+oposto ao que produziu três achados nesta área (`sourceRepo`, `githubPat`,
+`grantsSourceAccess`: coluna no schema, lida pelo backend, sem caminho pela
+interface).

@@ -42,7 +42,16 @@ describe('LicensingOpsService', () => {
       ...overrides,
     } as unknown as PrismaService;
     const queue = { add } as unknown as Queue;
-    return { prisma, add, service: new LicensingOpsService(prisma, queue) };
+    // Cifragem fake e **reversível na leitura do teste**: o que importa provar é
+    // que o valor gravado não é o texto em claro (SPEC-047), não reimplementar
+    // AES-GCM aqui — o `CryptoService` tem os próprios testes.
+    const crypto = { encrypt: (v: string) => `cifrado(${v})` };
+    return {
+      prisma,
+      add,
+      crypto,
+      service: new LicensingOpsService(prisma, queue, crypto as never),
+    };
   }
 
   describe('listWebhookEvents', () => {
@@ -306,7 +315,14 @@ describe('LicensingOpsService', () => {
 
       const view = await service.settings('tenant-1');
 
-      expect(view).toEqual({ webhookSecretSet: true, pastDueToleranceDays: 15 });
+      expect(view).toEqual({
+        webhookSecretSet: true,
+        pastDueToleranceDays: 15,
+        kiwifyClientId: null,
+        kiwifyAccountId: null,
+        kiwifyClientSecretSet: false,
+        kiwifyApiConfigured: false,
+      });
       expect(JSON.stringify(view)).not.toContain('tok-abc');
     });
 
@@ -322,6 +338,10 @@ describe('LicensingOpsService', () => {
       await expect(service.settings('tenant-1')).resolves.toEqual({
         webhookSecretSet: false,
         pastDueToleranceDays: 15,
+        kiwifyClientId: null,
+        kiwifyAccountId: null,
+        kiwifyClientSecretSet: false,
+        kiwifyApiConfigured: false,
       });
     });
 
@@ -339,7 +359,65 @@ describe('LicensingOpsService', () => {
       await expect(service.settings('t')).resolves.toEqual({
         webhookSecretSet: false,
         pastDueToleranceDays: null,
+        kiwifyClientId: null,
+        kiwifyAccountId: null,
+        kiwifyClientSecretSet: false,
+        kiwifyApiConfigured: false,
       });
+    });
+
+    /**
+     * SPEC-047. **O secret nunca sai; os outros dois saem** — e a assimetria é a
+     * da própria dashboard da Kiwify, onde `client_id` e `account_id` aparecem
+     * em claro e o secret mascarado.
+     */
+    it('devolve id e account em claro, o secret só como flag', async () => {
+      const { service } = montar({
+        licSettings: {
+          findUnique: jest.fn().mockResolvedValue({
+            webhookSecret: null,
+            pastDueToleranceDays: 15,
+            kiwifyClientId: 'cli-123',
+            kiwifyClientSecret: 'cifrado(seg-real)',
+            kiwifyAccountId: 'acc-456',
+          }),
+          upsert: jest.fn(),
+        },
+      });
+
+      const view = await service.settings('t');
+
+      expect(view.kiwifyClientId).toBe('cli-123');
+      expect(view.kiwifyAccountId).toBe('acc-456');
+      expect(view.kiwifyClientSecretSet).toBe(true);
+      expect(view.kiwifyApiConfigured).toBe(true);
+      // Nem em claro, nem cifrado: o valor gravado não atravessa a rota.
+      expect(JSON.stringify(view)).not.toContain('seg-real');
+    });
+
+    /**
+     * **Configurado é os TRÊS.** Com dois, o job rodaria para falhar com `401`
+     * toda madrugada — e o `fetchError` seria indistinguível de credencial
+     * revogada.
+     */
+    it('duas das três credenciais NÃO é configurado', async () => {
+      const { service } = montar({
+        licSettings: {
+          findUnique: jest.fn().mockResolvedValue({
+            webhookSecret: null,
+            pastDueToleranceDays: 15,
+            kiwifyClientId: 'cli-123',
+            kiwifyClientSecret: null,
+            kiwifyAccountId: 'acc-456',
+          }),
+          upsert: jest.fn(),
+        },
+      });
+
+      const view = await service.settings('t');
+
+      expect(view.kiwifyApiConfigured).toBe(false);
+      expect(view.kiwifyClientSecretSet).toBe(false);
     });
   });
 
@@ -357,6 +435,48 @@ describe('LicensingOpsService', () => {
       const upsert = (prisma.licSettings.upsert as jest.Mock).mock.calls[0][0];
       expect(upsert.update).toEqual({ pastDueToleranceDays: null });
     });
+
+    /**
+     * SPEC-047, decisão PI: o secret entra **cifrado**, como o `githubPat` e ao
+     * contrário do `webhookSecret`. Um dump do banco não pode virar leitura do
+     * catálogo comercial do tenant.
+     */
+    it('cifra o kiwifyClientSecret; id e account vão em claro', async () => {
+      const { service, prisma } = montar();
+
+      await service.updateSettings('tenant-1', {
+        kiwifyClientId: 'cli-123',
+        kiwifyClientSecret: 'seg-real',
+        kiwifyAccountId: 'acc-456',
+      });
+
+      const upsert = (prisma.licSettings.upsert as jest.Mock).mock.calls[0][0];
+      expect(upsert.update).toEqual({
+        kiwifyClientId: 'cli-123',
+        kiwifyClientSecret: 'cifrado(seg-real)',
+        kiwifyAccountId: 'acc-456',
+      });
+      // O texto em claro não chega ao banco.
+      expect(JSON.stringify(upsert)).not.toContain('"seg-real"');
+    });
+
+    /**
+     * Vazio recusado nos três — mesma regra do `webhookSecret` e do `setPat`.
+     * Gravar `''` criaria um segundo jeito de dizer *não configurado*, com
+     * sintoma mudo: job falhando toda madrugada.
+     */
+    it.each(['kiwifyClientId', 'kiwifyClientSecret', 'kiwifyAccountId'])(
+      'recusa %s vazio em vez de gravar string vazia',
+      async (campo) => {
+        const { service, prisma } = montar();
+
+        await expect(
+          service.updateSettings('tenant-1', { [campo]: '   ' }),
+        ).rejects.toThrow(campo);
+
+        expect(prisma.licSettings.upsert as jest.Mock).not.toHaveBeenCalled();
+      },
+    );
 
     it('campo ausente não é tocado', async () => {
       const { service, prisma } = montar();

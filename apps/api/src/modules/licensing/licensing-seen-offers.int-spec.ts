@@ -148,6 +148,14 @@ describe('SPEC-038: ofertas vistas e ainda não mapeadas', () => {
       const service = new LicensingOpsService(
         tx as never,
         { add: async () => undefined } as never,
+        // `listSeenOffers` não cifra nada — o crypto só entra no
+        // `updateSettings` (SPEC-047). Stub que explode se for chamado: um dia
+        // em que esta leitura passar a cifrar, o teste acusa em vez de passar.
+        {
+          encrypt: () => {
+            throw new Error('listSeenOffers não deve cifrar');
+          },
+        } as never,
       );
       return service.listSeenOffers();
     });

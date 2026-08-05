@@ -3,9 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   // Runtime: role NÃO-owner (proplan_app), sujeita a RLS (Fatia 8, SPEC-022).
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
   // Migrations/seed: role owner (proplan), precisa de DDL e ignora RLS.
   directUrl = env("DIRECT_URL")
 }
@@ -17,22 +17,22 @@ datasource db {
 // PR seguinte da #94; movê-los junto com a troca de IdP dobraria o raio de risco
 // sobre o `github-auth.service`, que é o coração da leitura (ADR-015).
 model User {
-  id                     String    @id @default(uuid())
-  githubId               BigInt?   @unique @map("github_id")
+  id          String       @id @default(uuid())
+  githubId    BigInt?      @unique @map("github_id")
   // Identidade do IdP. `googleId` é o `sub` do OpenID — estável mesmo se o
   // usuário trocar o email da conta Google. `email` é @unique porque é a chave
   // que casa o usuário pré-existente (identidade-GitHub) com a conta Google no
   // primeiro login pós-deploy.
-  googleId               String?   @unique @map("google_id")
-  email                  String?   @unique
-  login                  String
-  name                   String?
-  avatarUrl              String?   @map("avatar_url")
-  createdAt              DateTime  @default(now()) @map("created_at")
-  updatedAt              DateTime  @updatedAt @map("updated_at")
-  projects               Project[]
-  memberships            Membership[]
-  connections            Connection[]
+  googleId    String?      @unique @map("google_id")
+  email       String?      @unique
+  login       String
+  name        String?
+  avatarUrl   String?      @map("avatar_url")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  projects    Project[]
+  memberships Membership[]
+  connections Connection[]
 
   @@map("users")
 }
@@ -72,64 +72,68 @@ model Connection {
 // Tenant e nenhum dado orfana. No 1º corte a relação é 1:1 (tenant = instalação
 // = org); a PK própria só não fecha a porta para N instalações no futuro.
 model Tenant {
-  id             String       @id @default(uuid())
+  id                  String               @id @default(uuid())
   // Nullable: tenant pessoal pode nascer sem instalação de org. @unique: a
   // relação é 1:1 e re-apontável no reinstall.
-  installationId Int?         @unique @map("installation_id")
+  installationId      Int?                 @unique @map("installation_id")
   // Id numérico da conta no GitHub — a chave de casamento no reinstall. É o
   // ÚNICO identificador estável da conta: `installationId` muda a cada
   // reinstall e `accountLogin` muda num rename. Nullable porque as linhas
   // pré-existentes nascem sem ele (a migration não chama a rede); o primeiro
   // `listInstallations` preenche. @unique: uma conta = um tenant (1:1).
-  accountId      Int?         @unique @map("account_id")
-  accountLogin   String       @map("account_login")
-  accountType    String       @map("account_type") // User | Organization
-  createdAt      DateTime     @default(now()) @map("created_at")
-  memberships    Membership[]
-  projects       Project[]
-  settings       Settings[]
+  accountId           Int?                 @unique @map("account_id")
+  accountLogin        String               @map("account_login")
+  accountType         String               @map("account_type") // User | Organization
+  createdAt           DateTime             @default(now()) @map("created_at")
+  memberships         Membership[]
+  projects            Project[]
+  settings            Settings[]
   // Frente Clientes (SPEC-029): raízes de tenancy do MVP3.
-  clients        Client[]
-  auditEvents    AuditEvent[]
+  clients             Client[]
+  auditEvents         AuditEvent[]
   // Briefing público (SPEC-031): catálogo curado é por tenant.
   serviceCatalogItems ServiceCatalogItem[]
   // Anexos (ADR-025): raiz de tenancy própria, não herda por JOIN.
-  fileAssets     FileAsset[]
+  fileAssets          FileAsset[]
   // Teto de gasto de IA (ADR-026): 1:1, o bolso é do tenant.
-  llmSettings    TenantSettings?
+  llmSettings         TenantSettings?
   // Pipeline de IA (SPEC-032): as três são raízes, pelo mesmo motivo do
   // FileAsset — o painel busca cada uma direto por `id`.
-  artifacts      Artifact[]
-  artifactVersions ArtifactVersion[]
-  artifactRuns   ArtifactRun[]
+  artifacts           Artifact[]
+  artifactVersions    ArtifactVersion[]
+  artifactRuns        ArtifactRun[]
   // Estimativa (SPEC-033): raiz pelo mesmo motivo das três acima.
-  estimates      Estimate[]
+  estimates           Estimate[]
   // Contratos (SPEC-034): perfil 1:1, templates e contratos por tenant.
-  providerProfile   ProviderProfile?
-  contractTemplates ContractTemplate[]
-  contracts         Contract[]
+  providerProfile     ProviderProfile?
+  contractTemplates   ContractTemplate[]
+  contracts           Contract[]
   // Licenciamento (SPEC-036, MVP4 decisão 2): as quatro são raízes de tenancy
   // com `tenant_id` próprio. `LicEdition` fica de fora de propósito — ela corta
   // por JOIN no produto dono, porque nada a busca direto por id.
-  licProducts       LicProduct[]
-  licenses          License[]
-  licActivations    Activation[]
-  licEvents         LicEvent[]
+  licProducts         LicProduct[]
+  licenses            License[]
+  licActivations      Activation[]
+  licEvents           LicEvent[]
   // Versões publicadas (SPEC-041). Raiz pelo mesmo motivo das demais: o caminho
   // público as procura sem id de linha vindo do cliente.
-  licReleases       LicRelease[]
+  licReleases         LicRelease[]
   // Venda automatizada (SPEC-038): o que chega da plataforma, o que sai por
   // e-mail e o que configura os dois. `LicSettings` é 1:1 — um tenant tem um
   // segredo de webhook e uma política de inadimplência, não uma lista.
-  licWebhookEvents  LicWebhookEvent[]
-  licOfferMappings  LicOfferMapping[]
-  licSettings       LicSettings?
-  mailDeliveries    MailDelivery[]
+  licWebhookEvents    LicWebhookEvent[]
+  licOfferMappings    LicOfferMapping[]
+  licSettings         LicSettings?
+  mailDeliveries      MailDelivery[]
   // Coleta de username para o convite ao repo source (SPEC-039).
-  licSourceLinks    LicSourceLink[]
+  licSourceLinks      LicSourceLink[]
   // Relatos de erro do app licenciado (SPEC-043). Raiz de tenancy: o caminho
   // público chega por `keyHash → License`, sem id de linha vindo do cliente.
-  licErrorReports   LicErrorReport[]
+  licErrorReports     LicErrorReport[]
+  // O retrato do catálogo da plataforma (SPEC-047). 1:1 como o `LicSettings`, e
+  // pelo mesmo motivo: é UM retrato atual por tenant, sobrescrito a cada
+  // rodada — não uma lista com histórico.
+  licCatalogSnapshot  LicCatalogSnapshot?
 
   @@map("tenants")
 }
@@ -148,30 +152,30 @@ model Tenant {
 // gaveta assim que a 2ª configuração por tenant aparecesse — a primeira já está
 // encomendada (complexidade→acabamento, SPEC-033).
 model TenantSettings {
-  id                   String   @id @default(uuid())
+  id                   String  @id @default(uuid())
   // @unique: um teto por tenant. É a correção que motiva o ADR inteiro.
-  tenantId             String   @unique @map("tenant_id")
-  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId             String  @unique @map("tenant_id")
+  tenant               Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // USD/mês, global entre provedores (ADR-016 item 6 — o bolso é um só).
   // Alerta = faixa âmbar; teto = nenhuma chamada de IA. 0 desliga o teto.
-  llmAlertUsdMonthly   Decimal  @default(5)  @map("llm_alert_usd_monthly")   @db.Decimal(10, 4)
-  llmHardCapUsdMonthly Decimal  @default(20) @map("llm_hard_cap_usd_monthly") @db.Decimal(10, 4)
+  llmAlertUsdMonthly   Decimal @default(5) @map("llm_alert_usd_monthly") @db.Decimal(10, 4)
+  llmHardCapUsdMonthly Decimal @default(20) @map("llm_hard_cap_usd_monthly") @db.Decimal(10, 4)
 
   // --- Parâmetros de estimativa (SPEC-033 §6) -------------------------------
   // Reaproveitam esta tabela em vez de criar uma 2ª de configuração: ela já é
   // por tenant e já só o `owner` escreve (ADR-026), que são exatamente as duas
   // regras que a spec pede para estes campos. É também a "2ª configuração por
   // tenant" que o comentário acima dava como encomendada.
-  hourlyRateBrl        Decimal  @default(200) @map("hourly_rate_brl")   @db.Decimal(12, 2)
-  contingencyPercent   Decimal  @default(15)  @map("contingency_percent") @db.Decimal(5, 2)
+  hourlyRateBrl      Decimal   @default(200) @map("hourly_rate_brl") @db.Decimal(12, 2)
+  contingencyPercent Decimal   @default(15) @map("contingency_percent") @db.Decimal(5, 2)
   // Câmbio DIGITADO À MÃO, com a data em que foi digitado (§2.6) — sem API
   // externa, mesmo motivo do IBGE virar seed na SPEC-031: fonte de terceiro no
   // caminho da conta trava a estimativa quando o terceiro cai. Nullable é
   // estado legítimo e não "falta preencher": sem taxa, o custo de IA aparece em
   // USD, rotulado, e FORA do total em BRL — o total não finge incluir o que não
   // converteu.
-  exchangeRateUsdBrl   Decimal? @map("exchange_rate_usd_brl") @db.Decimal(12, 6)
-  exchangeRateAt       DateTime? @map("exchange_rate_at")
+  exchangeRateUsdBrl Decimal?  @map("exchange_rate_usd_brl") @db.Decimal(12, 6)
+  exchangeRateAt     DateTime? @map("exchange_rate_at")
 
   // --- Dashboard (SPEC-035 §6) ----------------------------------------------
   // Limite de "parado" do 4º item de *Esperando você*. Entra AQUI, e não numa
@@ -181,15 +185,15 @@ model TenantSettings {
   // Coluna e não constante porque o §2.3 diz "configurável" e o critério de
   // aceite cobra que "parado" use o valor configurado, não um `7` literal
   // espalhado. O default reproduz a decisão do PI de 2026-07-27.
-  stalledDays          Int      @default(7) @map("stalled_days")
+  stalledDays Int @default(7) @map("stalled_days")
 
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("tenant_settings")
 }
 
 enum Role {
-  owner  // gerencia projeto, administra membros, é o ÚNICO que finaliza (ADR-011)
+  owner // gerencia projeto, administra membros, é o ÚNICO que finaliza (ADR-011)
   member // opera o board, dispara sync, vê custo
   viewer // só leitura
 }
@@ -198,18 +202,18 @@ enum Role {
 // GitHub (PR-5), mas gravado aqui (coluna própria) para desacoplar de um
 // eventual SSO sem migração.
 model Membership {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  tenantId  String   @map("tenant_id")
-  role      Role
-  createdAt DateTime @default(now()) @map("created_at")
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  tenantId     String    @map("tenant_id")
+  role         Role
+  createdAt    DateTime  @default(now()) @map("created_at")
   // Último recálculo do papel a partir do GitHub (SPEC-022 E2, decisão 2).
   // Throttle PERSISTENTE: em memória, cada reinício da API zeraria a janela e
   // toda abertura de catálogo viraria request à API do GitHub. Nullable: linhas
   // pré-migration nunca foram recalculadas, e null força o primeiro cálculo.
   roleSyncedAt DateTime? @map("role_synced_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([userId, tenantId])
   @@index([tenantId])
@@ -222,79 +226,79 @@ enum InstallationStatus {
 }
 
 model Project {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
+  id                   String               @id @default(uuid())
+  userId               String               @map("user_id")
   // Nullable no schema para o backfill (migração da Fatia 8 preenche e depois
   // um ALTER torna NOT NULL — Prisma não modela "NOT NULL após backfill", então
   // o SQL da migração faz o SET NOT NULL; a coluna é obrigatória de fato).
-  tenantId     String?  @map("tenant_id")
-  githubRepoId BigInt   @map("github_repo_id")
-  owner        String
-  name         String
-  description  String?
-  defaultBranch String  @map("default_branch")
-  isPrivate    Boolean  @map("is_private")
-  installationId     Int?               @map("installation_id")
-  installationStatus InstallationStatus @default(active) @map("installation_status")
-  docsScopeHash String? @map("docs_scope_hash")
-  lastSyncAt   DateTime? @map("last_sync_at")
-  lastDocsCommitAt   DateTime? @map("last_docs_commit_at")
-  lastCodeCommitAt   DateTime? @map("last_code_commit_at")
-  commitMetaSyncedAt DateTime? @map("commit_meta_synced_at")
-  needsIssueImport   Boolean  @default(false) @map("needs_issue_import")
-  proplanConfigInvalid Boolean @default(false) @map("proplan_config_invalid")
-  deployVerdict    String?   @map("deploy_verdict")
-  deploySignals    Json?     @map("deploy_signals")
-  deployObservedAt DateTime? @map("deploy_observed_at")
-  ciStatus         String?   @map("ci_status")
-  ciConclusionUrl  String?   @map("ci_conclusion_url")
-  ciObservedAt     DateTime? @map("ci_observed_at")
+  tenantId             String?              @map("tenant_id")
+  githubRepoId         BigInt               @map("github_repo_id")
+  owner                String
+  name                 String
+  description          String?
+  defaultBranch        String               @map("default_branch")
+  isPrivate            Boolean              @map("is_private")
+  installationId       Int?                 @map("installation_id")
+  installationStatus   InstallationStatus   @default(active) @map("installation_status")
+  docsScopeHash        String?              @map("docs_scope_hash")
+  lastSyncAt           DateTime?            @map("last_sync_at")
+  lastDocsCommitAt     DateTime?            @map("last_docs_commit_at")
+  lastCodeCommitAt     DateTime?            @map("last_code_commit_at")
+  commitMetaSyncedAt   DateTime?            @map("commit_meta_synced_at")
+  needsIssueImport     Boolean              @default(false) @map("needs_issue_import")
+  proplanConfigInvalid Boolean              @default(false) @map("proplan_config_invalid")
+  deployVerdict        String?              @map("deploy_verdict")
+  deploySignals        Json?                @map("deploy_signals")
+  deployObservedAt     DateTime?            @map("deploy_observed_at")
+  ciStatus             String?              @map("ci_status")
+  ciConclusionUrl      String?              @map("ci_conclusion_url")
+  ciObservedAt         DateTime?            @map("ci_observed_at")
   // SPEC-023: stack detectada via SBOM. `stackEnabled` false = Dependency Graph
   // desabilitado/vazio (fallback informativo, não erro). `stackSourceSha` ancora
   // ao HEAD do default branch — NÃO ao docs_tree_sha: o SBOM é função dos
   // manifests, não de docs/ (variação registrada no ARCHITECTURE → Resiliência).
-  stackEnabled     Boolean?  @map("stack_enabled")
-  stackEcosystems  Json?     @map("stack_ecosystems")
-  stackPackages    Json?     @map("stack_packages")
-  stackSourceSha   String?   @map("stack_source_sha")
-  stackObservedAt  DateTime? @map("stack_observed_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stackEnabled         Boolean?             @map("stack_enabled")
+  stackEcosystems      Json?                @map("stack_ecosystems")
+  stackPackages        Json?                @map("stack_packages")
+  stackSourceSha       String?              @map("stack_source_sha")
+  stackObservedAt      DateTime?            @map("stack_observed_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   // onDelete: Restrict — não apagar tenant que ainda tem projeto (a migração
   // torna tenantId NOT NULL; a relação é opcional no schema só pelo backfill).
-  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  documents    Document[]
-  syncRuns     SyncRun[]
-  insights     Insight[]
-  issues       Issue[]
-  boardMutations BoardMutation[]
-  resolutions    DocumentResolution[]
-  suppressedLinks SuppressedLink[]
-  operations     Operation[]
-  llmUsage       LlmUsage[]
-  insightRuns    InsightRun[]
-  canonicalFields CanonicalField[]
-  assertions     Assertion[]
+  tenant               Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  documents            Document[]
+  syncRuns             SyncRun[]
+  insights             Insight[]
+  issues               Issue[]
+  boardMutations       BoardMutation[]
+  resolutions          DocumentResolution[]
+  suppressedLinks      SuppressedLink[]
+  operations           Operation[]
+  llmUsage             LlmUsage[]
+  insightRuns          InsightRun[]
+  canonicalFields      CanonicalField[]
+  assertions           Assertion[]
   // Costura do MVP4 §4: produto licenciado ↔ repo. Opcional dos dois lados — o
   // War Room é licenciado sem que o repo dele esteja no catálogo do ProPlan.
-  licProducts    LicProduct[]
+  licProducts          LicProduct[]
 
   @@unique([userId, githubRepoId])
   @@map("projects")
 }
 
 model Document {
-  id             String   @id @default(uuid())
-  projectId      String   @map("project_id")
+  id             String    @id @default(uuid())
+  projectId      String    @map("project_id")
   path           String
-  blobSha        String   @map("blob_sha")
+  blobSha        String    @map("blob_sha")
   content        String
   frontmatter    Json?
-  isConventional Boolean  @default(false) @map("is_conventional")
-  kind           String   @default("markdown")
-  byteSize       Int      @map("byte_size")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  isConventional Boolean   @default(false) @map("is_conventional")
+  kind           String    @default("markdown")
+  byteSize       Int       @map("byte_size")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   outLinks       DocLink[] @relation("source")
   inLinks        DocLink[] @relation("target")
 
@@ -332,9 +336,9 @@ model DocLink {
 model DocumentResolution {
   id          String   @id @default(uuid())
   projectId   String   @map("project_id")
-  entity      String   // architecture | decisions | design | testing | deploy | skills
-  level       Int      // 1 | 2 | 4
-  source      String   // convention | alias | config | absent | inference (Fatia 7)
+  entity      String // architecture | decisions | design | testing | deploy | skills
+  level       Int // 1 | 2 | 4
+  source      String // convention | alias | config | absent | inference (Fatia 7)
   path        String?
   paths       String[]
   confidence  Float
@@ -353,13 +357,13 @@ model DocumentResolution {
 model CanonicalField {
   id              String   @id @default(uuid())
   projectId       String   @map("project_id")
-  entity          String   // architecture | decisions | design | testing | deploy | skills
-  field           String   // nome do campo dentro da entidade (ex.: presence)
-  value           Json?    // valor extraído (null = ausente)
+  entity          String // architecture | decisions | design | testing | deploy | skills
+  field           String // nome do campo dentro da entidade (ex.: presence)
+  value           Json? // valor extraído (null = ausente)
   provenanceClass String   @map("provenance_class") // fato | inferencia | hipotese | assercao
-  provenanceRef   Json     @map("provenance_ref")   // {path, sha, date} | {absent:true} | ...
+  provenanceRef   Json     @map("provenance_ref") // {path, sha, date} | {absent:true} | ...
   confidence      Float
-  confidenceMath  Json     @map("confidence_math")  // {stalenessDays, cobertura, contradicao, drift}
+  confidenceMath  Json     @map("confidence_math") // {stalenessDays, cobertura, contradicao, drift}
   docsScopeHash   String   @map("docs_scope_hash")
   resolvedAt      DateTime @default(now()) @map("resolved_at")
   project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -381,7 +385,7 @@ model Assertion {
   // YYYY-MM-DD como no arquivo ('' = sem data, degradado)
   assertedAt  String   @map("asserted_at")
   assertedSha String   @map("asserted_sha")
-  status      String   // vigente | a-revalidar
+  status      String // vigente | a-revalidar
   body        String   @default("")
   contextPath String   @default("docs/CONTEXT.md") @map("context_path")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -409,18 +413,18 @@ enum LlmProvider {
 // o que sobrou é escolha pessoal — provedor e limiares de leitura —, não bolso.
 // Ver `TenantSettings` para dinheiro.
 model Settings {
-  id                        String      @id @default(uuid())
-  userId                    String      @unique @map("user_id")
+  id                         String      @id @default(uuid())
+  userId                     String      @unique @map("user_id")
   // Teto de IA passa a ser por tenant (ADR-016 escopado, Fatia 8). Nullable no
   // schema pelo backfill; a migração preenche e torna NOT NULL.
-  tenantId                  String?     @map("tenant_id")
-  tenant                    Tenant?     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  llmProvider               LlmProvider @default(anthropic) @map("llm_provider")
-  docsStalenessThresholdDays Int        @default(90) @map("docs_staleness_threshold_days")
+  tenantId                   String?     @map("tenant_id")
+  tenant                     Tenant?     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  llmProvider                LlmProvider @default(anthropic) @map("llm_provider")
+  docsStalenessThresholdDays Int         @default(90) @map("docs_staleness_threshold_days")
   // Limiar de recusa do modelo canônico (SPEC-014). Campo com confiança abaixo
   // disto responde "não sei" em vez de palpite. 0 desliga (mostra tudo cru).
-  canonicalRefusalThreshold Float       @default(0.4) @map("canonical_refusal_threshold")
-  updatedAt                 DateTime    @updatedAt @map("updated_at")
+  canonicalRefusalThreshold  Float       @default(0.4) @map("canonical_refusal_threshold")
+  updatedAt                  DateTime    @updatedAt @map("updated_at")
 
   @@map("settings")
 }
@@ -495,8 +499,8 @@ enum LlmUsageStatus {
 
 enum CostSource {
   provider // custo veio na resposta do provedor (OpenRouter) — é fato
-  table    // custo calculado da ModelPrice (Anthropic/OpenAI) — inferência auditável
-  none     // sem preço cadastrado → costUsd null, priceMissing
+  table // custo calculado da ModelPrice (Anthropic/OpenAI) — inferência auditável
+  none // sem preço cadastrado → costUsd null, priceMissing
 }
 
 // Ledger append-only do gasto de IA (ADR-016, SPEC-009). Uma linha por CHAMADA
@@ -505,44 +509,44 @@ enum CostSource {
 // tabela `insights` continua sendo o cache do artefato — as duas param de se
 // confundir. Sobrevive ao projeto (projectId vira null, sem cascade).
 model LlmUsage {
-  id                   String         @id @default(uuid())
-  projectId            String?        @map("project_id")
+  id                  String         @id @default(uuid())
+  projectId           String?        @map("project_id")
   // Nullable PERMANENTE (exceção às outras raízes, F4). O ledger é append-only
   // e sobrevive ao projeto (projectId vira null no SetNull); linhas históricas
   // pré-Fatia-8 e órfãs de projeto ficam com tenantId NULL = tenant pessoal do
   // dono. A policy RLS trata NULL como pertencente ao tenant ativo pessoal.
   // Não há FK forte nem SET NOT NULL — a coluna é deliberadamente frouxa.
-  tenantId             String?        @map("tenant_id")
-  kind                 String         // summary | status_bootstrap | architecture_fallback | ...
-  provider             String
-  model                String
-  attempt              Int            @default(1) // retry de JSON inválido = linha própria com attempt 1
-  status               LlmUsageStatus
-  inputTokens          Int            @map("input_tokens")
-  outputTokens         Int            @map("output_tokens")
-  cacheCreationTokens  Int            @default(0) @map("cache_creation_tokens")
-  cacheReadTokens      Int            @default(0) @map("cache_read_tokens")
+  tenantId            String?        @map("tenant_id")
+  kind                String // summary | status_bootstrap | architecture_fallback | ...
+  provider            String
+  model               String
+  attempt             Int            @default(1) // retry de JSON inválido = linha própria com attempt 1
+  status              LlmUsageStatus
+  inputTokens         Int            @map("input_tokens")
+  outputTokens        Int            @map("output_tokens")
+  cacheCreationTokens Int            @default(0) @map("cache_creation_tokens")
+  cacheReadTokens     Int            @default(0) @map("cache_read_tokens")
   // Dinheiro em Decimal (Postgres numeric) — Float acumula erro com frações de centavo.
-  costUsd              Decimal?       @map("cost_usd") @db.Decimal(12, 8)
-  costSource           CostSource     @map("cost_source")
+  costUsd             Decimal?       @map("cost_usd") @db.Decimal(12, 8)
+  costSource          CostSource     @map("cost_source")
   // Liga a chamada ao artefato Insight que ela gerou (SPEC-011): o painel de
   // Atividade casa InsightRun ↔ LlmUsage por (projectId, kind, inputHash) para
   // mostrar tokens/custo por linha. Nullable: chamadas fora do fluxo de gate
   // (ex.: proposeCards) não têm hash. NÃO é fonte de gasto — só chave.
-  inputHash            String?        @map("input_hash")
+  inputHash           String?        @map("input_hash")
   // Liga a chamada ao run do pipeline de artefatos que a disparou (SPEC-032).
   // É o que faz "quanto custou este briefing" ser CONSULTA AO LEDGER — derivar
   // o custo de `ArtifactVersion` é exatamente o que o ADR-016 proíbe (o ledger
   // é a fonte; o artefato é o produto). Nullable porque o ledger é append-only
   // e anterior a esta fatia: toda linha do `insight` continua sem run.
-  artifactRunId        String?        @map("artifact_run_id")
-  priceMissing         Boolean        @default(false) @map("price_missing")
-  priceSnapshot        Json?          @map("price_snapshot") // as 4 tarifas usadas, congeladas
-  pricedAt             DateTime?      @map("priced_at")
-  errorCode            String?        @map("error_code")
-  latencyMs            Int?           @map("latency_ms")
-  createdAt            DateTime       @default(now()) @map("created_at")
-  project              Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  artifactRunId       String?        @map("artifact_run_id")
+  priceMissing        Boolean        @default(false) @map("price_missing")
+  priceSnapshot       Json?          @map("price_snapshot") // as 4 tarifas usadas, congeladas
+  pricedAt            DateTime?      @map("priced_at")
+  errorCode           String?        @map("error_code")
+  latencyMs           Int?           @map("latency_ms")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  project             Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([projectId, createdAt])
@@ -564,7 +568,7 @@ model ModelPrice {
   cacheWritePer1M Decimal  @default(0) @map("cache_write_per_1m") @db.Decimal(12, 6)
   cacheReadPer1M  Decimal  @default(0) @map("cache_read_per_1m") @db.Decimal(12, 6)
   effectiveFrom   DateTime @default(now()) @map("effective_from")
-  source          String?  // link/nota de onde o preço veio
+  source          String? // link/nota de onde o preço veio
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@unique([provider, model, effectiveFrom])
@@ -616,32 +620,32 @@ enum IssuePriority {
 // Cache derivado da Issues API (ADR-011) — não é fonte. A verdade vive nas
 // GitHub Issues; esta tabela espelha o último sync para render rápido.
 model Issue {
-  id         String        @id @default(uuid())
-  projectId  String        @map("project_id")
-  number     Int
-  title      String
-  state      String // open | closed (nativo do GitHub)
-  column     BoardColumn
-  priority   IssuePriority?
-  assigneeLogin     String? @map("assignee_login")
-  assigneeAvatarUrl String? @map("assignee_avatar_url")
-  htmlUrl    String        @map("html_url")
+  id                String         @id @default(uuid())
+  projectId         String         @map("project_id")
+  number            Int
+  title             String
+  state             String // open | closed (nativo do GitHub)
+  column            BoardColumn
+  priority          IssuePriority?
+  assigneeLogin     String?        @map("assignee_login")
+  assigneeAvatarUrl String?        @map("assignee_avatar_url")
+  htmlUrl           String         @map("html_url")
   // Datas nativas do GitHub (fatos, não carimbos nossos): `createdAt` é quando a
   // issue nasceu — o card mostra em Backlog/A Fazer/Em Andamento/Feito ("aberta
   // desde"); `closedAt` é o aceite/descarte — mostrado em Finalizado/Descartado.
-  createdAt  DateTime      @map("created_at")
-  closedAt   DateTime?     @map("closed_at")
-  updatedAt  DateTime      @map("updated_at")
+  createdAt         DateTime       @map("created_at")
+  closedAt          DateTime?      @map("closed_at")
+  updatedAt         DateTime       @map("updated_at")
   // Issue `closed` sem label `proplan:*` — fechada fora do fluxo do ProPlan.
   // Cai em Finalizado com badge "fechada fora do ProPlan" (SPEC-005 linha 119):
   // a falta de evidência de aceite é sinalizada, nunca disfarçada.
-  closedOutside Boolean    @default(false) @map("closed_outside")
+  closedOutside     Boolean        @default(false) @map("closed_outside")
   // Hierarquia de sub-issues (SPEC-024). `parentNumber` = número do épico-pai
   // (null = raiz); `hasSubIssues` = é épico estrutural, excluído das colunas.
   // Derivados no sync via GraphQL; leitura apenas (não editamos a hierarquia).
-  parentNumber Int?        @map("parent_number")
-  hasSubIssues Boolean     @default(false) @map("has_sub_issues")
-  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentNumber      Int?           @map("parent_number")
+  hasSubIssues      Boolean        @default(false) @map("has_sub_issues")
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, number])
   @@index([projectId, column])
@@ -722,6 +726,7 @@ model SuppressedLink {
   targetPath String   @map("target_path")
   createdAt  DateTime @default(now()) @map("created_at")
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   @@unique([projectId, sourcePath, targetPath])
   @@map("suppressed_links")
 }
@@ -741,8 +746,8 @@ model SuppressedLink {
 // Cliente do prestador. RAIZ de tenancy: carrega `tenant_id` e tem policy RLS
 // própria; as filhas herdam por join a esta tabela (mesmo desenho da SPEC-022).
 model Client {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
+  id        String          @id @default(uuid())
+  tenantId  String          @map("tenant_id")
   name      String
   cpf       String?
   company   String?
@@ -752,7 +757,7 @@ model Client {
   whatsapp  String?
   // Endereço: campos manuais nesta fatia — sem integração ViaCEP (SPEC-029
   // "Notas técnicas"; avaliar na SPEC-030 junto das APIs do briefing).
-  zipCode   String?  @map("zip_code")
+  zipCode   String?         @map("zip_code")
   street    String?
   district  String?
   city      String?
@@ -761,10 +766,10 @@ model Client {
   notes     String?
   // Exclusão LÓGICA (SPEC-029): some das listas, a linha permanece e o
   // histórico do funil não é apagado.
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deletedAt DateTime?       @map("deleted_at")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   projects  ClientProject[]
 
   // Busca por nome/empresa/CNPJ é sempre dentro do tenant.
@@ -790,22 +795,22 @@ enum ClientProjectState {
 
 // Projeto de cliente — N por cliente. Filha por join a `clients` na RLS.
 model ClientProject {
-  id          String             @id @default(uuid())
-  clientId    String             @map("client_id")
-  title       String
-  description String?
-  state       ClientProjectState @default(DRAFT)
-  deletedAt   DateTime?          @map("deleted_at")
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
-  client      Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  transitions ClientStatusTransition[]
-  briefingLinks BriefingLink[]
+  id               String                   @id @default(uuid())
+  clientId         String                   @map("client_id")
+  title            String
+  description      String?
+  state            ClientProjectState       @default(DRAFT)
+  deletedAt        DateTime?                @map("deleted_at")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  client           Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  transitions      ClientStatusTransition[]
+  briefingLinks    BriefingLink[]
   briefingVersions BriefingVersion[]
-  artifacts   Artifact[]
-  artifactRuns ArtifactRun[]
-  estimates   Estimate[]
-  contracts   Contract[]
+  artifacts        Artifact[]
+  artifactRuns     ArtifactRun[]
+  estimates        Estimate[]
+  contracts        Contract[]
 
   @@index([clientId, deletedAt])
   @@index([state])
@@ -834,14 +839,14 @@ model ClientStatusTransition {
 // coluna contém o token em claro). O tenant da rota pública `GET /b/:token` é
 // derivado deste hash — nunca de `workspaceId` no request (ADR-020).
 model BriefingLink {
-  id              String        @id @default(uuid())
-  clientProjectId String        @map("client_project_id")
-  tokenHash       String        @unique @map("token_hash")
-  expiresAt       DateTime?     @map("expires_at")
-  revokedAt       DateTime?     @map("revoked_at")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
-  draft           BriefingDraft?
+  id               String            @id @default(uuid())
+  clientProjectId  String            @map("client_project_id")
+  tokenHash        String            @unique @map("token_hash")
+  expiresAt        DateTime?         @map("expires_at")
+  revokedAt        DateTime?         @map("revoked_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  clientProject    ClientProject     @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  draft            BriefingDraft?
   briefingVersions BriefingVersion[]
 
   @@index([clientProjectId])
@@ -1061,25 +1066,25 @@ enum ArtifactRunStatus {
 // Um artefato por (`ClientProject`, `kind`). O conteúdo NÃO mora aqui — mora
 // nas versões. Esta linha é o estado revisável e o ponteiro para a corrente.
 model Artifact {
-  id              String        @id @default(uuid())
-  tenantId        String        @map("tenant_id")
-  clientProjectId String        @map("client_project_id")
-  kind            ArtifactKind
-  state           ArtifactState @default(PENDING_REVIEW)
+  id               String            @id @default(uuid())
+  tenantId         String            @map("tenant_id")
+  clientProjectId  String            @map("client_project_id")
+  kind             ArtifactKind
+  state            ArtifactState     @default(PENDING_REVIEW)
   // Versão exibida no painel. Nullable no instante entre criar o artefato e
   // gravar a 1ª versão, e em `FAILED` sem nenhuma versão válida.
-  currentVersionId String?      @map("current_version_id")
+  currentVersionId String?           @map("current_version_id")
   // Motivo da rejeição (§5: "rejeitar registra motivo"). Some numa aprovação
   // posterior? Não — fica, porque a trilha de por que já foi rejeitado uma vez
   // é justamente o que o dono vai querer reler.
-  rejectionReason String?       @map("rejection_reason")
-  reviewedAt      DateTime?     @map("reviewed_at")
-  reviewedBy      String?       @map("reviewed_by")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clientProject   ClientProject @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
-  versions        ArtifactVersion[]
+  rejectionReason  String?           @map("rejection_reason")
+  reviewedAt       DateTime?         @map("reviewed_at")
+  reviewedBy       String?           @map("reviewed_by")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientProject    ClientProject     @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  versions         ArtifactVersion[]
 
   // Um artefato por tipo, por projeto. As tentativas viram VERSÕES, não linhas
   // novas aqui — é o que faz "os 4 aprovados" (§2.7) ser contável.
@@ -1092,32 +1097,32 @@ model Artifact {
 // (§2.10) — nunca reescreve a da IA. Regenerar também cria nova, mesmo com
 // `inputHash` idêntico (§2.11).
 model ArtifactVersion {
-  id              String         @id @default(uuid())
-  tenantId        String         @map("tenant_id")
-  artifactId      String         @map("artifact_id")
+  id              String            @id @default(uuid())
+  tenantId        String            @map("tenant_id")
+  artifactId      String            @map("artifact_id")
   // Sequencial POR artefato — v1, v2..., como `BriefingVersion.version`.
   version         Int
   content         Json
   author          ArtifactAuthor
   // A versão da IA que esta edição humana derivou. Nullable: a v1 da IA não
   // tem pai.
-  parentVersionId String?        @map("parent_version_id")
+  parentVersionId String?           @map("parent_version_id")
   // Hash canônico do insumo (§2.8). NULL em versão humana — texto escrito à
   // mão não tem insumo para hashear, e inventar um hash seria mentira com cara
   // de chave (§7.4.2). É o que obriga o índice único a ser PARCIAL.
-  inputHash       String?        @map("input_hash")
-  promptVersion   String?        @map("prompt_version")
+  inputHash       String?           @map("input_hash")
+  promptVersion   String?           @map("prompt_version")
   // NULL em versão humana: nenhum modelo a produziu.
   model           String?
-  editedBy        String?        @map("edited_by")
+  editedBy        String?           @map("edited_by")
   // O run que a gerou. NULL em versão humana (nasce fora do pipeline).
-  artifactRunId   String?        @map("artifact_run_id")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  artifact        Artifact       @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  artifactRunId   String?           @map("artifact_run_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  artifact        Artifact          @relation(fields: [artifactId], references: [id], onDelete: Cascade)
   parentVersion   ArtifactVersion?  @relation("VersionLineage", fields: [parentVersionId], references: [id], onDelete: SetNull)
   children        ArtifactVersion[] @relation("VersionLineage")
-  artifactRun     ArtifactRun?   @relation(fields: [artifactRunId], references: [id], onDelete: SetNull)
+  artifactRun     ArtifactRun?      @relation(fields: [artifactRunId], references: [id], onDelete: SetNull)
   verdicts        ReviewVerdict[]
   // Estimativas calculadas a partir desta versão (SPEC-033). O lado FK usa
   // `Restrict`: apagar a decomposição que originou um número já enviado ao
@@ -1205,17 +1210,17 @@ model ReviewVerdict {
 // de bater com a proposta já enviada. Snapshot é o que torna o número
 // reproduzível.
 model Estimate {
-  id                 String    @id @default(uuid())
-  tenantId           String    @map("tenant_id")
-  clientProjectId    String    @map("client_project_id")
+  id              String @id @default(uuid())
+  tenantId        String @map("tenant_id")
+  clientProjectId String @map("client_project_id")
   // Sequencial POR projeto — v1, v2..., como as demais versões da casa.
-  version            Int
+  version         Int
   // A versão do `effort_breakdown` de onde as tarefas vieram. Sem isto, "de
   // qual decomposição este número saiu?" vira arqueologia por timestamp.
-  effortVersionId    String    @map("effort_version_id")
+  effortVersionId String @map("effort_version_id")
 
   // --- Snapshot dos parâmetros no instante do cálculo ----------------------
-  hourlyRateBrl      Decimal   @map("hourly_rate_brl")   @db.Decimal(12, 2)
+  hourlyRateBrl      Decimal   @map("hourly_rate_brl") @db.Decimal(12, 2)
   contingencyPercent Decimal   @map("contingency_percent") @db.Decimal(5, 2)
   // Multiplicador do grau de acabamento (§2.3): baixa=0,85 · media=1,00 ·
   // alta=1,30. Gravado além do nível porque a tabela de multiplicadores pode
@@ -1228,38 +1233,38 @@ model Estimate {
   // --- Custos --------------------------------------------------------------
   // Digitação livre nesta fatia (§2.7): `{label, valueBrl}[]`. Sem catálogo —
   // catálogo reutilizável vira fatia própria se doer.
-  directCosts        Json      @map("direct_costs")
+  directCosts       Json    @map("direct_costs")
   // FATO, consultado no ledger (`LlmUsage.costUsd` via `artifactRunId`) no
   // instante de gerar. NUNCA derivado de `ArtifactVersion` (ADR-016).
-  aiCostIncurredUsd  Decimal   @map("ai_cost_incurred_usd") @db.Decimal(12, 8)
+  aiCostIncurredUsd Decimal @map("ai_cost_incurred_usd") @db.Decimal(12, 8)
   // PROJEÇÃO: `{valueUsd, isCalculated}`. `isCalculated=false` quando o tenant
   // tem <3 runs concluídos e o número foi digitado à mão. Leva o rótulo
   // "projeção" nos DOIS casos (§2.8) — projeção calculada continua projeção, e
   // mostrá-la com a mesma confiança de um número medido é o erro que o rótulo
   // existe para impedir.
-  aiCostProjected    Json      @map("ai_cost_projected")
+  aiCostProjected   Json    @map("ai_cost_projected")
 
   // --- Resultado -----------------------------------------------------------
   // `{otimista, provavel, pessimista}`, cada um com horas, subtotal,
   // contingência e total em BRL — cada número mostrando a sua conta (§1). A
   // contingência é LINHA PRÓPRIA dentro de cada cenário, nunca embutida.
-  scenarios          Json
+  scenarios    Json
   // Agrupamento das tarefas em MVP1/MVP2/… com subtotal (§2.9). SÓ DADO: este
   // caminho não fala com o GitHub, e há teste afirmando essa ausência.
-  mvpBreakdown       Json      @map("mvp_breakdown")
+  mvpBreakdown Json @map("mvp_breakdown")
 
   // Aprovar move o card `ARTIFACTS_READY → CONTRACT_PENDING` (§2.11) — e é o
   // ÚNICO "aprovar" desta fatia que move (o do `effort_breakdown` não move).
-  approvedAt         DateTime? @map("approved_at")
-  approvedBy         String?   @map("approved_by")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  createdBy          String?   @map("created_by")
+  approvedAt DateTime? @map("approved_at")
+  approvedBy String?   @map("approved_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  createdBy  String?   @map("created_by")
 
-  tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clientProject      ClientProject   @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
-  effortVersion      ArtifactVersion @relation(fields: [effortVersionId], references: [id], onDelete: Restrict)
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientProject ClientProject   @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  effortVersion ArtifactVersion @relation(fields: [effortVersionId], references: [id], onDelete: Restrict)
   // `Restrict` do lado do contrato: ver `Contract.estimate`.
-  contracts          Contract[]
+  contracts     Contract[]
 
   @@unique([clientProjectId, version])
   @@index([clientProjectId, createdAt])
@@ -1351,16 +1356,16 @@ model ContractTemplate {
 // Filha por JOIN a `contract_templates`: nunca é buscada sozinha por `id` fora
 // do contexto do template, então não precisa ser raiz de tenancy.
 model ContractTemplateVersion {
-  id         String           @id @default(uuid())
-  templateId String           @map("template_id")
+  id         String            @id @default(uuid())
+  templateId String            @map("template_id")
   // Sequencial POR template — v1, v2..., como as demais versões da casa.
   version    Int
   // Texto com placeholders `{{...}}`. Substituição ESCAPADA na renderização,
   // nunca engine que avalie expressão (§2.4).
   body       String
-  createdBy  String?          @map("created_by")
-  createdAt  DateTime         @default(now()) @map("created_at")
-  template   ContractTemplate @relation("template_versions", fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy  String?           @map("created_by")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  template   ContractTemplate  @relation("template_versions", fields: [templateId], references: [id], onDelete: Cascade)
   currentOf  ContractTemplate? @relation("current_version")
   contracts  Contract[]
 
@@ -1382,29 +1387,29 @@ model ContractTemplateVersion {
 // `client_projects` é neta de `clients` — a policy viraria JOIN de três níveis
 // no caminho de uma escrita que move card.
 model Contract {
-  id                String             @id @default(uuid())
-  tenantId          String             @map("tenant_id")
-  clientProjectId   String             @map("client_project_id")
+  id                String           @id @default(uuid())
+  tenantId          String           @map("tenant_id")
+  clientProjectId   String           @map("client_project_id")
   // Sequencial POR projeto: refazer o contrato emite v2, nunca altera a v1.
   version           Int
   modality          ContractModality
-  estimateId        String             @map("estimate_id")
-  templateVersionId String             @map("template_version_id")
+  estimateId        String           @map("estimate_id")
+  templateVersionId String           @map("template_version_id")
 
   // --- O snapshot ----------------------------------------------------------
   // HTML final, já renderizado e escapado, com o disclaimer no rodapé (§2.12).
   // É o que a rota pública serve — renderizar de novo na leitura permitiria que
   // uma mudança no renderizador alterasse um documento já entregue.
-  renderedHtml      String             @map("rendered_html")
-  providerSnapshot  Json               @map("provider_snapshot")
-  clientSnapshot    Json               @map("client_snapshot")
-  scopeSnapshot     Json               @map("scope_snapshot")
+  renderedHtml     String  @map("rendered_html")
+  providerSnapshot Json    @map("provider_snapshot")
+  clientSnapshot   Json    @map("client_snapshot")
+  scopeSnapshot    Json    @map("scope_snapshot")
   // Do cenário PROVÁVEL da `Estimate` aprovada (§6). `Decimal`, nunca `Float`:
   // é o mesmo dinheiro do `Estimate`, e o contrato tem de imprimir exatamente
   // o que ela congelou.
-  budgetBrl         Decimal            @map("budget_brl")   @db.Decimal(12, 2)
-  effortHours       Decimal            @map("effort_hours") @db.Decimal(12, 2)
-  paymentTerms      String?            @map("payment_terms")
+  budgetBrl        Decimal @map("budget_brl") @db.Decimal(12, 2)
+  effortHours      Decimal @map("effort_hours") @db.Decimal(12, 2)
+  paymentTerms     String? @map("payment_terms")
 
   // --- Aceite (§2.10) ------------------------------------------------------
   // Registrado pelo PRESTADOR no painel, nunca pelo cliente na rota pública.
@@ -1414,17 +1419,17 @@ model Contract {
   acceptanceChannel AcceptanceChannel? @map("acceptance_channel")
   acceptanceNote    String?            @map("acceptance_note")
 
-  createdAt         DateTime           @default(now()) @map("created_at")
-  createdBy         String?            @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
 
-  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clientProject     ClientProject           @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientProject   ClientProject           @relation(fields: [clientProjectId], references: [id], onDelete: Cascade)
   // `Restrict`, mesmo padrão de `Estimate.effortVersion`: a estimativa é a
   // conta que explica o valor do contrato. `Cascade` levaria junto um contrato
   // já enviado; `SET NULL` deixaria o número órfão da conta que o produziu.
-  estimate          Estimate                @relation(fields: [estimateId], references: [id], onDelete: Restrict)
-  templateVersion   ContractTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
-  links             ContractLink[]
+  estimate        Estimate                @relation(fields: [estimateId], references: [id], onDelete: Restrict)
+  templateVersion ContractTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  links           ContractLink[]
 
   @@unique([clientProjectId, version])
   @@index([clientProjectId, createdAt])
@@ -1521,36 +1526,36 @@ enum LicSourceAccess {
 // constante no código (MVP4 §4), senão o segundo produto do tenant emitiria
 // chave com o prefixo do primeiro.
 model LicProduct {
-  id        String       @id @default(uuid())
-  tenantId  String       @map("tenant_id")
-  slug      String
-  name      String
-  keyPrefix String       @map("key_prefix")
+  id          String       @id @default(uuid())
+  tenantId    String       @map("tenant_id")
+  slug        String
+  name        String
+  keyPrefix   String       @map("key_prefix")
   // Costura futura com o catálogo (MVP4 §4): o produto licenciado APONTA para
   // o repo quando ele existe no ProPlan. Opcional porque o War Room é vendido
   // sem que seu repo esteja no catálogo — exigir o vínculo tornaria o
   // licenciamento refém da ingestão.
-  projectId String?      @map("project_id")
+  projectId   String?      @map("project_id")
   // `owner/name` do repositório privado com o código-fonte do produto (SPEC-039).
   // **Destino de convite, não repo ingerido**: não entra no catálogo, não é
   // sincronizado, não vira card — por isso é texto aqui e não FK para `Project`,
   // que é o vínculo do `projectId` acima.
-  sourceRepo String?     @map("source_repo")
+  sourceRepo  String?      @map("source_repo")
   // Links que o e-mail da chave entrega junto da compra (SPEC-042). Públicos e
   // por produto — nada de env var: dois tenants vendendo produtos diferentes
   // precisam de destinos diferentes, e uma variável de ambiente seria uma só
   // para todos. Opcionais: sem URL o e-mail sai como sempre saiu, e é assim que
   // um produto entregue por outro canal continua funcionando.
-  downloadUrl String?    @map("download_url")
-  manualUrl  String?     @map("manual_url")
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  downloadUrl String?      @map("download_url")
+  manualUrl   String?      @map("manual_url")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // SetNull e não Cascade: desconectar o repo do catálogo não pode apagar o
   // produto — junto iriam as licenças já vendidas dele.
-  project   Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  editions  LicEdition[]
-  releases  LicRelease[]
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  editions    LicEdition[]
+  releases    LicRelease[]
 
   // Slug único POR TENANT, não global: dois tenants podem vender um `warroom`
   // cada um, e nada relaciona os dois.
@@ -1564,31 +1569,31 @@ model LicProduct {
 // não é raiz, porque nada a busca direto por id — sempre se chega nela pelo
 // produto ou pela licença.
 model LicEdition {
-  id           String          @id @default(uuid())
-  productId    String          @map("product_id")
-  slug         String
-  name         String
-  billingModel LicBillingModel @default(PERPETUAL) @map("billing_model")
+  id                 String            @id @default(uuid())
+  productId          String            @map("product_id")
+  slug               String
+  name               String
+  billingModel       LicBillingModel   @default(PERPETUAL) @map("billing_model")
   // 2 máquinas por licença (decisão do PI): desktop + notebook do mesmo
   // comprador. Ajustável por edição pelo admin.
-  maxMachines  Int             @default(2) @map("max_machines")
+  maxMachines        Int               @default(2) @map("max_machines")
   // Janela de updates da licença perpétua. Vira `updatesUntil` na emissão —
   // COPIADO, não lido por FK: mudar a política meses depois não pode encurtar
   // a janela de quem já comprou.
-  updatesMonths Int            @default(12) @map("updates_months")
+  updatesMonths      Int               @default(12) @map("updates_months")
   // Esta edição dá acesso ao repo privado? (SPEC-039 §Configuração por tenant.)
   //
   // **Existe para não casar a edição por slug `source`.** Hardcode de slug
   // funciona no piloto e quebra em silêncio no primeiro produto que chame a
   // edição de outra coisa: a compra emitiria licença sem agendar convite, e o
   // comprador da edição mais cara do catálogo nunca receberia o código.
-  grantsSourceAccess Boolean   @default(false) @map("grants_source_access")
-  createdAt    DateTime        @default(now()) @map("created_at")
-  updatedAt    DateTime        @updatedAt @map("updated_at")
-  product      LicProduct      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  licenses     License[]
+  grantsSourceAccess Boolean           @default(false) @map("grants_source_access")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  product            LicProduct        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  licenses           License[]
   // Ofertas da plataforma que emitem nesta edição (SPEC-038).
-  offerMappings LicOfferMapping[]
+  offerMappings      LicOfferMapping[]
 
   @@unique([productId, slug])
   @@map("lic_editions")
@@ -1649,67 +1654,67 @@ model LicRelease {
 // hasheia o que recebe e procura por igualdade. Um índice único aqui é o que
 // torna esse lookup uma operação e não uma varredura.
 model License {
-  id            String        @id @default(uuid())
-  tenantId      String        @map("tenant_id")
-  editionId     String        @map("edition_id")
+  id                 String            @id @default(uuid())
+  tenantId           String            @map("tenant_id")
+  editionId          String            @map("edition_id")
   // SHA-256 da chave em claro. A chave NUNCA é persistida (§Contratos).
-  keyHash       String        @unique @map("key_hash")
-  status        LicenseStatus @default(ACTIVE)
-  customerEmail String        @map("customer_email")
-  customerName  String?       @map("customer_name")
+  keyHash            String            @unique @map("key_hash")
+  status             LicenseStatus     @default(ACTIVE)
+  customerEmail      String            @map("customer_email")
+  customerName       String?           @map("customer_name")
   // Id da venda na plataforma (Kiwify etc). @unique é a idempotência do webhook
   // da SPEC-038: reentrega do mesmo evento não emite a segunda licença. Nulo
   // nesta fatia — a emissão é manual, não tem venda associada.
-  saleRef       String?       @unique @map("sale_ref")
-  issuedAt      DateTime      @default(now()) @map("issued_at")
+  saleRef            String?           @unique @map("sale_ref")
+  issuedAt           DateTime          @default(now()) @map("issued_at")
   // Emissão + `updatesMonths` da edição, congelado na linha (ver LicEdition).
-  updatesUntil  DateTime      @map("updates_until")
+  updatesUntil       DateTime          @map("updates_until")
   // Nulo em PERPETUAL. Usado pela SPEC-038 em SUBSCRIPTION.
-  expiresAt     DateTime?     @map("expires_at")
-  revokedAt     DateTime?     @map("revoked_at")
-  revokedReason String?       @map("revoked_reason")
+  expiresAt          DateTime?         @map("expires_at")
+  revokedAt          DateTime?         @map("revoked_at")
+  revokedReason      String?           @map("revoked_reason")
   // Inadimplência registrada SEM mudar `status` (SPEC-038 §Ciclo da assinatura):
   // cartão recusado é rotina e a plataforma retenta. O corte, quando vem, sai da
   // comparação `pastDueAt + LicSettings.pastDueToleranceDays < now` feita na
   // VALIDAÇÃO — nunca de um job, que atrasado concederia acesso.
-  pastDueAt     DateTime?     @map("past_due_at")
+  pastDueAt          DateTime?         @map("past_due_at")
   // Convite do repo privado na edição source (SPEC-039, dia 8). A data nasceu na
   // SPEC-036 e é gravada na compra pelo webhook da SPEC-038; o convite em si é
   // desta fatia.
-  sourceInviteAt DateTime?    @map("source_invite_at")
+  sourceInviteAt     DateTime?         @map("source_invite_at")
   // O ESTADO do acesso (SPEC-039). Substitui o `sourceInvited: Boolean` — ver o
   // enum para o no-op silencioso que o booleano produzia na revogação.
-  sourceAccess  LicSourceAccess @default(NONE) @map("source_access")
+  sourceAccess       LicSourceAccess   @default(NONE) @map("source_access")
   // Login do GitHub informado pelo comprador em `/s/:token`. **Dado pessoal**
   // (LGPD, §Notas técnicas): a exclusão a pedido da SPEC-040 remove este campo.
-  githubUsername String?      @map("github_username")
+  githubUsername     String?           @map("github_username")
   // Id da *invitation* devolvido pelo GitHub na emissão do convite. É o que
   // permite cancelar o convite PENDENTE pela chamada certa — sem ele, a
   // revogação só saberia remover colaborador, que é no-op em convite não aceito.
-  githubInvitationId String?  @map("github_invitation_id")
+  githubInvitationId String?           @map("github_invitation_id")
   // Motivo legível da última falha (403 do PAT, 404 do repo, rede). Aparece na
   // lista de pendências do admin: reembolsado que continua colaborador é a falha
   // que custa dinheiro, e ela não pode viver só no log.
-  sourceAccessError String?    @map("source_access_error")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourceAccessError  String?           @map("source_access_error")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // Restrict: apagar uma edição levaria junto as licenças vendidas nela, e com
   // elas a resposta a "o que este cliente comprou?".
-  edition       LicEdition    @relation(fields: [editionId], references: [id], onDelete: Restrict)
-  activations   Activation[]
-  events        LicEvent[]
+  edition            LicEdition        @relation(fields: [editionId], references: [id], onDelete: Restrict)
+  activations        Activation[]
+  events             LicEvent[]
   // O que a plataforma mandou sobre esta licença (SPEC-038). Nullable do outro
   // lado: o evento nasce antes de existir licença, e há evento que nunca terá
   // uma (oferta sem mapeamento, tipo desconhecido).
-  webhookEvents LicWebhookEvent[]
-  mailDeliveries MailDelivery[]
+  webhookEvents      LicWebhookEvent[]
+  mailDeliveries     MailDelivery[]
   // Links de coleta de username (SPEC-039). Plural: corrigir o username pelo
   // admin invalida o link antigo e emite outro, e a trilha de ambos fica.
-  sourceLinks   LicSourceLink[]
+  sourceLinks        LicSourceLink[]
   // Relatos de erro mandados por esta licença (SPEC-043). Cascade: o relato só
   // existe porque a licença existe, e a exclusão a pedido já os cobre antes.
-  errorReports  LicErrorReport[]
+  errorReports       LicErrorReport[]
 
   // A busca do admin é por e-mail do comprador (§Contratos), dentro do tenant.
   @@index([tenantId, customerEmail])
@@ -1800,26 +1805,26 @@ enum LicWebhookStatus {
 // antes de qualquer leitura — inclusive para o evento cuja oferta não está
 // mapeada, que é justamente o que mais precisa aparecer no admin de alguém.
 model LicWebhookEvent {
-  id       String @id @default(uuid())
-  tenantId String @map("tenant_id")
+  id              String           @id @default(uuid())
+  tenantId        String           @map("tenant_id")
   /// `kiwify` hoje. TEXT e não enum: a fronteira do adapter é o que abre
   /// Hotmart/Lemon sem migration (§Fora de escopo).
-  platform String
+  platform        String
   /// Id do evento NA PLATAFORMA. É a metade que importa do unique abaixo.
-  externalEventId String @map("external_event_id")
-  eventType String @map("event_type")
+  externalEventId String           @map("external_event_id")
+  eventType       String           @map("event_type")
   /// Payload bruto, como chegou. É o que torna o reprocessamento possível sem
   /// pedir reenvio — e o que guarda o preço, que não vira coluna (MVP4 §4).
-  payload  Json
-  receivedAt DateTime @default(now()) @map("received_at")
-  processedAt DateTime? @map("processed_at")
-  status   LicWebhookStatus @default(PENDING)
+  payload         Json
+  receivedAt      DateTime         @default(now()) @map("received_at")
+  processedAt     DateTime?        @map("processed_at")
+  status          LicWebhookStatus @default(PENDING)
   /// Motivo legível da falha: "oferta X sem mapeamento", "licença não
   /// encontrada". É o que o admin lê antes de decidir reprocessar.
-  error    String?
+  error           String?
   /// Preenchido quando o processamento resolve a licença. Nulo enquanto
   /// PENDING, e nulo para sempre em IGNORED/FAILED sem licença.
-  licenseId String? @map("license_id")
+  licenseId       String?          @map("license_id")
 
   // Carimbo do descarte (SPEC-045). **Colunas, e não `LicEvent`**: aquele exige
   // `licenseId NOT NULL`, e o evento que mais precisa de descarte é justamente o
@@ -1836,10 +1841,10 @@ model LicWebhookEvent {
   /// tabela própria, e nenhuma necessidade a pediu (§Fora de escopo).
   reopenedAt      DateTime? @map("reopened_at")
 
-  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   /// SetNull e não Cascade: apagar uma licença não pode apagar a prova de que
   /// a venda dela chegou.
-  license  License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+  license License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
 
   // **A idempotência é do RECEBIMENTO, não do processador** (§Notas técnicas).
   // Retry da plataforma é normal; é este índice que o torna inofensivo, e não
@@ -1861,21 +1866,21 @@ model LicWebhookEvent {
 // nome do produto emitiria a licença errada em silêncio — e licença errada
 // entregue por e-mail não se recolhe.
 model LicOfferMapping {
-  id        String @id @default(uuid())
-  tenantId  String @map("tenant_id")
-  platform  String
-  externalProductId String @map("external_product_id")
+  id                String     @id @default(uuid())
+  tenantId          String     @map("tenant_id")
+  platform          String
+  externalProductId String     @map("external_product_id")
   /// Nulo = mapeamento do produto inteiro, qualquer oferta. Preenchido = só
   /// aquela oferta. É como um produto com "anual" e "mensal" aponta para
   /// edições diferentes.
-  externalOfferId String? @map("external_offer_id")
-  editionId String @map("edition_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  externalOfferId   String?    @map("external_offer_id")
+  editionId         String     @map("edition_id")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  tenant            Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   /// Restrict: apagar a edição deixaria o mapeamento apontando para o nada, e a
   /// próxima venda falharia sem que ninguém tivesse mudado o mapeamento.
-  edition   LicEdition @relation(fields: [editionId], references: [id], onDelete: Restrict)
+  edition           LicEdition @relation(fields: [editionId], references: [id], onDelete: Restrict)
 
   // Duas linhas para a mesma oferta seriam duas edições candidatas para a mesma
   // compra — e a escolha ficaria com o `orderBy` de quem escreveu a query.
@@ -1901,32 +1906,32 @@ enum MailDeliveryStatus {
 // desfazendo a garantia central da SPEC-036. Por isso reenviar não reenvia a
 // chave — reemitir é o caminho, e ele revoga a anterior.
 model MailDelivery {
-  id       String @id @default(uuid())
-  tenantId String @map("tenant_id")
-  to       String
+  id                String             @id @default(uuid())
+  tenantId          String             @map("tenant_id")
+  to                String
   /// Nome do template (`license_key`, `license_revoked`), não o conteúdo.
-  template String
-  subject  String
-  status   MailDeliveryStatus @default(PENDING)
+  template          String
+  subject           String
+  status            MailDeliveryStatus @default(PENDING)
   /// Tentativas do BullMQ até aqui. Distingue "falhou uma vez e o retry
   /// resolve" de "falhou cinco vezes e alguém precisa olhar".
-  attempts Int @default(0)
-  error    String?
+  attempts          Int                @default(0)
+  error             String?
   /// Id do provedor, para rastrear no painel do Resend quando o cliente diz que
   /// não recebeu e o nosso status diz SENT.
-  providerMessageId String? @map("provider_message_id")
+  providerMessageId String?            @map("provider_message_id")
   /// A licença que originou o envio. **Não está na spec** — acrescentado porque
   /// o admin da SPEC-040 responde "o que aconteceu com este cliente", e sem o
   /// vínculo a resposta pararia no envio sem dizer de qual licença ele era.
   /// Nullable: o módulo `mail` é compartilhado e o MVP3 vai mandar e-mail que
   /// não tem licença nenhuma por trás.
-  licenseId String? @map("license_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  sentAt   DateTime? @map("sent_at")
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  licenseId         String?            @map("license_id")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  sentAt            DateTime?          @map("sent_at")
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   /// SetNull pelo mesmo motivo do webhook: apagar a licença não apaga a prova
   /// de que o e-mail saiu.
-  license  License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+  license           License?           @relation(fields: [licenseId], references: [id], onDelete: SetNull)
 
   // A lista do admin filtra por status (§Admin) e lê a mais recente primeiro.
   @@index([tenantId, status, createdAt])
@@ -1941,8 +1946,8 @@ model MailDelivery {
 // assinado com o segredo do tenant A, enviado para a URL do tenant B, tem de
 // responder `401`.
 model LicSettings {
-  id       String @id @default(uuid())
-  tenantId String @unique @map("tenant_id")
+  id                   String   @id @default(uuid())
+  tenantId             String   @unique @map("tenant_id")
   /// Segredo compartilhado com a plataforma, usado para validar a assinatura de
   /// cada entrega.
   ///
@@ -1960,7 +1965,7 @@ model LicSettings {
   /// nascer*. `updateSettings` segue recusando string vazia: gravar `''` num
   /// tenant que JÁ recebe entregas faria todas passarem a falhar, com sintoma
   /// indistinguível de ataque.
-  webhookSecret String? @map("webhook_secret")
+  webhookSecret        String?  @map("webhook_secret")
   /// Dias de tolerância entre `pastDueAt` e o corte de acesso (decisão PI #3).
   ///
   /// **Não é `graceDays`** — aquele já existe no license file da SPEC-036 e
@@ -1971,7 +1976,7 @@ model LicSettings {
   /// sempre a plataforma. É a mitigação sem deploy do risco aceito nas Notas
   /// técnicas — com 15 como padrão, todo tenant herda um segundo julgamento
   /// sobre "está pago".
-  pastDueToleranceDays Int? @default(15) @map("past_due_tolerance_days")
+  pastDueToleranceDays Int?     @default(15) @map("past_due_tolerance_days")
   /// PAT fine-grained do tenant para convidar ao repo source (SPEC-039,
   /// decisão PI #2). **Criptografado** com o `TOKEN_ENCRYPTION_KEY` já existente
   /// — mesmo mecanismo e mesmo argumento do `webhookSecret`: env var global não
@@ -1986,12 +1991,82 @@ model LicSettings {
   /// **Write-only no admin**: nunca reexibido. PAT fine-grained EXPIRA (limite do
   /// GitHub), e expiração silenciosa pararia os convites sem erro visível — o que
   /// a torna visível é o par teste de conexão + pendência `FAILED`.
-  githubPat String? @map("github_pat")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  githubPat            String?  @map("github_pat")
+  /// Credenciais da **API pública** da Kiwify (SPEC-047) — OAuth client
+  /// credentials, gerados em *Apps > API* na dashboard da plataforma.
+  ///
+  /// **Os três são opcionais e independentes do webhook** — mesma lição do FIX
+  /// #212: propósitos que não se bloqueiam. O `webhookSecret` recebe vendas;
+  /// estes três **leem o catálogo** para mostrar a oferta que ainda não vendeu.
+  /// Sem os três, o job pula o tenant em silêncio e o botão de busca aparece
+  /// desabilitado — nada mais muda. "Configurado" = os três presentes.
+  ///
+  /// **Só o secret é segredo, e a assimetria é da própria Kiwify**: na dashboard
+  /// dela `client_id` e `account_id` são exibidos em claro, o `client_secret`
+  /// mascarado. Copiar essa distinção evita write-only inútil em valor que o
+  /// operador lê na outra aba do navegador — e write-only inútil é o que faz
+  /// alguém não conseguir conferir o que configurou.
+  kiwifyClientId       String?  @map("kiwify_client_id")
+  /// **Cifrado** com o `TOKEN_ENCRYPTION_KEY`, como o `githubPat` e ao contrário
+  /// do `webhookSecret` (decisão PI, 2026-08-04). A natureza é a do PAT, não a
+  /// do segredo de assinatura: é credencial de API externa que dá leitura do
+  /// catálogo comercial inteiro, e um dump do banco não pode virar acesso.
+  ///
+  /// **Write-only no admin**: nunca reexibido, string vazia recusada no update
+  /// — mesmo desenho do `setPat`. Para desligar, o caminho é revogar a API key
+  /// na Kiwify, que é onde a decisão mora.
+  kiwifyClientSecret   String?  @map("kiwify_client_secret")
+  /// Vai no header `x-kiwify-account-id` de **toda** rota da API pública deles.
+  kiwifyAccountId      String?  @map("kiwify_account_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("lic_settings")
+}
+
+// O catálogo da plataforma como ele veio (SPEC-047). Raiz de tenancy.
+//
+// ## Cache de verdade externa, **não** tabela de decisão
+//
+// A distinção que as SPEC-045/046 policiam, e que decide o que pode entrar aqui:
+// esta linha guarda **o que a Kiwify disse**, com carimbo de quando disse. Nunca
+// guarda conclusão — não há `coberta`, não há `situacao`, não há "resolvida".
+//
+// O cruzamento com `LicOfferMapping` (a oferta tem de-para? o produto tem
+// curinga?) é **derivado na leitura**, na função pura do `domain/`, exatamente
+// como a `situacao` da SPEC-046. Derivado, nunca desatualiza: mapear uma oferta
+// a remove da lista sem que nada aqui precise ser reescrito — e um de-para
+// removido a traz de volta, sem job nenhum.
+//
+// ## Uma linha por tenant, sem histórico
+//
+// `tenantId` é `@unique`: o retrato é sobrescrito a cada rodada. O retrato de
+// ontem não responde pergunta nenhuma — a pergunta é sempre *"o que existe hoje
+// no catálogo sem de-para"*, e uma tabela de versões só adiaria a decisão de
+// qual delas é a verdadeira.
+model LicCatalogSnapshot {
+  id         String   @id @default(uuid())
+  tenantId   String   @unique @map("tenant_id")
+  /// `kiwify` hoje. TEXT como no resto do módulo (SPEC-038): a fronteira que
+  /// abre Hotmart/Lemon é o adapter em `infrastructure/`, não um enum que
+  /// exigiria migration por plataforma nova.
+  platform   String
+  /// Produtos ativos com suas ofertas, como vieram da API. **Sem cruzamento.**
+  payload    Json
+  fetchedAt  DateTime @map("fetched_at")
+  /// A última falha de fetch, legível. Nula quando o último fetch deu certo.
+  ///
+  /// **Falha não apaga o retrato anterior**: grava o erro aqui e mantém o
+  /// `payload` bom, com o `fetchedAt` antigo dizendo a idade. Zerar a lista
+  /// porque a Kiwify caiu faria a aba afirmar *"não falta de-para nenhum"* — uma
+  /// mentira tranquilizadora, que é a pior classe de erro nesta área.
+  fetchError String?  @map("fetch_error")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("lic_catalog_snapshots")
 }
 
 // Link de uso único para o comprador informar o username do GitHub (SPEC-039).

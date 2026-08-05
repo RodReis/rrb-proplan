@@ -3,6 +3,7 @@ import { UnprocessableEntityException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { CryptoService } from '../../identity/infrastructure/crypto.service';
 import { LICENSING_QUEUE, PLATFORM_KIWIFY } from '../licensing.constants';
 import { parseKiwifyEvent } from '../domain/kiwify-event';
 import { ofertasNaoMapeadas, type OfertaVista } from '../domain/seen-offers';
@@ -61,6 +62,24 @@ export interface LicSettingsView {
   webhookSecretSet: boolean;
   /** `null` = o ProPlan não corta por atraso (decisão PI #3). */
   pastDueToleranceDays: number | null;
+  /**
+   * As credenciais da API pública da Kiwify (SPEC-047).
+   *
+   * **`client_id` e `account_id` saem de volta; o `client_secret` nunca.** Não é
+   * inconsistência — é a assimetria da própria dashboard da Kiwify, onde os dois
+   * primeiros aparecem em claro e o terceiro mascarado. Esconder o que o
+   * operador lê na outra aba do navegador só tiraria dele a chance de conferir o
+   * que configurou aqui.
+   */
+  kiwifyClientId: string | null;
+  kiwifyAccountId: string | null;
+  kiwifyClientSecretSet: boolean;
+  /**
+   * Os três presentes. **É o que decide** se o job roda para este tenant e se o
+   * botão de busca fica habilitado — derivado aqui para que a tela não repita a
+   * regra e as duas versões não divirjam.
+   */
+  kiwifyApiConfigured: boolean;
 }
 
 export interface UpdateSettingsInput {
@@ -68,6 +87,18 @@ export interface UpdateSettingsInput {
   webhookSecret?: unknown;
   /** Ausente = não mexe. `null` explícito = desligar o corte. */
   pastDueToleranceDays?: unknown;
+  /**
+   * Credenciais da Kiwify (SPEC-047). Ausente = não mexe; string vazia é
+   * recusada nos três, como no `webhookSecret` e no `setPat`.
+   *
+   * **Não há caminho de desligar pela tela, e é deliberado**: metade das
+   * credenciais gravadas produziria um job que falha toda madrugada com `401`,
+   * cujo sintoma (`fetchError`) é indistinguível de credencial errada. Para
+   * desligar, revogue a API key na Kiwify — que é onde a decisão mora.
+   */
+  kiwifyClientId?: unknown;
+  kiwifyClientSecret?: unknown;
+  kiwifyAccountId?: unknown;
 }
 
 export interface OfferMappingInput {
@@ -87,6 +118,11 @@ export class LicensingOpsService {
   constructor(
     private readonly prisma: PrismaService,
     @InjectQueue(LICENSING_QUEUE) private readonly queue: Queue<WebhookJobData>,
+    // Cifra o `kiwifyClientSecret` (SPEC-047), como o `githubPat` do
+    // `SourceAdminService` e ao contrário do `webhookSecret`. Mesmo serviço,
+    // mesma chave: um segundo mecanismo de cifragem seria uma segunda chave a
+    // rotacionar.
+    private readonly crypto: CryptoService,
   ) {}
 
   /**
@@ -312,13 +348,28 @@ export class LicensingOpsService {
   async settings(tenantId: string): Promise<LicSettingsView> {
     const linha = await this.prisma.licSettings.findUnique({
       where: { tenantId },
-      select: { webhookSecret: true, pastDueToleranceDays: true },
+      select: {
+        webhookSecret: true,
+        pastDueToleranceDays: true,
+        kiwifyClientId: true,
+        kiwifyClientSecret: true,
+        kiwifyAccountId: true,
+      },
     });
 
     // Tenant sem linha ainda: `false`/`15` descreve o efeito real — o default do
     // schema é 15, então é o que valerá quando a linha nascer. Inventar `null`
     // aqui diria "não corta" sobre um tenant que vai cortar.
-    if (!linha) return { webhookSecretSet: false, pastDueToleranceDays: 15 };
+    if (!linha) {
+      return {
+        webhookSecretSet: false,
+        pastDueToleranceDays: 15,
+        kiwifyClientId: null,
+        kiwifyAccountId: null,
+        kiwifyClientSecretSet: false,
+        kiwifyApiConfigured: false,
+      };
+    }
 
     return {
       // `?? ''` porque a coluna é `String?` desde o FIX #212: a linha pode nascer
@@ -327,6 +378,13 @@ export class LicensingOpsService {
       // tratava como `401`.
       webhookSecretSet: (linha.webhookSecret ?? '').length > 0,
       pastDueToleranceDays: linha.pastDueToleranceDays,
+      // `?? null` porque o contrato da view é `string | null`, e `undefined`
+      // desapareceria do JSON — a tela receberia a chave ausente em vez de
+      // "não configurado", que são coisas diferentes para quem lê.
+      kiwifyClientId: linha.kiwifyClientId ?? null,
+      kiwifyAccountId: linha.kiwifyAccountId ?? null,
+      kiwifyClientSecretSet: (linha.kiwifyClientSecret ?? '').length > 0,
+      kiwifyApiConfigured: kiwifyConfigurado(linha),
     };
   }
 
@@ -343,7 +401,13 @@ export class LicensingOpsService {
     tenantId: string,
     input: UpdateSettingsInput,
   ): Promise<LicSettingsView> {
-    const dados: { webhookSecret?: string; pastDueToleranceDays?: number | null } = {};
+    const dados: {
+      webhookSecret?: string;
+      pastDueToleranceDays?: number | null;
+      kiwifyClientId?: string;
+      kiwifyClientSecret?: string;
+      kiwifyAccountId?: string;
+    } = {};
 
     if (input.webhookSecret !== undefined) {
       const segredo = typeof input.webhookSecret === 'string' ? input.webhookSecret.trim() : '';
@@ -361,6 +425,24 @@ export class LicensingOpsService {
 
     if (input.pastDueToleranceDays !== undefined) {
       dados.pastDueToleranceDays = tolerancia(input.pastDueToleranceDays);
+    }
+
+    // As três da Kiwify (SPEC-047). Vazio recusado nos três pelo mesmo motivo do
+    // `webhookSecret`: gravar `''` cria um segundo jeito de dizer "não
+    // configurado" que toda leitura teria de checar duas vezes — e o sintoma
+    // seria um job falhando em silêncio toda madrugada.
+    if (input.kiwifyClientId !== undefined) {
+      dados.kiwifyClientId = obrigatorio(input.kiwifyClientId, 'kiwifyClientId');
+    }
+    if (input.kiwifyAccountId !== undefined) {
+      dados.kiwifyAccountId = obrigatorio(input.kiwifyAccountId, 'kiwifyAccountId');
+    }
+    if (input.kiwifyClientSecret !== undefined) {
+      // **Cifrado**, como o `githubPat` (decisão PI, 2026-08-04): um dump do
+      // banco não pode virar leitura do catálogo comercial do tenant.
+      dados.kiwifyClientSecret = this.crypto.encrypt(
+        obrigatorio(input.kiwifyClientSecret, 'kiwifyClientSecret'),
+      );
     }
 
     if (Object.keys(dados).length === 0) {
@@ -386,6 +468,18 @@ export class LicensingOpsService {
         ...(dados.webhookSecret === undefined
           ? {}
           : { webhookSecret: dados.webhookSecret }),
+        // As três da Kiwify seguem a mesma regra do `webhookSecret`: só entram no
+        // `create` se vieram. A linha pode nascer só com elas — um tenant que
+        // configura a API antes do webhook é caso legítimo (FIX #212).
+        ...(dados.kiwifyClientId === undefined
+          ? {}
+          : { kiwifyClientId: dados.kiwifyClientId }),
+        ...(dados.kiwifyClientSecret === undefined
+          ? {}
+          : { kiwifyClientSecret: dados.kiwifyClientSecret }),
+        ...(dados.kiwifyAccountId === undefined
+          ? {}
+          : { kiwifyAccountId: dados.kiwifyAccountId }),
         pastDueToleranceDays: dados.pastDueToleranceDays ?? 15,
       },
     });
@@ -548,4 +642,38 @@ function tolerancia(valor: unknown): number | null {
 
 function texto(valor: unknown): string {
   return typeof valor === 'string' ? valor.trim() : '';
+}
+
+/**
+ * Campo de credencial que, se vier, não pode vir vazio (SPEC-047).
+ *
+ * Mesma regra do `webhookSecret` e do `setPat`: string vazia seria um segundo
+ * jeito de dizer *não configurado*, e o sintoma de gravá-la é mudo — o job
+ * falharia toda madrugada com `401` da Kiwify, indistinguível de credencial
+ * revogada.
+ */
+function obrigatorio(valor: unknown, campo: string): string {
+  const bruto = texto(valor);
+  if (!bruto) {
+    throw new UnprocessableEntityException(`\`${campo}\` não pode ser vazio`);
+  }
+  return bruto;
+}
+
+/**
+ * As três credenciais da Kiwify presentes (SPEC-047).
+ *
+ * **Exportada porque o job do sync precisa da mesma regra.** Duplicá-la lá
+ * criaria duas definições de "configurado" que divergem no dia em que a API
+ * deles pedir um quarto campo — e a divergência apareceria como job que roda
+ * para um tenant cuja tela diz que não está configurado.
+ */
+export function kiwifyConfigurado(linha: {
+  kiwifyClientId: string | null;
+  kiwifyClientSecret: string | null;
+  kiwifyAccountId: string | null;
+}): boolean {
+  return Boolean(
+    linha.kiwifyClientId && linha.kiwifyClientSecret && linha.kiwifyAccountId,
+  );
 }
