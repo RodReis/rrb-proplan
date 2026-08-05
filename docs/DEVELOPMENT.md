@@ -8574,11 +8574,10 @@ nosso próprio passado.
 
 Suíte completa verde: **2354 regras · 290 banco · 791 tela = 3435**.
 
-### Pendência do PR-2
+### Pendência do PR-2 — **resolvida em 2026-08-05**
 
-- **O dogfooding com o catálogo real do War Room** — o critério de aceite que só
-  a produção fecha: provar que o uuid do produto no webhook e na API pública são
-  o mesmo. Divergiu → parar e reportar ao PI, sem heurística.
+- ~~**O dogfooding com o catálogo real do War Room**~~ — feito, e o uuid bate.
+  Ver *O dogfooding em produção* no fim desta fatia.
 
 ### PR-3 — a tela que fecha a fatia
 
@@ -8659,12 +8658,58 @@ apagado.
 
 8 testes novos (22 no arquivo). Suíte: **2354 regras · 290 banco · 813 tela**.
 
-### O que a Fatia 36 deixa em aberto
+### O dogfooding em produção — **o critério crítico passou** (2026-08-05)
 
-- **O dogfooding com o catálogo real** (herdado do PR-2, **destravado pelo
-  PR-4**) — colar as três credenciais no painel, clicar em *Buscar ofertas da
-  Kiwify* e provar que o uuid do produto no webhook e na API pública são o
-  mesmo. É o único critério de aceite que só a produção fecha.
+Feito pelo PI logo após o PR-4, e é o item que a spec marcava como *"se não
+forem, parar e reportar ao PI"*. **Não foi preciso parar.**
+
+Credenciais coladas no painel, *Buscar ofertas da Kiwify* clicado, e o bloco 3
+trouxe o produto **`NEXUS War Room — Source Code`** com nome humano, id
+`27e6ac80-9023-11f1-b628-31f0b9ff0ecc` e a legenda de curinga (o produto vende
+com preço próprio e `offers: []` — exatamente o caso que a spec dizia não
+existir). *Mapear* criou o de-para e a linha sumiu **sem novo fetch**, como o
+critério de aceite pede.
+
+**A prova do uuid, que era o item crítico.** As URLs de edição da dashboard da
+Kiwify dão o id canônico de cada produto:
+
+| produto | id na dashboard | bate com |
+|---|---|---|
+| *NEXUS War Room — Source Code* | `27e6ac80-9023-11f1-b628-31f0b9ff0ecc` | API pública **e** de-para |
+| *NEXUS War Room — Edição Binário* | `a3d7e940-9022-11f1-9979-1b627b11857b` | API pública **e** de-para |
+
+**O uuid do webhook e o da API pública são o mesmo.** A suspeita inicial de
+divergência veio de três de-paras órfãos na lista — que não são produto nenhum
+da conta, e sim resíduo de disparos do botão *Testar Webhook* (a SPEC-045 já
+registra que ele gera `product_id` fictício e diferente a cada vez). A hipótese
+de "duas famílias de uuid" foi **descartada com dado**, não com heurística: as
+URLs da dashboard são a fonte canônica.
+
+**Método que valeu registrar:** a diferença de formato entre os ids (`…-11f1-…`
+UUID v1 com timestamps irmãos vs. `16393362-b7f5-432e-…` v4) *sugeria* qual era
+lixo, e a tentação era apagar por dedução. Não foi feito — a spec proíbe casar
+formatos por heurística, e o custo de errar é entregar código-fonte a quem
+comprou a edição sem. O que resolveu foi abrir os dois produtos na dashboard e
+ler o id na URL: 30 segundos, prova direta.
+
+### O que a Fatia 36 deixa em aberto
+- ~~**Limpar os três de-paras órfãos em produção**~~ — **feito pelo PI em
+  2026-08-05**, pelo botão *Remover* da própria tela (nunca por SQL: conserto em
+  produção por SQL já está registrado como problema no `STATUS.md`, SPEC-040
+  §14). Sobraram os dois reais, e o estado final confere com o desenho: cartão
+  **`2 MAPEADAS`** + **`1 SEM DE-PARA`** neutro, sem laranja, e o bloco 3 vazio
+  dizendo *"Todas as ofertas ativas do catálogo já têm de-para"*.
+  - O `dcec8ed0…` **voltou ao bloco 2**, como previsto: a entrega dele existe e
+    ficou sem cobertura. É a SPEC-046 funcionando, não regressão — e prova de
+    quebra que a etiqueta neutra soma os blocos 2+3 sem acender o badge. Para
+    tirá-lo da lista, o caminho é *Descartar* a entrega (SPEC-045); **nunca
+    remapear um id que não existe na conta**, que foi como os três órfãos
+    nasceram.
+- **A tela não distingue de-para vivo de resíduo** — os cinco apareciam
+  idênticos, e foi preciso ir à dashboard da Kiwify para saber quais eram reais.
+  Marcar a origem do de-para (veio de venda, veio da API, digitado à mão) é
+  **decisão de produto**: se a operação sentir falta, volta como fatia pelo
+  Cowork.
 - **O texto da SPEC-047 sobre `externalOfferId` "nunca nulo"** — a doc oficial
   da Kiwify o desmente, o comportamento já foi decidido pelo PI e implementado,
   mas **corrigir a spec é do Cowork**.
