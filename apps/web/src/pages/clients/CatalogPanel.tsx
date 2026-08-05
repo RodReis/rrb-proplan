@@ -5,10 +5,14 @@ import {
   createLicProduct,
   createOfferMapping,
   deleteOfferMapping,
+  getKiwifyCatalog,
   listOfferMappings,
   listSeenOffers,
+  refreshKiwifyCatalog,
   updateLicEditionLimits,
   updateLicProduct,
+  type CatalogOfferView,
+  type CatalogoKiwifyView,
   type LicCatalogResponse,
   type LicEditionView,
   type LicProductView,
@@ -642,6 +646,8 @@ function NovaEdicao({
 function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
   const [mapeamentos, setMapeamentos] = useState<OfferMappingView[]>([]);
   const [vistas, setVistas] = useState<SeenOfferView[]>([]);
+  const [catalogoKiwify, setCatalogoKiwify] = useState<CatalogoKiwifyView | null>(null);
+  const [buscando, setBuscando] = useState(false);
   const [manual, setManual] = useState(false);
   const [produtoId, setProdutoId] = useState('');
   const [ofertaId, setOfertaId] = useState('');
@@ -655,6 +661,43 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
       setVistas(seen);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'não foi possível carregar');
+    }
+
+    // **Falha separada, de propósito.** O catálogo é a fonte mais nova e a mais
+    // frágil (depende de credencial e da API deles). Se ele fosse ao mesmo
+    // `Promise.all` acima, um erro aqui derrubaria os blocos 1 e 2 — que são
+    // sobre dinheiro parado e não dependem da Kiwify para nada. O critério de
+    // aceite da spec pede exatamente isto: "blocos 1–2 nunca quebram".
+    try {
+      setCatalogoKiwify(await getKiwifyCatalog());
+    } catch {
+      // Sem toast: tenant sem credencial é o caso normal, não um erro que peça
+      // atenção. O bloco 3 simplesmente não aparece.
+      setCatalogoKiwify(null);
+    }
+  }
+
+  /**
+   * O botão *Buscar ofertas da Kiwify* — o caminho de quem acabou de criar a
+   * oferta e não quer esperar a rodada da madrugada (§Escopo).
+   *
+   * Executa o mesmo fluxo do job no servidor. O erro da plataforma **não** vem
+   * como exceção: vem no `fetchError` do corpo, ao lado do retrato anterior.
+   */
+  async function buscarCatalogo() {
+    setBuscando(true);
+    try {
+      const atualizado = await refreshKiwifyCatalog();
+      setCatalogoKiwify(atualizado);
+      if (atualizado.fetchError) {
+        toast.error(`A Kiwify recusou a consulta: ${atualizado.fetchError}`);
+      } else {
+        toast.success('Catálogo atualizado');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'não foi possível buscar');
+    } finally {
+      setBuscando(false);
     }
   }
 
@@ -686,6 +729,9 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
       await createOfferMapping(entrada);
       setProdutoId('');
       setOfertaId('');
+      // `carregar` relê o catálogo junto — e a linha some **sem novo fetch na
+      // Kiwify** (critério de aceite da spec): a cobertura é derivada na
+      // leitura, então o mapeamento novo já a remove do bloco 3.
       await carregar();
       toast.success(
         paraFuturas
@@ -717,6 +763,22 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
   const paradas = vistas.filter((v) => v.situacao === 'PARADA');
   const semDepara = vistas.filter((v) => v.situacao === 'SEM_DEPARA');
 
+  // O terceiro bloco (SPEC-047). A exclusão dos que já saem nos blocos 1 e 2 é
+  // feita **no servidor**, na função pura — repeti-la aqui criaria uma segunda
+  // definição da invariante *uma oferta, um bloco*, que divergiria no dia em
+  // que uma das duas mudasse.
+  const nuncaVendeu = catalogoKiwify?.ofertas ?? [];
+
+  /**
+   * A etiqueta neutra soma os blocos 2 e 3 (decisão PI #3).
+   *
+   * A pergunta que ela responde vira *"quantas ofertas conhecidas não têm
+   * de-para"* — vendida ou não. **O badge de atenção e o tom do cartão
+   * continuam seguindo só o bloco 1**: lacuna preventiva não é dinheiro parado,
+   * e misturar os dois desfaria a separação que a SPEC-046 acabou de fazer.
+   */
+  const semDeparaTotal = semDepara.length + nuncaVendeu.length;
+
   return (
     // Só *venda parada* pinta o cartão. Antes qualquer linha da lista o deixava
     // laranja — inclusive venda já entregue, que é o alarme mentiroso da #259.
@@ -738,9 +800,9 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
                 {paradas.length} {paradas.length === 1 ? 'venda parada' : 'vendas paradas'}
               </Etiqueta>
             )}
-            {semDepara.length > 0 && (
+            {semDeparaTotal > 0 && (
               <Etiqueta tom="neutro" ponto={false}>
-                {semDepara.length} sem de-para
+                {semDeparaTotal} sem de-para
               </Etiqueta>
             )}
             {mapeamentos.length > 0 && (
@@ -803,6 +865,76 @@ function OfertasBloco({ catalogo }: { catalogo: LicCatalogResponse }) {
               />
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* O terceiro bloco (SPEC-047): o que ainda **nem vendeu**. Tom neutro,
+          fora do badge — a lacuna é preventiva, não é dinheiro parado. Só
+          aparece quando há catálogo: sem credenciais configuradas, a aba fica
+          exatamente como a SPEC-046 a deixou. */}
+      {catalogoKiwify && (
+        <div className="mt-5 border-t border-border2/60 pt-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="m-0 max-w-[72ch] text-[12px] leading-relaxed text-body2">
+              <strong className="text-text2">Nunca vendeu, sem de-para.</strong>{' '}
+              Nenhuma venda chegou; sem o de-para, a{' '}
+              <strong className="text-text2">primeira</strong> compra desta oferta
+              vai falhar.
+            </p>
+            <button
+              onClick={() => void buscarCatalogo()}
+              disabled={buscando || ocupado}
+              className="shrink-0 rounded-[9px] border border-border2 px-2.5 py-1 text-[11.5px] text-body2 transition-colors hover:border-accentBorder hover:text-text disabled:opacity-50"
+            >
+              {buscando ? 'Buscando…' : 'Buscar ofertas da Kiwify'}
+            </button>
+          </div>
+
+          {/* O carimbo de idade. **Sem ele a lista mente por omissão**: uma
+              oferta criada hoje não aparece num retrato de ontem, e nada na
+              tela diria que o retrato é velho. */}
+          <p className="m-0 mt-1.5 text-[11px] text-dim">
+            {catalogoKiwify.fetchedAt
+              ? `catálogo consultado em ${shortDateTime(catalogoKiwify.fetchedAt)}`
+              : 'catálogo ainda não consultado'}
+          </p>
+
+          {/* O erro fica ao lado do retrato, não no lugar dele: a lista abaixo
+              continua sendo o que sabíamos da última vez que deu certo. */}
+          {catalogoKiwify.fetchError && (
+            <p className="m-0 mt-2 max-w-[72ch] rounded-[9px] border border-error/45 bg-error/10 px-3 py-2 text-[11.5px] leading-relaxed text-body">
+              A última consulta à Kiwify falhou: {catalogoKiwify.fetchError}
+            </p>
+          )}
+
+          {nuncaVendeu.length > 0 ? (
+            <ul className="mt-3 grid list-none gap-2 p-0">
+              {nuncaVendeu.map((o) => (
+                <OfertaCatalogoLinha
+                  key={`${o.externalProductId} ${o.externalOfferId ?? ''}`}
+                  oferta={o}
+                  edicoes={edicoes}
+                  ocupado={ocupado}
+                  onMapear={(editionId) =>
+                    criar(
+                      {
+                        externalProductId: o.externalProductId,
+                        externalOfferId: o.externalOfferId,
+                        editionId,
+                      },
+                      true,
+                    )
+                  }
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="m-0 mt-2 text-[11.5px] leading-relaxed text-body">
+              {catalogoKiwify.fetchedAt
+                ? 'Todas as ofertas ativas do catálogo já têm de-para.'
+                : 'Clique em Buscar para trazer as ofertas do catálogo da Kiwify.'}
+            </p>
+          )}
         </div>
       )}
 
@@ -1002,6 +1134,108 @@ function OfertaVistaLinha({
               ? 'escolha a edição que esta venda entrega…'
               : 'escolha a edição que as próximas compras entregam…'}
           </option>
+          {edicoes.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.label}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => onMapear(edicaoId)}
+          disabled={!edicaoId || ocupado}
+          className="rounded-[9px] bg-btnbg px-4 py-2 text-[12.5px] font-semibold text-btnfg transition-opacity disabled:opacity-40"
+        >
+          Mapear
+        </button>
+      </div>
+    </LinhaCartao>
+  );
+}
+
+/**
+ * Uma oferta do catálogo que **ainda não vendeu** (SPEC-047, bloco 3).
+ *
+ * ## Por que um componente próprio, e não um `if` dentro do `OfertaVistaLinha`
+ *
+ * As duas linhas **afirmam coisas diferentes**, e a diferença não é de estilo:
+ * aquela conta um passado (`3 vendas · 1 falhou · última em…`), esta não tem
+ * passado nenhum para contar. Enfiar as duas no mesmo componente exigiria tornar
+ * opcionais justamente os campos que dão sentido à linha de lá — e o resultado
+ * seria um componente cujo maior trecho é decidir qual metade não mostrar.
+ *
+ * ## O que esta linha tem de novo: **nome**
+ *
+ * É a primeira vez que o operador vê *"War Room · Sem código Fonte"* em vez de
+ * um uuid transcrito à mão da mensagem de erro. O id continua visível em mono,
+ * porque é o que casa com o `LicOfferMapping` — mas agora é a legenda, não o
+ * título.
+ *
+ * **A edição continua sendo escolhida à mão** (decisão PI #4). O job detecta e
+ * pré-preenche produto e oferta; quem decide qual edição recebe a oferta é
+ * sempre o humano. A razão é o caso que abriu a fatia: as duas ofertas do War
+ * Room têm o mesmo produto e **uma delas entrega código-fonte** — uma regra
+ * automática acertaria o produto e poderia errar a edição, mandando o source por
+ * e-mail irrevogável a quem pagou pela edição sem.
+ */
+function OfertaCatalogoLinha({
+  oferta,
+  edicoes,
+  ocupado,
+  onMapear,
+}: {
+  oferta: CatalogOfferView;
+  edicoes: Array<{ id: string; label: string }>;
+  ocupado: boolean;
+  onMapear: (editionId: string) => void;
+}) {
+  const [edicaoId, setEdicaoId] = useState('');
+
+  return (
+    <LinhaCartao tom="neutro">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          {/* Produto e oferta em nós **próprios**, não texto solto separado por
+              um `·`: o nome da oferta é o que o operador procura na tela (e o
+              que o teste consulta), e um nome partido entre nós irmãos não é
+              localizável nem por ele nem pelo leitor de tela. */}
+          <p className="m-0 truncate text-[13px] text-text">
+            <span>{oferta.productName}</span>
+            {oferta.offerName && (
+              <>
+                <span className="mx-1.5 text-dim">·</span>
+                <span>{oferta.offerName}</span>
+              </>
+            )}
+          </p>
+          <p className="m-0 mt-0.5 truncate font-mono text-[10.5px] text-dim">
+            {oferta.externalProductId}
+            {oferta.externalOfferId ? ` · ${oferta.externalOfferId}` : ''}
+          </p>
+          {/* Produto sem ofertas no catálogo: o mapeamento vale para o produto
+              inteiro. Dizê-lo em voz alta evita que o operador procure na
+              Kiwify uma oferta que não existe. */}
+          {!oferta.externalOfferId && (
+            <p className="m-0 mt-1 text-[11px] leading-relaxed text-body2">
+              Este produto não tem ofertas cadastradas — o de-para vale para
+              qualquer compra dele.
+            </p>
+          )}
+        </div>
+        <Etiqueta tom="neutro" ponto={false}>
+          nunca vendeu
+        </Etiqueta>
+      </div>
+
+      <div className="mt-3 grid gap-2 min-[720px]:grid-cols-[1fr_auto]">
+        <select
+          value={edicaoId}
+          onChange={(e) => setEdicaoId(e.target.value)}
+          aria-label={`Edição para ${oferta.productName}${
+            oferta.offerName ? ` · ${oferta.offerName}` : ''
+          }`}
+          className="rounded-[9px] border border-border2 bg-bg px-3 py-2 text-[12.5px] text-text transition-colors focus:border-accentBorder [color-scheme:dark_light]"
+        >
+          <option value="">escolha a edição que esta oferta entrega…</option>
           {edicoes.map((e) => (
             <option key={e.id} value={e.id}>
               {e.label}
