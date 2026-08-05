@@ -8579,3 +8579,61 @@ Suíte completa verde: **2354 regras · 290 banco · 791 tela = 3435**.
 - **O dogfooding com o catálogo real do War Room** — o critério de aceite que só
   a produção fecha: provar que o uuid do produto no webhook e na API pública são
   o mesmo. Divergiu → parar e reportar ao PI, sem heurística.
+
+### PR-3 — a tela que fecha a fatia
+
+O terceiro bloco entra **depois** dos dois da SPEC-046, mantendo a estrutura *um
+bloco por pergunta*. A linha traz **nome do produto e da oferta** — a primeira
+vez que o operador vê nomes humanos em vez de um uuid transcrito à mão da
+mensagem de erro. O id continua visível em mono, mas agora é legenda, não título.
+
+**Componente próprio (`OfertaCatalogoLinha`), e não um `if` no
+`OfertaVistaLinha`.** As duas linhas **afirmam coisas diferentes**: aquela conta
+um passado (`3 vendas · 1 falhou · última em…`), esta não tem passado nenhum.
+Enfiar as duas no mesmo componente exigiria tornar opcionais justamente os campos
+que dão sentido à linha de lá, e o resultado seria um componente cujo maior
+trecho é decidir qual metade não mostrar.
+
+**O carimbo de idade não é enfeite.** Sem *"catálogo consultado em {fetchedAt}"*
+a lista **mente por omissão**: uma oferta criada hoje não aparece num retrato de
+ontem, e nada na tela diria que o retrato é velho.
+
+**A etiqueta soma 2+3; o badge não** (decisão PI #3), com teste para os dois
+lados. E o catálogo carrega em `try` **separado** dos blocos 1 e 2 — ele é a
+fonte mais nova e a mais frágil (depende de credencial e da API deles), enquanto
+os outros dois são sobre dinheiro parado e não dependem da Kiwify para nada. É o
+critério de aceite *"blocos 1–2 nunca quebram"*.
+
+**A falha vem no corpo, não como exceção**, então o toast do botão lê o
+`fetchError` — sem isso, um clique que falhou pareceria ter dado certo.
+
+#### Um conserto de acessibilidade que o teste encontrou
+
+O nome da oferta estava como texto solto ao lado de um `<span>` separador, e
+`getByText('Com Código Fonte')` não o encontrava. **O conserto foi no componente,
+não no teste**: produto e oferta ganharam nós próprios. Um nome partido entre nós
+irmãos não é localizável nem pelo teste nem pelo leitor de tela — o teste
+falhando foi o sintoma, não a causa.
+
+### Testes do PR-3
+
+**14 casos novos** (44 no `CatalogPanel.test.tsx`), todos sobre o que a tela
+**afirma**: bloco ausente sem credenciais; nome do produto e da oferta; carimbo
+de idade; erro ao lado do retrato preservado; *"nunca sincronizou"* convidando a
+buscar em vez de vazio mudo; o toast lendo `fetchError`; `Mapear` desabilitado
+sem edição escolhida (decisão PI #4); a etiqueta somando 2+3; o badge **não**
+acendendo com o bloco 3 cheio; e a falha do catálogo não derrubando os blocos 1
+e 2.
+
+Suíte completa verde: **2354 regras · 290 banco · 805 tela = 3449**.
+
+### O que a Fatia 36 deixa em aberto
+
+- **O dogfooding com o catálogo real** (herdado do PR-2) — configurar as três
+  credenciais no painel e provar que o uuid do produto no webhook e na API
+  pública são o mesmo. É o único critério de aceite que só a produção fecha.
+- **O texto da SPEC-047 sobre `externalOfferId` "nunca nulo"** — a doc oficial
+  da Kiwify o desmente, o comportamento já foi decidido pelo PI e implementado,
+  mas **corrigir a spec é do Cowork**.
+- **Ligar o purge de 90 dias da SPEC-043** no agendador que o ADR-029 destravou
+  — vira `[FIX]` próprio, com o comportamento correto já documentado.

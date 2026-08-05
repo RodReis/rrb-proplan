@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  CatalogOfferView,
+  CatalogoKiwifyView,
   LicCatalogResponse,
   OfferMappingView,
   SeenOfferView,
@@ -22,6 +24,10 @@ const apiMock = vi.hoisted(() => ({
   createLicRelease: vi.fn(),
   unpublishLicRelease: vi.fn(),
   publishLicRelease: vi.fn(),
+  // O catálogo da plataforma (SPEC-047). Sem o mock, o `getKiwifyCatalog` do
+  // mount cairia no `request` real.
+  getKiwifyCatalog: vi.fn(),
+  refreshKiwifyCatalog: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -121,6 +127,9 @@ beforeEach(() => {
   apiMock.listOfferMappings.mockResolvedValue([]);
   apiMock.listSeenOffers.mockResolvedValue([]);
   apiMock.listLicReleases.mockResolvedValue([]);
+  // Sem credenciais é o padrão: a rota rejeita, o bloco 3 não aparece e a aba
+  // fica exatamente como a SPEC-046 a deixou.
+  apiMock.getKiwifyCatalog.mockRejectedValue(new Error('não configurado'));
 });
 
 describe('produtos e edições', () => {
@@ -606,5 +615,234 @@ describe('mapeamentos já cadastrados', () => {
     await montarEmOfertas();
 
     expect(await screen.findByText(/qualquer oferta \(curinga\)/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * O bloco 3 — *"Nunca vendeu, sem de-para"* (SPEC-047).
+ *
+ * O que se testa aqui é o que a tela **afirma** sobre o catálogo: que a lacuna
+ * aparece antes da primeira venda, que a idade do retrato fica visível (senão a
+ * lista mente por omissão), que uma falha da Kiwify não apaga o que já se sabia,
+ * e que nada disso contamina o badge de atenção — lacuna preventiva não é
+ * dinheiro parado.
+ */
+const OFERTA_CATALOGO: CatalogOfferView = {
+  externalProductId: 'prod-kiwify-1',
+  productName: 'War Room',
+  externalOfferId: 'of-com-fonte',
+  offerName: 'Com Código Fonte',
+  coberta: false,
+};
+
+const CATALOGO_KIWIFY: CatalogoKiwifyView = {
+  ofertas: [OFERTA_CATALOGO],
+  fetchedAt: '2026-08-05T03:00:00.000Z',
+  fetchError: null,
+};
+
+describe('bloco 3 — nunca vendeu, sem de-para', () => {
+  it('sem credenciais configuradas, o bloco não aparece', async () => {
+    await montarEmOfertas();
+
+    // `findAll`: o texto existe duas vezes — no botão da aba e no título do
+    // cartão. Serve só para esperar a aba montar antes de afirmar a ausência.
+    expect((await screen.findAllByText(/Oferta → edição/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Nunca vendeu, sem de-para/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Buscar ofertas da Kiwify/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * **Nome humano, e não uuid transcrito.** É a diferença que a fatia traz para
+   * a tela: o operador reconhece a oferta pelo nome que ele mesmo deu na Kiwify.
+   */
+  it('lista a oferta com nome do produto e da oferta, e o id como legenda', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue(CATALOGO_KIWIFY);
+    await montarEmOfertas();
+
+    expect(await screen.findByText(/Nunca vendeu, sem de-para/i)).toBeInTheDocument();
+    expect(screen.getByText('Com Código Fonte')).toBeInTheDocument();
+    expect(screen.getByText(/prod-kiwify-1 · of-com-fonte/)).toBeInTheDocument();
+    // Exato: `/nunca vendeu/i` casaria também com o título do bloco ("Nunca
+    // vendeu, sem de-para"), e o que se afirma aqui é a etiqueta da linha.
+    expect(screen.getByText('nunca vendeu')).toBeInTheDocument();
+  });
+
+  /**
+   * **Sem o carimbo, a lista mente por omissão**: uma oferta criada hoje não
+   * aparece num retrato de ontem, e nada na tela diria que o retrato é velho.
+   */
+  it('mostra quando o catálogo foi consultado', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue(CATALOGO_KIWIFY);
+    await montarEmOfertas();
+
+    expect(await screen.findByText(/catálogo consultado em/i)).toBeInTheDocument();
+  });
+
+  /**
+   * O critério de aceite da falha, do lado da tela: o retrato anterior continua
+   * listado **ao lado** do erro, não no lugar dele.
+   */
+  it('com falha da Kiwify, mostra o erro E mantém a lista do último retrato bom', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue({
+      ...CATALOGO_KIWIFY,
+      fetchError: 'Kiwify recusou as credenciais (401)',
+    });
+    await montarEmOfertas();
+
+    expect(await screen.findByText(/última consulta à Kiwify falhou/i)).toBeInTheDocument();
+    expect(screen.getByText('Com Código Fonte')).toBeInTheDocument();
+    expect(screen.getByText(/catálogo consultado em/i)).toBeInTheDocument();
+  });
+
+  it('nunca sincronizou: convida a buscar em vez de mostrar vazio mudo', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue({
+      ofertas: [],
+      fetchedAt: null,
+      fetchError: null,
+    });
+    await montarEmOfertas();
+
+    expect(await screen.findByText(/catálogo ainda não consultado/i)).toBeInTheDocument();
+    expect(screen.getByText(/Clique em Buscar/i)).toBeInTheDocument();
+  });
+
+  it('tudo mapeado: diz isso em vez de sumir com o bloco', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue({ ...CATALOGO_KIWIFY, ofertas: [] });
+    await montarEmOfertas();
+
+    expect(
+      await screen.findByText(/Todas as ofertas ativas do catálogo já têm de-para/i),
+    ).toBeInTheDocument();
+  });
+
+  it('o botão busca agora e atualiza a lista', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue({
+      ofertas: [],
+      fetchedAt: null,
+      fetchError: null,
+    });
+    apiMock.refreshKiwifyCatalog.mockResolvedValue(CATALOGO_KIWIFY);
+    await montarEmOfertas();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Buscar ofertas da Kiwify/i }),
+    );
+
+    expect(apiMock.refreshKiwifyCatalog).toHaveBeenCalled();
+    expect(await screen.findByText('Com Código Fonte')).toBeInTheDocument();
+  });
+
+  /**
+   * A falha vem no corpo, não como exceção — então o toast tem de ler o
+   * `fetchError`, senão o clique pareceria ter dado certo.
+   */
+  it('botão com falha da Kiwify avisa em vez de dizer que atualizou', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue({
+      ofertas: [],
+      fetchedAt: null,
+      fetchError: null,
+    });
+    apiMock.refreshKiwifyCatalog.mockResolvedValue({
+      ofertas: [],
+      fetchedAt: null,
+      fetchError: 'Kiwify respondeu 429',
+    });
+    await montarEmOfertas();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Buscar ofertas da Kiwify/i }),
+    );
+
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('429'));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  /**
+   * **A decisão PI #4 na tela**: a edição é escolhida à mão. O botão nasce
+   * desabilitado — sem isso, um clique distraído mandaria código-fonte por
+   * e-mail irrevogável a quem pagou pela edição sem.
+   */
+  it('Mapear exige escolher a edição', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue(CATALOGO_KIWIFY);
+    await montarEmOfertas();
+
+    await screen.findByText('Com Código Fonte');
+    const botoes = screen.getAllByRole('button', { name: 'Mapear' });
+    expect(botoes[botoes.length - 1]).toBeDisabled();
+  });
+
+  it('mapear cria o de-para com produto e oferta do catálogo e fala em vendas futuras', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue(CATALOGO_KIWIFY);
+    apiMock.createOfferMapping.mockResolvedValue({});
+    await montarEmOfertas();
+
+    await screen.findByText('Com Código Fonte');
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Edição para War Room · Com Código Fonte/i),
+      'ed-1',
+    );
+    const botoes = screen.getAllByRole('button', { name: 'Mapear' });
+    await userEvent.click(botoes[botoes.length - 1]);
+
+    expect(apiMock.createOfferMapping).toHaveBeenCalledWith({
+      externalProductId: 'prod-kiwify-1',
+      externalOfferId: 'of-com-fonte',
+      editionId: 'ed-1',
+    });
+    // Sem "reprocesse": não há entrega parada para reprocessar.
+    expect(toastMock.success).toHaveBeenCalledWith(
+      expect.stringContaining('próximas compras'),
+    );
+  });
+
+  it('produto sem ofertas diz que o de-para vale para o produto inteiro', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue({
+      ...CATALOGO_KIWIFY,
+      ofertas: [{ ...OFERTA_CATALOGO, externalOfferId: null, offerName: null }],
+    });
+    await montarEmOfertas();
+
+    expect(await screen.findByText(/não tem ofertas cadastradas/i)).toBeInTheDocument();
+  });
+
+  /**
+   * **A etiqueta soma 2+3; o badge de atenção não** (decisão PI #3). Lacuna
+   * preventiva não é dinheiro parado, e misturar os dois desfaria a separação
+   * que a SPEC-046 acabou de fazer.
+   */
+  it('a etiqueta neutra soma os blocos 2 e 3', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([
+      { ...OFERTA_VISTA, situacao: 'SEM_DEPARA', falhas: 0, aguardando: 0 },
+    ]);
+    apiMock.getKiwifyCatalog.mockResolvedValue(CATALOGO_KIWIFY);
+    await montarEmOfertas();
+
+    // 1 do bloco 2 + 1 do bloco 3.
+    expect(await screen.findByText('2 sem de-para')).toBeInTheDocument();
+  });
+
+  it('bloco 3 cheio NÃO acende o badge de venda parada', async () => {
+    apiMock.getKiwifyCatalog.mockResolvedValue(CATALOGO_KIWIFY);
+    await montarEmOfertas();
+
+    await screen.findByText('Com Código Fonte');
+    expect(screen.queryByText(/venda parada/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * O catálogo é a fonte mais nova e a mais frágil. Os blocos 1 e 2 são sobre
+   * dinheiro parado e não dependem da Kiwify para nada — o critério de aceite
+   * pede que eles nunca quebrem.
+   */
+  it('falha ao carregar o catálogo não derruba os blocos 1 e 2', async () => {
+    apiMock.listSeenOffers.mockResolvedValue([OFERTA_VISTA]);
+    apiMock.getKiwifyCatalog.mockRejectedValue(new Error('500'));
+    await montarEmOfertas();
+
+    expect(await screen.findByText('prod-kiwify-1')).toBeInTheDocument();
+    expect(screen.queryByText(/Nunca vendeu, sem de-para/i)).not.toBeInTheDocument();
   });
 });

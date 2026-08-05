@@ -2333,6 +2333,46 @@ export function listSeenOffers(): Promise<SeenOfferView[]> {
   return request('/licensing/seen-offers');
 }
 
+/**
+ * Uma oferta do catálogo da plataforma que **ainda não vendeu** (SPEC-047).
+ *
+ * A diferença para `SeenOfferView` é a fonte, e ela muda o que a linha pode
+ * dizer: aqui não há `ocorrencias`, `falhas` nem `ultimaEm` — nenhuma venda
+ * chegou. Em troca vêm os **nomes humanos**, que a entrega de webhook não traz.
+ */
+export interface CatalogOfferView {
+  externalProductId: string;
+  productName: string;
+  /** `null` = o produto não tem ofertas; a linha vale para o produto inteiro. */
+  externalOfferId: string | null;
+  offerName: string | null;
+  /** Sempre `false` na lista: as cobertas já foram removidas no servidor. */
+  coberta: boolean;
+}
+
+export interface CatalogoKiwifyView {
+  ofertas: CatalogOfferView[];
+  /** `null` = nunca sincronizou com sucesso — é o convite ao botão. */
+  fetchedAt: string | null;
+  /** Legível; o retrato anterior continua listado ao lado dele. */
+  fetchError: string | null;
+}
+
+/**
+ * O catálogo da plataforma, do **snapshot** — nunca da Kiwify.
+ *
+ * Nenhuma chamada externa no caminho de renderização: quem fala com a
+ * plataforma é o job diário ou o `refreshKiwifyCatalog` abaixo.
+ */
+export function getKiwifyCatalog(): Promise<CatalogoKiwifyView> {
+  return request('/licensing/kiwify/catalog');
+}
+
+/** O botão *Buscar ofertas da Kiwify*: sincroniza agora e devolve o retrato. */
+export function refreshKiwifyCatalog(): Promise<CatalogoKiwifyView> {
+  return request('/licensing/kiwify/catalog/refresh', { method: 'POST' });
+}
+
 export function listOfferMappings(): Promise<OfferMappingView[]> {
   return request('/licensing/offer-mappings');
 }
