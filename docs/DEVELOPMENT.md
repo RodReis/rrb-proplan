@@ -8521,3 +8521,61 @@ colunas nascem alcançáveis pela rota `PUT /settings` que já existia — o pad
 oposto ao que produziu três achados nesta área (`sourceRepo`, `githubPat`,
 `grantsSourceAccess`: coluna no schema, lida pelo backend, sem caminho pela
 interface).
+
+### PR-2 — o caminho completo do backend
+
+**Duas divergências entre a spec e a doc oficial da Kiwify**, ambas encontradas
+antes de codificar e ambas levadas ao PI:
+
+1. **`offers[]` pode vir vazio.** A spec afirma que `externalOfferId` é *"nunca
+   nulo: a API lista ofertas concretas"*. O exemplo oficial de
+   `GET /v1/products/{id}` traz `"offers": []` num produto **ativo com
+   `price: 500`** — produto que vende com o preço nele mesmo. Seguir a spec ao
+   pé da letra deixaria esse produto **invisível** no bloco 3, que é o bug que a
+   fatia veio matar. Decisão do PI: entra como **curinga do produto**
+   (`externalOfferId: null`), que o `LicOfferMapping` já modela. **O texto da
+   spec é do Cowork corrigir.**
+2. **O TTL do token.** O texto da doc diz 96h; o exemplo devolve
+   `expires_in: 86400` (24h). O client ignora os dois e usa o valor da resposta
+   menos 5min — que é o que a spec já mandava, agora confirmado contra o payload
+   real.
+
+**Três providers, e a divisão é a decisão.** `CatalogSyncService` escreve o
+retrato e fala HTTP; `CatalogReadService` lê e cruza, sem conhecer a Kiwify;
+`CatalogSyncScheduler` só agenda e não sabe sincronizar nada. Juntá-los poria o
+método que dispara N chamadas externas no mesmo objeto que a rota de leitura
+instancia — a mesma separação dos dois services de relato de erro (SPEC-043).
+
+**O worker roteia por `job.name`**, na mesma fila. Uma fila nova só para rodar
+uma vez por dia custaria uma conexão Redis e um worker a mais; o `concurrency: 1`
+que já existia passa a ser garantia extra de que a rodada do catálogo nunca
+disputa com o processamento de uma venda. Cada sync roda dentro de
+`runInTenantContext` (ADR-029, decisão 4) e um tenant que falha não derruba os
+outros.
+
+**Duas leniências no parse do catálogo**, ambas na direção de *não esconder
+oferta*: `active` ausente conta como ativa (silêncio ≠ inativa), e produto que
+some entre a listagem e o detalhe (`404`) não derruba a rodada.
+
+**O `fetchedAt` da primeira falha.** A coluna é `NOT NULL` (um retrato de verdade
+sempre tem data), mas o contrato promete `fetchedAt: null` para *"nunca
+sincronizou"*. Em vez de reabrir o PR-1 com migration, a linha nasce com a época
+(`NUNCA_SINCRONIZOU`) e a **leitura** traduz de volta — mostrar "1970" na tela
+seria pior que não mostrar data nenhuma.
+
+### Testes do PR-2
+
+**35 casos novos**: 12 na função pura (sem banco e sem HTTP, como o critério de
+aceite exige), 11 no sync e 12 na leitura. Os que mais importam são os do que a
+tela vai **afirmar**: falha da Kiwify grava `fetchError` sem tocar no `payload`
+nem no `fetchedAt`; tenant sem credencial é pulado em silêncio e não vira
+vermelho; e payload de formato inesperado não derruba a aba — o externo aqui é o
+nosso próprio passado.
+
+Suíte completa verde: **2354 regras · 290 banco · 791 tela = 3435**.
+
+### Pendência do PR-2
+
+- **O dogfooding com o catálogo real do War Room** — o critério de aceite que só
+  a produção fecha: provar que o uuid do produto no webhook e na API pública são
+  o mesmo. Divergiu → parar e reportar ao PI, sem heurística.
