@@ -60,7 +60,7 @@ flowchart TB
 | Store | Uso |
 |---|---|
 | **PostgreSQL** | `projects`, `documents` (metadados + conteúdo parseado + sha), `doc_links` (arestas do grafo: `source`, `target`, `type: explicit\|inferred`), `insights` (artefatos IA: `kind`, `docs_tree_sha`, `content`, `model`), `sync_runs` (auditoria) |
-| **Redis** | Filas BullMQ (`sync`, `insight`); cache de composição de abas (invalidado por webhook) |
+| **Redis** | Filas BullMQ (`sync`, `insight`, `licensing`); cache de composição de abas (invalidado por webhook). **Desde o ADR-029 é também o agendador do repo** — todo job recorrente é um *repeatable job* do BullMQ, registrado por chave estável no boot. Não há segundo mecanismo de agendamento (nem `@nestjs/schedule`, nem cron externo, nem `setInterval`): dois lugares para agendar seriam dois lugares para procurar quando algo não rodou |
 | **Repo GitHub (alvo) — `docs/`** | Fonte de verdade de **todos os docs** da convenção. **Só conteúdo humano** — nada gerado pelo ProPlan entra aqui (ADR-011) |
 | **Repo GitHub (alvo) — `.proplan/`** | Tudo que é do ProPlan, commitado no repo-alvo: `.proplan/STATUS.md` (projeção do board — gerado) e `.proplan/config.yml` (mapeamento de documentos — ADR-014, confirmado pelo humano). Fora de `docs/` para não contaminar o frescor do ADR-010 |
 | **GitHub Issues (alvo)** | **Fonte de verdade do estado do trabalho** (ADR-011): coluna = label `proplan:*`. **Feito = `open` + `proplan:done`** (entregue, aguardando aceite); **Finalizado = `closed` + `proplan:finalizado`**; Descartado = `closed` + `proplan:descartado`. **A issue só fecha no aceite.** Tabela `issues` no Postgres é cache derivado |
@@ -86,6 +86,8 @@ Sem Kafka no MVP (ADR-004). Sem MongoDB — conteúdo MD parseado cabe em `jsonb
 
 ## Resiliência
 
+- **Job recorrente roda dentro de `runInTenantContext`** (ADR-029, decisão 4). Fora de request o RLS é **fail-closed**: ler ou gravar sem contexto **não dá erro, dá ZERO LINHAS**. Um job "bem-sucedido" que não achou nada tem a mesma cara de um tenant sem dados — e é por isso que a varredura de *quais tenants* roda fora do contexto (devolvendo só ids) e **cada rodada** roda dentro do contexto do seu tenant. Um tenant que falha não pode derrubar a rodada dos outros.
+- **Registro de repeatable é idempotente por chave estável** (ADR-029, decisão 3). `upsertJobScheduler` com `jobId` fixo: reiniciar a API, fazer deploy ou subir uma segunda instância **não pode** duplicar a rodada. Foi o motivo de recusar `@nestjs/schedule` — in-process, ele dispara uma vez por instância e nada no código acusa; num purge com retenção isso é escrita destrutiva duplicada.
 - **GitHub rate limit**: cache condicional com ETag; backoff exponencial em 403/429; orçamento de requests por sync.
 - **Timeouts** em todos os clients externos (GitHub 10s, Anthropic 120s em job).
 - **Circuit breaker** leve (opossum) nos clients GitHub e Anthropic — falha rápida e job re-agendado.
