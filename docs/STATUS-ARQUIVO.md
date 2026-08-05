@@ -1,6 +1,6 @@
 # STATUS — Arquivo
 
-> **Só o Code escreve aqui** (corte do PI, 2026-07-29). Cópia **verbatim** das seções que saíram do `STATUS.md` para mantê-lo pequeno o bastante para ser reescrito inteiro a cada publicação. Nada aqui é estado corrente: a coluna do card vive nas GitHub Issues (ADR-011), o progresso dentro da fatia no `DEVELOPMENT.md`, e a identidade Fatia↔SPEC no Índice do `STATUS.md`. Isto é memória — por que cada coisa foi feita como foi.
+> **Só o Code escreve aqui** (corte do PI, 2026-07-29). Cópia **verbatim** das seções que saíram do `STATUS.md` para mantê-lo pequeno o bastante para ser reescrito inteiro a cada publicação. Nada aqui é estado corrente: a coluna do card vive nas GitHub Issues (ADR-011), o progresso dentro da fatia no `DEVELOPMENT.md`, e a identidade Fatia↔SPEC no `INDICE-FATIAS.md`. Isto é memória — por que cada coisa foi feita como foi.
 
 ## Entregas finalizadas — relato completo
 

@@ -9025,3 +9025,51 @@ passa. Suíte **2385 regras · 298 banco · 830 tela**; build, lint e
   setup leva ~2 s e nunca chegava perto dos 5 s. Um verde aqui não distingue
   "corrigido" de "runner estava tranquilo"; o sinal real é o flake **parar de
   reaparecer** nos próximos PRs de banco.
+
+## FIX #277 (INFRA) — O Índice Fatia ↔ SPEC morava em dois arquivos — `entregue`
+
+**Dois arquivos, a mesma tabela, os dois cabeçalhos se declarando "fonte
+única".** O `docs/INDICE-FATIAS.md` foi criado em 2026-07-29 justamente para
+tirar a tabela do `STATUS.md`, mas o `CLAUDE.md` continuou mandando escrever no
+`STATUS.md` — então a duplicata voltou a crescer e a migração ficou pela metade.
+
+### A duplicata não era duplicata
+
+O card previa remover uma cópia idêntica. **Não era idêntica**: das 52 linhas,
+**três divergiam** — Fatias 30 (SPEC-041), 34 (SPEC-045) e 37 (SPEC-048) —, e em
+todas a versão do `STATUS.md` tinha mais informação que a do `INDICE-FATIAS.md`.
+A pior era a Fatia 30, cujo texto no arquivo do Cowork ainda dizia *"Bloqueada
+por ADR novo"* e trazia a própria etiqueta **"Desatualizado — corrigir"**, já
+resolvida no `STATUS.md`.
+
+Apagar direto teria destruído conteúdo em silêncio. **Mesclei primeiro** (versão
+mais rica vence, decisão do PI), verifiquei `diff` das duas tabelas até dar
+vazio, e só então removi a seção.
+
+### O que entrou
+
+| arquivo | mudança |
+|---|---|
+| `docs/INDICE-FATIAS.md` | 3 linhas mescladas — passa a ser fonte única de verdade, não só de nome |
+| `docs/STATUS.md` | seção removida (−13 KB), no lugar um ponteiro de uma linha |
+| `CLAUDE.md` | 6 ponteiros corrigidos + §*Dois atores escrevem no Git* reescrita |
+| `docs/STATUS-ARQUIVO.md` | 7ª referência, que o card não listava |
+
+### A regra mudou, não só o ponteiro
+
+A §*Dois atores* afirmava que *"a divisão é por seção, não por arquivo"* — o
+arranjo que a decisão do PI de 2026-07-29 **aboliu**. Agora diz **por arquivo,
+por dono**: `INDICE-FATIAS.md` é do Cowork, `STATUS.md` é do Code, nenhum arquivo
+com dois donos. O parágrafo sobre "editar qualquer outra **seção**" virou
+"qualquer outro **arquivo**". Texto aprovado pelo PI antes do commit — é a regra
+do trio, não conserto mecânico.
+
+### O que ficou fora
+
+- **`docs/specs/MVP3.md:97`** aponta o Índice para o `STATUS.md`. É a 7ª
+  referência e o card não a lista. **Não toquei** — `docs/specs/` é do Cowork.
+  Reportada em comentário no card.
+- **A regra de branch protection da `main`** — o card já marca como decisão do
+  PI, fora de escopo.
+- **O corte foi de 13 KB, não os ~57 KB previstos** no card: aquele número
+  media o `STATUS.md` inteiro, não a seção do Índice.
