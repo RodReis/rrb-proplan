@@ -3,9 +3,16 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CatalogSyncService } from '../application/catalog-sync.service';
+import { LicenseExpirySweepService } from '../application/license-expiry-sweep.service';
+import { SourceInviteService } from '../application/source-invite.service';
 import type { WebhookJobData } from '../application/webhook-intake.service';
 import { WebhookProcessorService } from '../application/webhook-processor.service';
-import { CATALOG_SYNC_JOB, LICENSING_QUEUE } from '../licensing.constants';
+import {
+  CATALOG_SYNC_JOB,
+  EXPIRY_SWEEP_JOB,
+  LICENSING_QUEUE,
+  SOURCE_RECONCILE_JOB,
+} from '../licensing.constants';
 
 /**
  * Processa o evento de webhook fora da request (SPEC-038 §Notas técnicas) **e** a
@@ -31,6 +38,8 @@ export class LicensingWorker extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly processor: WebhookProcessorService,
     private readonly catalogSync: CatalogSyncService,
+    private readonly invites: SourceInviteService,
+    private readonly expiry: LicenseExpirySweepService,
   ) {
     super();
   }
@@ -38,6 +47,16 @@ export class LicensingWorker extends WorkerHost {
   async process(job: Job<WebhookJobData>): Promise<void> {
     if (job.name === CATALOG_SYNC_JOB) {
       await this.sincronizarCatalogos(job);
+      return;
+    }
+
+    if (job.name === SOURCE_RECONCILE_JOB) {
+      await this.reconciliarConvites(job);
+      return;
+    }
+
+    if (job.name === EXPIRY_SWEEP_JOB) {
+      await this.varrerExpiradas(job);
       return;
     }
 
@@ -79,6 +98,80 @@ export class LicensingWorker extends WorkerHost {
       } catch (erro) {
         const motivo = erro instanceof Error ? erro.message : String(erro);
         this.logger.error(`Sync do tenant ${tenantId} falhou fora do previsto: ${motivo}`);
+      }
+    }
+  }
+
+  /**
+   * A rodada do convite ao source: um `reconcile` por tenant com PAT (SPEC-048).
+   *
+   * **Este é o job que o gatilho por evento também enfileira** — mesmo nome,
+   * mesma execução. Quem gravou o username não ganha um caminho próprio: ganha
+   * uma rodada antecipada. É o que mantém uma única lógica de convite, com uma
+   * única guarda de prazo.
+   *
+   * **Um tenant que falha não derruba os outros** — um PAT expirado num tenant
+   * deixaria todos os seguintes sem rodada, e o sintoma seria "o convite de
+   * alguns nunca sai", sem nada em log ligando um caso ao outro. O `reconcile` já
+   * não lança por falha do GitHub (grava `sourceAccessError` e segue); o `try`
+   * cobre o que ele não prevê.
+   *
+   * O `runInTenantContext` é aberto **aqui**, porque o `reconcile` documenta que
+   * é chamado já dentro do contexto — sem ele o RLS fail-closed devolveria zero
+   * linhas **sem erro**, e a rodada reportaria sucesso tendo feito nada.
+   */
+  private async reconciliarConvites(job: Job): Promise<void> {
+    const tenants = await this.invites.tenantsComSource();
+    this.logger.log(
+      `Reconciliação de convite (job ${job.id}): ${tenants.length} tenant(s) com PAT`,
+    );
+
+    for (const tenantId of tenants) {
+      try {
+        const resultado = await this.prisma.runInTenantContext([tenantId], () =>
+          this.invites.reconcile(tenantId),
+        );
+        if (resultado.convidados > 0 || resultado.aceitos > 0 || resultado.falhas > 0) {
+          this.logger.log(
+            `Tenant ${tenantId}: ${resultado.convidados} convidado(s), ` +
+              `${resultado.aceitos} aceito(s), ${resultado.falhas} falha(s), ` +
+              `${resultado.aguardandoUsername} aguardando username`,
+          );
+        }
+      } catch (erro) {
+        const motivo = erro instanceof Error ? erro.message : String(erro);
+        this.logger.error(
+          `Reconciliação do tenant ${tenantId} falhou fora do previsto: ${motivo}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * A rodada da expiração: um `sweep` por tenant com licença (SPEC-048).
+   *
+   * **O `sweep` abre o próprio `runInTenantContext`** — ao contrário do
+   * `reconcile`, que exige o contexto já aberto pelo chamador. A assimetria é dos
+   * services, não deste worker; envolver de novo aqui aninharia contexto sem
+   * necessidade.
+   *
+   * O `try` por tenant existe pelo mesmo motivo dos outros dois jobs, embora aqui
+   * o risco seja o menor da fila: um `updateMany` local, sem rede no caminho.
+   */
+  private async varrerExpiradas(job: Job): Promise<void> {
+    const tenants = await this.expiry.tenantsComLicenca();
+    this.logger.log(
+      `Sweep de expiração (job ${job.id}): ${tenants.length} tenant(s) com licença`,
+    );
+
+    for (const tenantId of tenants) {
+      try {
+        await this.expiry.sweep(tenantId);
+      } catch (erro) {
+        const motivo = erro instanceof Error ? erro.message : String(erro);
+        this.logger.error(
+          `Sweep do tenant ${tenantId} falhou fora do previsto: ${motivo}`,
+        );
       }
     }
   }

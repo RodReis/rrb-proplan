@@ -22,6 +22,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ownerClient, applyMigrations, grantAppRole } from '../../../test/int/db-harness';
 import { SourceLinkService, SourceLinkUsedError } from './application/source-link.service';
 import type { MailService } from '../mail/application/mail.service';
+import type { SourceInviteService } from './application/source-invite.service';
 import type { GithubSourceClient } from './infrastructure/github-source.client';
 import { hashToken } from './domain/source-token';
 
@@ -35,6 +36,8 @@ describe('SPEC-039: coleta de username sem sessão', () => {
   let prisma: PrismaService;
   let service: SourceLinkService;
   const enviados: Array<Record<string, unknown>> = [];
+  /** Tenants para os quais o gatilho da SPEC-048 antecipou a rodada. */
+  const reconciliacoes: string[] = [];
 
   beforeAll(async () => {
     applyMigrations();
@@ -64,7 +67,16 @@ describe('SPEC-039: coleta de username sem sessão', () => {
     } as unknown as MailService;
     const github = { findUser: async () => USUARIO } as unknown as GithubSourceClient;
 
-    service = new SourceLinkService(prisma, mail, github);
+    // Dobro do gatilho da SPEC-048 pelo mesmo critério do `mail`: o que este
+    // arquivo prova é o BANCO. Registrar as chamadas serve ao teste do gatilho
+    // mais abaixo — que ele DISPARA, e com o tenant certo.
+    const invites = {
+      agendarReconciliacao: async (tenantId: string) => {
+        reconciliacoes.push(tenantId);
+      },
+    } as unknown as SourceInviteService;
+
+    service = new SourceLinkService(prisma, mail, github, invites);
   });
 
   afterAll(async () => {
@@ -124,6 +136,12 @@ describe('SPEC-039: coleta de username sem sessão', () => {
     expect(licenca.github_username).toBe('RodReis');
     // `PENDING`, não `INVITED`: o convite ainda não saiu.
     expect(licenca.source_access).toBe('PENDING');
+
+    // Gatilho por evento (SPEC-048): gravar o username antecipa a rodada, com o
+    // tenant resolvido a partir do TOKEN — não de sessão, que aqui não existe.
+    // Passar o tenant errado faria a rodada varrer outro tenant e o convite
+    // deste comprador nunca sairia, sem erro em lugar nenhum.
+    expect(reconciliacoes).toEqual([TENANT]);
 
     // E o link morreu: reabrir mostra "já utilizado", nunca o formulário.
     expect((await service.resolvePublic(token)).status).toBe('used');

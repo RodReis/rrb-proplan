@@ -36,6 +36,28 @@ export class LicenseExpirySweepService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Os tenants que a rodada diária varre (SPEC-048).
+   *
+   * **Sem filtro de credencial nenhum**, ao contrário dos outros dois jobs da
+   * fila. O sync do catálogo precisa da Kiwify e o convite precisa do PAT, mas o
+   * sweep é `updateMany` local: não fala com ninguém de fora. Condicioná-lo a uma
+   * credencial deixaria licença vencida como `ACTIVE` na tela de todo tenant que
+   * não vende pela Kiwify — o desencontro exato que este job existe para fechar.
+   *
+   * `distinct` em vez de varrer `Tenant`: quem nunca emitiu licença não tem o que
+   * expirar, e a lista sai da tabela que o job realmente escreve. Atravessa
+   * tenants e devolve só ids — o `runInTenantContext` entra por tenant, dentro do
+   * `sweep` (ADR-029, decisão 4).
+   */
+  async tenantsComLicenca(): Promise<string[]> {
+    const linhas = await this.prisma.license.findMany({
+      distinct: ['tenantId'],
+      select: { tenantId: true },
+    });
+    return linhas.map((l) => l.tenantId);
+  }
+
+  /**
    * Marca como `EXPIRED` toda licença `ACTIVE` cujo `expiresAt` já passou.
    *
    * Devolve quantas linhas mudaram — número que o chamador loga, e que num dia

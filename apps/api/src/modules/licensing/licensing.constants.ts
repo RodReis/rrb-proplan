@@ -25,6 +25,44 @@ export const CATALOG_SYNC_JOB = 'catalog-sync';
 export const CATALOG_SYNC_CRON = '0 3 * * *';
 
 /**
+ * Nome do job recorrente da reconciliação do convite ao source, e a chave da
+ * idempotência (SPEC-048, ADR-029).
+ *
+ * Mesmo papel duplo do `CATALOG_SYNC_JOB`: id do `upsertJobScheduler` e
+ * discriminador no `job.name` que o worker roteia. **Também é o nome do job do
+ * gatilho por evento** — o `add` disparado ao gravar o username entra na mesma
+ * fila com este nome, e o worker não distingue um do outro. Isso é deliberado:
+ * a rodada é a mesma, só muda quem a pediu.
+ */
+export const SOURCE_RECONCILE_JOB = 'source-reconcile';
+
+/**
+ * Uma hora depois do sync do catálogo (SPEC-048 §Contratos).
+ *
+ * O que a spec exige não é o horário, é **não coincidir** com o sync (`0 3`) nem
+ * com o sweep (`0 5`). O `concurrency: 1` da fila já serializa a execução, mas
+ * serialização não é o ponto: horários distintos são o que permite ler *"a
+ * rodada das 4h falhou"* sem desembaraçar três execuções do mesmo minuto.
+ */
+export const SOURCE_RECONCILE_CRON = '0 4 * * *';
+
+/**
+ * Nome do job recorrente que materializa `EXPIRED` (SPEC-048, ADR-029).
+ *
+ * O `LicenseExpirySweepService` existe e é testado desde a SPEC-038, e **nenhum
+ * código o chamava** — esta constante é o que o liga.
+ */
+export const EXPIRY_SWEEP_JOB = 'expiry-sweep';
+
+/**
+ * Uma hora depois da reconciliação do convite (SPEC-048 §Contratos).
+ *
+ * Mesmo critério do `SOURCE_RECONCILE_CRON`: o valor é proposta, a exigência é
+ * ser distinto dos outros dois.
+ */
+export const EXPIRY_SWEEP_CRON = '0 5 * * *';
+
+/**
  * Identificador da plataforma de venda, como gravado em `LicWebhookEvent.platform`
  * e `LicOfferMapping.platform`.
  *

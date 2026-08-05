@@ -24,6 +24,8 @@ import { SourceRevokeService } from './application/source-revoke.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
 import { CatalogSyncScheduler } from './infrastructure/catalog-sync.scheduler';
+import { ExpirySweepScheduler } from './infrastructure/expiry-sweep.scheduler';
+import { SourceReconcileScheduler } from './infrastructure/source-reconcile.scheduler';
 import { GithubSourceClient } from './infrastructure/github-source.client';
 import { KiwifyCatalogClient } from './infrastructure/kiwify-catalog.client';
 import { LicensingWorker } from './infrastructure/licensing.worker';
@@ -109,10 +111,10 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     // tela lê daqui, nunca `lic_*` direto — a arch-spec cobra os dois lados.
     LicensingSummaryService,
     SourceLinkService,
-    // A reconciliação do convite (SPEC-039 PR-3). Sem agendador de propósito:
-    // não há `@nestjs/schedule` nem `repeat` no repo e a spec não diz como
-    // dispara — escolher isso é decisão de infra. O método é chamável, e o
-    // PR-5 dá o botão ao admin.
+    // A reconciliação do convite (SPEC-039 PR-3). **Passou a rodar sozinha na
+    // SPEC-048**: o `SourceReconcileScheduler` a agenda e o `LicensingWorker` a
+    // executa. O método continua chamável — é o mesmo que o botão do admin usa,
+    // e é essa unicidade que mantém uma só guarda de prazo.
     SourceInviteService,
     // A revogação do acesso ao repo (SPEC-039 PR-4). Existe separado do
     // `SourceInviteService` porque a decisão que ele carrega é outra: **qual das
@@ -154,6 +156,13 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     CatalogReadService,
     CatalogSyncScheduler,
     KiwifyCatalogClient,
+    // Os outros dois recorrentes do módulo (SPEC-048). **Três schedulers e
+    // nenhum deles sabe executar nada** — é a forma que o ADR-029 fixou, e ela
+    // é o que torna a pergunta *"o que roda sozinho neste repo?"* respondível
+    // procurando por `upsertJobScheduler`. Um `repeat:` dentro de um service de
+    // negócio responderia a mesma necessidade e seria invisível para essa busca.
+    SourceReconcileScheduler,
+    ExpirySweepScheduler,
   ],
   // `LicensingSummaryService` exportado **antes de haver consumidor** — é o
   // ponto único por onde métrica de licenciamento sai do módulo (MVP4 §3). Sem

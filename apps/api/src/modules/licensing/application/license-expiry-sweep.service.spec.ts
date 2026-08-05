@@ -14,13 +14,14 @@ import type { PrismaService } from '../../../prisma/prisma.service';
 describe('LicenseExpirySweepService', () => {
   function montar(count = 0) {
     const updateMany = jest.fn().mockResolvedValue({ count });
+    const findMany = jest.fn().mockResolvedValue([{ tenantId: 'tn-1' }, { tenantId: 'tn-2' }]);
     const prisma = {
-      license: { updateMany },
+      license: { updateMany, findMany },
       // Repassa o callback, mas registra que foi chamado: rodar FORA do
       // contexto é o modo silencioso de falhar.
       runInTenantContext: jest.fn((_ids: string[], fn: () => unknown) => fn()),
     } as unknown as PrismaService;
-    return { prisma, updateMany, service: new LicenseExpirySweepService(prisma) };
+    return { prisma, updateMany, findMany, service: new LicenseExpirySweepService(prisma) };
   }
 
   it('marca EXPIRED só o que já venceu e está ACTIVE', async () => {
@@ -63,5 +64,28 @@ describe('LicenseExpirySweepService', () => {
   it('devolve zero no dia em que nada venceu', async () => {
     const { service } = montar(0);
     await expect(service.sweep('tenant-1')).resolves.toBe(0);
+  });
+
+  /**
+   * A varredura de tenants da rodada diária (SPEC-048).
+   *
+   * **Sem filtro de credencial**, ao contrário dos outros dois jobs da fila. O
+   * sweep não fala com ninguém de fora: condicioná-lo a Kiwify ou a PAT deixaria
+   * licença vencida como `ACTIVE` na tela de todo tenant sem aquela credencial —
+   * exatamente o desencontro que este job existe para fechar.
+   */
+  it('varre TODO tenant com licença, sem exigir credencial', async () => {
+    const { service, findMany } = montar();
+
+    const tenants = await service.tenantsComLicenca();
+
+    expect(tenants).toEqual(['tn-1', 'tn-2']);
+    expect(findMany).toHaveBeenCalledWith({
+      distinct: ['tenantId'],
+      select: { tenantId: true },
+    });
+    // A ausência de `where` é a asserção: qualquer filtro aqui esconderia
+    // licenças vencidas de quem não usa a credencial filtrada.
+    expect(findMany.mock.calls[0][0]).not.toHaveProperty('where');
   });
 });

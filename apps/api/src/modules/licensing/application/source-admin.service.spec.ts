@@ -106,6 +106,10 @@ function montar(
       falhas: 0,
       aguardandoUsername: 0,
     })),
+    // O gatilho por evento da SPEC-048. Dobrado como no-op resolvido: o que ele
+    // faz de verdade (enfileirar, e não lançar por Redis fora) tem teste próprio
+    // no spec do `SourceInviteService`.
+    agendarReconciliacao: jest.fn(async () => undefined),
   } as unknown as SourceInviteService;
 
   const revokes = {
@@ -265,6 +269,22 @@ describe('gravar o username (só pelo admin)', () => {
       type: 'source_username_set',
       payload: { username: 'RodReis', previous: 'antigo', by: 'admin' },
     });
+  });
+
+  it('antecipa a rodada ao gravar (SPEC-048), depois de persistir', async () => {
+    const c = montar({
+      licenca: { id: 'l1', sourceAccess: 'PENDING', githubUsername: null },
+    });
+
+    await c.service.setUsername(TENANT, 'l1', 'rodreis');
+
+    // Sem o gatilho, quem responde depois do 8º dia esperaria até 24 h pela
+    // rodada da madrugada. Com ele, o convite sai em segundos — e o prazo
+    // continua intacto, porque quem filtra é o `reconcile`, não este atalho.
+    expect(c.invites.agendarReconciliacao).toHaveBeenCalledWith(TENANT);
+    // Depois do update: antecipar antes faria o worker ler a licença sem o
+    // username, e a rodada não acharia nada para convidar.
+    expect(c.updates).toHaveLength(1);
   });
 
   describe('substituir username com convite já emitido', () => {

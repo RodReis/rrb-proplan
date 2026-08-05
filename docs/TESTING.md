@@ -343,6 +343,39 @@ exponencial a partir de 10 s). Depois de reenfileirar, a entrega volta a
 `PENDING`: **o toast não afirma que o e-mail chegou**, porque o job é assíncrono
 — recarregar é o que mostra o desfecho.
 
+## 8.4. Convite e expiração automáticos: o que só a produção fecha (SPEC-048)
+
+Desde a Fatia 37 o convite ao repositório e o sweep de expiração rodam sozinhos.
+**Testar isso ao vivo tem um limite físico:** o convite só sai no **8º dia** após
+a compra, e o prazo é a guarda que protege a janela de reembolso do CDC — não há
+como encurtá-lo para conferir mais rápido sem desligar exatamente o que se quer
+provar.
+
+**O que a suíte já prova, e não precisa de dogfooding:** que os dois gatilhos
+passam pelo mesmo filtro `sourceInviteAt <= agora` (nenhum fura o prazo), que o
+registro do agendamento é idempotente, que Redis fora do ar não derruba o boot
+nem a gravação do username, que `FAILED` não é retentado, e que um tenant com PAT
+quebrado não impede a rodada dos demais.
+
+**O que só a produção fecha:**
+
+| verificação | como | quando |
+|---|---|---|
+| o convite sai **sozinho** no 8º dia | comprar a edição source, informar o username, **não clicar em nada** e conferir a licença em `INVITED` | 8 dias após a compra |
+| quem responde tarde entra em segundos | numa licença já com prazo vencido, gravar o username e recarregar | imediato |
+| a lista para de mostrar `ACTIVE` vencida | conferir no dia seguinte uma licença com `expiresAt` no passado | +1 dia |
+
+**O que o teste NÃO deve concluir:** que "o convite não saiu" é falha do job.
+Antes do 8º dia **a ausência de convite é o comportamento correto** — inclusive
+clicando no botão *reemitir* do admin, que sempre chamou a mesma rodada e nunca
+furou o prazo. Confira `sourceInviteAt` antes de abrir bug.
+
+**Onde olhar quando algo não sai:** o log de cada rodada nomeia o tenant e o
+horário (`4 h` o convite, `5 h` a expiração, `3 h` o catálogo — distintos de
+propósito, para uma falha ser legível isolada). Licença parada em `PENDING` com
+prazo vencido e **sem** username é pendência do comprador, não do job — e a lista
+de pendências do admin já a mostra.
+
 ## 9. Decisões operacionais (resolvidas pelo PI em 2026-07-15)
 
 - **Comando:** `pnpm test:report`.
