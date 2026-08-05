@@ -2265,6 +2265,18 @@ export interface LicSettingsView {
   webhookSecretSet: boolean;
   /** `null` = o ProPlan não corta por atraso (decisão PI #3). */
   pastDueToleranceDays: number | null;
+  /**
+   * As credenciais da API pública da Kiwify (SPEC-047).
+   *
+   * **`client_id` e `account_id` voltam; o secret nunca** — é a assimetria da
+   * própria dashboard da Kiwify, onde os dois primeiros aparecem em claro e o
+   * terceiro mascarado.
+   */
+  kiwifyClientId: string | null;
+  kiwifyAccountId: string | null;
+  kiwifyClientSecretSet: boolean;
+  /** Os três presentes — é o que liga o job e o botão de busca. */
+  kiwifyApiConfigured: boolean;
 }
 
 export function getLicensingSettings(): Promise<LicSettingsView> {
@@ -2279,6 +2291,14 @@ export function getLicensingSettings(): Promise<LicSettingsView> {
 export function updateLicensingSettings(input: {
   webhookSecret?: string;
   pastDueToleranceDays?: number | null;
+  /**
+   * As três da Kiwify (SPEC-047). Omitido não é tocado; **string vazia é
+   * recusada** com `422` — gravar `''` criaria um segundo jeito de dizer *não
+   * configurado*, com sintoma mudo (job falhando toda madrugada).
+   */
+  kiwifyClientId?: string;
+  kiwifyClientSecret?: string;
+  kiwifyAccountId?: string;
 }): Promise<LicSettingsView> {
   return request('/licensing/settings', {
     method: 'PUT',
