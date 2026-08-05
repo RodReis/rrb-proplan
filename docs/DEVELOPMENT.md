@@ -9073,3 +9073,89 @@ do trio, não conserto mecânico.
   PI, fora de escopo.
 - **O corte foi de 13 KB, não os ~57 KB previstos** no card: aquele número
   media o `STATUS.md` inteiro, não a seção do Índice.
+
+---
+
+## FIX #284 (MVP3/SPEC-031) — Combos do briefing público vazias em produção — `entregue`
+
+O formulário público do briefing (`/b/:token`) abria a Etapa 1 com **Segmento,
+Estado e Cidade sem nenhuma opção**. Como segmento e estado são obrigatórios, o
+link estava tecnicamente no ar e praticamente inutilizável: o cliente não passava
+da primeira das nove etapas.
+
+### O que provou a causa
+
+Nada na tela. As três rotas públicas respondiam `200` — com listas vazias:
+
+```
+GET /b/<token>          → {"status":"valid","step":1,"answers":{},"totalSteps":9}
+GET /b/<token>/catalog  → {"segments":[],"states":[],"services":{}}
+GET /b/<token>/cities/SP → []
+```
+
+Link válido, rota funcionando, resposta bem-formada. A contagem direta no banco
+de produção fechou o caso: `{"segments":0,"states":0,"cities":0}`.
+
+### Migração cria, seed popula — e só um dos dois rodava
+
+`apps/api/railway.json` tinha como `preDeployCommand` apenas
+`prisma migrate deploy`. Migração cria tabela; não insere linha. Como esse era o
+**único** passo automático que tocava o banco, as três tabelas de referência
+nunca receberam dado — desde o primeiro deploy.
+
+O comportamento correto já estava escrito desde a SPEC-031, no cabeçalho do
+próprio `prisma/seed.ts`: *"Localidades e segmentos (SPEC-031 §3): dado de
+REFERÊNCIA, não de dev — vale em produção também"*. Não havia decisão de produto
+a tomar, o que qualificou o card como `[FIX]` sem spec.
+
+### Por que não bastou pendurar o `seed.ts` no deploy
+
+Duas barreiras, ambas descobertas executando, não lendo:
+
+1. **`ts-node` não existe no runtime.** O `Dockerfile` reinstala com `--prod`
+   antes de montar a imagem final. E o `tsconfig` da api inclui só `src/**`, de
+   modo que `prisma/` nunca teria saída em `dist/` para chamar como JS.
+2. **O `main()` faz muito mais do que dado de referência.** Ele também aplica
+   catálogo de serviços, templates de contrato e licenciamento aos tenants **já
+   existentes** — e o comentário do próprio `seedServiceCatalog` admite que
+   *"item que o dono apagou volta"*. Tolerável num seed de dev rodado à mão;
+   inaceitável a cada deploy de produção, onde seria dado do cliente
+   ressuscitando sozinho.
+
+### O que entrou
+
+| arquivo | mudança |
+|---|---|
+| `apps/api/prisma/reference.seed.mjs` | **novo** — segmentos + localidades, JS puro (sem passo de build) |
+| `apps/api/prisma/seed-reference.mjs` | **novo** — entrypoint do deploy; falha aborta o deploy |
+| `apps/api/prisma/seed.ts` | passa a **importar** dali; as listas saíram daqui |
+| `apps/api/railway.json` | `preDeployCommand` ganha `&& node prisma/seed-reference.mjs` |
+| `docs/DEPLOY.md` | §7.2 nova + §2 e §7 atualizadas |
+
+A escolha de **importar em vez de duplicar** é o ponto do desenho: com duas
+cópias das listas, a de produção divergiria da de dev na primeira atualização do
+IBGE, e o sintoma seria dado diferente por ambiente — pior de diagnosticar que a
+tela vazia original.
+
+Sai de lá **só tabela global** (sem `tenant_id`, sem RLS). É isso que torna a
+reexecução segura por construção, e é o que permite pendurá-la no deploy sem
+medo: rodada duas vezes contra o banco local, as contagens ficaram idênticas
+(16 segmentos, 27 estados, 5.571 cidades).
+
+### Verificação
+
+Seed aplicado em produção; depois, na API real: `segments: 16`, `states: 27`,
+`cities/SP: 645`. Na tela ao vivo, o `<select>` de segmento com 17 opções (16 +
+placeholder), o de estado com 28, e a cascata estado→cidade devolvendo as 645 de
+SP ao escolher "São Paulo". Sem erro de console.
+
+### O que ficou fora, e por quê
+
+- **`services` continua `{}`** no `/catalog`. É o catálogo de produtos/serviços
+  **do tenant**, não dado de referência — populá-lo significaria rodar
+  `seedServiceCatalog` contra tenants de produção, exatamente o que a decisão do
+  PI excluiu do escopo. A Etapa 1 funciona sem ele: o campo *Produtos e serviços*
+  aceita item digitado livre, e ausência é informação (ADR-014). Se o PI quiser o
+  catálogo padrão nos tenants existentes, é decisão dele, não conserto de bug.
+- **O agendamento de reseed** quando o IBGE mudar. Hoje atualizar a lista é
+  reseed manual (trocar o JSON versionado); nada expira sozinho. Não era o bug.

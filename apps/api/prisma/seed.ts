@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { CONTRACT_TEMPLATE_SEEDS } from './contract-templates.seed';
+// @ts-expect-error — `.mjs` sem tipos: é JS puro de propósito, para rodar na
+// imagem de produção (sem ts-node). Ver o cabeçalho de `reference.seed.mjs`.
+import { seedReference } from './reference.seed.mjs';
 
 /**
  * Seed de dados de desenvolvimento (CLAUDE.md: sem hardcode/mock — dado local
@@ -13,9 +14,10 @@ import { CONTRACT_TEMPLATE_SEEDS } from './contract-templates.seed';
  * seedamos por completude. Cache write da OpenAI = 0 (não cobra).
  *
  * Localidades e segmentos (SPEC-031 §3): dado de REFERÊNCIA, não de dev — vale
- * em produção também. Vem de arquivo versionado, nunca da API do IBGE em
- * runtime: o formulário público ficaria refém de um terceiro no caminho do
- * cliente. Atualizar a lista é reseed (manutenção), não request.
+ * em produção também, e por isso **não moram mais aqui**: vivem em
+ * `reference.seed.mjs`, que o deploy roda sozinho no `preDeployCommand`
+ * (FIX #284). Este arquivo os importa para que `pnpm prisma:seed` continue
+ * deixando o dev completo numa chamada só.
  */
 const prisma = new PrismaClient();
 
@@ -66,73 +68,6 @@ const PRICES = [
     source: 'openai.com/pricing (gpt-4o — 2026-07)',
   },
 ];
-
-/**
- * Segmentos derivados das seções CNAE 2.3 do IBGE, com rótulo em linguagem de
- * cliente — quem responde o briefing não conhece "Seção J". O `code` é a seção
- * original, para rastrear a origem e permitir refinar depois sem perder o de-para.
- */
-const SEGMENTS = [
-  { code: 'A', label: 'Agropecuária' },
-  { code: 'B', label: 'Indústria extrativa' },
-  { code: 'C', label: 'Indústria de transformação' },
-  { code: 'F', label: 'Construção' },
-  { code: 'G', label: 'Comércio e varejo' },
-  { code: 'H', label: 'Transporte e logística' },
-  { code: 'I', label: 'Alimentação e hospedagem' },
-  { code: 'J', label: 'Tecnologia, mídia e comunicação' },
-  { code: 'K', label: 'Serviços financeiros e seguros' },
-  { code: 'L', label: 'Imobiliário' },
-  { code: 'M', label: 'Serviços profissionais e técnicos' },
-  { code: 'N', label: 'Serviços administrativos' },
-  { code: 'P', label: 'Educação' },
-  { code: 'Q', label: 'Saúde e bem-estar' },
-  { code: 'R', label: 'Arte, cultura, esporte e lazer' },
-  { code: 'S', label: 'Serviços pessoais' },
-];
-
-type Localidades = {
-  source: string;
-  fetchedAt: string;
-  states: Array<{ code: string; name: string }>;
-  cities: Array<{ ibgeId: number; name: string; state: string }>;
-};
-
-/**
- * Estados e cidades do IBGE. Idempotente por chave natural (`code` da UF,
- * `ibgeId` do município) — reseed atualiza nome, não duplica linha.
- */
-async function seedLocalidades() {
-  const file = join(__dirname, 'data', 'ibge-localidades.json');
-  const data = JSON.parse(readFileSync(file, 'utf8')) as Localidades;
-
-  const stateIdByCode = new Map<string, string>();
-  for (const s of data.states) {
-    const row = await prisma.state.upsert({
-      where: { code: s.code },
-      update: { name: s.name },
-      create: { code: s.code, name: s.name },
-    });
-    stateIdByCode.set(s.code, row.id);
-  }
-
-  // 5.5k linhas: `createMany` + `skipDuplicates` em lotes, senão são 5.5k
-  // round-trips. `updateMany` de nome não é necessário — município não é
-  // renomeado com frequência, e reseed com lista nova insere o que faltar.
-  const BATCH = 500;
-  for (let i = 0; i < data.cities.length; i += BATCH) {
-    const batch = data.cities.slice(i, i + BATCH).map((c) => ({
-      ibgeId: c.ibgeId,
-      name: c.name,
-      stateId: stateIdByCode.get(c.state) as string,
-    }));
-    await prisma.city.createMany({ data: batch, skipDuplicates: true });
-  }
-
-  console.log(
-    `Localidades seed: ${data.states.length} estados, ${data.cities.length} cidades (${data.source}, ${data.fetchedAt})`,
-  );
-}
 
 /**
  * Catálogo padrão de produtos/serviços por segmento (SPEC-031 §3). É o ponto
@@ -343,20 +278,10 @@ async function seedLicSettings() {
   );
 }
 
-async function seedSegments() {
-  for (const s of SEGMENTS) {
-    await prisma.segment.upsert({
-      where: { code: s.code },
-      update: { label: s.label },
-      create: s,
-    });
-  }
-  console.log(`Segment seed: ${SEGMENTS.length} segmentos (CNAE 2.3, seções)`);
-}
-
 async function main() {
-  await seedLocalidades();
-  await seedSegments();
+  // Localidades + segmentos. Em produção isto roda sozinho no deploy; aqui é
+  // para o dev ficar completo com um comando só.
+  await seedReference(prisma);
   await seedServiceCatalog();
   await seedContractTemplates();
   await seedLicensing();
