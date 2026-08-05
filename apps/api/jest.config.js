@@ -37,25 +37,13 @@ module.exports = {
         '<rootDir>/test/**/*.e2e-spec.ts',
       ],
       /**
-       * 30 s, contra os 5 s do default do Jest.
-       *
-       * O `beforeAll` destes specs roda `applyMigrations()` — um
-       * `prisma migrate deploy` que sobe processo, conecta e aplica 40+
-       * migrations. Localmente leva ~2 s; no runner do CI, sob carga e
-       * disputando o Postgres de serviço com as outras suítes, passa dos 5 s e
-       * o hook estoura ANTES de qualquer asserção rodar.
-       *
-       * O sintoma engana: a suíte inteira falha com "Exceeded timeout of 5000
-       * ms for a hook", e a leitura natural é "o RLS quebrou" — quando o que
-       * quebrou foi o relógio do setup. Aconteceu no CI do #194 (14 falhas de
-       * uma vez no `contracts-rls`), e o histórico do workflow mostra o mesmo
-       * padrão intermitente em vários branches antes dele.
-       *
-       * Não afrouxa asserção nenhuma: teste que passa continua passando na
-       * mesma velocidade, e teste que trava de verdade ainda falha — 30 s
-       * depois em vez de 5.
+       * O timeout de 30 s destas suítes mora no setup file, NÃO em
+       * `testTimeout` aqui: o Jest 30 ignora `testTimeout` vindo do arquivo de
+       * config, em qualquer posição. Não troque por `testTimeout` — o número
+       * volta a não valer, em silêncio, e o flake de migration volta com ele.
+       * O porquê inteiro está no próprio arquivo (issue #266).
        */
-      testTimeout: 30_000,
+      setupFilesAfterEnv: ['<rootDir>/test/jest-timeout.setup.ts'],
     },
   ],
 };
