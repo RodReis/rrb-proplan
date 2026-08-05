@@ -145,10 +145,8 @@ O repo tem um grafo de conhecimento persistente em `graphify-out/` (gerado pela 
 - `frontend-design` — UI distinta (não cair em shadcn-default genérico)
 -`context7-mcp` - pesquisa na internet
 -`playwright` - smoke ao vivo
--`security-review` - segurança do sistema
--`design-review` - padrões do frontend.
--`code-review` - padrões do código criado.
 -`impeccable` - critique craft layout delight clarify polish optimize 
+- `claude-security` - segurança do sistema.
 
 ## Documentos-chave
 
@@ -160,3 +158,4 @@ O repo tem um grafo de conhecimento persistente em `graphify-out/` (gerado pela 
 - `docs/STATUS.md` — Kanban/roadmap deste projeto (mantenha atualizado ao concluir fatias)
 - `docs/LANDSCAPE.md` — **cenário competitivo datado**: o que o mercado já faz, o que morreu por causa disso, e os gatilhos que obrigam a revisar. Ler antes de propor feature de MVP2 — evita reconstruir o que já existe de graça (ADR-017)
 - `docs/TESTING.md` — Teste de QA, Resultado dos teste das SPEC.
+- `docs/PRODUTOS-LICENCIADOS.md` — **os 7 elos entre a venda e o produto na mão do cliente**, o checklist de onboarding de produto novo, as envs que o licenciamento exige e as armadilhas que já custaram caro (o *Testar Webhook* sujando o de-para, um webhook por tenant). Registro operacional do Code, verificado em produção — a normação do processo passa pelo Cowork/PI
