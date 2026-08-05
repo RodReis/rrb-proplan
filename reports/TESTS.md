@@ -14,7 +14,7 @@ Totais da última execução (regenerado, não acumulado):
 |------|-------|------|-----------|-------:|-----:|------:|------------:|----:|--------|
 | — | — | — | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
 | — | — | — | Banco | 298 | 298 | 0 | 60.1 | — | — |
-| — | — | — | Tela | 830 | 830 | 0 | — | — | — |
+| — | — | — | Tela | 830 | 830 | 0 | 62.9 | — | — |
 
 ## Histórico por entrega
 
@@ -346,3 +346,6 @@ Append-only — linhas de entregas passadas são imutáveis.
 | — | #276 | SPEC-048 | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
 | — | #276 | SPEC-048 | Banco | 298 | 298 | 0 | 60.1 | — | — |
 | — | #276 | SPEC-048 | Tela | 830 | 830 | 0 | — | — | — |
+| — | #276 | SPEC-048 | Regras de Negócio | 2385 | 2385 | 0 | 82.3 | — | — |
+| — | #276 | SPEC-048 | Banco | 298 | 298 | 0 | 60.1 | — | — |
+| — | #276 | SPEC-048 | Tela | 830 | 830 | 0 | 62.9 | — | — |
