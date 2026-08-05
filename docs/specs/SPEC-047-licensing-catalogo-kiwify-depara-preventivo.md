@@ -3,7 +3,7 @@ proplan: v1
 spec: SPEC-047
 fatia: 36
 status: aprovada-pi # rascunho | aprovada-pi | em-implementacao | entregue | aceita-pi
-updated: 2026-08-04
+updated: 2026-08-05
 ---
 # SPEC-047 — Licensing: o catálogo da Kiwify expõe a oferta sem de-para **antes** da primeira venda
 
@@ -44,7 +44,9 @@ A Kiwify expõe o que falta (verificado em 2026-08-04, docs.kiwify.com.br):
 - `GET https://public-api.kiwify.com/v1/products` — lista paginada de produtos
   (`id`, `name`, `status`, ...).
 - `GET /v1/products/{id}` — detalhe com `offers[]` (`id`, `name`, `price`,
-  `active`) — **a granularidade exata do `LicOfferMapping`**.
+  `active`) — **a granularidade exata do `LicOfferMapping`**. **`offers[]` pode
+  vir vazio** num produto ativo que vende com `price` nele mesmo — ver
+  §`offers[]` vazio.
 - Autenticação: OAuth client credentials — `POST /v1/oauth/token` exige
   `client_id` **e** `client_secret` (ambos obrigatórios; gerados em *Apps >
   API* na dashboard, junto do `account_id`). A doc pede para **não** gerar
@@ -150,6 +152,25 @@ Regras do bloco 3:
 - Sem snapshot ainda (tenant recém-configurado, job não rodou): o bloco mostra
   o convite ao botão, não um vazio mudo.
 
+### `offers[]` vazio: o produto que vende sem oferta (emenda 2026-08-04)
+
+**A versão original desta spec errou**: afirmava que `externalOfferId` é
+*"nunca nulo: a API lista ofertas concretas"*. A doc oficial da Kiwify desmente
+— o exemplo de `GET /v1/products/{id}` traz `"offers": []` num produto **ativo
+com `price: 500`**: produto que vende com o preço nele mesmo, sem nenhuma
+oferta no array.
+
+O erro tinha consequência, e ela era exatamente o bug que esta fatia veio
+matar: tratar "sem oferta" como "nada a listar" deixaria esse produto
+**invisível** no bloco 3 — a primeira compra dele voltaria a ser o primeiro
+aviso.
+
+**O certo**: `offers: []` vira **uma linha de curinga do produto**
+(`externalOfferId: null`), que é o que o `LicOfferMapping` já modela — nulo ali
+sempre significou *qualquer oferta daquele produto* — e o que `seen-offers.ts`
+já sabe casar. Zero mecanismo novo: o modelo de dados já previa este caso antes
+da spec o descrever errado.
+
 ### A lacuna se anuncia no cartão (decisão PI #3)
 
 A etiqueta neutra `M sem de-para` do cartão (SPEC-046) passa a **somar os
@@ -238,8 +259,11 @@ cruzado com os mapeamentos do tenant (cruzamento derivado na leitura):
 export interface OfertaCatalogo {
   externalProductId: string;   // Product.id na Kiwify
   productName: string;
-  externalOfferId: string;     // Offer.id — nunca nulo: a API lista ofertas concretas
-  offerName: string;
+  // `null` quando o produto não tem ofertas (`offers: []`) — a linha vira
+  // curinga do produto. Ver §`offers[]` vazio. **Corrigido em 2026-08-04**:
+  // a versão original desta spec dizia "nunca nulo".
+  externalOfferId: string | null;
+  offerName: string | null;
   coberta: boolean;            // mapeamento exato OU curinga do produto
 }
 
@@ -312,9 +336,31 @@ primeira:
    escolhida à mão. Auto-mapear só volta como proposta escrita com cenários de
    erro documentados.
 
+### Emenda de 2026-08-04 (pós-entrega)
+
+- **`externalOfferId` não é "nunca nulo"** — corrigido no contrato e explicado
+  em §`offers[]` vazio. O erro era da spec; o código entregue já faz o certo.
+
+### O que a entrega provou além do previsto
+
+O dogfooding pós-limpeza validou a **decisão PI #3** por prova de quebra: com
+`dcec8ed0…` de volta ao bloco 2, a etiqueta neutra somou, **o badge de atenção
+não acendeu e o cartão não ficou laranja**. A separação que a SPEC-046 fez
+continua de pé com o terceiro bloco em cima dela — que era o risco real de
+empilhar mais um bloco na mesma aba.
+
 ### Pendências que não bloqueiam esta fatia
 
 - **Aviso no momento da falha de `order_approved`** — herdada da SPEC-046,
   segue aberta.
 - **Ligar o purge da SPEC-043 no agendador** — destravada pelo ADR-029; é do
-  Code (comportamento já documentado), no PR desta fatia ou em FIX próprio.
+  Code (comportamento já documentado), no Backlog como
+  [#271](https://github.com/RodReis/rrb-proplan/issues/271).
+- **A origem do de-para não é visível** (achado do dogfooding, 2026-08-04). A
+  tela mostra todos os `LicOfferMapping` iguais — não dá para saber qual nasceu
+  de venda, qual do catálogo e qual foi digitado à mão; foi por isso que o
+  desempate precisou da dashboard. Marcar a origem resolveria, **mas é decisão
+  de produto e não entra por FIX**: exigiria coluna nova (`origem`) e, com ela,
+  a pergunta de o que fazer com as linhas que já existem sem origem conhecida.
+  Volta como fatia pelo Cowork **se a operação sentir falta** — mesmo critério
+  com que a SPEC-046 deixou "distinguir a causa" de fora.
