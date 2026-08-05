@@ -622,3 +622,35 @@ O que muda em relação ao caso do ADR-025 é o **dono do arquivo**. Lá, o bin�
 - **Ativar o Supabase Storage.** Tiraria o Supabase da reserva (ADR-022) e traria um segundo fornecedor ao caminho de dados para hospedar um arquivo que **já está hospedado**. O free tier que pausa após 7 dias sem request é especialmente ruim aqui: update é acesso esporádico por natureza.
 - **Volume do Railway.** Prende a API a uma instância e cria um segundo procedimento de backup no `DEPLOY.md` — os mesmos motivos que o ADR-025 já usou para recusá-lo, agravados por o arquivo ser 8× maior.
 - **Publicação automática pelo CI do War Room.** Fora de escopo por decisão do PI (SPEC-041 §Fora de escopo), não por este ADR: exigiria token de máquina com escrita administrativa dentro do módulo que guarda as licenças. Gatilho de revisão: passar de ~1 release por semana no piloto.
+
+## ADR-029 — O agendador do repo é BullMQ repeatable job; não há segundo mecanismo
+
+**Status**: **aprovado pelo PI em 2026-08-04** (decisão 1 da SPEC-047), redigido pelo Code no PR-1 da Fatia 36 — mesmo caminho dos ADR-026/027/028.
+
+**Contexto**: até aqui o repo **não tinha agendador nenhum**, e isso está documentado como ausência deliberada: o `SourceInviteService` (SPEC-039 PR-3) registra em comentário que a reconciliação do convite ficou *"sem agendador de propósito: não há `@nestjs/schedule` nem `repeat` no repo e a spec não diz como dispara — escolher isso é decisão de infra"*. O método ficou chamável e o botão do admin virou o gatilho.
+
+Duas fatias chegaram ao mesmo ponto por caminhos independentes:
+
+- **A SPEC-047** precisa de um sync diário do catálogo da Kiwify. Sem ele, a lacuna de de-para só apareceria quando alguém clicasse no botão — e o caso que abriu a fatia é justamente o do operador que **não sabe que precisa olhar**.
+- **A SPEC-043** especificou retenção de 90 dias para relatos de erro e ficou no Backlog esperando exatamente esta decisão. O purge existe como comportamento documentado, sem nada que o dispare.
+
+Duas demandas com o mesmo formato — *"rode isto de tempos em tempos"* — é o ponto em que escolher o mecanismo deixa de ser prematuro.
+
+**Decisão**:
+
+1. **O agendador do repo é o BullMQ repeatable job.** Redis e BullMQ já são o stack de jobs assíncronos (ADR-004), já rodam em produção (Railway) e no dev (docker-compose). Zero dependência nova, zero serviço novo na fatura.
+2. **Todo job recorrente novo entra por aqui.** Não há segundo mecanismo de agendamento no repo — nem `@nestjs/schedule`, nem cron do Railway, nem `setInterval` em `onModuleInit`. Duas formas de agendar significam dois lugares para procurar quando algo não rodou.
+3. **O registro é idempotente por chave estável.** O repeatable é registrado no boot com `jobId` fixo; reiniciar a API — ou subir uma segunda instância — **não pode** duplicar a rodada. Um deploy que dobrasse a frequência de um purge de 90 dias seria destrutivo e silencioso.
+4. **Todo handler recorrente roda dentro de `runInTenantContext`.** Fora de request o RLS é fail-closed: ler ou gravar sem contexto **não dá erro, dá zero linhas** (o `LicensingWorker` já documenta isso). Um job "bem-sucedido" que não achou nada tem a mesma cara de um tenant sem dados.
+5. **Primeiro consumidor**: o sync diário do catálogo (SPEC-047). **Segundo, imediato**: o purge de 90 dias da SPEC-043, que este ADR destrava — entra como `[FIX]` próprio, citando esta decisão (decisão PI, 2026-08-04).
+
+**Consequência**: o Redis passa a ser dependência de **correção**, não só de vazão. Antes, Redis fora do ar atrasava o processamento de um webhook e a entrega se recuperava na volta; agora, Redis fora do ar por dias significa também que o catálogo envelhece e que relatos passam da janela de retenção sem serem apagados. Aceitável e assimétrico de propósito: **nenhum dos dois jobs é caminho de dinheiro**. A venda continua entrando pelo webhook, e a pior consequência de um sync perdido é a etiqueta do cartão ficar com a idade visível no `fetchedAt` — que é exatamente o que o `fetchError` e o carimbo da SPEC-047 tornam legível na tela.
+
+**O que este ADR não decide**: a frequência de cada job (é de cada spec), nem transforma em recorrente o que hoje é acionado por botão. O `SourceInviteService` continua como está — o comentário dele registra a ausência de agendador, e passar a agendá-lo é decisão da fatia que provar a necessidade, não efeito colateral desta.
+
+**Alternativas rejeitadas**:
+
+- **`@nestjs/schedule` (`@Cron`).** Mais simples de escrever, e é o que a maioria dos projetos Nest usa. Rejeitado por ser **in-process**: com duas instâncias da API no Railway, o cron dispara **duas vezes** — e nada no código acusa. Num sync de catálogo isso é desperdício de rate limit; num purge de 90 dias é escrita destrutiva duplicada. Exigiria um lock distribuído para ser correto — e o lock distribuído teria de morar no Redis, que é onde o BullMQ já resolve o problema.
+- **Cron do Railway (serviço agendado separado).** Traria um segundo processo a manter, com o mesmo `DATABASE_URL` e as mesmas migrations, para disparar o que uma fila já dispara. Também tiraria a rodada da observabilidade da fila: hoje um job que falha é inspecionável como qualquer outro job do repo.
+- **`setInterval` no `onModuleInit`.** Além do problema de múltiplas instâncias, morre em silêncio com o processo e não sobrevive a restart no meio de uma rodada. Sem retry, sem histórico, sem visibilidade.
+- **Não agendar; deixar tudo no botão** (o estado atual). É a alternativa mais barata e foi a decisão certa até esta fatia. Deixa de ser: o botão exige que alguém **saiba que precisa clicar**, e a SPEC-047 nasceu justamente do caso em que ninguém sabia — a lacuna só apareceu quando um cliente pagou.
