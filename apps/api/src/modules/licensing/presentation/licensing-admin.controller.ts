@@ -41,6 +41,7 @@ import {
   type OfferMappingInput,
   type UpdateSettingsInput,
 } from '../application/licensing-ops.service';
+import { MailOpsService } from '../application/mail-ops.service';
 import { LicensePrivacyService } from '../application/license-privacy.service';
 import { LicensingSummaryService } from '../application/licensing-summary.service';
 import { CatalogReadService } from '../application/catalog-read.service';
@@ -119,6 +120,10 @@ export class LicensingAdminController {
     private readonly catalog: LicCatalogService,
     private readonly signing: LicenseSigningService,
     private readonly ops: LicensingOpsService,
+    // A outra metade de Pendências (FIX #254). Service próprio, e não métodos
+    // do `LicensingOpsService`: aquele responde "a venda virou licença?"; este,
+    // "a chave chegou ao comprador?". Duas perguntas, duas tabelas.
+    private readonly mailOps: MailOpsService,
     private readonly source: SourceAdminService,
     private readonly privacy: LicensePrivacyService,
     private readonly summaries: LicensingSummaryService,
@@ -411,6 +416,44 @@ export class LicensingAdminController {
   @Post('webhook-events/:id/reopen')
   reopen(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.ops.reopen(id, req.tenantId!);
+  }
+
+  // =========================================================================
+  // Entregas de e-mail (FIX #254) — a outra metade de Pendências.
+  //
+  // A aba mostrava só as entregas da plataforma. Uma chave emitida cujo e-mail
+  // nunca saiu é **exatamente uma pendência** — o cliente pagou e não recebeu —
+  // e esse estado só existia dentro do detalhe de uma licença específica: para
+  // achar a falha era preciso já saber qual licença abrir.
+  // =========================================================================
+
+  /**
+   * Entregas de e-mail do tenant, com filtro por status e o veredito de reenvio
+   * em cada linha.
+   *
+   * `status` inválido é **ignorado**, não recusado — ao contrário da lista de
+   * licenças. A razão é o que cada resposta errada custa aqui: devolver vazio
+   * para um filtro desconhecido diria *"nenhum e-mail foi enviado"*, que é a
+   * afirmação que esta tela existe para não fazer.
+   */
+  @Get('mail-deliveries')
+  mailDeliveries(@Req() req: AuthenticatedRequest, @Query('status') status?: string) {
+    return this.mailOps.list(req.tenantId!, status);
+  }
+
+  /**
+   * Reenfileira uma entrega de e-mail, remontando os dados do template a partir
+   * da licença — eles nunca foram persistidos.
+   *
+   * **O `license_key` responde `422`**: a chave em claro não existe em lugar
+   * nenhum (SPEC-036), então reenviar mandaria uma mensagem dizendo *"esta é a
+   * sua chave"* com o campo vazio. O caminho é reemitir, que gera chave nova e
+   * revoga a anterior. A tela nem mostra o botão; esta guarda é para a chamada
+   * direta.
+   */
+  @Post('mail-deliveries/:id/retry')
+  retryMailDelivery(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.mailOps.retry(req.tenantId!, id);
   }
 
   /**

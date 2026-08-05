@@ -310,6 +310,39 @@ visível: escondê-la faria a próxima venda falhar sem aviso.
 blocos. Mapear funciona em ambos e cria o mesmo `LicOfferMapping` — no bloco
 neutro o efeito é sobre **vendas futuras**, e o toast não sugere reprocessar.
 
+## 8.3. Entregas de e-mail em Pendências: o que dá para reenfileirar (FIX #254)
+
+A aba **Pendências** tem duas seções, e a ordem é a da venda: *Entregas da
+plataforma* (a Kiwify mandou o evento?) e *Entregas de e-mail* (a chave chegou ao
+comprador?). **Ler nessa ordem importa ao testar**: uma falha na primeira explica
+a ausência na segunda — sem isso, procura-se um e-mail que nunca foi enfileirado.
+
+**O botão *Reenfileirar* aparece só na falha, e nem em toda falha.** Não é
+inconsistência de tela: três casos são impossíveis por construção, e a linha diz
+qual é, com o caminho que resolve.
+
+| template | reenfileira? | por quê |
+|---|---|---|
+| `license_key` (*Chave da licença*) | **não** | a chave em claro não é persistida (SPEC-036) — o e-mail sairia com o campo vazio. O caminho é **Reemitir**, que gera chave nova e revoga a anterior |
+| `source_username_request` (*Pedido do usuário do GitHub*) | **não** | a URL carrega token de uso único, e só o hash é guardado. O caminho é reemitir o link de coleta |
+| `license_revoked`, `source_username_confirmed` | **sim** | os dados do template são remontáveis a partir da licença |
+| qualquer um, sem licença vinculada | **não** | o módulo `mail` é compartilhado; sem licença não há de onde remontar o `data` |
+
+**O que o teste NÃO deve concluir:** que "reenfileirar sumiu" é bug. Um botão que
+sempre falharia é pior que a sua ausência — ensina a ignorar erro. A mesma
+decisão do `canReprocess` da seção irmã, onde `PROCESSED` também não oferece
+reprocessar.
+
+**O badge conta só `FAILED`.** `PENDING` é o caminho normal (o job vai pegar), e
+somá-lo faria a seção acender toda vez que uma venda acabou de chegar.
+
+**Ao conferir uma falha:** a linha mostra o destinatário, o motivo do erro e as
+**tentativas gastas** — é o que distingue *"falhou uma vez e o retry resolve"* de
+*"falhou cinco vezes e alguém precisa olhar"* (o BullMQ tenta 5 vezes com backoff
+exponencial a partir de 10 s). Depois de reenfileirar, a entrega volta a
+`PENDING`: **o toast não afirma que o e-mail chegou**, porque o job é assíncrono
+— recarregar é o que mostra o desfecho.
+
 ## 9. Decisões operacionais (resolvidas pelo PI em 2026-07-15)
 
 - **Comando:** `pnpm test:report`.

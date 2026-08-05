@@ -21,6 +21,7 @@ import { ErrorReportsPanel } from './ErrorReportsPanel';
 import { LicenseDangerActions } from './LicenseDangerActions';
 import { LicensingSettingsPanel } from './LicensingSettingsPanel';
 import { MetricsPanel } from './MetricsPanel';
+import { MailOpsPanel } from './MailOpsPanel';
 import { WebhookOpsPanel } from './WebhookOpsPanel';
 import { Aviso, Cartao, Etiqueta, LinhaCartao, TituloSecao } from './licensingUi';
 import {
@@ -675,7 +676,16 @@ export function LicensesPage() {
           {/* Pendências: só o que falhou e pede conserto. O acesso ao
               código-fonte saiu daqui para Métricas (decisão do PI, 2026-07-31),
               onde a contagem e a lista acionável passam a viver juntas. */}
-          {aba === 'pendencias' && <WebhookOpsPanel catalogo={catalogo} />}
+          {/* Duas seções, e a ordem é a da venda: a plataforma entrega o evento,
+              nós emitimos a licença, o e-mail leva a chave ao comprador. Uma
+              falha na primeira explica a ausência na segunda — ler nessa ordem
+              evita caçar e-mail que nunca foi enfileirado (FIX #254). */}
+          {aba === 'pendencias' && (
+            <div className="grid gap-4">
+              <WebhookOpsPanel catalogo={catalogo} />
+              <MailOpsPanel />
+            </div>
+          )}
 
           {aba === 'erros' && <ErrorReportsPanel catalogo={catalogo} />}
 

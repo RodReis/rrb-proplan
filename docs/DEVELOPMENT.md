@@ -8084,9 +8084,10 @@ Uma linha de `logger.warn` teria transformado uma sessão em trinta segundos.
 
 - **SPF/DKIM/DMARC da caixa Hostinger** — a troca de provedor não os dispensa.
   Sem eles o sintoma é o pior: `SENT` gravado, comprador sem receber.
-- **#254** — entrega de e-mail falhada continua invisível na aba Pendências.
+- ~~**#254** — entrega de e-mail falhada continua invisível na aba Pendências.
   Aparece só dentro do detalhe da licença, ou seja: é preciso já saber a
-  resposta para achar a pergunta.
+  resposta para achar a pergunta.~~ → **entregue em 2026-08-05**; ver
+  [`FIX #254`](#fix-254-spec-038--a-entrega-de-e-mail-falhada-aparece-em-pendências--entregue).
 
 ## Fatia 34 (SPEC-045) — Licensing: descartar evento de webhook sem apagar a trilha — `entregue`
 
@@ -8670,3 +8671,97 @@ apagado.
   mas **corrigir a spec é do Cowork**.
 - **Ligar o purge de 90 dias da SPEC-043** no agendador que o ADR-029 destravou
   — vira `[FIX]` próprio, com o comportamento correto já documentado.
+
+## `[FIX] #254` (SPEC-038) — a entrega de e-mail falhada aparece em Pendências — `entregue`
+
+Issue **#254**, aberta pelo FIX #253 como pendência declarada. Comportamento
+correto já escrito na **SPEC-038 §Escopo** (*"falha visível no admin, não só no
+log"*) e nos **§Critérios de aceite** (*"o registro de envio fica `FAILED` com o
+erro"*) — logo `[FIX]`, sem spec nova.
+
+### O problema
+
+A aba **Pendências** mostrava só *Entregas da plataforma* (webhooks). Uma
+entrega de e-mail em `FAILED` existia apenas dentro do detalhe de uma licença
+específica (`LicenseDetail.mailDeliveries`): **para achar a falha era preciso já
+saber qual licença abrir** — ou seja, já saber a resposta.
+
+Uma chave que não chegou ao comprador é exatamente uma pendência: o cliente
+pagou e não recebeu o que comprou. Foi o que aconteceu em 2026-08-04 (#253) —
+licenças emitidas, e-mails enfileirados, nenhum chegou, e a tela chamada
+*Pendências* não tinha nada a dizer sobre isso.
+
+### O achado que mudou o escopo
+
+A issue dizia *"a ação de reenfileirar o `MailService` já expõe, falta a
+superfície"*. **Falta mais que a superfície:** `retry(tenantId, deliveryId,
+data)` exige os dados do template **de novo**, porque eles nunca foram
+persistidos — e para o `license_key`, o template que motiva a issue inteira, a
+chave em claro **não existe mais em lugar nenhum** (garantia da SPEC-036: o
+banco guarda o hash, a `MailDelivery` guarda `template` e `subject`, nunca o
+corpo).
+
+Reenfileirar um `license_key` mandaria ao comprador uma mensagem dizendo *"esta
+é a sua chave"* com o campo vazio — **pior que não reenviar**, porque parece que
+funcionou.
+
+Persistir os dados do template resolveria o retry e foi **rejeitado**: guardar o
+`data` do `license_key` é guardar a chave em claro por outro nome, e desfaz a
+garantia central da fatia 25.
+
+**Decisão do PI (opção A):** entregar a visibilidade inteira, reenfileirar nos
+templates remontáveis, e na chave mostrar o motivo com o caminho que resolve —
+*Reemitir*, que gera chave nova e revoga a anterior. Mesmo princípio do
+`canReprocess` do webhook: **botão que sempre falha ensina a ignorar erro**.
+
+### O que entrou
+
+- `MailOpsService` (no `licensing`) — lista com o veredito `canRetry` por linha
+  e reenfileira remontando o `data` do template a partir da licença.
+- `MailService.find(tenantId, id)` — busca por id. **Existe porque o `list`
+  trunca em 200**: procurar ali a entrega a reenfileirar acharia só as recentes,
+  e uma falha antiga responderia *"não encontrada"* — o mesmo beco que este FIX
+  fecha. O mapeamento linha→view virou `paraView`, um lugar só.
+- `GET /licensing/mail-deliveries` e `POST /licensing/mail-deliveries/:id/retry`.
+- `MailOpsPanel` + `mailOpsView` — filtros (Falhas · Aguardando · Enviadas ·
+  Todas), badge de falhas, template em português, destinatário, tentativas
+  gastas e o motivo do erro.
+
+**Três recusas, e cada uma é uma decisão:** `license_key` (a chave não existe
+mais), `source_username_request` (o token do link é de uso único, só o hash é
+persistido) e entrega **sem licença vinculada** (o `mail` é compartilhado e o
+MVP3 vai mandar e-mail sem licença por trás — um `data: {}` genérico
+renderizaria template quebrado). As três respondem `422` **com o caminho**, não
+só com a negativa.
+
+### Onde o service mora, e por quê
+
+No `licensing`, não no `mail`. A arch-spec de lá varre três regras, e duas
+mordem aqui: o `mail` **não conhece licença** (remontar o `data` exige conhecer),
+e **quem escreve em `mail_deliveries` é o `mail`** (então a leitura e a escrita
+continuam sendo dele — nada em `MailOpsService` toca `prisma.mailDelivery`). O
+que vive no `licensing` é só a decisão de **quais entregas podem voltar à fila e
+com que dados**.
+
+### O tropeço que já é padrão
+
+O `licensing-admin.controller.spec.ts` quebrou pela **quarta vez** ao ganhar uma
+dependência — o arquivo já documentava as três anteriores. A causa está
+registrada agora, e não só o remendo: o construtor é **posicional com 12
+dependências**, então toda adição desloca o resto. A quebra é de compilação —
+barulhenta e barata, que é o que a torna tolerável até alguém decidir mudar a
+forma.
+
+24 testes novos (10 no `mail-ops.service.spec.ts` + 2 no `mail.service.spec.ts` +
+8 no `MailOpsPanel.test.tsx` + 9 no `mailOpsView.test.ts` — 29 no total, 24
+líquidos). Suíte: **2367 regras · 290 banco · 830 tela**. Build, lint, e2e (2/2)
+e `test:report:check` verdes.
+
+### O que este FIX deixa em aberto
+
+- **Alerta ativo** (e-mail ao operador quando um envio falha) continua fora,
+  como a SPEC-040 §Pendências já registrava: *"nesta fatia a pendência é
+  visual"*. Quem opera ainda precisa abrir a aba para saber.
+- **O reenfileirar não foi exercido em produção** — depende de uma entrega que
+  falhe de verdade. Os três caminhos de recusa e o de sucesso estão cobertos por
+  teste; o que falta é o SMTP cair uma vez.

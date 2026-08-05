@@ -14,6 +14,7 @@ import { LicenseAdminService } from './application/license-admin.service';
 import { LicenseExpirySweepService } from './application/license-expiry-sweep.service';
 import { LicenseSigningService } from './application/license-signing.service';
 import { LicensingOpsService } from './application/licensing-ops.service';
+import { MailOpsService } from './application/mail-ops.service';
 import { LicensingSummaryService } from './application/licensing-summary.service';
 import { SourceInviteService } from './application/source-invite.service';
 import { SourceLinkService } from './application/source-link.service';
@@ -92,6 +93,12 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     LicenseExpirySweepService,
     LicenseSigningService,
     LicensingOpsService,
+    // A outra metade da aba Pendências (FIX #254): entrega de e-mail falhada.
+    // Mora aqui, e não no `mail`, porque reenfileirar exige remontar os dados
+    // do template a partir da licença — coisa que o `mail` não pode conhecer
+    // (a arch-spec de lá varre exatamente isso). A leitura e a escrita da
+    // tabela continuam sendo do `MailService`.
+    MailOpsService,
     // Estender e excluir a pedido (SPEC-040). Service próprio, e não métodos do
     // `LicenseAdminService`: aquele responde "emita, liste, revogue"; aqui mora
     // o que só acontece quando alguém **pede** — carimbado, com autor e motivo

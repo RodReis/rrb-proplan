@@ -6,6 +6,7 @@ import type { LicensePrivacyService } from '../application/license-privacy.servi
 import type { LicenseSigningService } from '../application/license-signing.service';
 import type { LicensingOpsService } from '../application/licensing-ops.service';
 import type { LicensingSummaryService } from '../application/licensing-summary.service';
+import type { MailOpsService } from '../application/mail-ops.service';
 import type { ErrorReportAdminService } from '../application/error-report-admin.service';
 import type { CatalogReadService } from '../application/catalog-read.service';
 import type { CatalogSyncService } from '../application/catalog-sync.service';
@@ -44,6 +45,13 @@ function montar() {
     {} as LicCatalogService,
     {} as LicenseSigningService,
     {} as LicensingOpsService,
+    // Quarta repetição do mesmo tropeço (agora o FIX #254), e a esta altura vale
+    // registrar a causa em vez de só o remendo: o construtor é **posicional com
+    // 12 dependências**, então toda adição desloca o resto e este arquivo quebra.
+    // A quebra é de compilação — barulhenta e barata, que é o que a torna
+    // tolerável. Nenhum caso daqui chama rota de entrega de e-mail; quem as
+    // cobre é o `mail-ops.service.spec.ts`.
+    {} as MailOpsService,
     {} as SourceAdminService,
     privacy,
     summaries,
