@@ -2,6 +2,29 @@
 export const LICENSING_QUEUE = 'licensing';
 
 /**
+ * Nome do job recorrente do sync de catálogo, e a **chave da idempotência**
+ * (SPEC-047, ADR-029).
+ *
+ * `upsertJobScheduler` deduplica por este id: registrar de novo com os mesmos
+ * valores **substitui** em vez de acrescentar. Sem uma chave estável, cada boot
+ * da API somaria uma rodada — e duas instâncias no Railway já bastariam para
+ * dobrar o sync.
+ *
+ * É também o que o worker lê para distinguir os dois tipos de job da **mesma
+ * fila**: `webhook` processa uma venda, este varre os tenants.
+ */
+export const CATALOG_SYNC_JOB = 'catalog-sync';
+
+/**
+ * Madrugada, horário do servidor (SPEC-047).
+ *
+ * A hora exata não importa; o que importa é ser fora do horário em que alguém
+ * compra — a Kiwify tem 100 req/min e o sync consome 1+N deles. A janela máxima
+ * de exposição continua sendo 24h (§Escopo), e quem não quer esperar tem o botão.
+ */
+export const CATALOG_SYNC_CRON = '0 3 * * *';
+
+/**
  * Identificador da plataforma de venda, como gravado em `LicWebhookEvent.platform`
  * e `LicOfferMapping.platform`.
  *

@@ -7,6 +7,8 @@ import type { LicenseSigningService } from '../application/license-signing.servi
 import type { LicensingOpsService } from '../application/licensing-ops.service';
 import type { LicensingSummaryService } from '../application/licensing-summary.service';
 import type { ErrorReportAdminService } from '../application/error-report-admin.service';
+import type { CatalogReadService } from '../application/catalog-read.service';
+import type { CatalogSyncService } from '../application/catalog-sync.service';
 import type { ReleaseAdminService } from '../application/release-admin.service';
 import type { SourceAdminService } from '../application/source-admin.service';
 import { LicensingAdminController } from './licensing-admin.controller';
@@ -54,6 +56,13 @@ function montar() {
     // arquivo chama rota de relato de erro — quem as cobre é o
     // `error-report-admin.service.spec.ts` e o int-spec contra o Postgres.
     {} as ErrorReportAdminService,
+    // E de novo com a SPEC-047. **A terceira repetição do mesmo tropeço** já é
+    // padrão, não acaso: acrescentar dependência ao controller quebra este
+    // arquivo, e a quebra é de compilação — barulhenta, que é o que a torna
+    // barata. Nenhum caso daqui chama rota de catálogo; quem as cobre é o
+    // `catalog-read.service.spec.ts` e o int-spec contra o Postgres.
+    {} as CatalogReadService,
+    {} as CatalogSyncService,
   );
 
   return { controller, licenses, privacy, summaries };

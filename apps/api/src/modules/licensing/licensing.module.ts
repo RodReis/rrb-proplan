@@ -2,6 +2,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { MailModule } from '../mail/mail.module';
+import { CatalogReadService } from './application/catalog-read.service';
+import { CatalogSyncService } from './application/catalog-sync.service';
 import { ErrorReportAdminService } from './application/error-report-admin.service';
 import { ErrorReportService } from './application/error-report.service';
 import { LicCatalogService } from './application/lic-catalog.service';
@@ -20,7 +22,9 @@ import { SourceAdminService } from './application/source-admin.service';
 import { SourceRevokeService } from './application/source-revoke.service';
 import { WebhookIntakeService } from './application/webhook-intake.service';
 import { WebhookProcessorService } from './application/webhook-processor.service';
+import { CatalogSyncScheduler } from './infrastructure/catalog-sync.scheduler';
 import { GithubSourceClient } from './infrastructure/github-source.client';
+import { KiwifyCatalogClient } from './infrastructure/kiwify-catalog.client';
 import { LicensingWorker } from './infrastructure/licensing.worker';
 import { LICENSING_QUEUE } from './licensing.constants';
 import { LicensingAdminController } from './presentation/licensing-admin.controller';
@@ -133,6 +137,16 @@ import { SourceLinkPublicController } from './presentation/source-link-public.co
     // mesmo objeto que uma rota pública instancia.
     ErrorReportService,
     ErrorReportAdminService,
+    // O catálogo da plataforma (SPEC-047). **Três providers, e a divisão é a
+    // decisão**: o `Sync` escreve o retrato e fala HTTP com a Kiwify; o `Read`
+    // lê e cruza com os mapeamentos, sem conhecer a Kiwify; o `Scheduler` só
+    // agenda (ADR-029) e não sabe sincronizar nada. Juntá-los poria o método
+    // que dispara N chamadas externas no mesmo objeto que a rota de leitura
+    // instancia — a mesma separação dos dois services de relato de erro.
+    CatalogSyncService,
+    CatalogReadService,
+    CatalogSyncScheduler,
+    KiwifyCatalogClient,
   ],
   // `LicensingSummaryService` exportado **antes de haver consumidor** — é o
   // ponto único por onde métrica de licenciamento sai do módulo (MVP4 §3). Sem

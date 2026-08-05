@@ -43,6 +43,8 @@ import {
 } from '../application/licensing-ops.service';
 import { LicensePrivacyService } from '../application/license-privacy.service';
 import { LicensingSummaryService } from '../application/licensing-summary.service';
+import { CatalogReadService } from '../application/catalog-read.service';
+import { CatalogSyncService } from '../application/catalog-sync.service';
 import { SourceAdminService } from '../application/source-admin.service';
 import { DEFAULT_PERIOD, isPeriod } from '../domain/period';
 
@@ -122,6 +124,10 @@ export class LicensingAdminController {
     private readonly summaries: LicensingSummaryService,
     private readonly releases: ReleaseAdminService,
     private readonly errorReports: ErrorReportAdminService,
+    // Os dois lados do catálogo (SPEC-047), separados de propósito: um lê o
+    // snapshot, o outro fala com a Kiwify. Ver `licensing.module.ts`.
+    private readonly catalogRead: CatalogReadService,
+    private readonly catalogSync: CatalogSyncService,
   ) {}
 
   /**
@@ -430,6 +436,38 @@ export class LicensingAdminController {
   @Put('settings')
   updateSettings(@Req() req: AuthenticatedRequest, @Body() body: UpdateSettingsInput) {
     return this.ops.updateSettings(req.tenantId!, body);
+  }
+
+  /**
+   * O catálogo da plataforma que ainda não vendeu e não tem de-para (SPEC-047).
+   *
+   * **Lê o snapshot — nunca chama a Kiwify.** Nenhuma chamada externa no
+   * caminho de renderização: o mesmo princípio da regra de inferência do
+   * CLAUDE.md, aplicado a API externa. A Kiwify só é consultada pelo job diário
+   * ou pelo `POST .../refresh` abaixo.
+   */
+  @Get('kiwify/catalog')
+  kiwifyCatalog(@Req() req: AuthenticatedRequest) {
+    return this.catalogRead.catalogo(req.tenantId!);
+  }
+
+  /**
+   * O botão *Buscar ofertas da Kiwify* — executa o fetch agora.
+   *
+   * Mesmo código do job (§Escopo): dois caminhos divergentes produziriam
+   * retratos diferentes conforme quem os buscou, sem nenhuma pista de qual
+   * acreditar. Devolve o catálogo já atualizado, para a tela não precisar de um
+   * segundo `GET`.
+   *
+   * **`409` sem credenciais.** A tela desabilita o botão, mas a rota não pode
+   * depender disso: quem chama a API direto merece a recusa explícita em vez de
+   * um "ok" que não sincronizou nada. Falha da Kiwify **não** vira erro HTTP —
+   * ela vira `fetchError` no corpo, ao lado do retrato anterior preservado.
+   */
+  @Post('kiwify/catalog/refresh')
+  async refreshKiwifyCatalog(@Req() req: AuthenticatedRequest) {
+    await this.catalogSync.sincronizarAgora(req.tenantId!);
+    return this.catalogRead.catalogo(req.tenantId!);
   }
 
   /** Mapeamentos oferta→edição: o de-para que resolve a compra em edição. */
