@@ -60,7 +60,8 @@ Quatro serviços no mesmo projeto (compartilham a rede privada):
    (`${{Postgres.DATABASE_URL}}`, host/porta/usuário privados).
 2. **Redis** — template do Railway. Expõe `${{Redis.REDIS_URL}}`.
 3. **`@proplan/api`** — build via `apps/api/Dockerfile`. Healthcheck em `/health`,
-   release command com `prisma migrate deploy` (`apps/api/railway.json`).
+   release command com `prisma migrate deploy` **seguido do seed de referência**
+   (`apps/api/railway.json`, §7.2).
 4. **`@proplan/web`** — build via `apps/web/Dockerfile` (nginx servindo o build
    do Vite, com fallback SPA).
 
@@ -405,14 +406,16 @@ Ordem por serviço:
 
 1. Railway detecta o push, builda a imagem do serviço afetado.
 2. **api:** *pre-deploy / release command* roda `prisma migrate deploy`
-   (via `DIRECT_URL`) **antes** de trocar o processo. Migração falha ⇒ deploy
-   aborta, versão anterior segue no ar.
+   (via `DIRECT_URL`) e, na sequência, `node prisma/seed-reference.mjs` (§7.2),
+   **antes** de trocar o processo. Qualquer um dos dois falha ⇒ deploy aborta,
+   versão anterior segue no ar.
 3. Healthcheck em `/health` decide se a nova versão assume o tráfego.
 4. **web:** rebuild do Vite (pega `VITE_API_URL`) e publica o estático.
 
 > **Cuidado com a ordem migração→deploy:** migração que remove/renomeia coluna
 > ainda usada pela versão anterior derruba a app durante a janela. Migrations
 > destrutivas seguem o padrão *expand → migrate → contract* em PRs separados.
+
 
 ### 7.1 Deploy preso em `QUEUED` — e o redeploy que sobe o commit errado (2026-07-30)
 
@@ -459,6 +462,43 @@ anterior. Aqui não há log nenhum, porque não houve build.
 
 ---
 
+### 7.2 Seed de referência no deploy — por que migração não bastava (FIX #284)
+
+**O que aconteceu.** O formulário público do briefing subiu em produção com
+**Segmento, Estado e Cidade vazios**: a API respondia `200` com listas vazias
+(`{"segments":[],"states":[],"cities":[]}`), e como segmento e estado são
+obrigatórios, o cliente não passava da Etapa 1. O link estava válido; o banco é
+que nunca recebeu o dado.
+
+**Por quê.** O release command rodava só `prisma migrate deploy`. Migração cria
+tabela; não popula. Como esse era o único passo automático que tocava o banco,
+`segments`, `states` e `cities` ficaram zeradas desde o primeiro deploy — apesar
+de o cabeçalho do `prisma/seed.ts` afirmar, desde a SPEC-031, que esse dado é de
+**referência** e "vale em produção também".
+
+**Por que não bastou chamar `prisma/seed.ts` no deploy.** Dois motivos, ambos
+descobertos executando:
+
+1. **Não roda na imagem.** O `Dockerfile` reinstala com `--prod`, então
+   `ts-node` não existe no runtime. E o `tsconfig` da api compila só `src/**`,
+   então `prisma/` nunca teria saída em `dist/`.
+2. **Faria mais do que se pede.** O `main()` do `seed.ts` também aplica catálogo
+   de serviços, templates de contrato e licenciamento aos tenants **já
+   existentes**, inclusive devolvendo item de catálogo que o dono apagou.
+   Aceitável no dev; em produção, a cada deploy, seria dado do cliente voltando
+   sozinho.
+
+**O desenho.** `prisma/reference.seed.mjs` — JS puro, sem passo de build —
+concentra segmentos e localidades; `prisma/seed-reference.mjs` é o entrypoint do
+deploy, e o `prisma/seed.ts` do dev **importa** dali, então não há segunda cópia
+das listas para divergir. Só saem de lá tabelas **globais** (sem `tenant_id`,
+sem RLS), o que torna a reexecução segura por construção — é o que permite
+pendurá-la no `preDeployCommand`. Conecta com a `DATABASE_URL` de runtime (role
+`proplan_app`); não precisa da `DIRECT_URL`/owner.
+
+> **Banco novo nasce populado.** Este passo cobre o provisionamento futuro
+> (ambiente novo, restore) sem virar item de checklist manual — que é
+> exatamente como a lacuna passou despercebida da primeira vez.
 ## 8. Supabase — reservado, sem função ativa
 
 O projeto Supabase (`https://supabase.com/dashboard/project/eswflurmwpgpbgdqbkph`)

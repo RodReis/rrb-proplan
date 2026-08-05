@@ -155,7 +155,9 @@ export default tseslint.config(
 
   {
     // Scripts de build/manutenção rodam em Node puro, sem os globals do DOM.
-    files: ['scripts/**/*.mjs', '**/*.config.{mjs,ts}'],
+    // O seed de referência (`apps/api/prisma/*.mjs`) entra aqui pelo mesmo
+    // motivo: é JS puro rodado pelo `node` do deploy, sem passo de build.
+    files: ['scripts/**/*.mjs', 'apps/api/prisma/**/*.mjs', '**/*.config.{mjs,ts}'],
     languageOptions: {
       globals: { process: 'readonly', console: 'readonly', __dirname: 'readonly' },
     },
